@@ -86,10 +86,18 @@ Renderer::Renderer(rhi::IDevice& device, IPipelineCache* cache)
     : device_(&device), cache_(cache) {}
 
 core::Status Renderer::render(std::span<const RenderBatch> batches,
-                               rhi::ISwapchain* swapchain) {
+                               rhi::ISwapchain* swapchain,
+                               TransformComputePass* computePass,
+                               const TransformComputePassDesc* computeDesc) {
     auto cmd = device_->create_command_buffer();
     if (const auto s = cmd->begin(); !s.ok()) {
         return s;
+    }
+
+    if (computePass && computeDesc) {
+        if (const auto s = computePass->dispatch(*cmd, *computeDesc); !s.ok()) {
+            return s;
+        }
     }
 
     // Build render pass from swapchain or use a minimal headless descriptor
