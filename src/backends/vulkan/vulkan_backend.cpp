@@ -51,6 +51,12 @@ public:
             core::StatusCode::unavailable, "Vulkan backend is a stub")};
     }
 
+    [[nodiscard]] core::Result<std::unique_ptr<IComputePipeline>> create_compute_pipeline(
+        const ComputePipelineDesc& /*desc*/) override {
+        return core::Result<std::unique_ptr<IComputePipeline>>{core::Status::failure(
+            core::StatusCode::unavailable, "Vulkan backend is a stub")};
+    }
+
     [[nodiscard]] CommandBufferPtr create_command_buffer() override {
         return CommandBufferPtr(nullptr, [](ICommandBuffer*){});
     }

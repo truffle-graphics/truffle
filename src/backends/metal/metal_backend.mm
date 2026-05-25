@@ -211,6 +211,40 @@ private:
     id<MTLRenderPipelineState> pso_ = nil;
 };
 
+class MetalComputePipeline final : public IComputePipeline {
+public:
+    MetalComputePipeline() = default;
+
+    static Result<std::unique_ptr<IComputePipeline>>
+    create(id<MTLDevice> device, const ComputePipelineDesc& desc) {
+        if (!desc.computeShader) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "ComputePipelineDesc must provide compute shader");
+        }
+
+        NSError* err = nil;
+        id<MTLComputePipelineState> pso = [device newComputePipelineStateWithFunction:static_cast<MetalShader*>(desc.computeShader)->function() error:&err];
+        
+        if (!pso) {
+            const char* msg = err ? [err.localizedDescription UTF8String]
+                                  : "compute pipeline state creation failed";
+            return Status::failure(StatusCode::invalid_argument, msg);
+        }
+
+        auto pipeline   = std::make_unique<MetalComputePipeline>();
+        pipeline->desc_ = desc;
+        pipeline->pso_  = pso;
+        return std::unique_ptr<IComputePipeline>(std::move(pipeline));
+    }
+
+    const ComputePipelineDesc&  desc()   const noexcept override { return desc_; }
+    id<MTLComputePipelineState> native() const noexcept { return pso_; }
+
+private:
+    ComputePipelineDesc         desc_;
+    id<MTLComputePipelineState> pso_ = nil;
+};
+
 // ---------------------------------------------------------------------------
 // Fence
 // ---------------------------------------------------------------------------
@@ -265,6 +299,7 @@ public:
         state_ = State::initial;
         cmdBuf_ = nil;
         encoder_ = nil;
+        compute_encoder_ = nil;
         topology_ = PrimitiveTopology::triangle_list;
         indexBuf_ = nil;
         indexBufOffset_ = 0;
@@ -331,6 +366,7 @@ public:
         }
         [encoder_ endEncoding];
         encoder_ = nil;
+        compute_encoder_ = nil;
         return Status::success();
     }
 
@@ -342,6 +378,14 @@ public:
         auto& mp = static_cast<MetalPipeline&>(pipeline);
         [encoder_ setRenderPipelineState:mp.native()];
         topology_ = mp.desc().topology;
+        return Status::success();
+    }
+
+    Status bind_compute_pipeline(IComputePipeline& pipeline) override {
+        if (encoder_) return Status::failure(StatusCode::invalid_state, "Cannot bind compute pipeline during a render pass");
+        if (!compute_encoder_) compute_encoder_ = [cmdBuf_ computeCommandEncoder];
+        auto& mp = static_cast<MetalComputePipeline&>(pipeline);
+        [compute_encoder_ setComputePipelineState:mp.native()];
         return Status::success();
     }
 
@@ -380,6 +424,16 @@ public:
         id<MTLBuffer> mtlBuf = static_cast<MetalBuffer&>(buffer).native();
         [encoder_ setVertexBuffer:mtlBuf   offset:offset atIndex:binding];
         [encoder_ setFragmentBuffer:mtlBuf offset:offset atIndex:binding];
+        return Status::success();
+    }
+
+    Status bind_storage_buffer(std::uint32_t binding,
+                                IBuffer&      buffer,
+                                std::size_t   offset) override {
+        if (encoder_) return Status::failure(StatusCode::unsupported, "Storage buffers not supported in render passes yet");
+        if (!compute_encoder_) return Status::failure(StatusCode::invalid_state, "Must bind compute pipeline before binding storage buffer");
+        id<MTLBuffer> mtlBuf = static_cast<MetalBuffer&>(buffer).native();
+        [compute_encoder_ setBuffer:mtlBuf offset:offset atIndex:binding];
         return Status::success();
     }
 
@@ -481,6 +535,16 @@ public:
         return Status::success();
     }
 
+    Status dispatch_compute(std::uint32_t group_count_x,
+                             std::uint32_t group_count_y,
+                             std::uint32_t group_count_z) override {
+        if (!compute_encoder_) return Status::failure(StatusCode::invalid_state, "No compute encoder active");
+        MTLSize threadgroups = MTLSizeMake(group_count_x, group_count_y, group_count_z);
+        MTLSize threadsPerThreadgroup = MTLSizeMake(64, 1, 1);
+        [compute_encoder_ dispatchThreadgroups:threadgroups threadsPerThreadgroup:threadsPerThreadgroup];
+        return Status::success();
+    }
+
     Status end() override {
         if (state_ != State::recording) {
             return Status::failure(StatusCode::invalid_state,
@@ -489,6 +553,10 @@ public:
         if (encoder_) { // safety: close any open encoder
             [encoder_ endEncoding];
             encoder_ = nil;
+        }
+        if (compute_encoder_) { // close any open compute encoder
+            [compute_encoder_ endEncoding];
+            compute_encoder_ = nil;
         }
         state_ = State::ready;
         return Status::success();
@@ -511,6 +579,7 @@ private:
     id<MTLCommandQueue>         queue_          = nil;
     id<MTLCommandBuffer>        cmdBuf_         = nil;
     id<MTLRenderCommandEncoder> encoder_        = nil;
+    id<MTLComputeCommandEncoder> compute_encoder_= nil;
     State                       state_          = State::initial;
     PrimitiveTopology           topology_       = PrimitiveTopology::triangle_list;
     id<MTLBuffer>               indexBuf_       = nil;
@@ -744,6 +813,10 @@ public:
 
     Result<std::unique_ptr<IPipeline>> create_pipeline(const PipelineDesc& desc) override {
         return MetalPipeline::create(device_, desc);
+    }
+
+    Result<std::unique_ptr<IComputePipeline>> create_compute_pipeline(const ComputePipelineDesc& desc) override {
+        return MetalComputePipeline::create(device_, desc);
     }
 
     Result<std::unique_ptr<ISurface>> create_surface(const SurfaceDesc& desc) override {

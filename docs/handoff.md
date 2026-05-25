@@ -19,7 +19,13 @@ Specifically starting Phase 5A: GPU Transform Hierarchy compute pass (ADR 0006).
 ## Current Work Status
 
 - **Phase 1 to 4** are marked strictly Complete. Refer to `docs/roadmap.md` for historical feature deliverables.
-- **Phase 5A** is scoping implementation logic for the GPU Transform compute pass.
+- **Phase 5A** — GPU Transform Hierarchy (in progress on `feat/phase5a-compute-hierarchy`):
+  - Created `TransformComputePass` and `TransformComputePassDesc` exposing a high-level shader dispatch orchestration for updating recursive matrices in compute.
+  - Implemented initial MSL kernel string `compute_transforms` in `shaders.hpp` for resolving parent matrices logic.
+  - Mocked and verified the pipeline execution mapping within tests against a Null compute backend structure.
+  - Integrated storage buffer bindings and active compute encoder management down into `MetalCommandBuffer` resolving pipeline validation asserts.
+  - Added new `truffle_transform_compute_tests` and extended `truffle_metal_tests` to execute native MSL compute pass validating shader output mapping.
+
 
 
 - **Phase 3C — Material system** (merged, PR #9):

@@ -1,5 +1,6 @@
 #include "test_support.hpp"
 #include "truffle/rhi/metal_backend.hpp"
+#include "truffle/render/shaders.hpp"
 
 #include <cstring>
 #include <string>
@@ -219,5 +220,38 @@ int main() {
                       .submit(*cmdIdx)
                       .ok());
 
+
+    // --- Compute Backend Test ---
+    auto computeShaderResult = device->create_shader({
+        .stage      = truffle::rhi::ShaderStage::compute,
+        .entryPoint = "compute_transforms",
+        .bytecode   = to_bytes(truffle::render::kTransformComputeMSL.data()),
+    });
+    TRUFFLE_CHECK(computeShaderResult.ok());
+    auto computeShader = std::move(computeShaderResult).value();
+    
+    auto computePipelineResult = device->create_compute_pipeline({
+        .debugName = "test_compute_pipeline",
+        .computeShader = computeShader.get(),
+    });
+    TRUFFLE_CHECK(computePipelineResult.ok());
+    auto computePipeline = std::move(computePipelineResult).value();
+
+    auto localBuf = device->create_buffer({.size = 1024, .usage = truffle::rhi::BufferUsage::storage}).value();
+    auto parentBuf = device->create_buffer({.size = 1024, .usage = truffle::rhi::BufferUsage::storage}).value();
+    auto globalBuf = device->create_buffer({.size = 1024, .usage = truffle::rhi::BufferUsage::storage}).value();
+    
+    auto cmdCompute = device->create_command_buffer();
+    TRUFFLE_CHECK(cmdCompute->begin().ok());
+    TRUFFLE_CHECK(cmdCompute->bind_compute_pipeline(*computePipeline).ok());
+    TRUFFLE_CHECK(cmdCompute->bind_storage_buffer(0, *localBuf, 0).ok());
+    TRUFFLE_CHECK(cmdCompute->bind_storage_buffer(1, *parentBuf, 0).ok());
+    TRUFFLE_CHECK(cmdCompute->bind_storage_buffer(2, *globalBuf, 0).ok());
+    TRUFFLE_CHECK(cmdCompute->dispatch_compute(1, 1, 1).ok());
+    TRUFFLE_CHECK(cmdCompute->end().ok());
+    
+    TRUFFLE_CHECK(device->queue(truffle::rhi::QueueKind::compute).submit(*cmdCompute).ok());
+
     return 0;
 }
+

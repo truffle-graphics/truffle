@@ -39,3 +39,7 @@ if(TRUFFLE_INSTALL)
             "-DTRUFFLE_CONSUMER_BUILD_DIR=${PROJECT_BINARY_DIR}/package-test/consumer"
             -P "${PROJECT_SOURCE_DIR}/cmake/VerifyInstall.cmake")
 endif()
+
+add_executable(truffle_transform_compute_tests transform_compute_tests.cpp)
+target_link_libraries(truffle_transform_compute_tests PRIVATE truffle_backend_null truffle_render)
+add_test(NAME truffle_transform_compute_tests COMMAND truffle_transform_compute_tests)

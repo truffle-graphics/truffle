@@ -131,6 +131,11 @@ struct PipelineDesc {
     bool              depthWrite     = true;
 };
 
+struct ComputePipelineDesc {
+    std::string debugName;
+    IShader*    computeShader = nullptr;
+};
+
 struct NativeSurface {
     NativeSurfaceKind kind = NativeSurfaceKind::headless;
     void* handle = nullptr;
@@ -208,6 +213,12 @@ public:
     [[nodiscard]] virtual const PipelineDesc& desc() const noexcept = 0;
 };
 
+class IComputePipeline {
+public:
+    virtual ~IComputePipeline() = default;
+    [[nodiscard]] virtual const ComputePipelineDesc& desc() const noexcept = 0;
+};
+
 class ISurface {
 public:
     virtual ~ISurface() = default;
@@ -281,6 +292,7 @@ public:
 
     // Resource binding
     [[nodiscard]] virtual core::Status bind_pipeline(IPipeline& pipeline) = 0;
+    [[nodiscard]] virtual core::Status bind_compute_pipeline(IComputePipeline& pipeline) = 0;
     [[nodiscard]] virtual core::Status bind_vertex_buffer(
         std::uint32_t binding, IBuffer& buffer,
         std::size_t offset = 0) = 0;
@@ -289,6 +301,10 @@ public:
         IndexFormat format = IndexFormat::uint32) = 0;
     // Bind a uniform/constant buffer to both vertex and fragment stages.
     [[nodiscard]] virtual core::Status bind_uniform_buffer(
+        std::uint32_t binding, IBuffer& buffer,
+        std::size_t offset = 0) = 0;
+    // Bind a storage buffer for compute reading/writing.
+    [[nodiscard]] virtual core::Status bind_storage_buffer(
         std::uint32_t binding, IBuffer& buffer,
         std::size_t offset = 0) = 0;
     [[nodiscard]] virtual core::Status set_viewport(
@@ -313,6 +329,12 @@ public:
         IBuffer& indirect_buffer, std::size_t offset) = 0;
     [[nodiscard]] virtual core::Status draw_indexed_indirect(
         IBuffer& indirect_buffer, std::size_t offset) = 0;
+
+    // Compute calls
+    [[nodiscard]] virtual core::Status dispatch_compute(
+        std::uint32_t group_count_x,
+        std::uint32_t group_count_y,
+        std::uint32_t group_count_z) = 0;
 };
 
 class IQueue {
@@ -339,6 +361,8 @@ public:
     create_shader(const ShaderDesc& desc) = 0;
     [[nodiscard]] virtual core::Result<std::unique_ptr<IPipeline>>
     create_pipeline(const PipelineDesc& desc) = 0;
+    [[nodiscard]] virtual core::Result<std::unique_ptr<IComputePipeline>>
+    create_compute_pipeline(const ComputePipelineDesc& desc) = 0;
     [[nodiscard]] virtual core::Result<std::unique_ptr<ISurface>>
     create_surface(const SurfaceDesc& desc) = 0;
     [[nodiscard]] virtual core::Result<std::unique_ptr<ISwapchain>>
