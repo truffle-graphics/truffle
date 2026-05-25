@@ -1,6 +1,8 @@
 #include "truffle/render/transform_compute_pass.hpp"
 #include "truffle/rhi/null_backend.hpp"
 #include "test_support.hpp"
+#include "truffle/render/renderer.hpp"
+#include "truffle/render/frame_graph.hpp"
 
 using namespace truffle;
 
@@ -12,10 +14,7 @@ int main() {
 
     render::TransformComputePass pass(*device, shader.get());
 
-    auto cmd = device->create_command_buffer();
-    TRUFFLE_CHECK(cmd->begin().ok());
-
-    auto localBufRes = device->create_buffer({.size = 4096, .usage = rhi::BufferUsage::storage});
+        auto localBufRes = device->create_buffer({.size = 4096, .usage = rhi::BufferUsage::storage});
     TRUFFLE_CHECK(localBufRes.ok());
     auto localBuf = std::move(localBufRes.value());
 
@@ -34,9 +33,16 @@ int main() {
         .nodeCount = 100,
     };
 
-    auto s = pass.dispatch(*cmd, desc);
-    TRUFFLE_CHECK(s.ok());
-    TRUFFLE_CHECK(cmd->end().ok());
+    // We no longer call pass.dispatch directly. We use FrameGraph.
+    auto graph = [&]() {
+        truffle::render::FrameGraph fg;
+        fg.add_node(std::make_unique<truffle::render::ComputePassNode>(pass, desc));
+        return fg;
+    }();
+    TRUFFLE_CHECK(truffle::render::Renderer{*device}.render(graph).ok());
+
+    // We no longer need cmd
+    
 
     // Verify stats 1 dispatch was actually mocking as draw via device->stats()
     // NullBackend uses drawsRecorded for dispatch_compute too

@@ -85,97 +85,87 @@ void PipelineCache::invalidate_all() {
 Renderer::Renderer(rhi::IDevice& device, IPipelineCache* cache)
     : device_(&device), cache_(cache) {}
 
-core::Status Renderer::render(std::span<const RenderBatch> batches,
-                               rhi::ISwapchain* swapchain,
-                               TransformComputePass* computePass,
-                               const TransformComputePassDesc* computeDesc) {
+core::Status Renderer::render(const FrameGraph& graph, rhi::ISwapchain* swapchain) {
     auto cmd = device_->create_command_buffer();
     if (const auto s = cmd->begin(); !s.ok()) {
         return s;
     }
 
-    if (computePass && computeDesc) {
-        if (const auto s = computePass->dispatch(*cmd, *computeDesc); !s.ok()) {
-            return s;
-        }
-    }
+    rhi::ITexture* swapchainDrawable = nullptr;
+    bool swapchainAcquired = false;
 
-    // Build render pass from swapchain or use a minimal headless descriptor
-    rhi::RenderPassDesc passDesc;
-    if (swapchain) {
-        passDesc.extent                     = swapchain->desc().extent;
-        passDesc.colorAttachment.texture    = swapchain->acquire_next_texture();
-        passDesc.colorAttachment.loadOp     = rhi::LoadOp::clear;
-        passDesc.colorAttachment.storeOp    = rhi::StoreOp::store;
-    } else {
-        passDesc.extent = {1, 1}; // headless / null-backend
-    }
-    if (const auto s = cmd->begin_render_pass(passDesc); !s.ok()) {
-        return s;
-    }
-
-    for (const auto& batch : batches) {
-        if (cache_) {
-            if (auto* pipeline = cache_->get_or_create(batch.layout, batch.material, batch.variantHash)) {
-                (void)cmd->bind_pipeline(*pipeline);
-            }
-        }
-
-        for (std::uint32_t i = 0; i < RenderBatch::kMaxBindings; ++i) {
-            if (batch.bindings[i].buffer) {
-                (void)cmd->bind_vertex_buffer(
-                    i, *batch.bindings[i].buffer, batch.bindings[i].offset);
-            }
-        }
-
-        if (batch.uniformBuffer.buffer) {
-            // Uniform buffers go immediately after the vertex binding slots.
-            constexpr std::uint32_t kUniformBinding = RenderBatch::kMaxBindings;
-            (void)cmd->bind_uniform_buffer(
-                kUniformBinding, *batch.uniformBuffer.buffer,
-                batch.uniformBuffer.offset);
-        }
-
-        if (batch.kind == DrawKind::Indirect && batch.indirectBuffer.buffer) {
-            if (const auto s =
-                    cmd->draw_indirect(*batch.indirectBuffer.buffer,
-                                       batch.indirectBuffer.offset);
-                !s.ok()) {
+    for (const auto& node_ptr : graph.nodes()) {
+        if (node_ptr->kind() == FrameGraphNodeKind::Compute) {
+            auto* node = static_cast<const ComputePassNode*>(node_ptr.get());
+            if (const auto s = node->pass()->dispatch(*cmd, node->desc()); !s.ok()) {
                 return s;
             }
-        } else if (batch.kind == DrawKind::IndirectIndexed && batch.indirectBuffer.buffer && batch.indexBuffer.buffer) {
-            (void)cmd->bind_index_buffer(*batch.indexBuffer.buffer,
-                                          batch.indexBuffer.offset,
-                                          batch.indexFormat);
-            if (const auto s =
-                    cmd->draw_indexed_indirect(*batch.indirectBuffer.buffer,
-                                               batch.indirectBuffer.offset);
-                !s.ok()) {
+        } else if (node_ptr->kind() == FrameGraphNodeKind::Render) {
+            auto* node = static_cast<const RenderPassNode*>(node_ptr.get());
+            
+            rhi::RenderPassDesc passDesc;
+            if (node->uses_swapchain()) {
+                if (!swapchainAcquired && swapchain) {
+                    swapchainDrawable = swapchain->acquire_next_texture();
+                    swapchainAcquired = true;
+                }
+                if (swapchain) {
+                    passDesc.extent = swapchain->desc().extent;
+                    passDesc.colorAttachment.texture = swapchainDrawable;
+                    passDesc.colorAttachment.loadOp = rhi::LoadOp::clear;
+                    passDesc.colorAttachment.storeOp = rhi::StoreOp::store;
+                } else {
+                    passDesc.extent = {1, 1}; // headless / null-backend
+                }
+            } else if (node->explicit_desc()) {
+                passDesc = *node->explicit_desc();
+            }
+
+            if (const auto s = cmd->begin_render_pass(passDesc); !s.ok()) {
                 return s;
             }
-        } else if (batch.kind == DrawKind::Indexed && batch.indexBuffer.buffer) {
-            (void)cmd->bind_index_buffer(*batch.indexBuffer.buffer,
-                                          batch.indexBuffer.offset,
-                                          batch.indexFormat);
-            if (const auto s =
-                    cmd->draw_indexed_instanced(batch.vertexCount,
-                                                batch.instanceCount);
-                !s.ok()) {
-                return s;
+
+            for (const auto& batch : node->batches()) {
+                if (cache_) {
+                    if (auto* pipeline = cache_->get_or_create(batch.layout, batch.material, batch.variantHash)) {
+                        (void)cmd->bind_pipeline(*pipeline);
+                    }
+                }
+
+                for (std::uint32_t i = 0; i < RenderBatch::kMaxBindings; ++i) {
+                    if (batch.bindings[i].buffer) {
+                        (void)cmd->bind_vertex_buffer(
+                            i, *batch.bindings[i].buffer, batch.bindings[i].offset);
+                    }
+                }
+
+                if (batch.uniformBuffer.buffer) {
+                    constexpr std::uint32_t kUniformBinding = RenderBatch::kMaxBindings;
+                    (void)cmd->bind_uniform_buffer(
+                        kUniformBinding, *batch.uniformBuffer.buffer,
+                        batch.uniformBuffer.offset);
+                }
+
+                if (batch.kind == DrawKind::Indirect && batch.indirectBuffer.buffer) {
+                    if (const auto s = cmd->draw_indirect(*batch.indirectBuffer.buffer, batch.indirectBuffer.offset); !s.ok()) return s;
+                } else if (batch.kind == DrawKind::IndirectIndexed && batch.indirectBuffer.buffer && batch.indexBuffer.buffer) {
+                    (void)cmd->bind_index_buffer(*batch.indexBuffer.buffer, batch.indexBuffer.offset, batch.indexFormat);
+                    if (const auto s = cmd->draw_indexed_indirect(*batch.indirectBuffer.buffer, batch.indirectBuffer.offset); !s.ok()) return s;
+                } else if (batch.kind == DrawKind::Indexed && batch.indexBuffer.buffer) {
+                    (void)cmd->bind_index_buffer(*batch.indexBuffer.buffer, batch.indexBuffer.offset, batch.indexFormat);
+                    if (const auto s = cmd->draw_indexed_instanced(batch.vertexCount, batch.instanceCount); !s.ok()) return s;
+                } else {
+                    if (const auto s = cmd->draw_instanced(batch.vertexCount, batch.instanceCount); !s.ok()) return s;
+                }
             }
-        } else {
-            if (const auto s =
-                    cmd->draw_instanced(batch.vertexCount, batch.instanceCount);
-                !s.ok()) {
+
+            if (const auto s = cmd->end_render_pass(); !s.ok()) {
                 return s;
             }
         }
     }
 
-    if (const auto s = cmd->end_render_pass(); !s.ok()) {
-        return s;
-    }
-    if (swapchain) {
+    if (swapchainAcquired && swapchain) {
         if (const auto s = swapchain->schedule_present(*cmd); !s.ok()) {
             return s;
         }

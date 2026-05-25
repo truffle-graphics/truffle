@@ -1,5 +1,6 @@
 #include "test_support.hpp"
 #include "truffle/render/renderer.hpp"
+#include "truffle/render/frame_graph.hpp"
 #include "truffle/rhi/null_backend.hpp"
 #include "truffle/scene/scene_adapter.hpp"
 
@@ -52,7 +53,7 @@ int main() {
     TRUFFLE_CHECK(batch.bindings[0].size == 3 * 64);
 
     // --- Render the extracted batches ---
-    TRUFFLE_CHECK(truffle::render::Renderer{*device}.render(frame.meshBatches).ok());
+    TRUFFLE_CHECK(truffle::render::Renderer{*device}.render([&]() { truffle::render::FrameGraph fg; fg.add_node(std::make_unique<truffle::render::RenderPassNode>(true, frame.meshBatches)); return fg; }()).ok());
     TRUFFLE_CHECK(backend->stats().drawsRecorded == 1);
     TRUFFLE_CHECK(backend->stats().submissions == 1);
 
