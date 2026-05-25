@@ -13,126 +13,61 @@ docs, charter, or ADRs instead of leaving it only in this working document.
 
 ## Current Focus
 
-Transitioning into **Phase 5**: Compute & Frame Graph Orchestration.
-Specifically starting Phase 5A: GPU Transform Hierarchy compute pass (ADR 0006).
+Transitioning into **Phase 6**: Extended Engine Integrations.
+Frame Graph is stable, executing on default implementations.
 
 ## Current Work Status
 
 - **Phase 1 to 4** are marked strictly Complete. Refer to `docs/roadmap.md` for historical feature deliverables.
-- **Phase 5A** — GPU Transform Hierarchy (in progress on `feat/phase5a-compute-hierarchy`):
-  - Created `TransformComputePass` and `TransformComputePassDesc` exposing a high-level shader dispatch orchestration for updating recursive matrices in compute.
-  - Implemented initial MSL kernel string `compute_transforms` in `shaders.hpp` for resolving parent matrices logic.
-  - Mocked and verified the pipeline execution mapping within tests against a Null compute backend structure.
-  - Integrated storage buffer bindings and active compute encoder management down into `MetalCommandBuffer` resolving pipeline validation asserts.
-  - Added new `truffle_transform_compute_tests` and extended `truffle_metal_tests` to execute native MSL compute pass validating shader output mapping.
-
-
-
-- **Phase 3C — Material system** (merged, PR #9):
-  - `PipelineDesc::colorFormat` — pipelines no longer hardcode BGRA8Unorm.
-  - `ShaderBinding` struct + `IPipelineCache::register_shaders()` added.
-  - `PipelineCache` — hash-map cache keyed on `(InstanceLayout::hash(), MaterialId)`.
-  - `RenderBatch::uniformBuffer` — per-batch constant data bound at slot
-    `kMaxBindings` (8) on both VS and FS via new `ICommandBuffer::bind_uniform_buffer()`.
-- **Phase 3D — Async Metal fence** (merged, PR #9):
-  - `MetalFence` uses `dispatch_semaphore_t` + `shared_ptr<atomic<bool>>`; safe
-    against fence outliving the GPU completion block.
-  - `MetalQueue::submit()` uses async `addCompletedHandler:` instead of
-    `waitUntilCompleted`.
-  - `IFence` gains `wait()` for CPU synchronisation; null backend no-ops it.
-- **Phase 3E — CAMetalLayer host wiring** (merged, PR #9):
-  - `host_window_metal.mm` — attaches `CAMetalLayer` to GLFW window content view,
-    returns as `void*` via `HostWindow::native_layer_handle()`.
-  - `application.cpp` — `run_interactive_metal()` uses Metal backend with real
-    MSL shaders, `cocoa_layer` surface, and `PipelineCache`; activated by `--metal`.
-  - CMakeLists.txt conditionally compiles `.mm` and links `truffle_backend_metal`.
-- **Phase 3F — Indexed draw** (on `feat/indexed-draw`, pending merge):
-  - `rhi.hpp`: `IndexFormat` enum (uint16/uint32); `bind_index_buffer` takes
-    `IndexFormat`; `ICommandBuffer` gains `draw_indexed` and
-    `draw_indexed_instanced`.
-  - `render_batch.hpp`: `indexFormat` field added to `RenderBatch`.
-  - `metal_backend.mm`: `to_mtl_index_type` helper; `bind_index_buffer` stores
-    `id<MTLBuffer>`, offset, and `MTLIndexType`; `draw_indexed_instanced` calls
-    `drawIndexedPrimitives:`.
-  - `null_backend.cpp`: updated signatures; `draw_indexed_instanced` increments
-    `drawsRecorded`.
-  - `renderer.cpp`: routes `DrawKind::Indexed` batches through
-    `bind_index_buffer` + `draw_indexed_instanced`.
-  - Tests: `rhi_null_tests.cpp` and `metal_backend_tests.cpp` extended with
-    indexed draw coverage.
+- **Phase 5A** — GPU Transform Hierarchy (Complete).
+  - Created `TransformComputePass` and `TransformComputePassDesc` exposing a high-level shader dispatch orchestration.
+  - Implemented compute capabilities on Metal backend.
+- **Phase 5B** — Frame Graph Orchestration (Complete).
+  - Designed and merged `FrameGraph`, `ComputePassNode`, and `RenderPassNode` abstractions in `truffle/render/frame_graph.hpp`.
+  - Re-wired `Renderer::render()` to accept `FrameGraph`, dynamically interleaving backend render passes and compute passes.
+  - Authored ADR 0008 validating architecture decisions surrounding the node graph.
+  - All test consumers correctly use the Frame Graph injection model instead of passing raw batches.
 
 ## Relevant Decisions And Constraints
 
-- Truffle is embeddable graphics infrastructure, not an application host or a
-  dedicated game engine.
-- Consumers may compose Truffle with FrameKit, but Truffle must not depend on it.
-- Public rendering flow stays backend-neutral; production GPU backends are later
-  roadmap work.
-- `truffle_render` must have zero compile-time dependency on `truffle_ecs`.
-  `truffle_scene` is the designated ECS-to-render bridge (see ADR 0004).
+- Truffle is embeddable graphics infrastructure, not an application host or a dedicated game engine.
+- Public rendering flow stays backend-neutral; production GPU backends are later roadmap work.
+- `FrameGraph` owns high-level order, not rendering states. Individual graph nodes retain responsibility for executing `begin_render_pass` alongside backend queues.
+- `truffle_render` must have zero compile-time dependency on `truffle_ecs`. `truffle_scene` is the designated ECS-to-render bridge.
 - `RenderBatch` and `InstanceLayout` are the universal renderer input contract.
-  All three data lanes (ECS extraction, bulk direct, GPU-resident) converge on
-  `RenderBatch`. `InstanceLayout::hash()` keys pipeline selection.
-- `IFrameUploadRing` lives at the RHI layer. It is the N-buffered CPU-to-GPU
-  upload primitive for both scene extraction and bulk streaming (see ADR 0005).
-- `ChannelKind::LocalTransform` and `ParentIndex` are reserved for a future
-  GPU-side compute pass for hierarchy resolution (see ADR 0006). No implementation
-  yet.
-- `IPipelineCache` now has a real keyed implementation (`PipelineCache`);
-  `NullPipelineCache` remains for null-backend-only use. Production shader
-  variant selection is Phase 4 work.
-- `truffle_scene` is optional. Consumers can build against `truffle_render` only
-  and manage batches directly.
-- Truffle does not own native window helpers in the current baseline. Host apps
-  provide their own windowing and native surface boundary.
-- Runtime dependencies should prefer Git submodules when practical; narrow
-  pinned source copies remain the fallback when a submodule does not fit.
-- The host workspace keeps a pinned, example-local GLFW source copy narrowed to
-  the GLFW library build path rather than a submodule or full upstream repo
-  snapshot.
-- Keep active handoff state curated and public-safe. Lasting decisions belong in
-  stable docs or ADRs.
-- Normal feature and fix work targets protected `develop`; stable promotion goes
-  through `master`.
+- Keep active handoff state curated and public-safe. Lasting decisions belong in stable docs or ADRs.
+- Normal feature and fix work targets protected `develop`; stable promotion goes through `master`.
 
 ## Last Verified Commands And Checks
 
-Verified on 2025-05-22 (Phase 3F indexed draw, `feat/indexed-draw`):
+Verified on MacOS Apple Silicon (Phase 5B Frame Graph orchestration, `feat/phase5b-frame-graph`):
 
 ```sh
 cmake --preset dev  -DTRUFFLE_BUILD_BACKEND_METAL=ON
 cmake --build --preset dev
-ctest --preset dev   # 11/11
+ctest --preset dev   # 12/12
 cmake --preset ci   -DTRUFFLE_BUILD_BACKEND_METAL=ON
 cmake --build --preset ci  # warnings-as-errors clean
 ```
 
-11 tests: 3 host workspace smoke, ECS, null RHI (+ indexed draw), render flow,
-render batch, frame ring, scene adapter, Metal backend (+ indexed draw),
-package consumer.
+12 tests: 3 host workspace smoke, ECS, null RHI (+ indexed draw), render flow,
+render batch, frame ring, scene adapter, Metal backend (+ indexed draw + compute),
+package consumer, transform compute tests (+ Frame Graph integration).
 
 ## Next Resume Steps
 
 1. Read `AGENTS.md`, README, contributor guidance, and architecture docs.
-2. Confirm `feat/indexed-draw` PR is merged; verify `develop` has Phase 3F.
-3. Read ADR 0006 for GPU Transform Hierarchy context.
-4. Design and implement the new Compute Pass shader execution.
+2. Confirm `feat/phase5b-frame-graph` is merged and PR accepted.
+3. Review Phase 6 priorities.
 4. Update this handoff before stopping on another machine.
 
 ## Open Questions Or Risks
 
-- Workflow files now establish cross-platform CI names, but branch rules,
-  required status checks, and PR-title checks still need a follow-up governance
-  pass after the workflow path proves reliable.
-- Truffle is not currently GitHub Project-managed. If that changes, Doctrine's
-  issue-driven execution guidance becomes mandatory for planned work.
+- Frame Graph dependency modeling between Nodes is non-existent. Rendering logic executes completely linearly in defined code iteration.
 
 ## Curated Ideas Parking Lot
 
-- Use this short list for project-relevant ideas that need another pass before
-  they become roadmap items, ADRs, or implementation work.
-- Keep new entries specific enough that a later session can decide whether to
-  promote or discard them.
+- Use this short list for project-relevant ideas that need another pass before they become roadmap items, ADRs, or implementation work.
 
 ## Promotion Rule
 
