@@ -1,4 +1,5 @@
 #include "truffle/rhi/null_backend.hpp"
+#include "truffle/rhi/shader_reflection.hpp"
 
 #include <memory>
 #include <utility>
@@ -39,6 +40,7 @@ class NullPipeline final : public IPipeline {
 public:
     explicit NullPipeline(PipelineDesc desc) : desc_(std::move(desc)) {}
     [[nodiscard]] const PipelineDesc& desc() const noexcept override { return desc_; }
+    [[nodiscard]] const IPipelineReflection* reflection() const noexcept override { return nullptr; }
 
 private:
     PipelineDesc desc_;
@@ -48,6 +50,7 @@ class NullComputePipeline final : public IComputePipeline {
 public:
     explicit NullComputePipeline(ComputePipelineDesc desc) : desc_(std::move(desc)) {}
     [[nodiscard]] const ComputePipelineDesc& desc() const noexcept override { return desc_; }
+    [[nodiscard]] const IPipelineReflection* reflection() const noexcept override { return nullptr; }
 
 private:
     ComputePipelineDesc desc_;

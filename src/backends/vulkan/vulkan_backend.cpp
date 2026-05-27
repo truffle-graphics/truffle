@@ -1,4 +1,5 @@
 #include "truffle/rhi/rhi.hpp"
+#include "truffle/rhi/shader_reflection.hpp"
 
 #include <memory>
 
