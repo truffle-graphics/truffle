@@ -49,6 +49,12 @@ if(TRUFFLE_BUILD_BACKEND_OPENGL)
 
 endif()
 
+if(TRUFFLE_BUILD_BACKEND_DIRECT3D)
+    add_executable(truffle_direct3d_tests direct3d_backend_tests.cpp)
+    target_link_libraries(truffle_direct3d_tests PRIVATE truffle_backend_direct3d)
+    add_test(NAME truffle_direct3d_tests COMMAND truffle_direct3d_tests)
+endif()
+
 add_executable(truffle_rhi_contract_tests rhi_backend_contract_tests.cpp)
 target_link_libraries(truffle_rhi_contract_tests PRIVATE truffle_backend_null)
 if(TRUFFLE_BUILD_BACKEND_VULKAN)
@@ -62,6 +68,10 @@ endif()
 if(TRUFFLE_BUILD_BACKEND_OPENGL)
     target_link_libraries(truffle_rhi_contract_tests PRIVATE truffle_backend_opengl)
     target_compile_definitions(truffle_rhi_contract_tests PRIVATE TRUFFLE_HAS_OPENGL_BACKEND=1)
+endif()
+if(TRUFFLE_BUILD_BACKEND_DIRECT3D)
+    target_link_libraries(truffle_rhi_contract_tests PRIVATE truffle_backend_direct3d)
+    target_compile_definitions(truffle_rhi_contract_tests PRIVATE TRUFFLE_HAS_DIRECT3D_BACKEND=1)
 endif()
 add_test(NAME truffle_rhi_contract_tests COMMAND truffle_rhi_contract_tests)
 

@@ -70,8 +70,9 @@ target_link_libraries(my_tool PRIVATE Truffle::RHI Truffle::Render)
 
 The package exports `Truffle::Core`, `Truffle::ECS`, `Truffle::RHI`,
 `Truffle::BackendNull`, and `Truffle::Render`. Additional backend exports
-(`Truffle::BackendMetal`, `Truffle::BackendVulkan`, `Truffle::BackendOpenGL`)
-are available when their corresponding CMake options are enabled.
+(`Truffle::BackendMetal`, `Truffle::BackendVulkan`, `Truffle::BackendOpenGL`,
+`Truffle::BackendDirect3D`) are available when their corresponding CMake
+options are enabled.
 
 See `docs/distribution.md` for package generation, install verification, and
 release workflow guidance.

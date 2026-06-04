@@ -10,8 +10,7 @@ Truffle is one product with modules that stay linkable at different levels:
    pipelines, surfaces, swapchains, synchronization, capabilities, and the
    `IFrameUploadRing` N-buffered upload primitive.
 3. `truffle_backend_*` modules implement RHI contracts behind backend ownership.
-  The null, Metal, Vulkan, and OpenGL backends are buildable now. Direct3D
-  retains a reserved module/build-option boundary for a later milestone.
+  The null, Metal, Vulkan, OpenGL, and Direct3D backends are buildable now.
 4. Rendering modules such as `truffle_render` expose `RenderBatch`,
    `InstanceLayout`, `Renderer`, and the `IPipelineCache` interface. This layer
    has zero compile-time dependency on `truffle_ecs`.
@@ -108,7 +107,7 @@ does not currently own windowing helpers.
 ## Current Baseline
 
 The repository currently has Phases 1-12 complete for the current roadmap
-scope, with Direct3D still intentionally deferred as an extension backend:
+scope and active extension-backend work continuing in parallel:
 
 - `truffle_render` is ECS-independent and now supports frame-graph orchestration.
 - `RenderBatch` and `InstanceLayout` remain the universal renderer input contract.
@@ -117,6 +116,7 @@ scope, with Direct3D still intentionally deferred as an extension backend:
 - `IPipelineCache` supports material-to-pipeline mapping and variant hash routing.
 - `IPipelineReflection` is integrated in Metal and Vulkan contract paths.
 - `IPipelineReflection` is integrated in Metal, Vulkan, and OpenGL contract paths.
+- `IPipelineReflection` contract validation now includes Direct3D path coverage.
 - `RendererFrameStats` provides per-frame diagnostics for compute/render node and
   batch execution, plus presentation tracking.
 - `truffle/core/version.hpp` defines public API version, compatibility policy,
