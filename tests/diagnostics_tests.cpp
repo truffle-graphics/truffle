@@ -81,11 +81,28 @@ int main() {
     const auto nodeId = graph.add_node(std::make_unique<render::RenderPassNode>(
         passDesc, std::vector<render::RenderBatch>{batch}));
     TRUFFLE_CHECK(nodeId == 0);
+    const auto presentNodeId = graph.add_node(
+        std::make_unique<render::RenderPassNode>(
+            true, std::vector<render::RenderBatch>{}));
+    TRUFFLE_CHECK(presentNodeId == 1);
+    TRUFFLE_CHECK(graph.add_dependency(nodeId, presentNodeId).ok());
+    TRUFFLE_CHECK(graph.add_resource_usage(nodeId, {
+        .resourceId = 99,
+        .access = render::ResourceAccess::Write,
+    }).ok());
+    TRUFFLE_CHECK(graph.add_resource_usage(presentNodeId, {
+        .resourceId = 99,
+        .access = render::ResourceAccess::Read,
+    }).ok());
 
     diagnostics::FrameGraphInspectionOptions options;
     options.nodeLabels.push_back({
         .id = nodeId,
         .name = "dense-detection-render",
+    });
+    options.nodeLabels.push_back({
+        .id = presentNodeId,
+        .name = "present",
     });
     options.resourceLabels.push_back({
         .resourceId = 99,
@@ -95,11 +112,17 @@ int main() {
     auto graphSummaryResult = diagnostics::summarize_frame_graph(graph, options);
     TRUFFLE_CHECK(graphSummaryResult.ok());
     const auto& graphSummary = graphSummaryResult.value();
-    TRUFFLE_CHECK(graphSummary.nodes.size() == 1);
+    TRUFFLE_CHECK(graphSummary.nodes.size() == 2);
     TRUFFLE_CHECK(graphSummary.nodes.front().name == "dense-detection-render");
     TRUFFLE_CHECK(graphSummary.resourceLabels.size() == 1);
-    TRUFFLE_CHECK(graphSummary.executionOrder.size() == 1);
-    TRUFFLE_CHECK(graphSummary.renderNodeCount == 1);
+    TRUFFLE_CHECK(graphSummary.dependencies.size() == 1);
+    TRUFFLE_CHECK(graphSummary.dependencies.front().before == nodeId);
+    TRUFFLE_CHECK(graphSummary.dependencies.front().after == presentNodeId);
+    TRUFFLE_CHECK(graphSummary.resourceUsages.size() == 2);
+    TRUFFLE_CHECK(graphSummary.resourceUsages.front().resourceName ==
+                  "dense-detection-buffer");
+    TRUFFLE_CHECK(graphSummary.executionOrder.size() == 2);
+    TRUFFLE_CHECK(graphSummary.renderNodeCount == 2);
     TRUFFLE_CHECK(graphSummary.renderBatchCount == 1);
     TRUFFLE_CHECK(graphSummary.totalInstanceCount == 1'000'000);
 
@@ -109,6 +132,9 @@ int main() {
                   std::string::npos);
     TRUFFLE_CHECK(graphReport.find("name=dense-detection-buffer") !=
                   std::string::npos);
+    TRUFFLE_CHECK(graphReport.find("dependency 0->1") != std::string::npos);
+    TRUFFLE_CHECK(graphReport.find("access=Write") != std::string::npos);
+    TRUFFLE_CHECK(graphReport.find("access=Read") != std::string::npos);
     TRUFFLE_CHECK(graphReport.find("instances=1000000") != std::string::npos);
 
     const auto statsSummary = diagnostics::summarize_renderer_stats({

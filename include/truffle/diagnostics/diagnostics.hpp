@@ -77,9 +77,23 @@ struct FrameGraphNodeSummary {
     std::uint64_t instanceCount = 0;
 };
 
+struct FrameGraphDependencySummary {
+    render::FrameGraph::NodeId before = 0;
+    render::FrameGraph::NodeId after = 0;
+};
+
+struct FrameGraphResourceUsageSummary {
+    render::FrameGraph::NodeId node = 0;
+    std::uint64_t resourceId = 0;
+    render::ResourceAccess access = render::ResourceAccess::Read;
+    std::string resourceName;
+};
+
 struct FrameGraphSummary {
     std::vector<FrameGraphNodeSummary> nodes;
     std::vector<render::FrameGraph::NodeId> executionOrder;
+    std::vector<FrameGraphDependencySummary> dependencies;
+    std::vector<FrameGraphResourceUsageSummary> resourceUsages;
     std::vector<ResourceLabel> resourceLabels;
     std::uint32_t computeNodeCount = 0;
     std::uint32_t renderNodeCount = 0;

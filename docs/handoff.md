@@ -118,6 +118,8 @@ contract-backend extension work.
     pull-based render-batch, frame-graph, and renderer-stats summaries.
   - Added external diagnostics labels for batches, frame-graph nodes, and
     resources so tool-facing names do not become permanent render-object fields.
+  - Added read-only `FrameGraph` dependency/resource usage accessors and included
+    those declarations in diagnostics summaries.
   - Kept diagnostics separate from render and scene runtime dependencies; normal
     consumers only link the diagnostics target when they want inspection helpers.
   - Added `truffle_assets_tests` and `truffle_diagnostics_tests`, and extended
@@ -142,7 +144,9 @@ contract-backend extension work.
 - `truffle_diagnostics` is strict opt-in tooling: no global tracing, no
   background logger, and no dependency from `truffle_render` or `truffle_scene`
   back into diagnostics. Tool-facing labels are passed as diagnostics options
-  instead of stored in render objects.
+  instead of stored in render objects. Graph dependency/resource usage summaries
+  read existing `FrameGraph` declarations only; they do not record runtime
+  events.
 - Keep active handoff state curated and public-safe. Lasting decisions belong in stable docs or ADRs.
 - Normal feature and fix work targets protected `develop`; stable promotion goes through `master`.
 

@@ -220,6 +220,22 @@ public:
         return nodes_;
     }
 
+    std::span<const std::pair<NodeId, NodeId>> dependencies() const noexcept {
+        return dependencies_;
+    }
+
+    std::span<const std::vector<NodeResourceUsage>> resource_usages()
+        const noexcept {
+        return resourceUsages_;
+    }
+
+    std::span<const NodeResourceUsage> resource_usages(NodeId id) const noexcept {
+        if (id >= resourceUsages_.size()) {
+            return {};
+        }
+        return resourceUsages_[id];
+    }
+
     [[nodiscard]] const IFrameGraphNode* node(NodeId id) const noexcept {
         if (id >= nodes_.size()) {
             return nullptr;

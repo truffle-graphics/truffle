@@ -50,10 +50,30 @@ const char* node_kind_name(render::FrameGraphNodeKind kind) noexcept {
     return "Unknown";
 }
 
+const char* resource_access_name(render::ResourceAccess access) noexcept {
+    switch (access) {
+    case render::ResourceAccess::Read:
+        return "Read";
+    case render::ResourceAccess::Write:
+        return "Write";
+    }
+    return "Unknown";
+}
+
 std::string find_node_label(const FrameGraphInspectionOptions& options,
                             render::FrameGraph::NodeId nodeId) {
     for (const auto& label : options.nodeLabels) {
         if (label.id == nodeId) {
+            return label.name;
+        }
+    }
+    return {};
+}
+
+std::string find_resource_label(const FrameGraphInspectionOptions& options,
+                                std::uint64_t resourceId) {
+    for (const auto& label : options.resourceLabels) {
+        if (label.resourceId == resourceId) {
             return label.name;
         }
     }
@@ -139,6 +159,28 @@ core::Result<FrameGraphSummary> summarize_frame_graph(
     summary.executionOrder = executionOrder.value();
     summary.resourceLabels = options.resourceLabels;
 
+    const auto dependencies = graph.dependencies();
+    summary.dependencies.reserve(dependencies.size());
+    for (const auto& dependency : dependencies) {
+        summary.dependencies.push_back({
+            .before = dependency.first,
+            .after  = dependency.second,
+        });
+    }
+
+    const auto resourceUsages = graph.resource_usages();
+    for (render::FrameGraph::NodeId nodeId = 0;
+         nodeId < resourceUsages.size(); ++nodeId) {
+        for (const auto& usage : resourceUsages[nodeId]) {
+            summary.resourceUsages.push_back({
+                .node = nodeId,
+                .resourceId = usage.resourceId,
+                .access = usage.access,
+                .resourceName = find_resource_label(options, usage.resourceId),
+            });
+        }
+    }
+
     const auto nodes = graph.nodes();
     summary.nodes.reserve(nodes.size());
     for (render::FrameGraph::NodeId nodeId = 0; nodeId < nodes.size(); ++nodeId) {
@@ -222,6 +264,16 @@ std::string format_frame_graph_summary(const FrameGraphSummary& summary) {
             << " kind=" << node_kind_name(node.kind)
             << " batches=" << node.renderBatchCount
             << " instances=" << node.instanceCount;
+    }
+    for (const auto& dependency : summary.dependencies) {
+        out << "\n  dependency " << dependency.before
+            << "->" << dependency.after;
+    }
+    for (const auto& usage : summary.resourceUsages) {
+        out << "\n  resource_usage node=" << usage.node
+            << " resource=" << usage.resourceId
+            << " name=" << usage.resourceName
+            << " access=" << resource_access_name(usage.access);
     }
     for (const auto& resource : summary.resourceLabels) {
         out << "\n  resource " << resource.resourceId
