@@ -81,7 +81,7 @@ release workflow guidance.
 
 Cross-machine working state belongs in [`docs/handoff.md`](docs/handoff.md).
 AI sessions should start with [`AGENTS.md`](AGENTS.md) and
-[`AI_CONTEXT.md`](AI_CONTEXT.md). The local TinMan Doctrine snapshot lives under
+[`AI_CONTEXT.md`](AI_CONTEXT.md). The local doctrine snapshot lives under
 [`docs/doctrine/`](docs/doctrine/README.md).
 
 ## Attribution

@@ -115,6 +115,14 @@ and active Direct3D contract-backend extension work.
   - Added `truffle_direct3d_tests` and optional shared contract test
     participation behind `TRUFFLE_HAS_DIRECT3D_BACKEND`.
   - Added parity report tracking entry for `truffle_direct3d_tests`.
+- **Doctrine Snapshot Sync** — Complete.
+  - Refreshed the repo-managed doctrine snapshot to the public-only doctrine
+    baseline.
+  - Added `docs/doctrine/export-policy.md` and removed
+    `docs/doctrine/identity.md` from the committed snapshot.
+  - Replaced the exported `AI_CONTEXT.md` with the contributor-neutral version
+    and updated local repo guidance to avoid restating maintainer-private
+    identity rules.
 
 ## Relevant Decisions And Constraints
 
@@ -125,6 +133,9 @@ and active Direct3D contract-backend extension work.
 - `RenderBatch` and `InstanceLayout` are the universal renderer input contract.
 - Keep active handoff state curated and public-safe. Lasting decisions belong in stable docs or ADRs.
 - Normal feature and fix work targets protected `develop`; stable promotion goes through `master`.
+- The repository commits only the public doctrine snapshot. The maintainer's
+  private Copilot overlay lives in `~/.copilot/copilot-instructions.md` on the
+  local machine and must not be copied into repository history.
 
 ## Last Verified Commands And Checks
 
@@ -170,6 +181,8 @@ package consumer, and transform compute tests.
   backend-specific shader compilation models.
 - Direct3D extension currently provides contract semantics only; native API
   implementation and platform/runtime integration remain open.
+- Local private Copilot overlay is configured only for this machine for now;
+  any cloud/private overlay distribution model remains intentionally deferred.
 
 ## Curated Ideas Parking Lot
 

@@ -1,7 +1,7 @@
 # Contributing
 
-Truffle follows TinMan engineering doctrine for public authorship, branch
-workflow, commit messages, and signed repository history.
+Truffle follows the local doctrine snapshot for branch workflow, commit
+messages, and signed repository history.
 
 ## Branching Strategy
 
@@ -64,10 +64,11 @@ Examples:
 - `fix(ecs): reject stale entity mutation`
 - `docs(workflow): clarify protected branch rules`
 
-## Public Identity And Signing
+## Authorship And Signing
 
-- Public Truffle authorship should use `TinMan` unless a legal or personal
-  context explicitly requires another identity.
+- Use each contributor's own public commit identity.
+- Keep maintainer-private identity and account details out of public repository
+  guidance.
 - All local commits must be signed.
 - Protected branch commits must be signed.
 - Configure Git signing before creating repository history intended to be kept.
