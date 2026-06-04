@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace truffle::assets {
@@ -195,6 +196,43 @@ struct MeshAssetDesc {
     std::uint32_t vertexCount = 0;
     std::uint32_t indexCount  = 0;
     std::vector<GeometryStreamDesc> streams;
+};
+
+class AssetCatalog {
+public:
+    [[nodiscard]] core::Status add_geometry_stream(GeometryStreamDesc stream);
+    [[nodiscard]] core::Status add_texture(TextureAssetDesc texture);
+    [[nodiscard]] core::Status add_material(MaterialAssetDesc material);
+    [[nodiscard]] core::Status add_mesh(MeshAssetDesc mesh);
+
+    [[nodiscard]] const GeometryStreamDesc* geometry_stream(
+        AssetId id) const noexcept;
+    [[nodiscard]] const TextureAssetDesc* texture(AssetId id) const noexcept;
+    [[nodiscard]] const MaterialAssetDesc* material(AssetId id) const noexcept;
+    [[nodiscard]] const MeshAssetDesc* mesh(AssetId id) const noexcept;
+
+    [[nodiscard]] core::Status validate_mesh_material(
+        AssetId meshId) const;
+
+    [[nodiscard]] std::size_t geometry_stream_count() const noexcept {
+        return geometryStreams_.size();
+    }
+    [[nodiscard]] std::size_t texture_count() const noexcept {
+        return textures_.size();
+    }
+    [[nodiscard]] std::size_t material_count() const noexcept {
+        return materials_.size();
+    }
+    [[nodiscard]] std::size_t mesh_count() const noexcept {
+        return meshes_.size();
+    }
+
+private:
+    std::unordered_map<AssetId, GeometryStreamDesc, AssetIdHash>
+        geometryStreams_;
+    std::unordered_map<AssetId, TextureAssetDesc, AssetIdHash> textures_;
+    std::unordered_map<AssetId, MaterialAssetDesc, AssetIdHash> materials_;
+    std::unordered_map<AssetId, MeshAssetDesc, AssetIdHash> meshes_;
 };
 
 [[nodiscard]] std::size_t attribute_format_size(AttributeFormat format) noexcept;

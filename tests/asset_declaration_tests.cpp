@@ -141,5 +141,55 @@ int main() {
     TRUFFLE_CHECK(texture.id.valid());
     TRUFFLE_CHECK(texture.width == 256);
 
+    AssetCatalog catalog;
+    TRUFFLE_CHECK(catalog.add_geometry_stream(detections).ok());
+    TRUFFLE_CHECK(catalog.add_material(material).ok());
+    TRUFFLE_CHECK(catalog.add_texture(texture).ok());
+    TRUFFLE_CHECK(catalog.add_mesh(mesh).ok());
+    TRUFFLE_CHECK(catalog.geometry_stream_count() == 1);
+    TRUFFLE_CHECK(catalog.material_count() == 1);
+    TRUFFLE_CHECK(catalog.texture_count() == 1);
+    TRUFFLE_CHECK(catalog.mesh_count() == 1);
+    TRUFFLE_CHECK(catalog.geometry_stream(detections.id) != nullptr);
+    TRUFFLE_CHECK(catalog.material(material.id) != nullptr);
+    TRUFFLE_CHECK(catalog.texture(texture.id) != nullptr);
+    TRUFFLE_CHECK(catalog.mesh(mesh.id) != nullptr);
+    TRUFFLE_CHECK(catalog.validate_mesh_material(mesh.id).ok());
+
+    const auto duplicateStatus = catalog.add_mesh(mesh);
+    TRUFFLE_CHECK(!duplicateStatus.ok());
+    TRUFFLE_CHECK(duplicateStatus.code ==
+                  truffle::core::StatusCode::invalid_state);
+
+    MeshAssetDesc invalidMesh;
+    invalidMesh.name = "invalid";
+    const auto invalidMeshStatus = catalog.add_mesh(invalidMesh);
+    TRUFFLE_CHECK(!invalidMeshStatus.ok());
+    TRUFFLE_CHECK(invalidMeshStatus.code ==
+                  truffle::core::StatusCode::invalid_argument);
+
+    auto missingMaterialMesh = mesh;
+    missingMaterialMesh.id = AssetId{17};
+    missingMaterialMesh.material = AssetId{19};
+    TRUFFLE_CHECK(catalog.add_mesh(missingMaterialMesh).ok());
+    const auto missingMaterialStatus =
+        catalog.validate_mesh_material(missingMaterialMesh.id);
+    TRUFFLE_CHECK(!missingMaterialStatus.ok());
+    TRUFFLE_CHECK(missingMaterialStatus.code ==
+                  truffle::core::StatusCode::unavailable);
+
+    auto missingAttributeMesh = mesh;
+    missingAttributeMesh.id = AssetId{21};
+    missingAttributeMesh.material = velocityMaterial.id;
+    velocityMaterial.id = AssetId{23};
+    TRUFFLE_CHECK(catalog.add_material(velocityMaterial).ok());
+    missingAttributeMesh.material = velocityMaterial.id;
+    TRUFFLE_CHECK(catalog.add_mesh(missingAttributeMesh).ok());
+    const auto missingCatalogAttributeStatus =
+        catalog.validate_mesh_material(missingAttributeMesh.id);
+    TRUFFLE_CHECK(!missingCatalogAttributeStatus.ok());
+    TRUFFLE_CHECK(missingCatalogAttributeStatus.code ==
+                  truffle::core::StatusCode::invalid_argument);
+
     return 0;
 }

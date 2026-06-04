@@ -142,7 +142,7 @@ scope and active extension-backend work continuing in parallel:
   batch execution, plus presentation tracking.
 - `truffle_assets` provides declarative asset, material-operation, and
   geometry-stream descriptors plus backend-free material-to-mesh requirement
-  validation.
+  validation and catalog lookup.
 - `truffle_diagnostics` provides opt-in render-batch, frame-graph, and renderer
   stats summaries with external labels, dependency edges, and resource usage
   declarations for tool-facing reports, plus pull-based budget findings.

@@ -22,7 +22,87 @@ void append_unique_attribute(std::vector<AttributeSemantic>& attributes,
     }
 }
 
+template <typename T>
+core::Status add_asset(std::unordered_map<AssetId, T, AssetIdHash>& assets,
+                       T asset) {
+    if (!asset.id.valid()) {
+        return core::Status::failure(
+            core::StatusCode::invalid_argument,
+            "Assets: asset id must be valid");
+    }
+    const auto [_, inserted] = assets.try_emplace(asset.id, std::move(asset));
+    if (!inserted) {
+        return core::Status::failure(
+            core::StatusCode::invalid_state,
+            "Assets: asset id is already registered");
+    }
+    return core::Status::success();
+}
+
+template <typename T>
+const T* find_asset(const std::unordered_map<AssetId, T, AssetIdHash>& assets,
+                    AssetId id) noexcept {
+    const auto it = assets.find(id);
+    return it == assets.end() ? nullptr : &it->second;
+}
+
 } // namespace
+
+core::Status AssetCatalog::add_geometry_stream(GeometryStreamDesc stream) {
+    return add_asset(geometryStreams_, std::move(stream));
+}
+
+core::Status AssetCatalog::add_texture(TextureAssetDesc texture) {
+    return add_asset(textures_, std::move(texture));
+}
+
+core::Status AssetCatalog::add_material(MaterialAssetDesc material) {
+    return add_asset(materials_, std::move(material));
+}
+
+core::Status AssetCatalog::add_mesh(MeshAssetDesc mesh) {
+    return add_asset(meshes_, std::move(mesh));
+}
+
+const GeometryStreamDesc* AssetCatalog::geometry_stream(
+    AssetId id) const noexcept {
+    return find_asset(geometryStreams_, id);
+}
+
+const TextureAssetDesc* AssetCatalog::texture(AssetId id) const noexcept {
+    return find_asset(textures_, id);
+}
+
+const MaterialAssetDesc* AssetCatalog::material(AssetId id) const noexcept {
+    return find_asset(materials_, id);
+}
+
+const MeshAssetDesc* AssetCatalog::mesh(AssetId id) const noexcept {
+    return find_asset(meshes_, id);
+}
+
+core::Status AssetCatalog::validate_mesh_material(AssetId meshId) const {
+    const auto* foundMesh = mesh(meshId);
+    if (foundMesh == nullptr) {
+        return core::Status::failure(
+            core::StatusCode::unavailable,
+            "Assets: mesh asset is not registered");
+    }
+    if (!foundMesh->material.valid()) {
+        return core::Status::failure(
+            core::StatusCode::invalid_argument,
+            "Assets: mesh does not reference a valid material");
+    }
+
+    const auto* foundMaterial = material(foundMesh->material);
+    if (foundMaterial == nullptr) {
+        return core::Status::failure(
+            core::StatusCode::unavailable,
+            "Assets: material asset is not registered");
+    }
+
+    return validate_material_requirements(*foundMaterial, *foundMesh);
+}
 
 std::size_t attribute_format_size(AttributeFormat format) noexcept {
     switch (format) {
