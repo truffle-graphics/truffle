@@ -79,6 +79,10 @@ add_executable(truffle_api_version_tests api_version_tests.cpp)
 target_link_libraries(truffle_api_version_tests PRIVATE truffle_core)
 add_test(NAME truffle_api_version_tests COMMAND truffle_api_version_tests)
 
+add_executable(truffle_core_contract_tests core_contract_tests.cpp)
+target_link_libraries(truffle_core_contract_tests PRIVATE truffle_rhi)
+add_test(NAME truffle_core_contract_tests COMMAND truffle_core_contract_tests)
+
 add_executable(truffle_performance_sanity_tests performance_sanity_tests.cpp)
 target_link_libraries(truffle_performance_sanity_tests PRIVATE truffle_backend_null)
 add_test(NAME truffle_performance_sanity_tests COMMAND truffle_performance_sanity_tests)

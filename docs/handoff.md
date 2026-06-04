@@ -13,8 +13,9 @@ docs, charter, or ADRs instead of leaving it only in this working document.
 
 ## Current Focus
 
-Post-Phase-12 stabilization with parity quality gates, distribution validation,
-and active Direct3D contract-backend extension work.
+Low-level graphics foundation hardening before new higher-level renderer,
+scene, or ECS work. Current scope is core/RHI/backend contract depth,
+validation, diagnostics, and backend parity.
 
 ## Current Work Status
 
@@ -123,6 +124,78 @@ and active Direct3D contract-backend extension work.
   - Replaced the exported `AI_CONTEXT.md` with the contributor-neutral version
     and updated local repo guidance to avoid restating maintainer-private
     identity rules.
+- **Low-Level Graphics Foundation Slice 1** — Complete.
+  - Established `ISwapchain::schedule_present()` as a recording-time operation:
+    after `end_render_pass()` and before `ICommandBuffer::end()`.
+  - Added shared RHI validation helpers for non-zero extents, power-of-two
+    alignment, checked alignment, and range fitting.
+  - Hardened null backend into a stricter contract validator for render-pass
+    lifecycle, draw/compute separation, active-pass end rejection, drawable
+    invalidation on resize, and present sequencing.
+  - Aligned Vulkan, OpenGL, Direct3D, and Metal present sequencing validation
+    with the public RHI contract.
+  - Hardened upload-ring allocation across backends for zero size, invalid
+    alignment, overflow, and per-frame exhaustion.
+  - Added `truffle_core_contract_tests` and expanded shared/backend tests for
+    core primitives, validation helpers, upload-ring alignment, command-state
+    failures, and present sequencing.
+- **Low-Level Graphics Foundation Slice 2** — Complete.
+  - Expanded `Capabilities` and `AdapterInfo` with adapter type, queue support,
+    feature flags, device limits, format support, and memory heap topology.
+  - Added RHI helper queries for queue and texture-format support.
+  - Added validation helpers for extent limits and frame-count support.
+  - Wired richer capability reporting through null, Metal, Vulkan, OpenGL, and
+    Direct3D backends.
+  - Enforced advertised buffer, texture, swapchain frame-count, surface extent,
+    and upload-ring limits in backend creation paths.
+  - Expanded shared backend contract tests to validate adapter metadata,
+    capabilities, limits, invalid adapter IDs, format support, memory heaps, and
+    limit rejection behavior.
+- **Low-Level Graphics Foundation Slice 3** — Complete.
+  - Added bitmask-style `BufferUsageFlags` while keeping legacy
+    `BufferUsage` fallback behavior for source compatibility.
+  - Added `TextureUsageFlags`, texture dimensions, depth, mip levels, array
+    layers, sample count, memory domains, and buffer/texture view descriptors.
+  - Added shared validation for memory-domain support, texture shape,
+    resource-usage compatibility, format/usage compatibility, and view ranges.
+  - Enforced buffer/texture memory, usage, shape, and format contracts across
+    null, Metal, Vulkan, OpenGL, and Direct3D backends.
+  - Hardened native Metal draw/dispatch paths so graphics/compute pipelines must
+    be bound before native encoder calls, and indirect argument buffers are
+    zero-initialized and range-checked.
+  - Expanded shared backend and core contract tests for resource descriptors,
+    multi-usage buffers, invalid binding usage, invalid texture shape/usage, and
+    buffer/texture view validation.
+- **Low-Level Graphics Foundation Slice 4A** — Complete.
+  - Added public `CommandBufferState` reporting for initial, recording,
+    executable, and submitted command-buffer states.
+  - Documented command buffers as one-shot handles while owned by the caller;
+    backend pools may recycle storage only after destruction.
+  - Aligned null and Metal with Vulkan/OpenGL/Direct3D submitted-state behavior:
+    a command buffer cannot be submitted twice.
+  - Exposed distinct graphics, compute, and transfer queue objects for null and
+    Metal to match advertised queue capabilities.
+  - Expanded shared backend contract tests for command-buffer state transitions,
+    duplicate submit rejection, and queue-kind routing.
+- **Low-Level Graphics Foundation Slice 4B** — Complete.
+  - Added explicit `ResourceState` values for undefined, copy source/destination,
+    shader read, storage read/write, color/depth attachment, and present states.
+  - Added buffer and texture barrier descriptors to `ICommandBuffer`.
+  - Added shared validation for state/usage compatibility and barrier descriptor
+    validity.
+  - Wired null, Metal, Vulkan, OpenGL, and Direct3D to validate no-op contract
+    barriers while recording and outside active render/compute encoders.
+  - Expanded core and shared backend contract tests for valid barriers, invalid
+    state/usage transitions, null barriers, and active-render-pass rejection.
+- **Low-Level Graphics Foundation Slice 4C** — Complete.
+  - Added `StatusCode::timeout` for explicit timeout reporting.
+  - Added `IFence::wait_for(timeoutNanoseconds)` and `IFence::reset()`.
+  - Wired timeout/reset behavior through null, Metal, Vulkan, OpenGL, and
+    Direct3D fences.
+  - Fixed Metal signal-fence reuse semantics by resetting the fence before
+    attaching a command-buffer completion handler.
+  - Expanded shared backend contract tests for unsignaled timeout, signaled
+    zero-time wait success, and reset-to-unsignaled behavior.
 
 ## Relevant Decisions And Constraints
 
@@ -133,54 +206,54 @@ and active Direct3D contract-backend extension work.
 - `RenderBatch` and `InstanceLayout` are the universal renderer input contract.
 - Keep active handoff state curated and public-safe. Lasting decisions belong in stable docs or ADRs.
 - Normal feature and fix work targets protected `develop`; stable promotion goes through `master`.
+- Low-level graphics work is intentionally separated from `truffle_render`,
+  `FrameGraph`, `PipelineCache`, `TransformComputePass`, `truffle_scene`, and
+  `truffle_ecs`. Those higher layers may be touched only for compile fallout
+  until the RHI/backend foundation is richer.
+- `ISwapchain::schedule_present()` now validates command-buffer sequencing even
+  for headless no-op swapchains.
 - The repository commits only the public doctrine snapshot. The maintainer's
   private Copilot overlay lives in `~/.copilot/copilot-instructions.md` on the
   local machine and must not be copied into repository history.
 
 ## Last Verified Commands And Checks
 
-Verified on macOS Apple Silicon (`feat/phase5c-shader-reflection-layout`):
+Verified on macOS Apple Silicon (`agents/low-level-code-enhancements`):
 
 ```sh
 cmake --preset dev
 cmake --build --preset dev
-ctest --preset dev --output-on-failure   # 20/20
+ctest --preset dev --output-on-failure   # 21/21
 cmake --preset ci
 cmake --build --preset ci
-ctest --preset ci --output-on-failure    # 20/20
-cmake --preset dev -DTRUFFLE_BUILD_BACKEND_DIRECT3D=ON
-cmake --build --preset dev
-ctest --preset dev -R "truffle_direct3d_tests|truffle_rhi_contract_tests" --output-on-failure  # 2/2
-cmake -DTRUFFLE_BUILD_DIR=$PWD/build/ci -DTRUFFLE_REPORT_OUT=$PWD/build/ci/parity-matrix.md -P cmake/GenerateParityReport.cmake
-cat build/ci/parity-matrix.md            # backend parity matrix
-cmake -S . -B build/package-smoke -DTRUFFLE_INSTALL=ON -DTRUFFLE_BUILD_TESTS=OFF -DTRUFFLE_BUILD_EXAMPLES=OFF -DTRUFFLE_BUILD_BACKEND_VULKAN=ON -DTRUFFLE_BUILD_BACKEND_OPENGL=ON
-cmake --build build/package-smoke
-cmake --install build/package-smoke --prefix build/package-smoke/install
-(cd build/package-smoke && cpack --verbose)  # Truffle-0.1.0-Darwin.tar.gz
+ctest --preset ci --output-on-failure    # 21/21
 ```
 
-20 tests: 3 host workspace smoke, ECS, null RHI (+ indexed draw + reflection
+21 tests: 3 host workspace smoke, ECS, null RHI (+ indexed draw + reflection
 contract check), render flow, advanced render flow, render batch, frame graph
 dependency, frame ring, scene adapter, Metal backend (+ indexed draw + compute
 + reflection checks), Vulkan milestone 0-4 tests, OpenGL backend tests,
 Direct3D backend tests, shared RHI contract tests (null + Vulkan + OpenGL +
 Direct3D + optional Metal), API version tests, performance sanity tests,
-package consumer, and transform compute tests.
+core contract tests, package consumer, and transform compute tests.
 
 ## Next Resume Steps
 
-1. Complete Direct3D extension milestone from contract backend to
-  platform-specific implementation strategy.
-2. Add machine-readable parity report output alongside markdown.
-3. Expand workload profiling scenarios beyond the current sanity gate.
-4. Validate release packaging flows on additional host platforms.
+1. Continue low-level graphics synchronization depth: timeline-value semantics
+   and upload-ring frame reuse integration.
+2. Add surface/presentation robustness and presentation-state handoff before any
+   new high-level renderer features rely on implicit policy.
+3. Add machine-readable parity report output alongside markdown.
 
 ## Open Questions Or Risks
 
 - Advanced parity between production backends remains constrained by
   backend-specific shader compilation models.
-- Direct3D extension currently provides contract semantics only; native API
-  implementation and platform/runtime integration remain open.
+- Vulkan, OpenGL, and Direct3D backends currently provide deterministic
+  contract semantics; native API implementation and platform/runtime
+  integration remain open.
+- The low-level synchronization, resource-state, and descriptor-binding models
+  are still intentionally incomplete until later slices land.
 - Local private Copilot overlay is configured only for this machine for now;
   any cloud/private overlay distribution model remains intentionally deferred.
 

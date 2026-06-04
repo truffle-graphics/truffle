@@ -12,6 +12,7 @@ enum class StatusCode {
     unsupported,
     unavailable,
     invalid_state,
+    timeout,
     backend_error,
 };
 
@@ -64,4 +65,3 @@ private:
 };
 
 } // namespace truffle::core
-

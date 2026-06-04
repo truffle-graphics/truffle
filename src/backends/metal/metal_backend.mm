@@ -11,8 +11,11 @@
 
 #include "truffle/rhi/metal_backend.hpp"
 #include "truffle/rhi/shader_reflection.hpp"
+#include "truffle/rhi/validation.hpp"
 
 #include <atomic>
+#include <cstring>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -24,6 +27,59 @@ namespace {
 using core::Result;
 using core::Status;
 using core::StatusCode;
+
+[[nodiscard]] Capabilities make_metal_capabilities(id<MTLDevice> device) {
+    const bool unifiedMemory = [device hasUnifiedMemory];
+
+    Capabilities caps;
+    caps.presentation = true;
+    caps.validation = true;
+    caps.maxFramesInFlight = 3;
+    caps.queues = {.graphics = true, .compute = true, .transfer = true};
+    caps.features = {
+        .headlessSurface = true,
+        .nativeSurface = true,
+        .presentation = true,
+        .compute = true,
+        .indirectDraw = true,
+        .shaderReflection = true,
+        .debugLabels = true,
+        .validation = true,
+        .unifiedMemory = unifiedMemory,
+    };
+    caps.limits = {
+        .maxTextureDimension2D = 16384,
+        .maxBufferSize = static_cast<std::size_t>([device maxBufferLength]),
+        .minUniformBufferOffsetAlignment = 256,
+        .minStorageBufferOffsetAlignment = 16,
+        .maxColorAttachments = 8,
+        .maxVertexBuffers = 31,
+    };
+    caps.formats = {
+        {.format = TextureFormat::rgba8_unorm,
+         .sampled = true,
+         .colorAttachment = true,
+         .storageTexture = true,
+         .transferSource = true,
+         .transferDestination = true},
+        {.format = TextureFormat::bgra8_unorm,
+         .sampled = true,
+         .colorAttachment = true,
+         .transferSource = true,
+         .transferDestination = true},
+        {.format = TextureFormat::depth32_float,
+         .sampled = true,
+         .depthStencilAttachment = true,
+         .transferSource = true,
+         .transferDestination = true},
+    };
+    caps.memoryHeaps = {
+        {.kind = unifiedMemory ? MemoryHeapKind::unified : MemoryHeapKind::device_local,
+         .budgetBytes = 0,
+         .dedicated = !unifiedMemory},
+    };
+    return caps;
+}
 
 // ---------------------------------------------------------------------------
 // Format / enum conversions
@@ -80,11 +136,15 @@ public:
     MetalBuffer(id<MTLDevice> device, const BufferDesc& desc) : desc_(desc) {
         buf_ = [device newBufferWithLength:std::max(desc.size, std::size_t{1})
                                    options:MTLResourceStorageModeShared];
+        if (buf_ && desc.size != 0) {
+            std::memset([buf_ contents], 0, desc.size);
+        }
     }
     // Wrap an existing MTLBuffer (used by upload ring frames).
     MetalBuffer(id<MTLBuffer> buf, const BufferDesc& desc) : desc_(desc), buf_(buf) {}
 
     const BufferDesc& desc() const noexcept override { return desc_; }
+    bool              valid() const noexcept { return buf_ != nil; }
     id<MTLBuffer>     native() const noexcept { return buf_; }
 
 private:
@@ -101,7 +161,21 @@ public:
                                          width:desc.extent.width
                                         height:desc.extent.height
                                      mipmapped:NO];
-        td.usage       = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
+        const auto usage = effective_texture_usage(desc);
+        td.usage = MTLTextureUsageUnknown;
+        if (has_flag(usage, TextureUsageFlags::sampled)) {
+            td.usage |= MTLTextureUsageShaderRead;
+        }
+        if (has_flag(usage, TextureUsageFlags::storage)) {
+            td.usage |= MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
+        }
+        if (has_flag(usage, TextureUsageFlags::color_attachment) ||
+            has_flag(usage, TextureUsageFlags::depth_stencil)) {
+            td.usage |= MTLTextureUsageRenderTarget;
+        }
+        if (td.usage == MTLTextureUsageUnknown) {
+            td.usage = MTLTextureUsageShaderRead;
+        }
         td.storageMode = MTLStorageModePrivate;
         tex_ = [device newTextureWithDescriptor:td];
     }
@@ -331,6 +405,33 @@ public:
         return signaled_->load(std::memory_order_acquire);
     }
 
+    Status wait_for(std::uint64_t timeoutNanoseconds) noexcept override {
+        if (signaled()) {
+            return Status::success();
+        }
+
+        const auto when = timeoutNanoseconds == std::numeric_limits<std::uint64_t>::max()
+            ? DISPATCH_TIME_FOREVER
+            : dispatch_time(DISPATCH_TIME_NOW,
+                            static_cast<std::int64_t>(std::min<std::uint64_t>(
+                                timeoutNanoseconds,
+                                static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()))));
+        if (dispatch_semaphore_wait(sem_, when) != 0) {
+            return Status::failure(StatusCode::timeout,
+                                   "MetalFence: wait timed out");
+        }
+        signaled_->store(true, std::memory_order_release);
+        dispatch_semaphore_signal(sem_);
+        return Status::success();
+    }
+
+    Status reset() noexcept override {
+        signaled_->store(false, std::memory_order_release);
+        while (dispatch_semaphore_wait(sem_, DISPATCH_TIME_NOW) == 0) {
+        }
+        return Status::success();
+    }
+
     // Block until the fence is signaled (GPU completion handler has fired).
     void wait() noexcept override {
         dispatch_semaphore_wait(sem_, DISPATCH_TIME_FOREVER);
@@ -342,6 +443,7 @@ public:
     // Captures shared_ptr and ARC-retained semaphore — safe even if the fence
     // is destroyed before the GPU fires the handler.
     void attach_completion_handler(id<MTLCommandBuffer> cmdBuf) {
+        reset();
         auto flagRef = signaled_;          // shared_ptr copy keeps atomic alive
         dispatch_semaphore_t sem = sem_;   // ARC retains sem for the block
         [cmdBuf addCompletedHandler:^(id<MTLCommandBuffer>) {
@@ -370,6 +472,8 @@ public:
         cmdBuf_ = nil;
         encoder_ = nil;
         compute_encoder_ = nil;
+        graphicsPipelineBound_ = false;
+        computePipelineBound_ = false;
         topology_ = PrimitiveTopology::triangle_list;
         indexBuf_ = nil;
         indexBufOffset_ = 0;
@@ -396,6 +500,32 @@ public:
         if (state_ != State::recording) {
             return Status::failure(StatusCode::invalid_state,
                                    "begin_render_pass requires recording state");
+        }
+        if (!validation::is_non_zero(desc.extent)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "render pass extent must be non-zero");
+        }
+        if (encoder_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "render pass is already active");
+        }
+        if (compute_encoder_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "cannot begin render pass while compute encoder is active");
+        }
+        if (desc.colorAttachment.texture &&
+            !validation::texture_supports_usage(
+                desc.colorAttachment.texture->desc(),
+                TextureUsageFlags::color_attachment)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "color attachment texture lacks color attachment usage");
+        }
+        if (desc.depthAttachment.texture &&
+            !validation::texture_supports_usage(
+                desc.depthAttachment.texture->desc(),
+                TextureUsageFlags::depth_stencil)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "depth attachment texture lacks depth usage");
         }
         auto* rpd = [MTLRenderPassDescriptor new];
 
@@ -427,16 +557,22 @@ public:
         [encoder_ setScissorRect:MTLScissorRect{0, 0, desc.extent.width, desc.extent.height}];
 
         topology_ = PrimitiveTopology::triangle_list;
+        graphicsPipelineBound_ = false;
         return Status::success();
     }
 
     Status end_render_pass() override {
+        if (state_ != State::recording) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "end_render_pass requires recording state");
+        }
         if (!encoder_) {
             return Status::failure(StatusCode::invalid_state, "no active render pass");
         }
         [encoder_ endEncoding];
         encoder_ = nil;
         compute_encoder_ = nil;
+        graphicsPipelineBound_ = false;
         return Status::success();
     }
 
@@ -448,14 +584,25 @@ public:
         auto& mp = static_cast<MetalPipeline&>(pipeline);
         [encoder_ setRenderPipelineState:mp.native()];
         topology_ = mp.desc().topology;
+        graphicsPipelineBound_ = true;
         return Status::success();
     }
 
     Status bind_compute_pipeline(IComputePipeline& pipeline) override {
-        if (encoder_) return Status::failure(StatusCode::invalid_state, "Cannot bind compute pipeline during a render pass");
-        if (!compute_encoder_) compute_encoder_ = [cmdBuf_ computeCommandEncoder];
+        if (state_ != State::recording) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "bind_compute_pipeline requires recording state");
+        }
+        if (encoder_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "Cannot bind compute pipeline during a render pass");
+        }
+        if (!compute_encoder_) {
+            compute_encoder_ = [cmdBuf_ computeCommandEncoder];
+        }
         auto& mp = static_cast<MetalComputePipeline&>(pipeline);
         [compute_encoder_ setComputePipelineState:mp.native()];
+        computePipelineBound_ = true;
         return Status::success();
     }
 
@@ -465,6 +612,10 @@ public:
         if (!encoder_) {
             return Status::failure(StatusCode::invalid_state,
                                    "bind_vertex_buffer requires an active render pass");
+        }
+        if (!validation::buffer_supports_usage(buffer.desc(), BufferUsageFlags::vertex)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "buffer lacks vertex usage");
         }
         [encoder_ setVertexBuffer:static_cast<MetalBuffer&>(buffer).native()
                            offset:offset
@@ -477,6 +628,10 @@ public:
         if (!encoder_) {
             return Status::failure(StatusCode::invalid_state,
                                    "bind_index_buffer requires an active render pass");
+        }
+        if (!validation::buffer_supports_usage(buffer.desc(), BufferUsageFlags::index)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "buffer lacks index usage");
         }
         indexBuf_       = static_cast<MetalBuffer&>(buffer).native();
         indexBufOffset_ = offset;
@@ -491,6 +646,10 @@ public:
             return Status::failure(StatusCode::invalid_state,
                                    "bind_uniform_buffer requires an active render pass");
         }
+        if (!validation::buffer_supports_usage(buffer.desc(), BufferUsageFlags::uniform)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "buffer lacks uniform usage");
+        }
         id<MTLBuffer> mtlBuf = static_cast<MetalBuffer&>(buffer).native();
         [encoder_ setVertexBuffer:mtlBuf   offset:offset atIndex:binding];
         [encoder_ setFragmentBuffer:mtlBuf offset:offset atIndex:binding];
@@ -498,12 +657,58 @@ public:
     }
 
     Status bind_storage_buffer(std::uint32_t binding,
-                                IBuffer&      buffer,
-                                std::size_t   offset) override {
-        if (encoder_) return Status::failure(StatusCode::unsupported, "Storage buffers not supported in render passes yet");
-        if (!compute_encoder_) return Status::failure(StatusCode::invalid_state, "Must bind compute pipeline before binding storage buffer");
+                                 IBuffer&      buffer,
+                                 std::size_t   offset) override {
+        if (state_ != State::recording) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "bind_storage_buffer requires recording state");
+        }
+        if (encoder_) {
+            return Status::failure(StatusCode::unsupported,
+                                   "Storage buffers not supported in render passes yet");
+        }
+        if (!compute_encoder_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "Must bind compute pipeline before binding storage buffer");
+        }
+        if (!validation::buffer_supports_usage(buffer.desc(), BufferUsageFlags::storage)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "buffer lacks storage usage");
+        }
         id<MTLBuffer> mtlBuf = static_cast<MetalBuffer&>(buffer).native();
         [compute_encoder_ setBuffer:mtlBuf offset:offset atIndex:binding];
+        return Status::success();
+    }
+
+    Status resource_barrier(const BufferBarrierDesc& barrier) override {
+        if (state_ != State::recording) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "buffer barrier requires recording state");
+        }
+        if (encoder_ || compute_encoder_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "buffer barrier requires no active encoder");
+        }
+        if (!validation::buffer_barrier_valid(barrier)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "buffer barrier is invalid");
+        }
+        return Status::success();
+    }
+
+    Status resource_barrier(const TextureBarrierDesc& barrier) override {
+        if (state_ != State::recording) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "texture barrier requires recording state");
+        }
+        if (encoder_ || compute_encoder_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "texture barrier requires no active encoder");
+        }
+        if (!validation::texture_barrier_valid(barrier)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "texture barrier is invalid");
+        }
         return Status::success();
     }
 
@@ -532,6 +737,10 @@ public:
             return Status::failure(StatusCode::invalid_state,
                                    "draw requires an active render pass");
         }
+        if (!graphicsPipelineBound_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "draw requires a bound graphics pipeline");
+        }
         [encoder_ drawPrimitives:to_mtl_primitive(topology_)
                      vertexStart:0
                      vertexCount:vertex_count];
@@ -543,6 +752,10 @@ public:
         if (!encoder_) {
             return Status::failure(StatusCode::invalid_state,
                                    "draw_instanced requires an active render pass");
+        }
+        if (!graphicsPipelineBound_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "draw_instanced requires a bound graphics pipeline");
         }
         [encoder_ drawPrimitives:to_mtl_primitive(topology_)
                      vertexStart:0
@@ -560,6 +773,10 @@ public:
         if (!encoder_) {
             return Status::failure(StatusCode::invalid_state,
                                    "draw_indexed_instanced requires an active render pass");
+        }
+        if (!graphicsPipelineBound_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "draw_indexed_instanced requires a bound graphics pipeline");
         }
         if (!indexBuf_) {
             return Status::failure(StatusCode::invalid_state,
@@ -579,6 +796,23 @@ public:
             return Status::failure(StatusCode::invalid_state,
                                    "draw_indirect requires an active render pass");
         }
+        if (!graphicsPipelineBound_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "draw_indirect requires a bound graphics pipeline");
+        }
+        if (!validation::buffer_supports_usage(indirect_buffer.desc(),
+                                               BufferUsageFlags::indirect)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "buffer lacks indirect usage");
+        }
+        if (offset % 4u != 0 ||
+            !validation::range_fits(
+                offset,
+                sizeof(MTLDrawPrimitivesIndirectArguments),
+                indirect_buffer.desc().size)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "invalid indirect draw argument range");
+        }
         id<MTLBuffer> mtlBuf = static_cast<MetalBuffer&>(indirect_buffer).native();
         [encoder_ drawPrimitives:to_mtl_primitive(topology_)
                  indirectBuffer:mtlBuf
@@ -591,9 +825,26 @@ public:
             return Status::failure(StatusCode::invalid_state,
                                    "draw_indexed_indirect requires an active render pass");
         }
+        if (!graphicsPipelineBound_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "draw_indexed_indirect requires a bound graphics pipeline");
+        }
         if (!indexBuf_) {
             return Status::failure(StatusCode::invalid_state,
                                    "draw_indexed_indirect requires a bound index buffer");
+        }
+        if (!validation::buffer_supports_usage(indirect_buffer.desc(),
+                                               BufferUsageFlags::indirect)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "buffer lacks indirect usage");
+        }
+        if (offset % 4u != 0 ||
+            !validation::range_fits(
+                offset,
+                sizeof(MTLDrawIndexedPrimitivesIndirectArguments),
+                indirect_buffer.desc().size)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "invalid indexed indirect draw argument range");
         }
         id<MTLBuffer> mtlBuf = static_cast<MetalBuffer&>(indirect_buffer).native();
         [encoder_ drawIndexedPrimitives:to_mtl_primitive(topology_)
@@ -608,7 +859,21 @@ public:
     Status dispatch_compute(std::uint32_t group_count_x,
                              std::uint32_t group_count_y,
                              std::uint32_t group_count_z) override {
-        if (!compute_encoder_) return Status::failure(StatusCode::invalid_state, "No compute encoder active");
+        if (state_ != State::recording) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "dispatch_compute requires recording state");
+        }
+        if (encoder_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "dispatch_compute cannot run during a render pass");
+        }
+        if (!compute_encoder_) {
+            return Status::failure(StatusCode::invalid_state, "No compute encoder active");
+        }
+        if (!computePipelineBound_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "dispatch_compute requires a bound compute pipeline");
+        }
         MTLSize threadgroups = MTLSizeMake(group_count_x, group_count_y, group_count_z);
         MTLSize threadsPerThreadgroup = MTLSizeMake(64, 1, 1);
         [compute_encoder_ dispatchThreadgroups:threadgroups threadsPerThreadgroup:threadsPerThreadgroup];
@@ -620,13 +885,14 @@ public:
             return Status::failure(StatusCode::invalid_state,
                                    "command buffer is not recording");
         }
-        if (encoder_) { // safety: close any open encoder
-            [encoder_ endEncoding];
-            encoder_ = nil;
+        if (encoder_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "cannot end command buffer with an active render pass");
         }
         if (compute_encoder_) { // close any open compute encoder
             [compute_encoder_ endEncoding];
             compute_encoder_ = nil;
+            computePipelineBound_ = false;
         }
         state_ = State::ready;
         return Status::success();
@@ -636,15 +902,35 @@ public:
         return state_ == State::ready;
     }
 
+    CommandBufferState state() const noexcept override {
+        switch (state_) {
+            case State::initial: return CommandBufferState::initial;
+            case State::recording: return CommandBufferState::recording;
+            case State::ready: return CommandBufferState::executable;
+            case State::submitted: return CommandBufferState::submitted;
+        }
+        return CommandBufferState::initial;
+    }
+
+    void mark_submitted() noexcept {
+        if (state_ == State::ready) {
+            state_ = State::submitted;
+        }
+    }
+
     // Internal: called by MetalSwapchain::schedule_present (same backend).
     void attach_drawable(id<CAMetalDrawable> drawable) {
         [cmdBuf_ presentDrawable:drawable];
     }
 
+    bool can_schedule_present() const noexcept {
+        return state_ == State::recording && encoder_ == nil && compute_encoder_ == nil;
+    }
+
     id<MTLCommandBuffer> native() const noexcept { return cmdBuf_; }
 
 private:
-    enum class State { initial, recording, ready };
+    enum class State { initial, recording, ready, submitted };
 
     id<MTLCommandQueue>         queue_          = nil;
     id<MTLCommandBuffer>        cmdBuf_         = nil;
@@ -655,6 +941,8 @@ private:
     id<MTLBuffer>               indexBuf_       = nil;
     std::size_t                 indexBufOffset_ = 0;
     MTLIndexType                indexBufType_   = MTLIndexTypeUInt32;
+    bool                        graphicsPipelineBound_ = false;
+    bool                        computePipelineBound_ = false;
 };
 
 // ---------------------------------------------------------------------------
@@ -734,12 +1022,16 @@ public:
     }
 
     Status schedule_present(ICommandBuffer& cmd) override {
-        if (!drawable_) return Status::success(); // headless: nothing to present
         auto* mcmd = dynamic_cast<MetalCommandBuffer*>(&cmd);
         if (!mcmd) {
             return Status::failure(StatusCode::invalid_argument,
                                    "schedule_present: not a Metal command buffer");
         }
+        if (!mcmd->can_schedule_present()) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "schedule_present requires recording state outside active encoder");
+        }
+        if (!drawable_) return Status::success(); // headless: nothing to present
         mcmd->attach_drawable(drawable_);
         drawable_ = nil;
         return Status::success();
@@ -778,13 +1070,12 @@ public:
     }
 
     FrameAllocation allocate(std::size_t size, std::size_t alignment) override {
-        if (size == 0) return {};
         auto&       frame = frames_[currentFrame_];
-        std::size_t base  = frame.head;
-        if (alignment > 1) {
-            base = (base + alignment - 1) & ~(alignment - 1);
+        std::size_t base  = 0;
+        if (!validation::align_up(frame.head, alignment, base)) {
+            return {};
         }
-        if (base + size > capacity_) return {};
+        if (!validation::range_fits(base, size, capacity_)) return {};
         void* ptr  = static_cast<std::byte*>(frame.buf.contents) + base;
         frame.head = base + size;
         return FrameAllocation{frame.wrapper.get(), base, ptr, size};
@@ -817,29 +1108,36 @@ private:
 
 class MetalQueue final : public IQueue {
 public:
-    MetalQueue() = default;
+    explicit MetalQueue(QueueKind kind) : kind_(kind) {}
 
-    QueueKind kind() const noexcept override { return QueueKind::graphics; }
+    QueueKind kind() const noexcept override { return kind_; }
 
     Status submit(ICommandBuffer& cmd, IFence* signal_fence) override {
-        if (!cmd.ready_for_submit()) {
-            return Status::failure(StatusCode::invalid_state,
-                                   "command buffer is not ready for submit");
-        }
         auto* mcmd = dynamic_cast<MetalCommandBuffer*>(&cmd);
         if (!mcmd) {
             return Status::failure(StatusCode::invalid_argument,
                                    "submit: not a Metal command buffer");
         }
-        if (auto* mfence = dynamic_cast<MetalFence*>(signal_fence)) {
+        if (!cmd.ready_for_submit()) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "command buffer is not ready for submit");
+        }
+        if (signal_fence) {
+            auto* mfence = dynamic_cast<MetalFence*>(signal_fence);
+            if (!mfence) {
+                return Status::failure(StatusCode::invalid_argument,
+                                       "signal fence does not belong to Metal backend");
+            }
             mfence->attach_completion_handler(mcmd->native());
         }
         [mcmd->native() commit];
+        mcmd->mark_submitted();
         return Status::success();
     }
 
 private:
     // Note: submit() drives the command buffer directly; no queue_ field needed.
+    QueueKind kind_ = QueueKind::graphics;
 };
 
 // ---------------------------------------------------------------------------
@@ -850,23 +1148,62 @@ class MetalDevice final : public IDevice {
 public:
     explicit MetalDevice(id<MTLDevice> device)
         : device_(device)
-        , cmdQueue_([device newCommandQueueWithMaxCommandBufferCount:64]) {}
+        , cmdQueue_([device newCommandQueueWithMaxCommandBufferCount:64])
+        , graphicsQueue_(QueueKind::graphics)
+        , computeQueue_(QueueKind::compute)
+        , transferQueue_(QueueKind::transfer)
+        , caps_(make_metal_capabilities(device)) {}
 
     const Capabilities& capabilities() const noexcept override { return caps_; }
-    IQueue&             queue(QueueKind /*kind*/) override { return queue_; }
+    IQueue& queue(QueueKind kind) override {
+        switch (kind) {
+            case QueueKind::graphics: return graphicsQueue_;
+            case QueueKind::compute: return computeQueue_;
+            case QueueKind::transfer: return transferQueue_;
+        }
+        return graphicsQueue_;
+    }
 
     Result<std::unique_ptr<IBuffer>> create_buffer(const BufferDesc& desc) override {
         if (desc.size == 0) {
             return Status::failure(StatusCode::invalid_argument,
                                    "buffer size must be non-zero");
         }
-        return std::unique_ptr<IBuffer>(std::make_unique<MetalBuffer>(device_, desc));
+        if (desc.size > caps_.limits.maxBufferSize) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "buffer size exceeds device limit");
+        }
+        if (!validation::memory_domain_supported(desc.memory, caps_)) {
+            return Status::failure(StatusCode::unsupported,
+                                   "buffer memory domain is not supported");
+        }
+        auto buffer = std::make_unique<MetalBuffer>(device_, desc);
+        if (!buffer->valid()) {
+            return Status::failure(StatusCode::backend_error,
+                                   "failed to allocate Metal buffer");
+        }
+        return std::unique_ptr<IBuffer>(std::move(buffer));
     }
 
     Result<std::unique_ptr<ITexture>> create_texture(const TextureDesc& desc) override {
-        if (desc.extent.width == 0 || desc.extent.height == 0) {
+        if (!validation::texture_shape_valid(
+                desc, caps_.limits.maxTextureDimension2D)) {
             return Status::failure(StatusCode::invalid_argument,
-                                   "texture extent must be non-zero");
+                                   "texture extent exceeds device limits");
+        }
+        if (desc.dimension != TextureDimension::two_d || desc.depth != 1 ||
+            desc.mipLevels != 1 || desc.arrayLayers != 1 ||
+            desc.sampleCount != 1) {
+            return Status::failure(StatusCode::unsupported,
+                                   "Metal backend currently supports 2D single-subresource textures");
+        }
+        if (!validation::memory_domain_supported(desc.memory, caps_)) {
+            return Status::failure(StatusCode::unsupported,
+                                   "texture memory domain is not supported");
+        }
+        if (!validation::texture_usage_supported_by_format(caps_, desc)) {
+            return Status::failure(StatusCode::unsupported,
+                                   "texture format does not support requested usage");
         }
         return std::unique_ptr<ITexture>(
             std::make_unique<MetalTexture>(device_, desc));
@@ -890,17 +1227,19 @@ public:
     }
 
     Result<std::unique_ptr<ISurface>> create_surface(const SurfaceDesc& desc) override {
-        if (desc.initialExtent.width == 0 || desc.initialExtent.height == 0) {
+        if (!validation::extent_within(desc.initialExtent,
+                                       caps_.limits.maxTextureDimension2D)) {
             return Status::failure(StatusCode::invalid_argument,
-                                   "surface extent must be non-zero");
+                                   "surface extent exceeds device limits");
         }
         return std::unique_ptr<ISurface>(std::make_unique<MetalSurface>(desc));
     }
 
     Result<std::unique_ptr<ISwapchain>>
     create_swapchain(ISurface& surface, const SwapchainDesc& desc) override {
-        if (desc.extent.width == 0 || desc.extent.height == 0 ||
-            desc.framesInFlight == 0) {
+        if (!validation::extent_within(desc.extent,
+                                       caps_.limits.maxTextureDimension2D) ||
+            !validation::frame_count_supported(desc.framesInFlight, caps_)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "swapchain description is invalid");
         }
@@ -943,7 +1282,8 @@ public:
     Result<std::unique_ptr<IFrameUploadRing>>
     create_upload_ring(std::uint32_t frames_in_flight,
                        std::size_t   capacity_per_frame) override {
-        if (frames_in_flight == 0 || capacity_per_frame == 0) {
+        if (!validation::frame_count_supported(frames_in_flight, caps_) ||
+            capacity_per_frame == 0 || capacity_per_frame > caps_.limits.maxBufferSize) {
             return Status::failure(StatusCode::invalid_argument,
                                    "frames_in_flight and capacity must be non-zero");
         }
@@ -970,8 +1310,10 @@ public:
 private:
     id<MTLDevice>      device_;
     id<MTLCommandQueue> cmdQueue_;
-    MetalQueue         queue_;
-    Capabilities       caps_{.presentation = true, .validation = false, .maxFramesInFlight = 3};
+    MetalQueue         graphicsQueue_;
+    MetalQueue         computeQueue_;
+    MetalQueue         transferQueue_;
+    Capabilities       caps_;
     std::mutex pool_mutex_;
     std::vector<MetalCommandBuffer*> cmd_pool_;
 };
@@ -992,7 +1334,11 @@ public:
             0,
             std::string([device_.name UTF8String]),
             BackendKind::metal,
-            Capabilities{.presentation = true, .validation = false, .maxFramesInFlight = 3},
+            make_metal_capabilities(device_),
+            [device_ isLowPower] ? AdapterType::integrated_gpu : AdapterType::discrete_gpu,
+            0,
+            0,
+            "Metal native adapter",
         }};
     }
 

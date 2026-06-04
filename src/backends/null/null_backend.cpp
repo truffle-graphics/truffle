@@ -1,5 +1,6 @@
 #include "truffle/rhi/null_backend.hpp"
 #include "truffle/rhi/shader_reflection.hpp"
+#include "truffle/rhi/validation.hpp"
 
 #include <memory>
 #include <utility>
@@ -10,6 +11,56 @@ namespace {
 using core::Result;
 using core::Status;
 using core::StatusCode;
+
+[[nodiscard]] Capabilities make_null_capabilities() {
+    return Capabilities{
+        .presentation = true,
+        .validation = true,
+        .maxFramesInFlight = 3,
+        .queues = {.graphics = true, .compute = true, .transfer = true},
+        .features = {
+            .headlessSurface = true,
+            .nativeSurface = false,
+            .presentation = true,
+            .compute = true,
+            .indirectDraw = true,
+            .shaderReflection = false,
+            .debugLabels = true,
+            .validation = true,
+            .unifiedMemory = true,
+        },
+        .limits = {
+            .maxTextureDimension2D = 16384,
+            .maxBufferSize = 256ull * 1024ull * 1024ull,
+            .minUniformBufferOffsetAlignment = 16,
+            .minStorageBufferOffsetAlignment = 16,
+            .maxColorAttachments = 8,
+            .maxVertexBuffers = 16,
+        },
+        .formats = {
+            {.format = TextureFormat::rgba8_unorm,
+             .sampled = true,
+             .colorAttachment = true,
+             .transferSource = true,
+             .transferDestination = true},
+            {.format = TextureFormat::bgra8_unorm,
+             .sampled = true,
+             .colorAttachment = true,
+             .transferSource = true,
+             .transferDestination = true},
+            {.format = TextureFormat::depth32_float,
+             .sampled = true,
+             .depthStencilAttachment = true,
+             .transferSource = true,
+             .transferDestination = true},
+        },
+        .memoryHeaps = {
+            {.kind = MemoryHeapKind::unified,
+             .budgetBytes = 256ull * 1024ull * 1024ull,
+             .dedicated = false},
+        },
+    };
+}
 
 struct SharedStats {
     NullBackendStats value;
@@ -76,11 +127,13 @@ public:
                                    "swapchain extent must be non-zero");
         }
         desc_.extent = extent;
+        drawable_.reset();
         return Status::success();
     }
 
     [[nodiscard]] ITexture* acquire_next_texture() override {
-        if (!drawable_) {
+        if (!drawable_ || drawable_->desc().extent.width != desc_.extent.width ||
+            drawable_->desc().extent.height != desc_.extent.height) {
             drawable_ = std::make_unique<NullTexture>(TextureDesc{
                 .extent    = desc_.extent,
                 .format    = desc_.format,
@@ -90,9 +143,7 @@ public:
         return drawable_.get();
     }
 
-    [[nodiscard]] Status schedule_present(ICommandBuffer& /*cmd*/) override {
-        return Status::success();
-    }
+    [[nodiscard]] Status schedule_present(ICommandBuffer& cmd) override;
 
 private:
     SwapchainDesc                desc_;
@@ -105,6 +156,16 @@ public:
 
     [[nodiscard]] bool signaled() const noexcept override { return signaled_; }
     void signal() noexcept { signaled_ = true; }
+    [[nodiscard]] Status wait_for(std::uint64_t /*timeoutNanoseconds*/) noexcept override {
+        if (!signaled_) {
+            return Status::failure(StatusCode::timeout, "fence wait timed out");
+        }
+        return Status::success();
+    }
+    [[nodiscard]] Status reset() noexcept override {
+        signaled_ = false;
+        return Status::success();
+    }
     void wait() noexcept override { /* already signaled synchronously before submit returns */ }
 
     // Allows pooling logic to update initial state
@@ -120,9 +181,16 @@ public:
     explicit NullCommandBuffer(std::shared_ptr<SharedStats> stats)
         : stats_(std::move(stats)) {}
 
-    void reset() { state_ = State::initial; } // For pooling
+    void reset() {
+        state_ = State::initial;
+        inRenderPass_ = false;
+    }
 
     NullDevice* device_ = nullptr;
+
+    [[nodiscard]] bool can_schedule_present() const noexcept {
+        return state_ == State::recording && !inRenderPass_;
+    }
 
     [[nodiscard]] Status begin() override {
         if (state_ != State::initial) {
@@ -133,12 +201,34 @@ public:
         return Status::success();
     }
 
-    [[nodiscard]] Status begin_render_pass(
-        const RenderPassDesc& /*desc*/) override {
+    [[nodiscard]] Status begin_render_pass(const RenderPassDesc& desc) override {
         if (state_ != State::recording) {
             return Status::failure(StatusCode::invalid_state,
                                    "begin_render_pass requires recording");
         }
+        if (inRenderPass_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "render pass already active");
+        }
+        if (!validation::is_non_zero(desc.extent)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "render pass extent must be non-zero");
+        }
+        if (desc.colorAttachment.texture &&
+            !validation::texture_supports_usage(
+                desc.colorAttachment.texture->desc(),
+                TextureUsageFlags::color_attachment)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "color attachment texture lacks color attachment usage");
+        }
+        if (desc.depthAttachment.texture &&
+            !validation::texture_supports_usage(
+                desc.depthAttachment.texture->desc(),
+                TextureUsageFlags::depth_stencil)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "depth attachment texture lacks depth usage");
+        }
+        inRenderPass_ = true;
         return Status::success();
     }
 
@@ -147,6 +237,11 @@ public:
             return Status::failure(StatusCode::invalid_state,
                                    "end_render_pass requires recording");
         }
+        if (!inRenderPass_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "no active render pass");
+        }
+        inRenderPass_ = false;
         return Status::success();
     }
 
@@ -154,6 +249,10 @@ public:
         if (state_ != State::recording) {
             return Status::failure(StatusCode::invalid_state,
                                    "bind_pipeline requires recording");
+        }
+        if (!inRenderPass_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "bind_pipeline requires active render pass");
         }
         return Status::success();
     }
@@ -163,45 +262,115 @@ public:
             return Status::failure(StatusCode::invalid_state,
                                    "bind_compute_pipeline requires recording");
         }
+        if (inRenderPass_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "bind_compute_pipeline cannot run inside render pass");
+        }
         return Status::success();
     }
 
     [[nodiscard]] Status bind_vertex_buffer(std::uint32_t /*binding*/,
-                                             IBuffer& /*buffer*/,
+                                             IBuffer& buffer,
                                              std::size_t /*offset*/) override {
         if (state_ != State::recording) {
             return Status::failure(StatusCode::invalid_state,
                                    "bind_vertex_buffer requires recording");
         }
+        if (!inRenderPass_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "bind_vertex_buffer requires active render pass");
+        }
+        if (!validation::buffer_supports_usage(buffer.desc(), BufferUsageFlags::vertex)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "buffer lacks vertex usage");
+        }
         return Status::success();
     }
 
-    [[nodiscard]] Status bind_index_buffer(IBuffer& /*buffer*/,
+    [[nodiscard]] Status bind_index_buffer(IBuffer& buffer,
                                             std::size_t /*offset*/,
                                             IndexFormat /*format*/) override {
         if (state_ != State::recording) {
             return Status::failure(StatusCode::invalid_state,
                                    "bind_index_buffer requires recording");
         }
+        if (!inRenderPass_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "bind_index_buffer requires active render pass");
+        }
+        if (!validation::buffer_supports_usage(buffer.desc(), BufferUsageFlags::index)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "buffer lacks index usage");
+        }
         return Status::success();
     }
 
     [[nodiscard]] Status bind_uniform_buffer(std::uint32_t /*binding*/,
-                                              IBuffer& /*buffer*/,
+                                              IBuffer& buffer,
                                               std::size_t /*offset*/) override {
         if (state_ != State::recording) {
             return Status::failure(StatusCode::invalid_state,
                                    "bind_uniform_buffer requires recording");
         }
+        if (!inRenderPass_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "bind_uniform_buffer requires active render pass");
+        }
+        if (!validation::buffer_supports_usage(buffer.desc(), BufferUsageFlags::uniform)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "buffer lacks uniform usage");
+        }
         return Status::success();
     }
 
     [[nodiscard]] Status bind_storage_buffer(std::uint32_t /*binding*/,
-                                              IBuffer& /*buffer*/,
-                                              std::size_t /*offset*/) override {
+                                               IBuffer& buffer,
+                                               std::size_t /*offset*/) override {
         if (state_ != State::recording) {
             return Status::failure(StatusCode::invalid_state,
                                    "bind_storage_buffer requires recording");
+        }
+        if (inRenderPass_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "bind_storage_buffer cannot run inside render pass");
+        }
+        if (!validation::buffer_supports_usage(buffer.desc(), BufferUsageFlags::storage)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "buffer lacks storage usage");
+        }
+        return Status::success();
+    }
+
+    [[nodiscard]] Status resource_barrier(
+        const BufferBarrierDesc& barrier) override {
+        if (state_ != State::recording) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "buffer barrier requires recording");
+        }
+        if (inRenderPass_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "buffer barrier cannot run inside render pass");
+        }
+        if (!validation::buffer_barrier_valid(barrier)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "buffer barrier is invalid");
+        }
+        return Status::success();
+    }
+
+    [[nodiscard]] Status resource_barrier(
+        const TextureBarrierDesc& barrier) override {
+        if (state_ != State::recording) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "texture barrier requires recording");
+        }
+        if (inRenderPass_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "texture barrier cannot run inside render pass");
+        }
+        if (!validation::texture_barrier_valid(barrier)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "texture barrier is invalid");
         }
         return Status::success();
     }
@@ -214,6 +383,10 @@ public:
             return Status::failure(StatusCode::invalid_state,
                                    "set_viewport requires recording");
         }
+        if (!inRenderPass_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "set_viewport requires active render pass");
+        }
         return Status::success();
     }
 
@@ -224,13 +397,17 @@ public:
             return Status::failure(StatusCode::invalid_state,
                                    "set_scissor requires recording");
         }
+        if (!inRenderPass_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "set_scissor requires active render pass");
+        }
         return Status::success();
     }
 
     [[nodiscard]] Status draw(std::uint32_t vertex_count) override {
-        if (state_ != State::recording || vertex_count == 0) {
+        if (state_ != State::recording || !inRenderPass_ || vertex_count == 0) {
             return Status::failure(StatusCode::invalid_state,
-                                   "draw requires a recording command buffer");
+                                   "draw requires active render pass");
         }
         ++stats_->value.drawsRecorded;
         return Status::success();
@@ -238,9 +415,10 @@ public:
 
     [[nodiscard]] Status draw_instanced(std::uint32_t vertex_count,
                                         std::uint32_t instance_count) override {
-        if (state_ != State::recording || vertex_count == 0 || instance_count == 0) {
+        if (state_ != State::recording || !inRenderPass_ || vertex_count == 0 ||
+            instance_count == 0) {
             return Status::failure(StatusCode::invalid_state,
-                                   "draw_instanced requires a recording command buffer");
+                                   "draw_instanced requires active render pass");
         }
         ++stats_->value.drawsRecorded;
         return Status::success();
@@ -252,28 +430,48 @@ public:
 
     [[nodiscard]] Status draw_indexed_instanced(std::uint32_t index_count,
                                                 std::uint32_t instance_count) override {
-        if (state_ != State::recording || index_count == 0 || instance_count == 0) {
+        if (state_ != State::recording || !inRenderPass_ || index_count == 0 ||
+            instance_count == 0) {
             return Status::failure(StatusCode::invalid_state,
-                                   "draw_indexed_instanced requires a recording command buffer");
-        }
-        ++stats_->value.drawsRecorded;
-        return Status::success();
-    }
-    [[nodiscard]] Status draw_indirect(IBuffer& /*indirect_buffer*/,
-                                        std::size_t /*offset*/) override {
-        if (state_ != State::recording) {
-            return Status::failure(StatusCode::invalid_state,
-                                   "draw_indirect failed validation");
+                                   "draw_indexed_instanced requires active render pass");
         }
         ++stats_->value.drawsRecorded;
         return Status::success();
     }
 
-    [[nodiscard]] Status draw_indexed_indirect(IBuffer& /*indirect_buffer*/,
+    [[nodiscard]] Status draw_indirect(IBuffer& indirect_buffer,
+                                        std::size_t /*offset*/) override {
+        if (state_ != State::recording) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "draw_indirect failed validation");
+        }
+        if (!inRenderPass_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "draw_indirect requires active render pass");
+        }
+        if (!validation::buffer_supports_usage(indirect_buffer.desc(),
+                                               BufferUsageFlags::indirect)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "buffer lacks indirect usage");
+        }
+        ++stats_->value.drawsRecorded;
+        return Status::success();
+    }
+
+    [[nodiscard]] Status draw_indexed_indirect(IBuffer& indirect_buffer,
                                                 std::size_t /*offset*/) override {
         if (state_ != State::recording) {
             return Status::failure(StatusCode::invalid_state,
                                    "draw_indexed_indirect failed validation");
+        }
+        if (!inRenderPass_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "draw_indexed_indirect requires active render pass");
+        }
+        if (!validation::buffer_supports_usage(indirect_buffer.desc(),
+                                               BufferUsageFlags::indirect)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "buffer lacks indirect usage");
         }
         ++stats_->value.drawsRecorded;
         return Status::success();
@@ -286,13 +484,22 @@ public:
             return Status::failure(StatusCode::invalid_state,
                                    "dispatch_compute requires recording");
         }
+        if (inRenderPass_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "dispatch_compute cannot run inside render pass");
+        }
         ++stats_->value.drawsRecorded; // Re-use draw counter for now
         return Status::success();
     }
+
     [[nodiscard]] Status end() override {
         if (state_ != State::recording) {
             return Status::failure(StatusCode::invalid_state,
                                    "command buffer is not recording");
+        }
+        if (inRenderPass_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "command buffer cannot end with active render pass");
         }
         state_ = State::ready;
         return Status::success();
@@ -302,28 +509,70 @@ public:
         return state_ == State::ready;
     }
 
+    [[nodiscard]] CommandBufferState state() const noexcept override {
+        switch (state_) {
+            case State::initial: return CommandBufferState::initial;
+            case State::recording: return CommandBufferState::recording;
+            case State::ready: return CommandBufferState::executable;
+            case State::submitted: return CommandBufferState::submitted;
+        }
+        return CommandBufferState::initial;
+    }
+
+    void mark_submitted() noexcept {
+        if (state_ == State::ready) {
+            state_ = State::submitted;
+        }
+    }
+
 private:
-    enum class State { initial, recording, ready };
+    enum class State { initial, recording, ready, submitted };
     std::shared_ptr<SharedStats> stats_;
     State state_ = State::initial;
+    bool inRenderPass_ = false;
 };
+
+Status NullSwapchain::schedule_present(ICommandBuffer& cmd) {
+    auto* nullCmd = dynamic_cast<NullCommandBuffer*>(&cmd);
+    if (!nullCmd) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "schedule_present requires a null command buffer");
+    }
+    if (!nullCmd->can_schedule_present()) {
+        return Status::failure(StatusCode::invalid_state,
+                               "schedule_present requires recording state outside render pass");
+    }
+    return Status::success();
+}
 
 class NullQueue final : public IQueue {
 public:
-    explicit NullQueue(std::shared_ptr<SharedStats> stats) : stats_(std::move(stats)) {}
+    NullQueue(std::shared_ptr<SharedStats> stats, QueueKind kind)
+        : stats_(std::move(stats)), kind_(kind) {}
 
     [[nodiscard]] QueueKind kind() const noexcept override {
-        return QueueKind::graphics;
+        return kind_;
     }
 
     [[nodiscard]] Status submit(ICommandBuffer& command_buffer,
                                 IFence* signal_fence) override {
+        auto* cmd = dynamic_cast<NullCommandBuffer*>(&command_buffer);
+        if (!cmd) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "command buffer does not belong to null backend");
+        }
         if (!command_buffer.ready_for_submit()) {
             return Status::failure(StatusCode::invalid_state,
-                                   "command buffer is not ready for submit");
+                                    "command buffer is not ready for submit");
         }
         ++stats_->value.submissions;
-        if (auto* fence = dynamic_cast<NullFence*>(signal_fence)) {
+        cmd->mark_submitted();
+        if (signal_fence) {
+            auto* fence = dynamic_cast<NullFence*>(signal_fence);
+            if (!fence) {
+                return Status::failure(StatusCode::invalid_argument,
+                                       "signal fence does not belong to null backend");
+            }
             fence->signal();
         }
         return Status::success();
@@ -331,6 +580,7 @@ public:
 
 private:
     std::shared_ptr<SharedStats> stats_;
+    QueueKind kind_ = QueueKind::graphics;
 };
 
 class NullFrameUploadRing final : public IFrameUploadRing {
@@ -347,13 +597,13 @@ public:
 
     [[nodiscard]] FrameAllocation allocate(std::size_t size,
                                            std::size_t alignment) override {
-        std::size_t base = frameOffset_;
-        if (alignment > 1) {
-            base = (base + alignment - 1) & ~(alignment - 1);
+        std::size_t base = 0;
+        if (!validation::align_up(frameOffset_, alignment, base)) {
+            return {};
         }
         const std::size_t frameEnd =
             (static_cast<std::size_t>(currentFrame_) + 1) * capacityPerFrame_;
-        if (base + size > frameEnd || size == 0) {
+        if (!validation::range_fits(base, size, frameEnd)) {
             return {};
         }
         void* ptr     = storage_.data() + base;
@@ -386,13 +636,23 @@ private:
 class NullDevice final : public IDevice {
 public:
     explicit NullDevice(std::shared_ptr<SharedStats> stats)
-        : stats_(std::move(stats)), queue_(stats_) {}
+        : stats_(std::move(stats))
+        , graphicsQueue_(stats_, QueueKind::graphics)
+        , computeQueue_(stats_, QueueKind::compute)
+        , transferQueue_(stats_, QueueKind::transfer) {}
 
     [[nodiscard]] const Capabilities& capabilities() const noexcept override {
         return capabilities_;
     }
 
-    [[nodiscard]] IQueue& queue(QueueKind) override { return queue_; }
+    [[nodiscard]] IQueue& queue(QueueKind kind) override {
+        switch (kind) {
+            case QueueKind::graphics: return graphicsQueue_;
+            case QueueKind::compute: return computeQueue_;
+            case QueueKind::transfer: return transferQueue_;
+        }
+        return graphicsQueue_;
+    }
 
     [[nodiscard]] Result<std::unique_ptr<IBuffer>>
     create_buffer(const BufferDesc& desc) override {
@@ -400,15 +660,32 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "buffer size must be non-zero");
         }
+        if (desc.size > capabilities_.limits.maxBufferSize) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "buffer size exceeds device limit");
+        }
+        if (!validation::memory_domain_supported(desc.memory, capabilities_)) {
+            return Status::failure(StatusCode::unsupported,
+                                   "buffer memory domain is not supported");
+        }
         ++stats_->value.buffersCreated;
         return std::unique_ptr<IBuffer>(std::make_unique<NullBuffer>(desc));
     }
 
     [[nodiscard]] Result<std::unique_ptr<ITexture>>
     create_texture(const TextureDesc& desc) override {
-        if (desc.extent.width == 0 || desc.extent.height == 0) {
+        if (!validation::texture_shape_valid(
+                desc, capabilities_.limits.maxTextureDimension2D)) {
             return Status::failure(StatusCode::invalid_argument,
-                                   "texture extent must be non-zero");
+                                    "texture extent exceeds device limits");
+        }
+        if (!validation::memory_domain_supported(desc.memory, capabilities_)) {
+            return Status::failure(StatusCode::unsupported,
+                                   "texture memory domain is not supported");
+        }
+        if (!validation::texture_usage_supported_by_format(capabilities_, desc)) {
+            return Status::failure(StatusCode::unsupported,
+                                   "texture format does not support requested usage");
         }
         ++stats_->value.texturesCreated;
         return std::unique_ptr<ITexture>(std::make_unique<NullTexture>(desc));
@@ -450,8 +727,9 @@ public:
 
     [[nodiscard]] Result<std::unique_ptr<ISwapchain>>
     create_swapchain(ISurface&, const SwapchainDesc& desc) override {
-        if (desc.extent.width == 0 || desc.extent.height == 0 ||
-            desc.framesInFlight == 0) {
+        if (!validation::extent_within(desc.extent,
+                                       capabilities_.limits.maxTextureDimension2D) ||
+            !validation::frame_count_supported(desc.framesInFlight, capabilities_)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "swapchain description is invalid");
         }
@@ -498,7 +776,8 @@ public:
     [[nodiscard]] core::Result<std::unique_ptr<IFrameUploadRing>>
     create_upload_ring(std::uint32_t frames_in_flight,
                        std::size_t   capacity_per_frame) override {
-        if (frames_in_flight == 0 || capacity_per_frame == 0) {
+        if (!validation::frame_count_supported(frames_in_flight, capabilities_) ||
+            capacity_per_frame == 0 || capacity_per_frame > capabilities_.limits.maxBufferSize) {
             return Status::failure(StatusCode::invalid_argument,
                                    "frames_in_flight and capacity must be non-zero");
         }
@@ -524,8 +803,10 @@ public:
 
 private:
     std::shared_ptr<SharedStats> stats_;
-    Capabilities capabilities_{true, true, 2};
-    NullQueue queue_;
+    Capabilities capabilities_ = make_null_capabilities();
+    NullQueue graphicsQueue_;
+    NullQueue computeQueue_;
+    NullQueue transferQueue_;
     std::mutex pool_mutex_;
     std::vector<NullCommandBuffer*> cmd_pool_;
     std::vector<NullFence*> fence_pool_;
@@ -538,8 +819,14 @@ public:
     }
 
     [[nodiscard]] std::vector<AdapterInfo> enumerate_adapters() const override {
-        return {{0, "Truffle Null Adapter", BackendKind::null_backend,
-                 Capabilities{true, true, 2}}};
+        return {AdapterInfo{
+            .id = 0,
+            .name = "Truffle Null Adapter",
+            .backend = BackendKind::null_backend,
+            .capabilities = make_null_capabilities(),
+            .type = AdapterType::cpu,
+            .driverDescription = "Strict CPU-backed RHI validation adapter",
+        }};
     }
 
     [[nodiscard]] Result<std::unique_ptr<IDevice>>

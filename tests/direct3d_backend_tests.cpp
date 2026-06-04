@@ -68,7 +68,12 @@ int main() {
     auto swapchain = std::move(swapchainResult).value();
     TRUFFLE_CHECK(swapchain->acquire_next_texture() != nullptr);
     TRUFFLE_CHECK(swapchain->resize({64, 64}).ok());
-    TRUFFLE_CHECK(swapchain->schedule_present(*cmd).ok());
+    TRUFFLE_CHECK(!swapchain->schedule_present(*cmd).ok());
+    auto presentCmd = device->create_command_buffer();
+    TRUFFLE_CHECK(presentCmd->begin().ok());
+    TRUFFLE_CHECK(swapchain->schedule_present(*presentCmd).ok());
+    TRUFFLE_CHECK(presentCmd->end().ok());
+    TRUFFLE_CHECK(!swapchain->schedule_present(*presentCmd).ok());
 
     // State machine enforcement checks
     auto cmdInvalid = device->create_command_buffer();

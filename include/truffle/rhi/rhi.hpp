@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -12,6 +13,7 @@
 namespace truffle::rhi {
 
 // Forward declarations — descriptor structs reference these before their class definitions
+class IBuffer;
 class IShader;
 class ITexture;
 class ICommandBuffer; // used in ISwapchain::schedule_present
@@ -40,6 +42,37 @@ enum class BufferUsage {
     indirect,
 };
 
+enum class BufferUsageFlags : std::uint32_t {
+    none                 = 0,
+    vertex               = 1u << 0u,
+    index                = 1u << 1u,
+    uniform              = 1u << 2u,
+    storage              = 1u << 3u,
+    transfer_source      = 1u << 4u,
+    transfer_destination = 1u << 5u,
+    indirect             = 1u << 6u,
+};
+
+[[nodiscard]] constexpr BufferUsageFlags operator|(
+    BufferUsageFlags lhs,
+    BufferUsageFlags rhs) noexcept {
+    return static_cast<BufferUsageFlags>(
+        static_cast<std::uint32_t>(lhs) | static_cast<std::uint32_t>(rhs));
+}
+
+[[nodiscard]] constexpr BufferUsageFlags operator&(
+    BufferUsageFlags lhs,
+    BufferUsageFlags rhs) noexcept {
+    return static_cast<BufferUsageFlags>(
+        static_cast<std::uint32_t>(lhs) & static_cast<std::uint32_t>(rhs));
+}
+
+constexpr BufferUsageFlags& operator|=(BufferUsageFlags& lhs,
+                                       BufferUsageFlags rhs) noexcept {
+    lhs = lhs | rhs;
+    return lhs;
+}
+
 enum class IndexFormat {
     uint16,
     uint32,
@@ -50,6 +83,36 @@ enum class TextureFormat {
     bgra8_unorm,
     depth32_float,
 };
+
+enum class TextureUsageFlags : std::uint32_t {
+    none                 = 0,
+    sampled              = 1u << 0u,
+    color_attachment     = 1u << 1u,
+    depth_stencil        = 1u << 2u,
+    storage              = 1u << 3u,
+    transfer_source      = 1u << 4u,
+    transfer_destination = 1u << 5u,
+};
+
+[[nodiscard]] constexpr TextureUsageFlags operator|(
+    TextureUsageFlags lhs,
+    TextureUsageFlags rhs) noexcept {
+    return static_cast<TextureUsageFlags>(
+        static_cast<std::uint32_t>(lhs) | static_cast<std::uint32_t>(rhs));
+}
+
+[[nodiscard]] constexpr TextureUsageFlags operator&(
+    TextureUsageFlags lhs,
+    TextureUsageFlags rhs) noexcept {
+    return static_cast<TextureUsageFlags>(
+        static_cast<std::uint32_t>(lhs) & static_cast<std::uint32_t>(rhs));
+}
+
+constexpr TextureUsageFlags& operator|=(TextureUsageFlags& lhs,
+                                        TextureUsageFlags rhs) noexcept {
+    lhs = lhs | rhs;
+    return lhs;
+}
 
 enum class NativeSurfaceKind {
     headless,
@@ -76,10 +139,104 @@ enum class PrimitiveTopology {
 enum class LoadOp  { load, clear, dont_care };
 enum class StoreOp { store, dont_care };
 
+enum class TextureDimension {
+    one_d,
+    two_d,
+    three_d,
+    cube,
+};
+
+enum class MemoryDomain {
+    automatic,
+    device_local,
+    upload,
+    readback,
+};
+
+enum class AdapterType {
+    unknown,
+    integrated_gpu,
+    discrete_gpu,
+    virtual_gpu,
+    cpu,
+};
+
+enum class MemoryHeapKind {
+    device_local,
+    host_visible,
+    unified,
+};
+
+enum class CommandBufferState {
+    initial,
+    recording,
+    executable,
+    submitted,
+};
+
+enum class ResourceState {
+    undefined,
+    copy_source,
+    copy_destination,
+    shader_read,
+    storage_read_write,
+    color_attachment,
+    depth_attachment,
+    present,
+};
+
+struct QueueCapabilities {
+    bool graphics = false;
+    bool compute  = false;
+    bool transfer = false;
+};
+
+struct FeatureSupport {
+    bool headlessSurface = false;
+    bool nativeSurface   = false;
+    bool presentation    = false;
+    bool compute         = false;
+    bool indirectDraw    = false;
+    bool shaderReflection = false;
+    bool debugLabels     = false;
+    bool validation      = false;
+    bool unifiedMemory   = false;
+};
+
+struct DeviceLimits {
+    std::uint32_t maxTextureDimension2D = 1;
+    std::size_t maxBufferSize = std::numeric_limits<std::size_t>::max();
+    std::size_t minUniformBufferOffsetAlignment = 1;
+    std::size_t minStorageBufferOffsetAlignment = 1;
+    std::uint32_t maxColorAttachments = 1;
+    std::uint32_t maxVertexBuffers = 1;
+};
+
+struct FormatSupport {
+    TextureFormat format = TextureFormat::rgba8_unorm;
+    bool sampled = false;
+    bool colorAttachment = false;
+    bool depthStencilAttachment = false;
+    bool storageTexture = false;
+    bool transferSource = false;
+    bool transferDestination = false;
+};
+
+struct MemoryHeapInfo {
+    MemoryHeapKind kind = MemoryHeapKind::device_local;
+    std::uint64_t budgetBytes = 0;
+    bool dedicated = false;
+};
+
 struct Capabilities {
     bool presentation = false;
     bool validation = false;
     std::uint32_t maxFramesInFlight = 1;
+    QueueCapabilities queues;
+    FeatureSupport features;
+    DeviceLimits limits;
+    std::vector<FormatSupport> formats;
+    std::vector<MemoryHeapInfo> memoryHeaps;
 };
 
 struct AdapterInfo {
@@ -87,7 +244,63 @@ struct AdapterInfo {
     std::string name;
     BackendKind backend = BackendKind::null_backend;
     Capabilities capabilities;
+    AdapterType type = AdapterType::unknown;
+    std::uint32_t vendorId = 0;
+    std::uint32_t deviceId = 0;
+    std::string driverDescription;
 };
+
+[[nodiscard]] inline bool supports_queue(const Capabilities& capabilities,
+                                         QueueKind queue) noexcept {
+    switch (queue) {
+        case QueueKind::graphics: return capabilities.queues.graphics;
+        case QueueKind::compute: return capabilities.queues.compute;
+        case QueueKind::transfer: return capabilities.queues.transfer;
+    }
+    return false;
+}
+
+[[nodiscard]] inline const FormatSupport* find_format_support(
+    const Capabilities& capabilities,
+    TextureFormat format) noexcept {
+    for (const auto& support : capabilities.formats) {
+        if (support.format == format) {
+            return &support;
+        }
+    }
+    return nullptr;
+}
+
+[[nodiscard]] inline bool supports_texture_format(
+    const Capabilities& capabilities,
+    TextureFormat format) noexcept {
+    return find_format_support(capabilities, format) != nullptr;
+}
+
+[[nodiscard]] constexpr bool has_flag(BufferUsageFlags flags,
+                                      BufferUsageFlags flag) noexcept {
+    return (flags & flag) != BufferUsageFlags::none;
+}
+
+[[nodiscard]] constexpr bool has_flag(TextureUsageFlags flags,
+                                      TextureUsageFlags flag) noexcept {
+    return (flags & flag) != TextureUsageFlags::none;
+}
+
+[[nodiscard]] constexpr BufferUsageFlags to_buffer_usage_flags(
+    BufferUsage usage) noexcept {
+    switch (usage) {
+        case BufferUsage::vertex: return BufferUsageFlags::vertex;
+        case BufferUsage::index: return BufferUsageFlags::index;
+        case BufferUsage::uniform: return BufferUsageFlags::uniform;
+        case BufferUsage::storage: return BufferUsageFlags::storage;
+        case BufferUsage::transfer_source: return BufferUsageFlags::transfer_source;
+        case BufferUsage::transfer_destination:
+            return BufferUsageFlags::transfer_destination;
+        case BufferUsage::indirect: return BufferUsageFlags::indirect;
+    }
+    return BufferUsageFlags::none;
+}
 
 struct DeviceDesc {
     std::uint32_t adapterId = 0;
@@ -102,13 +315,80 @@ struct Extent2D {
 struct BufferDesc {
     std::size_t size = 0;
     BufferUsage usage = BufferUsage::vertex;
+    BufferUsageFlags usageFlags = BufferUsageFlags::none;
+    MemoryDomain memory = MemoryDomain::automatic;
+    bool mappedAtCreation = false;
     std::string debugName;
 };
 
 struct TextureDesc {
     Extent2D extent;
+    std::uint32_t depth = 1;
     TextureFormat format = TextureFormat::rgba8_unorm;
+    TextureDimension dimension = TextureDimension::two_d;
+    std::uint32_t mipLevels = 1;
+    std::uint32_t arrayLayers = 1;
+    std::uint32_t sampleCount = 1;
+    TextureUsageFlags usageFlags = TextureUsageFlags::none;
+    MemoryDomain memory = MemoryDomain::automatic;
     std::string debugName;
+};
+
+[[nodiscard]] constexpr BufferUsageFlags effective_buffer_usage(
+    const BufferDesc& desc) noexcept {
+    return desc.usageFlags == BufferUsageFlags::none
+        ? to_buffer_usage_flags(desc.usage)
+        : desc.usageFlags;
+}
+
+[[nodiscard]] constexpr TextureUsageFlags default_texture_usage(
+    TextureFormat format) noexcept {
+    if (format == TextureFormat::depth32_float) {
+        return TextureUsageFlags::sampled | TextureUsageFlags::depth_stencil;
+    }
+    return TextureUsageFlags::sampled | TextureUsageFlags::color_attachment;
+}
+
+[[nodiscard]] constexpr TextureUsageFlags effective_texture_usage(
+    const TextureDesc& desc) noexcept {
+    return desc.usageFlags == TextureUsageFlags::none
+        ? default_texture_usage(desc.format)
+        : desc.usageFlags;
+}
+
+struct BufferViewDesc {
+    IBuffer* buffer = nullptr;
+    std::size_t offset = 0;
+    std::size_t size = 0; // 0 means from offset to end of buffer.
+    BufferUsageFlags requiredUsage = BufferUsageFlags::none;
+};
+
+struct TextureSubresourceRange {
+    std::uint32_t baseMipLevel = 0;
+    std::uint32_t mipLevelCount = 1;
+    std::uint32_t baseArrayLayer = 0;
+    std::uint32_t arrayLayerCount = 1;
+};
+
+struct TextureViewDesc {
+    ITexture* texture = nullptr;
+    TextureFormat format = TextureFormat::rgba8_unorm;
+    TextureDimension dimension = TextureDimension::two_d;
+    TextureSubresourceRange range;
+    TextureUsageFlags requiredUsage = TextureUsageFlags::sampled;
+};
+
+struct BufferBarrierDesc {
+    IBuffer* buffer = nullptr;
+    ResourceState before = ResourceState::undefined;
+    ResourceState after = ResourceState::undefined;
+};
+
+struct TextureBarrierDesc {
+    ITexture* texture = nullptr;
+    ResourceState before = ResourceState::undefined;
+    ResourceState after = ResourceState::undefined;
+    TextureSubresourceRange range;
 };
 
 struct SamplerDesc {
@@ -242,7 +522,9 @@ public:
     // begin_render_pass. Returns nullptr if no drawable is available.
     [[nodiscard]] virtual ITexture* acquire_next_texture() = 0;
     // Schedule presentation of the current drawable via the given command buffer.
-    // Must be called after end_render_pass() and before end(). No-op for headless.
+    // Must be called while the command buffer is recording, after
+    // end_render_pass() and before end(). Headless swapchains validate the
+    // sequence and then no-op.
     [[nodiscard]] virtual core::Status schedule_present(ICommandBuffer& cmd) = 0;
 };
 
@@ -250,6 +532,12 @@ class IFence {
 public:
     virtual ~IFence() = default;
     [[nodiscard]] virtual bool signaled() const noexcept = 0;
+    // Wait up to timeoutNanoseconds. Returns StatusCode::timeout if the fence is
+    // still unsignaled when the timeout expires.
+    [[nodiscard]] virtual core::Status wait_for(
+        std::uint64_t timeoutNanoseconds) noexcept = 0;
+    // Reset the fence to the unsignaled state when backend rules allow it.
+    [[nodiscard]] virtual core::Status reset() noexcept = 0;
     // Block until the fence is signaled. Returns immediately if already signaled.
     virtual void wait() noexcept = 0;
 };
@@ -288,9 +576,12 @@ class ICommandBuffer {
 public:
     virtual ~ICommandBuffer() = default;
 
-    // Command buffer lifetime
+    // Command buffers are one-shot while owned by the caller. Backend pools may
+    // recycle storage after destruction, but a submitted command buffer cannot be
+    // re-recorded or submitted again through the same handle.
     [[nodiscard]] virtual core::Status begin() = 0;
     [[nodiscard]] virtual core::Status end() = 0;
+    [[nodiscard]] virtual CommandBufferState state() const noexcept = 0;
     [[nodiscard]] virtual bool ready_for_submit() const noexcept = 0;
 
     // Render pass
@@ -315,6 +606,10 @@ public:
     [[nodiscard]] virtual core::Status bind_storage_buffer(
         std::uint32_t binding, IBuffer& buffer,
         std::size_t offset = 0) = 0;
+    [[nodiscard]] virtual core::Status resource_barrier(
+        const BufferBarrierDesc& barrier) = 0;
+    [[nodiscard]] virtual core::Status resource_barrier(
+        const TextureBarrierDesc& barrier) = 0;
     [[nodiscard]] virtual core::Status set_viewport(
         float x, float y, float width, float height,
         float minDepth = 0.0f, float maxDepth = 1.0f) = 0;
