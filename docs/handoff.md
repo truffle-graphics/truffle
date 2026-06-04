@@ -228,6 +228,19 @@ validation, diagnostics, and backend parity.
     pointer wrapper.
   - Fixed the host workspace smoke path to request a headless surface when no
     native host handle is available.
+- **Low-Level Graphics Foundation Slice 6** — Complete.
+  - Added explicit shader byte formats and per-backend shader format capability
+    reporting while preserving the legacy unknown-format path.
+  - Added shader payload validation for entry points, SPIR-V magic, and
+    DXIL/DXBC-style binary signatures.
+  - Added explicit pipeline layout descriptors, shader-stage visibility flags,
+    binding resource kinds, binding limits, and shared layout validation.
+  - Added graphics render-state validation for color/depth attachment format
+    support.
+  - Expanded pipeline reflection metadata and added direct binding lookup across
+    reflection-capable backends.
+  - Added lightweight graphics/compute pipeline cache-key hooks on descriptors
+    and pipeline objects.
 
 ## Relevant Decisions And Constraints
 
@@ -271,8 +284,8 @@ core contract tests, package consumer, and transform compute tests.
 
 ## Next Resume Steps
 
-1. Continue low-level graphics Slice 6: shader byte formats, pipeline state,
-   pipeline layout, reflection, and pipeline cache hooks.
+1. Continue low-level graphics Slice 7: binding/descriptor model and bindless
+   feature gates.
 2. Add shader/pipeline and binding descriptor depth before any
    new high-level renderer features rely on implicit policy.
 3. Add machine-readable parity report output alongside markdown.

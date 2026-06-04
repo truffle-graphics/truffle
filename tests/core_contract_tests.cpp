@@ -123,6 +123,10 @@ int main() {
         .colorAttachment = true,
     }};
     capabilities.surfaceKinds = {truffle::rhi::NativeSurfaceKind::headless};
+    capabilities.shaderFormats = {
+        truffle::rhi::ShaderByteFormat::contract,
+        truffle::rhi::ShaderByteFormat::spirv_binary,
+    };
     TRUFFLE_CHECK(truffle::rhi::validation::frame_count_supported(2, capabilities));
     TRUFFLE_CHECK(!truffle::rhi::validation::frame_count_supported(0, capabilities));
     TRUFFLE_CHECK(!truffle::rhi::validation::frame_count_supported(3, capabilities));
@@ -170,6 +174,95 @@ int main() {
             .handle = reinterpret_cast<void*>(0x1),
         },
         .initialExtent = {32, 32},
+    }, capabilities));
+    TRUFFLE_CHECK(truffle::rhi::supports_shader_byte_format(
+        capabilities, truffle::rhi::ShaderByteFormat::unknown));
+    TRUFFLE_CHECK(truffle::rhi::supports_shader_byte_format(
+        capabilities, truffle::rhi::ShaderByteFormat::contract));
+    TRUFFLE_CHECK(!truffle::rhi::supports_shader_byte_format(
+        capabilities, truffle::rhi::ShaderByteFormat::msl_source));
+    TRUFFLE_CHECK(truffle::rhi::validation::shader_desc_supported({
+        .stage = truffle::rhi::ShaderStage::vertex,
+        .byteFormat = truffle::rhi::ShaderByteFormat::contract,
+        .entryPoint = "main",
+        .bytecode = {std::byte{0x1}},
+    }, capabilities));
+    TRUFFLE_CHECK(truffle::rhi::validation::shader_payload_valid({
+        .stage = truffle::rhi::ShaderStage::vertex,
+        .byteFormat = truffle::rhi::ShaderByteFormat::spirv_binary,
+        .entryPoint = "main",
+        .bytecode = {
+            std::byte{0x03},
+            std::byte{0x02},
+            std::byte{0x23},
+            std::byte{0x07},
+        },
+    }));
+    TRUFFLE_CHECK(!truffle::rhi::validation::shader_payload_valid({
+        .stage = truffle::rhi::ShaderStage::vertex,
+        .byteFormat = truffle::rhi::ShaderByteFormat::spirv_binary,
+        .entryPoint = "main",
+        .bytecode = {std::byte{0x1}, std::byte{0x2}, std::byte{0x3}},
+    }));
+    TRUFFLE_CHECK(!truffle::rhi::validation::shader_desc_supported({
+        .stage = truffle::rhi::ShaderStage::vertex,
+        .byteFormat = truffle::rhi::ShaderByteFormat::msl_source,
+        .entryPoint = "main",
+        .bytecode = {std::byte{0x1}},
+    }, capabilities));
+    TRUFFLE_CHECK(truffle::rhi::has_flag(
+        truffle::rhi::ShaderStageFlags::graphics,
+        truffle::rhi::ShaderStageFlags::vertex));
+    TRUFFLE_CHECK(truffle::rhi::shader_stage_flag(
+        truffle::rhi::ShaderStage::compute) ==
+                  truffle::rhi::ShaderStageFlags::compute);
+    TRUFFLE_CHECK(truffle::rhi::validation::pipeline_layout_valid({
+        .bindings = {
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::uniform_buffer,
+                .visibility = truffle::rhi::ShaderStageFlags::vertex,
+                .minBindingSize = 64,
+            },
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::sampler,
+                .visibility = truffle::rhi::ShaderStageFlags::fragment,
+                .arrayCount = 2,
+            },
+        },
+    }, capabilities));
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_layout_valid({
+        .bindings = {{
+            .bindingIndex = 0,
+            .visibility = truffle::rhi::ShaderStageFlags::none,
+        }},
+    }, capabilities));
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_layout_valid({
+        .bindings = {{
+            .bindingIndex = 99,
+            .visibility = truffle::rhi::ShaderStageFlags::vertex,
+        }},
+    }, capabilities));
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_layout_valid({
+        .bindings = {
+            {
+                .bindingIndex = 1,
+                .visibility = truffle::rhi::ShaderStageFlags::vertex,
+            },
+            {
+                .bindingIndex = 1,
+                .visibility = truffle::rhi::ShaderStageFlags::graphics,
+            },
+        },
+    }, capabilities));
+    TRUFFLE_CHECK(truffle::rhi::validation::pipeline_render_state_valid({
+        .colorFormat = truffle::rhi::TextureFormat::rgba8_unorm,
+        .depthTest = false,
+        .depthWrite = false,
+    }, capabilities));
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_render_state_valid({
+        .colorFormat = truffle::rhi::TextureFormat::depth32_float,
     }, capabilities));
 
     return 0;

@@ -3,6 +3,7 @@
 #include "truffle/rhi/rhi.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 
 namespace truffle::rhi::validation {
@@ -61,6 +62,115 @@ namespace truffle::rhi::validation {
                          capabilities.limits.maxTextureDimension2D) &&
            native_surface_handles_valid(desc.native) &&
            native_surface_kind_supported(desc.native.kind, capabilities);
+}
+
+[[nodiscard]] inline bool shader_byte_format_supported(
+    ShaderByteFormat format,
+    const Capabilities& capabilities) noexcept {
+    return supports_shader_byte_format(capabilities, format);
+}
+
+[[nodiscard]] inline bool shader_payload_valid(
+    const ShaderDesc& desc) noexcept {
+    if (desc.entryPoint.empty() || desc.bytecode.empty()) {
+        return false;
+    }
+
+    if (desc.byteFormat == ShaderByteFormat::spirv_binary) {
+        if (desc.bytecode.size() < 4 || (desc.bytecode.size() % 4u) != 0) {
+            return false;
+        }
+        const auto b0 = static_cast<std::uint8_t>(desc.bytecode[0]);
+        const auto b1 = static_cast<std::uint8_t>(desc.bytecode[1]);
+        const auto b2 = static_cast<std::uint8_t>(desc.bytecode[2]);
+        const auto b3 = static_cast<std::uint8_t>(desc.bytecode[3]);
+        return b0 == 0x03u && b1 == 0x02u && b2 == 0x23u && b3 == 0x07u;
+    }
+
+    if (desc.byteFormat == ShaderByteFormat::dxil_binary) {
+        if (desc.bytecode.size() < 4) {
+            return false;
+        }
+        const auto c0 = static_cast<char>(desc.bytecode[0]);
+        const auto c1 = static_cast<char>(desc.bytecode[1]);
+        const auto c2 = static_cast<char>(desc.bytecode[2]);
+        const auto c3 = static_cast<char>(desc.bytecode[3]);
+        return (c0 == 'D' && c1 == 'X' && c2 == 'I' && c3 == 'L') ||
+               (c0 == 'D' && c1 == 'X' && c2 == 'B' && c3 == 'C');
+    }
+
+    return true;
+}
+
+[[nodiscard]] inline bool shader_desc_supported(
+    const ShaderDesc& desc,
+    const Capabilities& capabilities) noexcept {
+    return shader_byte_format_supported(desc.byteFormat, capabilities) &&
+           shader_payload_valid(desc);
+}
+
+[[nodiscard]] constexpr bool shader_stage_visibility_valid(
+    ShaderStageFlags visibility) noexcept {
+    const auto raw = static_cast<std::uint32_t>(visibility);
+    const auto allowed = static_cast<std::uint32_t>(ShaderStageFlags::all);
+    return raw != 0 && (raw & ~allowed) == 0;
+}
+
+[[nodiscard]] constexpr bool pipeline_layout_binding_valid(
+    const BindingLayoutDesc& binding,
+    const Capabilities& capabilities) noexcept {
+    if (binding.bindingIndex >= capabilities.limits.maxResourceBindings ||
+        binding.arrayCount == 0 ||
+        !shader_stage_visibility_valid(binding.visibility)) {
+        return false;
+    }
+
+    if ((binding.type == BindingResourceType::uniform_buffer ||
+         binding.type == BindingResourceType::storage_buffer) &&
+        binding.minBindingSize > capabilities.limits.maxBufferSize) {
+        return false;
+    }
+
+    return true;
+}
+
+[[nodiscard]] inline bool pipeline_layout_valid(
+    const PipelineLayoutDesc& layout,
+    const Capabilities& capabilities) noexcept {
+    for (std::size_t i = 0; i < layout.bindings.size(); ++i) {
+        const auto& binding = layout.bindings[i];
+        if (!pipeline_layout_binding_valid(binding, capabilities)) {
+            return false;
+        }
+        for (std::size_t j = i + 1; j < layout.bindings.size(); ++j) {
+            const auto& other = layout.bindings[j];
+            if (binding.bindingIndex == other.bindingIndex &&
+                (binding.visibility & other.visibility) != ShaderStageFlags::none) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] inline bool pipeline_render_state_valid(
+    const PipelineDesc& desc,
+    const Capabilities& capabilities) noexcept {
+    const auto* colorSupport =
+        find_format_support(capabilities, desc.colorFormat);
+    if (!colorSupport || !colorSupport->colorAttachment) {
+        return false;
+    }
+
+    if (desc.depthTest || desc.depthWrite) {
+        const auto* depthSupport =
+            find_format_support(capabilities, TextureFormat::depth32_float);
+        if (!depthSupport || !depthSupport->depthStencilAttachment) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 [[nodiscard]] inline bool swapchain_supported(

@@ -41,6 +41,9 @@ bool verify_reflection_invariants(const truffle::rhi::IPipelineReflection* refle
         if (binding.type == truffle::rhi::ResourceBindingType::Unknown) {
             return false;
         }
+        if (binding.arrayCount == 0 || !binding.readOnly) {
+            return false;
+        }
 
         if (expectComputeStages) {
             if (binding.stage != truffle::rhi::ShaderStage::compute) {
@@ -58,6 +61,15 @@ bool verify_reflection_invariants(const truffle::rhi::IPipelineReflection* refle
             (static_cast<std::uint64_t>(binding.stage) << 8u) |
             static_cast<std::uint64_t>(binding.type);
         if (!seen.insert(key).second) {
+            return false;
+        }
+        const auto* found = reflection->find_binding(
+            binding.bindingIndex, binding.stage, binding.type);
+        if (!found || found->bindingIndex != binding.bindingIndex ||
+            found->stage != binding.stage || found->type != binding.type) {
+            return false;
+        }
+        if (!reflection->find_binding(binding.bindingIndex, binding.stage)) {
             return false;
         }
     }
@@ -94,6 +106,9 @@ int verify_capability_contract(const truffle::rhi::IBackend& backend,
     TRUFFLE_CHECK(!caps.surfaceKinds.empty());
     TRUFFLE_CHECK(truffle::rhi::supports_native_surface_kind(
         caps, truffle::rhi::NativeSurfaceKind::headless));
+    TRUFFLE_CHECK(!caps.shaderFormats.empty());
+    TRUFFLE_CHECK(truffle::rhi::supports_shader_byte_format(
+        caps, truffle::rhi::ShaderByteFormat::unknown));
     TRUFFLE_CHECK(caps.limits.maxTextureDimension2D >= 32);
     TRUFFLE_CHECK(caps.limits.maxBufferSize >= 128);
     TRUFFLE_CHECK(caps.limits.minUniformBufferOffsetAlignment >= 1);
@@ -136,6 +151,7 @@ vertex float4 vert_main(uint vid [[vertex_id]]) {
 )msl";
             return truffle::rhi::ShaderDesc{
                 .stage = stage,
+                .byteFormat = truffle::rhi::ShaderByteFormat::msl_source,
                 .entryPoint = "vert_main",
                 .bytecode = to_bytes(kVertexMSL),
             };
@@ -151,6 +167,7 @@ fragment float4 frag_main() {
 )msl";
             return truffle::rhi::ShaderDesc{
                 .stage = stage,
+                .byteFormat = truffle::rhi::ShaderByteFormat::msl_source,
                 .entryPoint = "frag_main",
                 .bytecode = to_bytes(kFragmentMSL),
             };
@@ -166,6 +183,7 @@ kernel void comp_main(device uint* data [[buffer(0)]],
 )msl";
         return truffle::rhi::ShaderDesc{
             .stage = stage,
+            .byteFormat = truffle::rhi::ShaderByteFormat::msl_source,
             .entryPoint = "comp_main",
             .bytecode = to_bytes(kComputeMSL),
         };
@@ -173,6 +191,7 @@ kernel void comp_main(device uint* data [[buffer(0)]],
 
     return truffle::rhi::ShaderDesc{
         .stage = stage,
+        .byteFormat = truffle::rhi::ShaderByteFormat::contract,
         .entryPoint = "main",
         .bytecode = {std::byte{0x1}, std::byte{0x2}},
     };
@@ -248,17 +267,49 @@ int verify_common_positive_path_contract(truffle::rhi::IDevice& device,
     TRUFFLE_CHECK(fragmentShader.ok());
     TRUFFLE_CHECK(computeShader.ok());
 
+    const truffle::rhi::PipelineLayoutDesc graphicsLayout{
+        .debugName = "contract_graphics_layout",
+        .bindings = {
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::uniform_buffer,
+                .visibility = truffle::rhi::ShaderStageFlags::vertex,
+                .minBindingSize = 16,
+            },
+            {
+                .bindingIndex = 1,
+                .type = truffle::rhi::BindingResourceType::sampled_texture,
+                .visibility = truffle::rhi::ShaderStageFlags::fragment,
+                .arrayCount = 1,
+            },
+        },
+    };
     auto pipeline = device.create_pipeline({
+        .cacheKey = 0xABCDEFu,
         .vertexShader = vertexShader.value().get(),
         .fragmentShader = fragmentShader.value().get(),
+        .layout = graphicsLayout,
     });
     TRUFFLE_CHECK(pipeline.ok());
+    TRUFFLE_CHECK(pipeline.value()->cache_key() == 0xABCDEFu);
     TRUFFLE_CHECK(verify_reflection_invariants(pipeline.value()->reflection(), false));
 
+    const truffle::rhi::PipelineLayoutDesc computeLayout{
+        .debugName = "contract_compute_layout",
+        .bindings = {{
+            .bindingIndex = 0,
+            .type = truffle::rhi::BindingResourceType::storage_buffer,
+            .visibility = truffle::rhi::ShaderStageFlags::compute,
+            .minBindingSize = 16,
+        }},
+    };
     auto computePipeline = device.create_compute_pipeline({
+        .cacheKey = 0x123456u,
         .computeShader = computeShader.value().get(),
+        .layout = computeLayout,
     });
     TRUFFLE_CHECK(computePipeline.ok());
+    TRUFFLE_CHECK(computePipeline.value()->cache_key() == 0x123456u);
     TRUFFLE_CHECK(verify_reflection_invariants(computePipeline.value()->reflection(), true));
 
     TRUFFLE_CHECK(device.queue(truffle::rhi::QueueKind::graphics).kind() ==
@@ -608,6 +659,83 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
     });
     TRUFFLE_CHECK(!badShader.ok());
     TRUFFLE_CHECK(badShader.status().code == truffle::core::StatusCode::invalid_argument);
+
+    auto badEntryShaderDesc = make_shader_desc(backendKind, truffle::rhi::ShaderStage::vertex);
+    badEntryShaderDesc.entryPoint.clear();
+    auto badEntryShader = device.create_shader(badEntryShaderDesc);
+    TRUFFLE_CHECK(!badEntryShader.ok());
+    TRUFFLE_CHECK(badEntryShader.status().code ==
+                  truffle::core::StatusCode::invalid_argument);
+
+    auto invalidSpirvShaderDesc =
+        make_shader_desc(backendKind, truffle::rhi::ShaderStage::vertex);
+    invalidSpirvShaderDesc.byteFormat = truffle::rhi::ShaderByteFormat::spirv_binary;
+    invalidSpirvShaderDesc.bytecode = {std::byte{0x1}, std::byte{0x2}, std::byte{0x3}};
+    auto invalidSpirvShader = device.create_shader(invalidSpirvShaderDesc);
+    TRUFFLE_CHECK(!invalidSpirvShader.ok());
+    TRUFFLE_CHECK(invalidSpirvShader.status().code ==
+                  truffle::core::StatusCode::invalid_argument);
+
+    auto unsupportedShaderDesc =
+        make_shader_desc(backendKind, truffle::rhi::ShaderStage::vertex);
+    auto unsupportedFormat = truffle::rhi::ShaderByteFormat::dxil_binary;
+    if (truffle::rhi::supports_shader_byte_format(caps, unsupportedFormat)) {
+        unsupportedFormat = truffle::rhi::ShaderByteFormat::msl_source;
+    }
+    if (truffle::rhi::supports_shader_byte_format(caps, unsupportedFormat)) {
+        unsupportedFormat = truffle::rhi::ShaderByteFormat::spirv_binary;
+    }
+    if (!truffle::rhi::supports_shader_byte_format(caps, unsupportedFormat)) {
+        unsupportedShaderDesc.byteFormat = unsupportedFormat;
+        if (unsupportedFormat == truffle::rhi::ShaderByteFormat::dxil_binary) {
+            unsupportedShaderDesc.bytecode = {
+                std::byte{'D'}, std::byte{'X'}, std::byte{'I'}, std::byte{'L'}};
+        } else if (unsupportedFormat == truffle::rhi::ShaderByteFormat::spirv_binary) {
+            unsupportedShaderDesc.bytecode = {
+                std::byte{0x03}, std::byte{0x02}, std::byte{0x23}, std::byte{0x07}};
+        }
+        auto unsupportedShader = device.create_shader(unsupportedShaderDesc);
+        TRUFFLE_CHECK(!unsupportedShader.ok());
+        TRUFFLE_CHECK(unsupportedShader.status().code ==
+                      truffle::core::StatusCode::unsupported);
+    }
+
+    auto badLayoutPipeline = device.create_pipeline({
+        .layout = {
+            .bindings = {{
+                .bindingIndex = caps.limits.maxResourceBindings,
+                .visibility = truffle::rhi::ShaderStageFlags::vertex,
+            }},
+        },
+    });
+    TRUFFLE_CHECK(!badLayoutPipeline.ok());
+    TRUFFLE_CHECK(badLayoutPipeline.status().code ==
+                  truffle::core::StatusCode::invalid_argument);
+
+    auto duplicateLayoutPipeline = device.create_compute_pipeline({
+        .layout = {
+            .bindings = {
+                {
+                    .bindingIndex = 0,
+                    .visibility = truffle::rhi::ShaderStageFlags::compute,
+                },
+                {
+                    .bindingIndex = 0,
+                    .visibility = truffle::rhi::ShaderStageFlags::compute,
+                },
+            },
+        },
+    });
+    TRUFFLE_CHECK(!duplicateLayoutPipeline.ok());
+    TRUFFLE_CHECK(duplicateLayoutPipeline.status().code ==
+                  truffle::core::StatusCode::invalid_argument);
+
+    auto badRenderStatePipeline = device.create_pipeline({
+        .colorFormat = truffle::rhi::TextureFormat::depth32_float,
+    });
+    TRUFFLE_CHECK(!badRenderStatePipeline.ok());
+    TRUFFLE_CHECK(badRenderStatePipeline.status().code ==
+                  truffle::core::StatusCode::invalid_argument);
 
     auto cmd = device.create_command_buffer();
     TRUFFLE_CHECK(cmd != nullptr);

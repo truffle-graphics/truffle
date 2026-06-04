@@ -88,6 +88,9 @@ using core::StatusCode;
         NativeSurfaceKind::headless,
         NativeSurfaceKind::cocoa_layer,
     };
+    caps.shaderFormats = {
+        ShaderByteFormat::msl_source,
+    };
     return caps;
 }
 
@@ -253,6 +256,20 @@ public:
         return bindings_[index];
     }
 
+    const ResourceBinding* find_binding(
+        std::uint32_t bindingIndex,
+        ShaderStage stage,
+        ResourceBindingType type = ResourceBindingType::Unknown) const noexcept override {
+        for (const auto& binding : bindings_) {
+            if (binding.bindingIndex == bindingIndex &&
+                binding.stage == stage &&
+                (type == ResourceBindingType::Unknown || binding.type == type)) {
+                return &binding;
+            }
+        }
+        return nullptr;
+    }
+
 private:
     std::vector<ResourceBinding> bindings_;
 };
@@ -263,9 +280,14 @@ public:
 
     static Result<std::unique_ptr<IShader>>
     compile(id<MTLDevice> device, const ShaderDesc& desc) {
-        if (desc.bytecode.empty()) {
+        if (!validation::shader_payload_valid(desc)) {
             return Status::failure(StatusCode::invalid_argument,
-                                   "shader bytecode must not be empty");
+                                   "shader descriptor payload is invalid");
+        }
+        if (desc.byteFormat != ShaderByteFormat::unknown &&
+            desc.byteFormat != ShaderByteFormat::msl_source) {
+            return Status::failure(StatusCode::unsupported,
+                                   "Metal shader byte format is not supported");
         }
         NSString* src = [[NSString alloc]
             initWithBytes:desc.bytecode.data()
@@ -1308,10 +1330,22 @@ public:
     }
 
     Result<std::unique_ptr<IPipeline>> create_pipeline(const PipelineDesc& desc) override {
+        if (!validation::pipeline_layout_valid(desc.layout, caps_)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Metal pipeline layout is invalid");
+        }
+        if (!validation::pipeline_render_state_valid(desc, caps_)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Metal pipeline render state is invalid");
+        }
         return MetalPipeline::create(device_, desc);
     }
 
     Result<std::unique_ptr<IComputePipeline>> create_compute_pipeline(const ComputePipelineDesc& desc) override {
+        if (!validation::pipeline_layout_valid(desc.layout, caps_)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Metal compute pipeline layout is invalid");
+        }
         return MetalComputePipeline::create(device_, desc);
     }
 

@@ -135,6 +135,63 @@ enum class ShaderStage {
     compute,
 };
 
+enum class ShaderStageFlags : std::uint32_t {
+    none = 0,
+    vertex = 1u << 0u,
+    fragment = 1u << 1u,
+    compute = 1u << 2u,
+    graphics = (1u << 0u) | (1u << 1u),
+    all = (1u << 0u) | (1u << 1u) | (1u << 2u),
+};
+
+[[nodiscard]] constexpr ShaderStageFlags operator|(
+    ShaderStageFlags lhs,
+    ShaderStageFlags rhs) noexcept {
+    return static_cast<ShaderStageFlags>(
+        static_cast<std::uint32_t>(lhs) | static_cast<std::uint32_t>(rhs));
+}
+
+[[nodiscard]] constexpr ShaderStageFlags operator&(
+    ShaderStageFlags lhs,
+    ShaderStageFlags rhs) noexcept {
+    return static_cast<ShaderStageFlags>(
+        static_cast<std::uint32_t>(lhs) & static_cast<std::uint32_t>(rhs));
+}
+
+constexpr ShaderStageFlags& operator|=(ShaderStageFlags& lhs,
+                                       ShaderStageFlags rhs) noexcept {
+    lhs = lhs | rhs;
+    return lhs;
+}
+
+[[nodiscard]] constexpr bool has_flag(ShaderStageFlags flags,
+                                      ShaderStageFlags flag) noexcept {
+    return (flags & flag) != ShaderStageFlags::none;
+}
+
+[[nodiscard]] constexpr ShaderStageFlags shader_stage_flag(
+    ShaderStage stage) noexcept {
+    switch (stage) {
+    case ShaderStage::vertex:
+        return ShaderStageFlags::vertex;
+    case ShaderStage::fragment:
+        return ShaderStageFlags::fragment;
+    case ShaderStage::compute:
+        return ShaderStageFlags::compute;
+    }
+    return ShaderStageFlags::none;
+}
+
+enum class ShaderByteFormat {
+    unknown,
+    contract,
+    msl_source,
+    spirv_binary,
+    glsl_source,
+    hlsl_source,
+    dxil_binary,
+};
+
 enum class PrimitiveTopology {
     triangle_list,
     triangle_strip,
@@ -191,6 +248,14 @@ enum class ResourceState {
     present,
 };
 
+enum class BindingResourceType {
+    uniform_buffer,
+    storage_buffer,
+    sampled_texture,
+    storage_texture,
+    sampler,
+};
+
 struct QueueCapabilities {
     bool graphics = false;
     bool compute  = false;
@@ -216,6 +281,7 @@ struct DeviceLimits {
     std::size_t minStorageBufferOffsetAlignment = 1;
     std::uint32_t maxColorAttachments = 1;
     std::uint32_t maxVertexBuffers = 1;
+    std::uint32_t maxResourceBindings = 64;
 };
 
 struct FormatSupport {
@@ -245,6 +311,7 @@ struct Capabilities {
     std::vector<MemoryHeapInfo> memoryHeaps;
     std::vector<PresentMode> presentModes;
     std::vector<NativeSurfaceKind> surfaceKinds;
+    std::vector<ShaderByteFormat> shaderFormats;
 };
 
 struct AdapterInfo {
@@ -301,6 +368,20 @@ struct AdapterInfo {
     NativeSurfaceKind kind) noexcept {
     for (const auto supported : capabilities.surfaceKinds) {
         if (supported == kind) {
+            return true;
+        }
+    }
+    return false;
+}
+
+[[nodiscard]] inline bool supports_shader_byte_format(
+    const Capabilities& capabilities,
+    ShaderByteFormat format) noexcept {
+    if (format == ShaderByteFormat::unknown) {
+        return true;
+    }
+    for (const auto supported : capabilities.shaderFormats) {
+        if (supported == format) {
             return true;
         }
     }
@@ -427,14 +508,30 @@ struct SamplerDesc {
 
 struct ShaderDesc {
     ShaderStage            stage      = ShaderStage::vertex;
+    ShaderByteFormat       byteFormat = ShaderByteFormat::unknown;
     std::string            entryPoint = "main";
     std::vector<std::byte> bytecode;
 };
 
+struct BindingLayoutDesc {
+    std::uint32_t bindingIndex = 0;
+    BindingResourceType type = BindingResourceType::uniform_buffer;
+    ShaderStageFlags visibility = ShaderStageFlags::all;
+    std::uint32_t arrayCount = 1;
+    std::size_t minBindingSize = 0;
+};
+
+struct PipelineLayoutDesc {
+    std::string debugName;
+    std::vector<BindingLayoutDesc> bindings;
+};
+
 struct PipelineDesc {
     std::string       debugName;
+    std::uint64_t     cacheKey       = 0;
     IShader*          vertexShader   = nullptr;
     IShader*          fragmentShader = nullptr;
+    PipelineLayoutDesc layout;
     PrimitiveTopology topology       = PrimitiveTopology::triangle_list;
     TextureFormat     colorFormat    = TextureFormat::bgra8_unorm;
     bool              depthTest      = true;
@@ -443,7 +540,9 @@ struct PipelineDesc {
 
 struct ComputePipelineDesc {
     std::string debugName;
+    std::uint64_t cacheKey = 0;
     IShader*    computeShader = nullptr;
+    PipelineLayoutDesc layout;
 };
 
 struct NativeSurface {
@@ -543,6 +642,9 @@ class IPipeline {
 public:
     virtual ~IPipeline() = default;
     [[nodiscard]] virtual const PipelineDesc& desc() const noexcept = 0;
+    [[nodiscard]] virtual std::uint64_t cache_key() const noexcept {
+        return desc().cacheKey;
+    }
     
     /// Optional: returns reflection metadata, or nullptr if unavailable.
     [[nodiscard]] virtual const IPipelineReflection* reflection() const noexcept = 0;
@@ -552,6 +654,9 @@ class IComputePipeline {
 public:
     virtual ~IComputePipeline() = default;
     [[nodiscard]] virtual const ComputePipelineDesc& desc() const noexcept = 0;
+    [[nodiscard]] virtual std::uint64_t cache_key() const noexcept {
+        return desc().cacheKey;
+    }
 
     /// Optional: returns reflection metadata, or nullptr if unavailable.
     [[nodiscard]] virtual const IPipelineReflection* reflection() const noexcept = 0;

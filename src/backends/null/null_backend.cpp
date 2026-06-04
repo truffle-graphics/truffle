@@ -67,6 +67,14 @@ using core::StatusCode;
         .surfaceKinds = {
             NativeSurfaceKind::headless,
         },
+        .shaderFormats = {
+            ShaderByteFormat::contract,
+            ShaderByteFormat::msl_source,
+            ShaderByteFormat::spirv_binary,
+            ShaderByteFormat::glsl_source,
+            ShaderByteFormat::hlsl_source,
+            ShaderByteFormat::dxil_binary,
+        },
     };
 }
 
@@ -765,20 +773,36 @@ public:
 
     [[nodiscard]] Result<std::unique_ptr<IShader>>
     create_shader(const ShaderDesc& desc) override {
-        if (desc.bytecode.empty()) {
+        if (!validation::shader_payload_valid(desc)) {
             return Status::failure(StatusCode::invalid_argument,
-                                   "shader bytecode must be present");
+                                   "shader descriptor payload is invalid");
+        }
+        if (!validation::shader_byte_format_supported(desc.byteFormat, capabilities_)) {
+            return Status::failure(StatusCode::unsupported,
+                                   "shader byte format is not supported");
         }
         return std::unique_ptr<IShader>(std::make_unique<NullShader>());
     }
 
     [[nodiscard]] Result<std::unique_ptr<IPipeline>>
     create_pipeline(const PipelineDesc& desc) override {
+        if (!validation::pipeline_layout_valid(desc.layout, capabilities_)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "pipeline layout is invalid");
+        }
+        if (!validation::pipeline_render_state_valid(desc, capabilities_)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "pipeline render state is invalid");
+        }
         return std::unique_ptr<IPipeline>(std::make_unique<NullPipeline>(desc));
     }
 
     [[nodiscard]] Result<std::unique_ptr<IComputePipeline>>
     create_compute_pipeline(const ComputePipelineDesc& desc) override {
+        if (!validation::pipeline_layout_valid(desc.layout, capabilities_)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "compute pipeline layout is invalid");
+        }
         return std::unique_ptr<IComputePipeline>(std::make_unique<NullComputePipeline>(desc));
     }
 

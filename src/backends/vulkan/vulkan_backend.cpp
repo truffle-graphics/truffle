@@ -73,6 +73,10 @@ using core::StatusCode;
         .surfaceKinds = {
             NativeSurfaceKind::headless,
         },
+        .shaderFormats = {
+            ShaderByteFormat::contract,
+            ShaderByteFormat::spirv_binary,
+        },
     };
 }
 
@@ -487,6 +491,20 @@ public:
         return bindings_.at(index);
     }
 
+    [[nodiscard]] const ResourceBinding* find_binding(
+        std::uint32_t bindingIndex,
+        ShaderStage stage,
+        ResourceBindingType type = ResourceBindingType::Unknown) const noexcept override {
+        for (const auto& binding : bindings_) {
+            if (binding.bindingIndex == bindingIndex &&
+                binding.stage == stage &&
+                (type == ResourceBindingType::Unknown || binding.type == type)) {
+                return &binding;
+            }
+        }
+        return nullptr;
+    }
+
 private:
     std::vector<ResourceBinding> bindings_;
 };
@@ -741,15 +759,27 @@ public:
 
     [[nodiscard]] core::Result<std::unique_ptr<IShader>> create_shader(
         const ShaderDesc& desc) override {
-        if (desc.bytecode.empty()) {
+        if (!validation::shader_payload_valid(desc)) {
             return Status::failure(StatusCode::invalid_argument,
-                                   "Vulkan backend: shader bytecode must be present");
+                                   "Vulkan backend: shader descriptor payload is invalid");
+        }
+        if (!validation::shader_byte_format_supported(desc.byteFormat, caps_)) {
+            return Status::failure(StatusCode::unsupported,
+                                   "Vulkan backend: shader byte format is not supported");
         }
         return std::unique_ptr<IShader>(std::make_unique<VulkanShader>(desc));
     }
 
     [[nodiscard]] core::Result<std::unique_ptr<IPipeline>> create_pipeline(
         const PipelineDesc& desc) override {
+        if (!validation::pipeline_layout_valid(desc.layout, caps_)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Vulkan backend: pipeline layout is invalid");
+        }
+        if (!validation::pipeline_render_state_valid(desc, caps_)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Vulkan backend: pipeline render state is invalid");
+        }
         if (!desc.vertexShader || !desc.fragmentShader) {
             return Status::failure(StatusCode::invalid_argument,
                                    "Vulkan backend: pipeline requires vertex and fragment shaders");
@@ -784,6 +814,10 @@ public:
 
     [[nodiscard]] core::Result<std::unique_ptr<IComputePipeline>> create_compute_pipeline(
         const ComputePipelineDesc& desc) override {
+        if (!validation::pipeline_layout_valid(desc.layout, caps_)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Vulkan backend: compute pipeline layout is invalid");
+        }
         if (!desc.computeShader) {
             return Status::failure(StatusCode::invalid_argument,
                                    "Vulkan backend: compute pipeline requires compute shader");
