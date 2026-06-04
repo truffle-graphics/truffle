@@ -30,6 +30,39 @@ namespace truffle::rhi::validation {
     return supports_present_mode(capabilities, presentMode);
 }
 
+[[nodiscard]] constexpr bool native_surface_handles_valid(
+    const NativeSurface& native) noexcept {
+    switch (native.kind) {
+    case NativeSurfaceKind::headless:
+        return native.handle == nullptr && native.display == nullptr;
+    case NativeSurfaceKind::cocoa_layer:
+        return native.handle != nullptr && native.display == nullptr;
+    case NativeSurfaceKind::win32:
+        return native.handle != nullptr;
+    case NativeSurfaceKind::wayland:
+    case NativeSurfaceKind::xcb:
+        return native.handle != nullptr && native.display != nullptr;
+    case NativeSurfaceKind::external:
+        return native.handle != nullptr;
+    }
+    return false;
+}
+
+[[nodiscard]] inline bool native_surface_kind_supported(
+    NativeSurfaceKind kind,
+    const Capabilities& capabilities) noexcept {
+    return supports_native_surface_kind(capabilities, kind);
+}
+
+[[nodiscard]] inline bool surface_supported(
+    const SurfaceDesc& desc,
+    const Capabilities& capabilities) noexcept {
+    return extent_within(desc.initialExtent,
+                         capabilities.limits.maxTextureDimension2D) &&
+           native_surface_handles_valid(desc.native) &&
+           native_surface_kind_supported(desc.native.kind, capabilities);
+}
+
 [[nodiscard]] inline bool swapchain_supported(
     const SwapchainDesc& desc,
     const Capabilities& capabilities) noexcept {

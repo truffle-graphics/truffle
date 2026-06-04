@@ -131,9 +131,12 @@ public:
         }
         pipeline_ = std::move(pipelineResult).value();
 
+        const auto nativeSurface = hostWindowHandle
+            ? rhi::NativeSurface{.kind = NativeSurfaceKind::external,
+                                 .handle = hostWindowHandle}
+            : rhi::NativeSurface{.kind = NativeSurfaceKind::headless};
         auto surfaceResult = device_->create_surface(SurfaceDesc{
-            .native = {.kind = NativeSurfaceKind::external,
-                       .handle = hostWindowHandle},
+            .native = nativeSurface,
             .initialExtent = extent,
         });
         if (!surfaceResult.ok()) {

@@ -70,6 +70,9 @@ using core::StatusCode;
             PresentMode::fifo,
             PresentMode::mailbox,
         },
+        .surfaceKinds = {
+            NativeSurfaceKind::headless,
+        },
     };
 }
 
@@ -565,7 +568,7 @@ public:
         return acquired_;
     }
 
-    [[nodiscard]] ITexture* acquire_next_texture() override {
+    [[nodiscard]] SwapchainAcquireResult acquire_next_texture_result() override {
         if (!drawable_ || drawable_->desc().extent.width != desc_.extent.width ||
             drawable_->desc().extent.height != desc_.extent.height) {
             drawable_ = std::make_unique<VulkanTexture>(TextureDesc{
@@ -577,7 +580,10 @@ public:
         currentImageIndex_ = nextImageIndex_;
         nextImageIndex_ = (nextImageIndex_ + 1) % image_count();
         acquired_ = true;
-        return drawable_.get();
+        return {
+            .texture = drawable_.get(),
+            .imageIndex = currentImageIndex_,
+        };
     }
 
     [[nodiscard]] Status schedule_present(ICommandBuffer& cmd) override {
@@ -845,6 +851,14 @@ public:
                                        caps_.limits.maxTextureDimension2D)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "Vulkan backend: surface extent exceeds device limits");
+        }
+        if (!validation::native_surface_handles_valid(desc.native)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Vulkan backend: native surface handles are invalid for the surface kind");
+        }
+        if (!validation::native_surface_kind_supported(desc.native.kind, caps_)) {
+            return Status::failure(StatusCode::unsupported,
+                                   "Vulkan backend: native surface kind is not supported");
         }
         return std::unique_ptr<ISurface>(std::make_unique<VulkanSurface>(desc));
     }

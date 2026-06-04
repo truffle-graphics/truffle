@@ -113,6 +113,7 @@ int main() {
     truffle::rhi::Capabilities capabilities;
     capabilities.maxFramesInFlight = 2;
     capabilities.queues = {.graphics = true, .compute = true};
+    capabilities.limits.maxTextureDimension2D = 64;
     capabilities.memoryHeaps = {{
         .kind = truffle::rhi::MemoryHeapKind::unified,
     }};
@@ -121,6 +122,7 @@ int main() {
         .sampled = true,
         .colorAttachment = true,
     }};
+    capabilities.surfaceKinds = {truffle::rhi::NativeSurfaceKind::headless};
     TRUFFLE_CHECK(truffle::rhi::validation::frame_count_supported(2, capabilities));
     TRUFFLE_CHECK(!truffle::rhi::validation::frame_count_supported(0, capabilities));
     TRUFFLE_CHECK(!truffle::rhi::validation::frame_count_supported(3, capabilities));
@@ -138,6 +140,37 @@ int main() {
         capabilities, colorTexture));
     TRUFFLE_CHECK(!truffle::rhi::validation::texture_usage_supported_by_format(
         capabilities, depthTexture));
+
+    TRUFFLE_CHECK(truffle::rhi::supports_native_surface_kind(
+        capabilities, truffle::rhi::NativeSurfaceKind::headless));
+    TRUFFLE_CHECK(!truffle::rhi::supports_native_surface_kind(
+        capabilities, truffle::rhi::NativeSurfaceKind::win32));
+    TRUFFLE_CHECK(truffle::rhi::validation::native_surface_handles_valid({
+        .kind = truffle::rhi::NativeSurfaceKind::headless,
+    }));
+    TRUFFLE_CHECK(!truffle::rhi::validation::native_surface_handles_valid({
+        .kind = truffle::rhi::NativeSurfaceKind::headless,
+        .handle = reinterpret_cast<void*>(0x1),
+    }));
+    TRUFFLE_CHECK(truffle::rhi::validation::native_surface_handles_valid({
+        .kind = truffle::rhi::NativeSurfaceKind::cocoa_layer,
+        .handle = reinterpret_cast<void*>(0x1),
+    }));
+    TRUFFLE_CHECK(!truffle::rhi::validation::native_surface_handles_valid({
+        .kind = truffle::rhi::NativeSurfaceKind::xcb,
+        .handle = reinterpret_cast<void*>(0x1),
+    }));
+    TRUFFLE_CHECK(truffle::rhi::validation::surface_supported({
+        .native = {.kind = truffle::rhi::NativeSurfaceKind::headless},
+        .initialExtent = {32, 32},
+    }, capabilities));
+    TRUFFLE_CHECK(!truffle::rhi::validation::surface_supported({
+        .native = {
+            .kind = truffle::rhi::NativeSurfaceKind::win32,
+            .handle = reinterpret_cast<void*>(0x1),
+        },
+        .initialExtent = {32, 32},
+    }, capabilities));
 
     return 0;
 }

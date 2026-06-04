@@ -91,6 +91,9 @@ int verify_capability_contract(const truffle::rhi::IBackend& backend,
     TRUFFLE_CHECK(!caps.presentModes.empty());
     TRUFFLE_CHECK(truffle::rhi::supports_present_mode(
         caps, truffle::rhi::PresentMode::fifo));
+    TRUFFLE_CHECK(!caps.surfaceKinds.empty());
+    TRUFFLE_CHECK(truffle::rhi::supports_native_surface_kind(
+        caps, truffle::rhi::NativeSurfaceKind::headless));
     TRUFFLE_CHECK(caps.limits.maxTextureDimension2D >= 32);
     TRUFFLE_CHECK(caps.limits.maxBufferSize >= 128);
     TRUFFLE_CHECK(caps.limits.minUniformBufferOffsetAlignment >= 1);
@@ -188,14 +191,23 @@ int verify_common_positive_path_contract(truffle::rhi::IDevice& device,
     TRUFFLE_CHECK(swapchain.value()->image_count() == 2);
     TRUFFLE_CHECK(swapchain.value()->desc().imageCount == 2);
     TRUFFLE_CHECK(!swapchain.value()->has_acquired_texture());
-    TRUFFLE_CHECK(swapchain.value()->acquire_next_texture() != nullptr);
+    auto firstAcquire = swapchain.value()->acquire_next_texture_result();
+    TRUFFLE_CHECK(firstAcquire.ok());
+    TRUFFLE_CHECK(firstAcquire.texture != nullptr);
+    TRUFFLE_CHECK(firstAcquire.status.ok());
+    TRUFFLE_CHECK(firstAcquire.imageIndex == 0);
+    TRUFFLE_CHECK(!firstAcquire.suboptimal);
+    TRUFFLE_CHECK(!firstAcquire.outOfDate);
     TRUFFLE_CHECK(swapchain.value()->has_acquired_texture());
     TRUFFLE_CHECK(swapchain.value()->current_image_index() == 0);
     TRUFFLE_CHECK(swapchain.value()->resize({64, 64}).ok());
     TRUFFLE_CHECK(swapchain.value()->desc().extent.width == 64);
     TRUFFLE_CHECK(swapchain.value()->desc().extent.height == 64);
     TRUFFLE_CHECK(!swapchain.value()->has_acquired_texture());
-    TRUFFLE_CHECK(swapchain.value()->acquire_next_texture() != nullptr);
+    auto reacquire = swapchain.value()->acquire_next_texture_result();
+    TRUFFLE_CHECK(reacquire.ok());
+    TRUFFLE_CHECK(reacquire.texture != nullptr);
+    TRUFFLE_CHECK(reacquire.imageIndex == 0);
     TRUFFLE_CHECK(swapchain.value()->has_acquired_texture());
 
     auto uploadRing = device.create_upload_ring(2, 128);
@@ -528,6 +540,28 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
     });
     TRUFFLE_CHECK(!badSurface.ok());
     TRUFFLE_CHECK(badSurface.status().code == truffle::core::StatusCode::invalid_argument);
+
+    auto invalidHeadlessSurface = device.create_surface({
+        .native = {
+            .kind = truffle::rhi::NativeSurfaceKind::headless,
+            .handle = reinterpret_cast<void*>(0x1),
+        },
+        .initialExtent = {32, 32},
+    });
+    TRUFFLE_CHECK(!invalidHeadlessSurface.ok());
+    TRUFFLE_CHECK(invalidHeadlessSurface.status().code ==
+                  truffle::core::StatusCode::invalid_argument);
+
+    auto unsupportedWin32Surface = device.create_surface({
+        .native = {
+            .kind = truffle::rhi::NativeSurfaceKind::win32,
+            .handle = reinterpret_cast<void*>(0x1),
+        },
+        .initialExtent = {32, 32},
+    });
+    TRUFFLE_CHECK(!unsupportedWin32Surface.ok());
+    TRUFFLE_CHECK(unsupportedWin32Surface.status().code ==
+                  truffle::core::StatusCode::unsupported);
 
     auto surface = device.create_surface({
         .native = {.kind = truffle::rhi::NativeSurfaceKind::headless},

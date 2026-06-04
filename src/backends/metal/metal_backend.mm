@@ -84,6 +84,10 @@ using core::StatusCode;
         PresentMode::fifo,
         PresentMode::mailbox,
     };
+    caps.surfaceKinds = {
+        NativeSurfaceKind::headless,
+        NativeSurfaceKind::cocoa_layer,
+    };
     return caps;
 }
 
@@ -1046,12 +1050,15 @@ public:
         return acquired_;
     }
 
-    ITexture* acquire_next_texture() override {
+    SwapchainAcquireResult acquire_next_texture_result() override {
         if (layer_) {
             drawable_ = [layer_ nextDrawable];
             if (!drawable_) {
                 acquired_ = false;
-                return nullptr;
+                return {
+                    .status = Status::failure(StatusCode::unavailable,
+                                              "MetalSwapchain: no drawable is currently available"),
+                };
             }
             TextureDesc td{
                 .extent    = {static_cast<std::uint32_t>(drawable_.texture.width),
@@ -1076,7 +1083,10 @@ public:
         currentImageIndex_ = nextImageIndex_;
         nextImageIndex_ = (nextImageIndex_ + 1) % image_count();
         acquired_ = true;
-        return drawableTexture_.get();
+        return {
+            .texture = drawableTexture_.get(),
+            .imageIndex = currentImageIndex_,
+        };
     }
 
     Status schedule_present(ICommandBuffer& cmd) override {
@@ -1310,6 +1320,14 @@ public:
                                        caps_.limits.maxTextureDimension2D)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "surface extent exceeds device limits");
+        }
+        if (!validation::native_surface_handles_valid(desc.native)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "native surface handles are invalid for the surface kind");
+        }
+        if (!validation::native_surface_kind_supported(desc.native.kind, caps_)) {
+            return Status::failure(StatusCode::unsupported,
+                                   "native surface kind is not supported by the Metal backend");
         }
         return std::unique_ptr<ISurface>(std::make_unique<MetalSurface>(desc));
     }

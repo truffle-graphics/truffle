@@ -217,6 +217,17 @@ validation, diagnostics, and backend parity.
   - Expanded shared/backend tests for present-mode support, image-count limit
     validation, acquire-after-resize behavior, image index reporting, and
     acquired-state transitions.
+- **Low-Level Graphics Foundation Slice 5B** — Complete.
+  - Added explicit native surface-kind capability reporting.
+  - Added shared native surface validation for headless, Cocoa layer, Win32, XCB,
+    Wayland, and external/custom handles.
+  - Current contract backends advertise headless-only native surface support;
+    Metal additionally advertises Cocoa layer support.
+  - Added `SwapchainAcquireResult` so acquire can report status, image index,
+    suboptimal state, and out-of-date state while preserving the legacy texture
+    pointer wrapper.
+  - Fixed the host workspace smoke path to request a headless surface when no
+    native host handle is available.
 
 ## Relevant Decisions And Constraints
 
@@ -260,8 +271,8 @@ core contract tests, package consumer, and transform compute tests.
 
 ## Next Resume Steps
 
-1. Continue low-level graphics Slice 5B: native-surface validation and richer
-   acquire/present status reporting.
+1. Continue low-level graphics Slice 6: shader byte formats, pipeline state,
+   pipeline layout, reflection, and pipeline cache hooks.
 2. Add shader/pipeline and binding descriptor depth before any
    new high-level renderer features rely on implicit policy.
 3. Add machine-readable parity report output alongside markdown.

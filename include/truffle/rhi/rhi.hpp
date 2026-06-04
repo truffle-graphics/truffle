@@ -244,6 +244,7 @@ struct Capabilities {
     std::vector<FormatSupport> formats;
     std::vector<MemoryHeapInfo> memoryHeaps;
     std::vector<PresentMode> presentModes;
+    std::vector<NativeSurfaceKind> surfaceKinds;
 };
 
 struct AdapterInfo {
@@ -289,6 +290,17 @@ struct AdapterInfo {
     PresentMode mode) noexcept {
     for (const auto supported : capabilities.presentModes) {
         if (supported == mode) {
+            return true;
+        }
+    }
+    return false;
+}
+
+[[nodiscard]] inline bool supports_native_surface_kind(
+    const Capabilities& capabilities,
+    NativeSurfaceKind kind) noexcept {
+    for (const auto supported : capabilities.surfaceKinds) {
+        if (supported == kind) {
             return true;
         }
     }
@@ -458,6 +470,18 @@ struct SwapchainDesc {
     return desc.imageCount != 0 ? desc.imageCount : desc.framesInFlight;
 }
 
+struct SwapchainAcquireResult {
+    core::Status status = core::Status::success();
+    ITexture* texture = nullptr;
+    std::uint32_t imageIndex = 0;
+    bool suboptimal = false;
+    bool outOfDate = false;
+
+    [[nodiscard]] bool ok() const noexcept {
+        return status.ok() && texture != nullptr && !outOfDate;
+    }
+};
+
 struct FenceDesc {
     bool signaled = false;
     std::uint64_t initialValue = 0;
@@ -547,13 +571,18 @@ public:
     [[nodiscard]] virtual std::uint32_t image_count() const noexcept = 0;
     [[nodiscard]] virtual std::uint32_t current_image_index() const noexcept = 0;
     [[nodiscard]] virtual bool has_acquired_texture() const noexcept = 0;
-    // Returns the current frame's color texture. Call once per frame before
-    // begin_render_pass. Returns nullptr if no drawable is available.
-    [[nodiscard]] virtual ITexture* acquire_next_texture() = 0;
+    // Rich acquire path: reports drawable availability, image index, and
+    // backend-specific suboptimal/out-of-date presentation state.
+    [[nodiscard]] virtual SwapchainAcquireResult acquire_next_texture_result() = 0;
+    // Compatibility wrapper for the rich acquire path. Call once per frame
+    // before begin_render_pass. Returns nullptr when acquisition fails.
+    [[nodiscard]] virtual ITexture* acquire_next_texture() {
+        return acquire_next_texture_result().texture;
+    }
     // Schedule presentation of the current drawable via the given command buffer.
     // Must be called while the command buffer is recording, after
-    // end_render_pass() and before end(). Headless swapchains validate the
-    // sequence and then no-op.
+    // end_render_pass() and before end(), after a successful acquire. Headless
+    // swapchains validate the sequence and then no-op.
     [[nodiscard]] virtual core::Status schedule_present(ICommandBuffer& cmd) = 0;
 };
 
