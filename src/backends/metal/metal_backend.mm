@@ -10,6 +10,7 @@
 #include <dispatch/dispatch.h>
 
 #include "truffle/rhi/metal_backend.hpp"
+#include "truffle/rhi/shader_reflection.hpp"
 
 #include <atomic>
 #include <memory>
@@ -131,6 +132,47 @@ private:
     id<MTLSamplerState> sampler_ = nil;
 };
 
+
+class MetalPipelineReflection final : public IPipelineReflection {
+public:
+    MetalPipelineReflection() = default;
+
+    void add_bindings(NSArray<id<MTLBinding>>* bindings, ShaderStage stage) {
+        for (id<MTLBinding> b in bindings) {
+            ResourceBinding rb;
+            rb.name = b.name ? b.name.UTF8String : "unknown";
+            rb.stage = stage;
+            rb.bindingIndex = b.index;
+            
+            if (b.type == MTLBindingTypeBuffer) {
+                rb.type = ResourceBindingType::Buffer;
+                if ([b conformsToProtocol:@protocol(MTLBufferBinding)]) {
+                    rb.dataSize = ((id<MTLBufferBinding>)b).bufferDataSize;
+                }
+            } else if (b.type == MTLBindingTypeTexture) {
+                rb.type = ResourceBindingType::Texture;
+            } else if (b.type == MTLBindingTypeSampler) {
+                rb.type = ResourceBindingType::Sampler;
+            } else {
+                rb.type = ResourceBindingType::Unknown;
+            }
+            
+            bindings_.push_back(rb);
+        }
+    }
+
+    std::size_t get_binding_count() const noexcept override {
+        return bindings_.size();
+    }
+
+    const ResourceBinding& get_binding_info(std::size_t index) const override {
+        return bindings_[index];
+    }
+
+private:
+    std::vector<ResourceBinding> bindings_;
+};
+
 class MetalShader final : public IShader {
 public:
     MetalShader() = default;
@@ -190,8 +232,9 @@ public:
         rpd.colorAttachments[0].pixelFormat = to_mtl_format(desc.colorFormat);
 
         NSError* err = nil;
+        MTLRenderPipelineReflection* reflectionInfo = nil;
         id<MTLRenderPipelineState> pso =
-            [device newRenderPipelineStateWithDescriptor:rpd error:&err];
+            [device newRenderPipelineStateWithDescriptor:rpd options:MTLPipelineOptionBufferTypeInfo reflection:&reflectionInfo error:&err];
         if (!pso) {
             const char* msg = err ? [err.localizedDescription UTF8String]
                                   : "pipeline state creation failed";
@@ -200,15 +243,28 @@ public:
         auto pipeline      = std::make_unique<MetalPipeline>();
         pipeline->desc_    = desc;
         pipeline->pso_     = pso;
+        
+        auto refl = std::make_unique<MetalPipelineReflection>();
+        if (reflectionInfo) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+            refl->add_bindings(reflectionInfo.vertexBindings, ShaderStage::vertex);
+            refl->add_bindings(reflectionInfo.fragmentBindings, ShaderStage::fragment);
+#pragma clang diagnostic pop
+        }
+        pipeline->reflection_ = std::move(refl);
+        
         return std::unique_ptr<IPipeline>(std::move(pipeline));
     }
 
     const PipelineDesc&        desc()   const noexcept override { return desc_; }
+    const IPipelineReflection* reflection() const noexcept override { return reflection_.get(); }
     id<MTLRenderPipelineState> native() const noexcept { return pso_; }
 
 private:
     PipelineDesc               desc_;
     id<MTLRenderPipelineState> pso_ = nil;
+    std::unique_ptr<MetalPipelineReflection> reflection_;
 };
 
 class MetalComputePipeline final : public IComputePipeline {
@@ -223,7 +279,8 @@ public:
         }
 
         NSError* err = nil;
-        id<MTLComputePipelineState> pso = [device newComputePipelineStateWithFunction:static_cast<MetalShader*>(desc.computeShader)->function() error:&err];
+        MTLComputePipelineReflection* reflectionInfo = nil;
+        id<MTLComputePipelineState> pso = [device newComputePipelineStateWithFunction:static_cast<MetalShader*>(desc.computeShader)->function() options:MTLPipelineOptionBufferTypeInfo reflection:&reflectionInfo error:&err];
         
         if (!pso) {
             const char* msg = err ? [err.localizedDescription UTF8String]
@@ -234,15 +291,28 @@ public:
         auto pipeline   = std::make_unique<MetalComputePipeline>();
         pipeline->desc_ = desc;
         pipeline->pso_  = pso;
+
+        auto refl = std::make_unique<MetalPipelineReflection>();
+        if (reflectionInfo) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+            refl->add_bindings(reflectionInfo.bindings, ShaderStage::compute);
+#pragma clang diagnostic pop
+        }
+        pipeline->reflection_ = std::move(refl);
+
         return std::unique_ptr<IComputePipeline>(std::move(pipeline));
     }
 
+
     const ComputePipelineDesc&  desc()   const noexcept override { return desc_; }
+    const IPipelineReflection* reflection() const noexcept override { return reflection_.get(); }
     id<MTLComputePipelineState> native() const noexcept { return pso_; }
 
 private:
     ComputePipelineDesc         desc_;
     id<MTLComputePipelineState> pso_ = nil;
+    std::unique_ptr<MetalPipelineReflection> reflection_;
 };
 
 // ---------------------------------------------------------------------------

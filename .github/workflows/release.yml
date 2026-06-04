@@ -1,0 +1,59 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    name: package-and-release
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure package build
+        run: |
+          cmake -S . -B build/release-package \
+            -DTRUFFLE_INSTALL=ON \
+            -DTRUFFLE_BUILD_TESTS=OFF \
+            -DTRUFFLE_BUILD_EXAMPLES=OFF
+
+      - name: Build package
+        run: cmake --build build/release-package
+
+      - name: Install package layout
+        run: cmake --install build/release-package --prefix build/release-package/install
+
+      - name: Create package archives
+        working-directory: build/release-package
+        run: cpack --verbose
+
+      - name: Generate backend parity report
+        run: |
+          cmake \
+            -DTRUFFLE_BUILD_DIR=${{ github.workspace }}/build/release-package \
+            -DTRUFFLE_REPORT_OUT=${{ github.workspace }}/build/release-package/parity-matrix.md \
+            -P cmake/GenerateParityReport.cmake
+
+      - name: Upload parity report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-parity-matrix-release
+          path: |
+            build/release-package/parity-matrix.md
+            build/release-package/*.parity.log
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            build/release-package/*.tar.gz
+            build/release-package/*.zip
+            build/release-package/parity-matrix.md

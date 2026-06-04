@@ -1,6 +1,11 @@
 #include "test_support.hpp"
+#include "truffle/render/frame_graph.hpp"
+#include "truffle/render/pipeline_cache.hpp"
+#include "truffle/render/renderer.hpp"
 #include "truffle/rhi/metal_backend.hpp"
+#include "truffle/rhi/shader_reflection.hpp"
 #include "truffle/render/shaders.hpp"
+#include "truffle/render/transform_compute_pass.hpp"
 
 #include <cstring>
 #include <string>
@@ -27,9 +32,31 @@ fragment float4 frag_main() {
 }
 )msl";
 
+static const char kVertexWithBufferMSL[] = R"msl(
+#include <metal_stdlib>
+using namespace metal;
+vertex float4 vert_with_buffer(uint vid [[vertex_id]],
+                               constant float4* positions [[buffer(0)]]) {
+    return positions[vid % 3];
+}
+)msl";
+
 static std::vector<std::byte> to_bytes(const char* src) {
     const auto* p = reinterpret_cast<const std::byte*>(src);
     return {p, p + std::strlen(src)};
+}
+
+static bool has_compute_buffer_binding(const truffle::rhi::IPipelineReflection& reflection,
+                                       std::uint32_t index) {
+    for (std::size_t i = 0; i < reflection.get_binding_count(); ++i) {
+        const auto& b = reflection.get_binding_info(i);
+        if (b.stage == truffle::rhi::ShaderStage::compute &&
+            b.type == truffle::rhi::ResourceBindingType::Buffer &&
+            b.bindingIndex == index) {
+            return true;
+        }
+    }
+    return false;
 }
 
 int main() {
@@ -92,6 +119,7 @@ int main() {
     });
     TRUFFLE_CHECK(pipelineResult.ok());
     auto pipeline = std::move(pipelineResult).value();
+    TRUFFLE_CHECK(pipeline->reflection() != nullptr);
 
     // --- Headless surface + swapchain ---
     auto surfaceResult = device->create_surface({
@@ -236,6 +264,10 @@ int main() {
     });
     TRUFFLE_CHECK(computePipelineResult.ok());
     auto computePipeline = std::move(computePipelineResult).value();
+    TRUFFLE_CHECK(computePipeline->reflection() != nullptr);
+    TRUFFLE_CHECK(has_compute_buffer_binding(*computePipeline->reflection(), 0));
+    TRUFFLE_CHECK(has_compute_buffer_binding(*computePipeline->reflection(), 1));
+    TRUFFLE_CHECK(has_compute_buffer_binding(*computePipeline->reflection(), 2));
 
     auto localBuf = device->create_buffer({.size = 1024, .usage = truffle::rhi::BufferUsage::storage}).value();
     auto parentBuf = device->create_buffer({.size = 1024, .usage = truffle::rhi::BufferUsage::storage}).value();
@@ -251,6 +283,48 @@ int main() {
     TRUFFLE_CHECK(cmdCompute->end().ok());
     
     TRUFFLE_CHECK(device->queue(truffle::rhi::QueueKind::compute).submit(*cmdCompute).ok());
+
+    // --- Negative Reflection Validation: compute bindings mismatch ---
+    truffle::render::TransformComputePass transformPass(*device, computeShader.get());
+    auto cmdComputeMismatch = device->create_command_buffer();
+    TRUFFLE_CHECK(cmdComputeMismatch->begin().ok());
+
+    truffle::render::TransformComputePassDesc mismatchDesc{
+        .localTransformBuffer = localBuf.get(),
+        .nodeCount = 1,
+    };
+    auto mismatchStatus = transformPass.dispatch(*cmdComputeMismatch, mismatchDesc);
+    TRUFFLE_CHECK(!mismatchStatus.ok());
+    TRUFFLE_CHECK(mismatchStatus.code == truffle::core::StatusCode::invalid_argument);
+
+    // --- Negative Reflection Validation: render bindings mismatch ---
+    auto vertWithBufferResult = device->create_shader({
+        .stage      = truffle::rhi::ShaderStage::vertex,
+        .entryPoint = "vert_with_buffer",
+        .bytecode   = to_bytes(kVertexWithBufferMSL),
+    });
+    TRUFFLE_CHECK(vertWithBufferResult.ok());
+    auto vertWithBufferShader = std::move(vertWithBufferResult).value();
+
+    truffle::render::PipelineCache pipelineCache(*device);
+    pipelineCache.register_shaders(77, {
+        .vertexShader = vertWithBufferShader.get(),
+        .fragmentShader = fragShader.get(),
+    });
+
+    truffle::render::RenderBatch badBatch;
+    badBatch.material = 77;
+    badBatch.vertexCount = 3;
+    badBatch.instanceCount = 1;
+
+    truffle::render::FrameGraph badGraph;
+    badGraph.add_node(std::make_unique<truffle::render::RenderPassNode>(
+        true, std::vector<truffle::render::RenderBatch>{badBatch}));
+
+    truffle::render::Renderer renderer(*device, &pipelineCache);
+    auto badRenderStatus = renderer.render(badGraph, swapchain.get());
+    TRUFFLE_CHECK(!badRenderStatus.ok());
+    TRUFFLE_CHECK(badRenderStatus.code == truffle::core::StatusCode::invalid_argument);
 
     return 0;
 }

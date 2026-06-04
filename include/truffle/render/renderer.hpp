@@ -11,6 +11,13 @@
 
 namespace truffle::render {
 
+struct RendererFrameStats {
+    std::uint32_t computeNodesExecuted = 0;
+    std::uint32_t renderNodesExecuted = 0;
+    std::uint32_t renderBatchesExecuted = 0;
+    bool presented = false;
+};
+
 class Renderer {
 public:
     explicit Renderer(rhi::IDevice& device, IPipelineCache* cache = nullptr);
@@ -22,9 +29,14 @@ public:
     [[nodiscard]] core::Status render(const FrameGraph& graph,
                                       rhi::ISwapchain* swapchain = nullptr);
 
+    [[nodiscard]] const RendererFrameStats& last_frame_stats() const noexcept {
+        return lastFrameStats_;
+    }
+
 private:
-    rhi::IDevice*   device_ = nullptr;
-    IPipelineCache* cache_  = nullptr;
+    rhi::IDevice*       device_ = nullptr;
+    IPipelineCache*     cache_  = nullptr;
+    RendererFrameStats  lastFrameStats_{};
 };
 
 } // namespace truffle::render

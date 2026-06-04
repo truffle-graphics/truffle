@@ -207,16 +207,24 @@ public:
     virtual ~IShader() = default;
 };
 
+class IPipelineReflection;
+
 class IPipeline {
 public:
     virtual ~IPipeline() = default;
     [[nodiscard]] virtual const PipelineDesc& desc() const noexcept = 0;
+    
+    /// Optional: returns reflection metadata, or nullptr if unavailable.
+    [[nodiscard]] virtual const IPipelineReflection* reflection() const noexcept = 0;
 };
 
 class IComputePipeline {
 public:
     virtual ~IComputePipeline() = default;
     [[nodiscard]] virtual const ComputePipelineDesc& desc() const noexcept = 0;
+
+    /// Optional: returns reflection metadata, or nullptr if unavailable.
+    [[nodiscard]] virtual const IPipelineReflection* reflection() const noexcept = 0;
 };
 
 class ISurface {

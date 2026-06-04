@@ -1,6 +1,65 @@
 #include "truffle/render/transform_compute_pass.hpp"
+#include "truffle/rhi/shader_reflection.hpp"
+
+#include <array>
 
 namespace truffle::render {
+
+namespace {
+
+core::Status validate_compute_bindings(const TransformComputePassDesc& desc,
+                                       const rhi::IComputePipeline& pipeline) {
+    const auto* reflection = pipeline.reflection();
+    if (!reflection) {
+        return core::Status::success();
+    }
+
+    constexpr std::size_t kComputeBindingSlots = 3;
+    std::array<bool, kComputeBindingSlots> expectedBufferBindings{};
+    for (std::size_t i = 0; i < reflection->get_binding_count(); ++i) {
+        const auto& binding = reflection->get_binding_info(i);
+        if (binding.type == rhi::ResourceBindingType::Buffer &&
+            binding.stage == rhi::ShaderStage::compute) {
+            if (binding.bindingIndex >= kComputeBindingSlots) {
+                return core::Status::failure(
+                    core::StatusCode::invalid_argument,
+                    "TransformComputePass: reflection binding index exceeds supported range");
+            }
+            expectedBufferBindings[binding.bindingIndex] = true;
+        }
+    }
+
+    std::array<bool, kComputeBindingSlots> providedBufferBindings{};
+    if (desc.localTransformBuffer) {
+        providedBufferBindings[0] = true;
+    }
+    if (desc.parentIndexBuffer) {
+        providedBufferBindings[1] = true;
+    }
+    if (desc.outTransformBuffer) {
+        providedBufferBindings[2] = true;
+    }
+
+    for (std::size_t i = 0; i < kComputeBindingSlots; ++i) {
+        if (expectedBufferBindings[i] && !providedBufferBindings[i]) {
+            return core::Status::failure(
+                core::StatusCode::invalid_argument,
+                "TransformComputePass: missing storage buffer required by pipeline reflection");
+        }
+    }
+
+    for (std::size_t i = 0; i < kComputeBindingSlots; ++i) {
+        if (providedBufferBindings[i] && !expectedBufferBindings[i]) {
+            return core::Status::failure(
+                core::StatusCode::invalid_argument,
+                "TransformComputePass: unexpected storage buffer binding not declared by pipeline reflection");
+        }
+    }
+
+    return core::Status::success();
+}
+
+} // namespace
 
 TransformComputePass::TransformComputePass(rhi::IDevice& device, rhi::IShader* computeShader)
     : device_(&device) {
@@ -21,6 +80,11 @@ core::Status TransformComputePass::dispatch(rhi::ICommandBuffer& cmd, const Tran
     }
     
     auto s = cmd.bind_compute_pipeline(*pipeline_);
+    if (!s.ok()) {
+        return s;
+    }
+
+    s = validate_compute_bindings(desc, *pipeline_);
     if (!s.ok()) {
         return s;
     }

@@ -10,8 +10,8 @@ Truffle is one product with modules that stay linkable at different levels:
    pipelines, surfaces, swapchains, synchronization, capabilities, and the
    `IFrameUploadRing` N-buffered upload primitive.
 3. `truffle_backend_*` modules implement RHI contracts behind backend ownership.
-   The null backend is buildable now; Vulkan, Direct3D, Metal, and OpenGL have
-   reserved module and build-option boundaries for later milestones.
+  The null, Metal, Vulkan, and OpenGL backends are buildable now. Direct3D
+  retains a reserved module/build-option boundary for a later milestone.
 4. Rendering modules such as `truffle_render` expose `RenderBatch`,
    `InstanceLayout`, `Renderer`, and the `IPipelineCache` interface. This layer
    has zero compile-time dependency on `truffle_ecs`.
@@ -64,8 +64,13 @@ Lane C — GPU-resident (future)
   Good for: static geometry, GPU-generated data, persistent simulation state
 ```
 
-All three lanes produce `RenderBatch` objects. `Renderer::render()` accepts a
-`std::span<const RenderBatch>` and is agnostic to which lane produced them.
+All three lanes produce `RenderBatch` objects attached to `FrameGraph`
+render nodes. `Renderer::render()` executes the resolved graph order and stays
+agnostic to which ingestion lane produced the batch data.
+
+`FrameGraph` now supports explicit node dependencies and deterministic
+topological scheduling with cycle detection before command recording begins,
+plus resource usage declarations that inject implicit read/write hazard edges.
 
 `InstanceLayout` declares at runtime which channels are present (`Transform`,
 `Color`, `Normal`, `TexCoord`, etc.), which buffer binding each occupies, and
@@ -73,12 +78,16 @@ the per-instance stride. A `BindingModel` flag chooses Separate (SoA, default)
 or Interleaved (AoS). `InstanceLayout::hash()` keys pipeline cache lookup and
 future shader permutation selection.
 
-## GPU Transform Hierarchy (future — Phase 3/4)
+## GPU Transform Hierarchy (Phase 5)
 
 Large hierarchies resolve world matrices on the GPU via a compute pass over
-`ChannelKind::LocalTransform` and `ChannelKind::ParentIndex` arrays. The
-channel kinds are reserved in the current `InstanceLayout` enum. The compute
-pass design and dispatch API are Phase 3/4 work.
+`ChannelKind::LocalTransform` and `ChannelKind::ParentIndex` arrays.
+
+Current state:
+
+- `TransformComputePass` exists and dispatches through the backend-neutral RHI.
+- Metal compute pipeline path is operational.
+- Reflection-driven compute binding validation is in progress.
 
 ## Host Boundary
 
@@ -98,9 +107,23 @@ does not currently own windowing helpers.
 
 ## Current Baseline
 
-The repository establishes its Phase 2 render data foundation. `truffle_render`
-is ECS-independent; `RenderBatch` and `InstanceLayout` are the universal
-renderer input contract; `IFrameUploadRing` is the N-buffered CPU-to-GPU upload
-primitive; `truffle_scene` provides optional ECS extraction via `SceneAdapter`;
-and `IPipelineCache` defines the interface for future shader variant management.
-ADRs 0004-0006 lock these design decisions before production renderer APIs land.
+The repository currently has Phases 1-12 complete for the current roadmap
+scope, with Direct3D still intentionally deferred as an extension backend:
+
+- `truffle_render` is ECS-independent and now supports frame-graph orchestration.
+- `RenderBatch` and `InstanceLayout` remain the universal renderer input contract.
+- `IFrameUploadRing` remains the N-buffered CPU-to-GPU upload primitive.
+- `truffle_scene` provides optional ECS extraction via `SceneAdapter`.
+- `IPipelineCache` supports material-to-pipeline mapping and variant hash routing.
+- `IPipelineReflection` is integrated in Metal and Vulkan contract paths.
+- `IPipelineReflection` is integrated in Metal, Vulkan, and OpenGL contract paths.
+- `RendererFrameStats` provides per-frame diagnostics for compute/render node and
+  batch execution, plus presentation tracking.
+- `truffle/core/version.hpp` defines public API version, compatibility policy,
+  and deprecation-window semantics.
+- CI emits backend parity matrix artifacts for tracked backend contract and
+  reflection tests.
+
+ADRs 0004-0008 lock the current design direction; ADR 0009 governs phase
+completion policy and execution gating; ADR 0010 defines API compatibility
+versioning semantics.
