@@ -35,4 +35,22 @@ ecosystem defaults.
    - Exceptions are allowed for non-diff tasks, discovery-first work, or unavoidable architecture-level changes; document rationale in the issue or PR
    - Do not push directly to protected branches (`master`, `develop`); use PR flow even when operating with admin credentials or AI automation
    - Ensure lint/tests/build pass for touched areas
-6. If local repo policy conflicts with doctrine snapshot, follow local repo files and call out the conflict explicitly.
+6. Use detached implementation companion automation by default:
+   - Feature, fix, refactor, and public contract work may be followed by
+     background companion work instead of blocking the implementation session.
+   - `.github/workflows/companion-automation.yml` classifies same-repository PR
+     diffs targeting protected integration branches, then starts lane-specific
+     Copilot cloud-agent tasks when configured with a `COPILOT_AGENT_TOKEN` user
+     token.
+   - Companion tasks must target the source branch as their base branch and open
+     separate pull requests; they must not push directly to `develop` or `master`.
+   - Keep lane instructions in `.github/scripts/companion_router.py` so detached
+     Copilot tasks have one authoritative prompt source.
+   - Tests are expected for behavior or API contract changes.
+   - Examples are expected only when public or consumer-facing usage changes; do
+     not churn examples for internal-only edits.
+   - Docs/handoff updates are expected when architecture, workflow, public
+     contracts, release/distribution behavior, or commit-ready AI handoff state
+     changes.
+   - GitHub Actions remains the detached validation gate.
+7. If local repo policy conflicts with doctrine snapshot, follow local repo files and call out the conflict explicitly.

@@ -123,6 +123,17 @@ and active Direct3D contract-backend extension work.
   - Replaced the exported `AI_CONTEXT.md` with the contributor-neutral version
     and updated local repo guidance to avoid restating maintainer-private
     identity rules.
+- **Detached Agent Automation Workflow** — In Progress.
+  - Added `.github/workflows/companion-automation.yml` and
+    `.github/scripts/companion_router.py` to classify same-repository PR diffs
+    targeting protected integration branches and start detached Copilot companion
+    tasks when `COPILOT_AGENT_TOKEN` is configured.
+  - Kept companion lane instructions centralized in `companion_router.py` instead
+    of duplicating them in repo custom-agent files.
+  - Added `.github/workflows/copilot-setup-steps.yml` so Copilot cloud-agent
+    sessions can install the CMake/Ninja/Linux example prerequisites before work.
+  - Updated `AGENTS.md` so future implementation sessions prefer detached
+    companion PRs over same-session subagent follow-through.
 
 ## Relevant Decisions And Constraints
 
@@ -174,6 +185,11 @@ package consumer, and transform compute tests.
 2. Add machine-readable parity report output alongside markdown.
 3. Expand workload profiling scenarios beyond the current sanity gate.
 4. Validate release packaging flows on additional host platforms.
+5. Configure `COPILOT_AGENT_TOKEN` as a repository secret with a user-to-server
+   token that can start Copilot cloud-agent tasks through the GitHub agent-task
+   API.
+6. Exercise the detached companion automation on the next implementation branch
+   and tighten routing heuristics if any lane proves noisy.
 
 ## Open Questions Or Risks
 
