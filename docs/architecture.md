@@ -140,7 +140,8 @@ scope and active extension-backend work continuing in parallel:
 - `RendererFrameStats` provides per-frame diagnostics for compute/render node and
   batch execution, plus presentation tracking.
 - `truffle_assets` provides declarative asset, material-operation, and
-  geometry-stream descriptors.
+  geometry-stream descriptors plus backend-free material-to-mesh requirement
+  validation.
 - `truffle_diagnostics` provides opt-in render-batch, frame-graph, and renderer
   stats summaries with external labels, dependency edges, and resource usage
   declarations for tool-facing reports.

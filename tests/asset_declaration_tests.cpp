@@ -97,8 +97,39 @@ int main() {
     TRUFFLE_CHECK(!requires_attribute(material, AttributeSemantic::Velocity));
     TRUFFLE_CHECK(has_operation(material, "confidence_gain"));
     TRUFFLE_CHECK(!has_operation(material, "velocity_color"));
+    const auto requiredAttributes = collect_required_attributes(material);
+    TRUFFLE_CHECK(requiredAttributes.size() == 2);
     TRUFFLE_CHECK(mesh.streams.size() == 1);
     TRUFFLE_CHECK(mesh.streams.front().elementCount == 1'000'000);
+    TRUFFLE_CHECK(provides_attribute(mesh, AttributeSemantic::Position));
+    TRUFFLE_CHECK(provides_attribute(mesh, AttributeSemantic::Confidence));
+    TRUFFLE_CHECK(!provides_attribute(mesh, AttributeSemantic::Velocity));
+    TRUFFLE_CHECK(validate_material_requirements(material, mesh).ok());
+
+    auto velocityMaterial = material;
+    velocityMaterial.operations.push_back({
+        .name = "velocity_color",
+        .kind = MaterialOperationKind::Normalize,
+        .inputs = {
+            {
+                .source = MaterialValueSource::Attribute,
+                .attribute = AttributeSemantic::Velocity,
+                .name = "velocity",
+                .shape = MaterialValueShape::Float3,
+            },
+        },
+        .output = {
+            .source = MaterialValueSource::Custom,
+            .attribute = AttributeSemantic::Custom,
+            .name = "velocityDirection",
+            .shape = MaterialValueShape::Float3,
+        },
+    });
+    const auto missingAttributeStatus =
+        validate_material_requirements(velocityMaterial, mesh);
+    TRUFFLE_CHECK(!missingAttributeStatus.ok());
+    TRUFFLE_CHECK(missingAttributeStatus.code ==
+                  truffle::core::StatusCode::invalid_argument);
 
     TextureAssetDesc texture;
     texture.id = AssetId{13};

@@ -114,6 +114,8 @@ contract-backend extension work.
   - Added `truffle_assets` / `Truffle::Assets` for declarative asset, material,
     material-operation, texture, and geometry-stream metadata without file
     loading or GPU upload ownership.
+  - Added backend-free material-to-mesh requirement validation so high-level
+    tools can catch missing dynamic attributes before render/backend execution.
   - Added `truffle_diagnostics` / `Truffle::Diagnostics` for opt-in,
     pull-based render-batch, frame-graph, and renderer-stats summaries.
   - Added external diagnostics labels for batches, frame-graph nodes, and
@@ -140,7 +142,7 @@ contract-backend extension work.
 - `RenderBatch` and `InstanceLayout` are the universal renderer input contract.
 - `truffle_assets` is declarative metadata only for now; file import, backend
   upload, shader compilation, and material-operation execution are explicitly
-  deferred.
+  deferred. Requirement validation checks declared metadata only.
 - `truffle_diagnostics` is strict opt-in tooling: no global tracing, no
   background logger, and no dependency from `truffle_render` or `truffle_scene`
   back into diagnostics. Tool-facing labels are passed as diagnostics options

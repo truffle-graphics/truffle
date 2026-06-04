@@ -4,6 +4,26 @@
 
 namespace truffle::assets {
 
+namespace {
+
+bool contains_attribute(const std::vector<AttributeSemantic>& attributes,
+                        AttributeSemantic semantic) noexcept {
+    return std::any_of(
+        attributes.begin(), attributes.end(),
+        [semantic](AttributeSemantic attribute) {
+            return attribute == semantic;
+        });
+}
+
+void append_unique_attribute(std::vector<AttributeSemantic>& attributes,
+                             AttributeSemantic semantic) {
+    if (!contains_attribute(attributes, semantic)) {
+        attributes.push_back(semantic);
+    }
+}
+
+} // namespace
+
 std::size_t attribute_format_size(AttributeFormat format) noexcept {
     switch (format) {
     case AttributeFormat::Float32:
@@ -76,6 +96,49 @@ bool has_operation(const MaterialAssetDesc& material,
         [name](const MaterialOperationDesc& operation) {
             return operation.name == name;
         });
+}
+
+std::vector<AttributeSemantic> collect_required_attributes(
+    const MaterialAssetDesc& material) {
+    std::vector<AttributeSemantic> attributes;
+    attributes.reserve(material.requiredAttributes.size());
+
+    for (const auto semantic : material.requiredAttributes) {
+        append_unique_attribute(attributes, semantic);
+    }
+
+    for (const auto& operation : material.operations) {
+        for (const auto& input : operation.inputs) {
+            if (input.source == MaterialValueSource::Attribute) {
+                append_unique_attribute(attributes, input.attribute);
+            }
+        }
+    }
+
+    return attributes;
+}
+
+bool provides_attribute(const MeshAssetDesc& mesh,
+                        AttributeSemantic semantic) noexcept {
+    return std::any_of(
+        mesh.streams.begin(), mesh.streams.end(),
+        [semantic](const GeometryStreamDesc& stream) {
+            return has_attribute(stream, semantic);
+        });
+}
+
+core::Status validate_material_requirements(
+    const MaterialAssetDesc& material,
+    const MeshAssetDesc& mesh) {
+    for (const auto semantic : collect_required_attributes(material)) {
+        if (!provides_attribute(mesh, semantic)) {
+            return core::Status::failure(
+                core::StatusCode::invalid_argument,
+                "Assets: mesh is missing an attribute required by material");
+        }
+    }
+
+    return core::Status::success();
 }
 
 } // namespace truffle::assets

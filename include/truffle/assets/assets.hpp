@@ -1,5 +1,7 @@
 #pragma once
 
+#include "truffle/core/status.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -204,5 +206,12 @@ struct MeshAssetDesc {
                                       AttributeSemantic semantic) noexcept;
 [[nodiscard]] bool has_operation(const MaterialAssetDesc& material,
                                  std::string_view name) noexcept;
+[[nodiscard]] std::vector<AttributeSemantic> collect_required_attributes(
+    const MaterialAssetDesc& material);
+[[nodiscard]] bool provides_attribute(const MeshAssetDesc& mesh,
+                                      AttributeSemantic semantic) noexcept;
+[[nodiscard]] core::Status validate_material_requirements(
+    const MaterialAssetDesc& material,
+    const MeshAssetDesc& mesh);
 
 } // namespace truffle::assets
