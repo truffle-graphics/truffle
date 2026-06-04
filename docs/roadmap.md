@@ -31,7 +31,6 @@
 - Support Shader Pipeline Variants executing hot-reload layouts using semantic layout hashes.
 - Implement Metal for macOS.
 - Implement Vulkan stubs bootstrapping initialization tests.
-*(DirectX remains deferred to an extended target build as needed)*
 
 ## Phase 5: Compute & Frame Graph Orchestration — Complete
 
@@ -78,6 +77,7 @@
 - Expanded shared backend contract coverage to include Metal when available.
 - Implemented `truffle_backend_opengl` with queue/command/resource/surface/swapchain/upload-ring/pipeline reflection contract coverage.
 - Added `truffle_opengl_tests` and shared contract integration for OpenGL.
+- Added initial `truffle_backend_direct3d` contract backend integration with dedicated test coverage and shared contract test participation.
 
 ## Phase 9: Performance & Dense Workload Readiness — Complete
 

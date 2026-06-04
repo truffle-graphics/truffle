@@ -58,4 +58,4 @@ This verifies:
 - `Truffle::BackendNull` is the baseline exported backend.
 - `Truffle::BackendMetal`, `Truffle::BackendVulkan`, and
   `Truffle::BackendOpenGL` are exported when enabled at configure time.
-- `Truffle::BackendDirect3D` remains deferred.
+- `Truffle::BackendDirect3D` is exported when enabled at configure time.

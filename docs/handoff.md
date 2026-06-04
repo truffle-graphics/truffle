@@ -14,7 +14,7 @@ docs, charter, or ADRs instead of leaving it only in this working document.
 ## Current Focus
 
 Post-Phase-12 stabilization with parity quality gates, distribution validation,
-and deferred Direct3D planning.
+and active Direct3D contract-backend extension work.
 
 ## Current Work Status
 
@@ -109,6 +109,12 @@ and deferred Direct3D planning.
   - Added tag-driven release workflow to publish versioned package artifacts.
   - Added `docs/distribution.md` onboarding guidance for local packaging,
     consumer verification, and release flow.
+- **Direct3D Extension Track** — In Progress.
+  - Added `truffle_backend_direct3d` contract backend module and public factory
+    entry point (`create_direct3d_backend`).
+  - Added `truffle_direct3d_tests` and optional shared contract test
+    participation behind `TRUFFLE_HAS_DIRECT3D_BACKEND`.
+  - Added parity report tracking entry for `truffle_direct3d_tests`.
 
 ## Relevant Decisions And Constraints
 
@@ -127,10 +133,13 @@ Verified on macOS Apple Silicon (`feat/phase5c-shader-reflection-layout`):
 ```sh
 cmake --preset dev
 cmake --build --preset dev
-ctest --preset dev --output-on-failure   # 19/19
+ctest --preset dev --output-on-failure   # 20/20
 cmake --preset ci
 cmake --build --preset ci
-ctest --preset ci --output-on-failure    # 19/19
+ctest --preset ci --output-on-failure    # 20/20
+cmake --preset dev -DTRUFFLE_BUILD_BACKEND_DIRECT3D=ON
+cmake --build --preset dev
+ctest --preset dev -R "truffle_direct3d_tests|truffle_rhi_contract_tests" --output-on-failure  # 2/2
 cmake -DTRUFFLE_BUILD_DIR=$PWD/build/ci -DTRUFFLE_REPORT_OUT=$PWD/build/ci/parity-matrix.md -P cmake/GenerateParityReport.cmake
 cat build/ci/parity-matrix.md            # backend parity matrix
 cmake -S . -B build/package-smoke -DTRUFFLE_INSTALL=ON -DTRUFFLE_BUILD_TESTS=OFF -DTRUFFLE_BUILD_EXAMPLES=OFF -DTRUFFLE_BUILD_BACKEND_VULKAN=ON -DTRUFFLE_BUILD_BACKEND_OPENGL=ON
@@ -139,17 +148,18 @@ cmake --install build/package-smoke --prefix build/package-smoke/install
 (cd build/package-smoke && cpack --verbose)  # Truffle-0.1.0-Darwin.tar.gz
 ```
 
-19 tests: 3 host workspace smoke, ECS, null RHI (+ indexed draw + reflection
+20 tests: 3 host workspace smoke, ECS, null RHI (+ indexed draw + reflection
 contract check), render flow, advanced render flow, render batch, frame graph
 dependency, frame ring, scene adapter, Metal backend (+ indexed draw + compute
-+ reflection checks), Vulkan milestone 0-4 tests, OpenGL backend tests, shared
-RHI contract tests (null + Vulkan + OpenGL + optional Metal), API version
-tests, performance sanity tests, package consumer, and transform compute tests.
++ reflection checks), Vulkan milestone 0-4 tests, OpenGL backend tests,
+Direct3D backend tests, shared RHI contract tests (null + Vulkan + OpenGL +
+Direct3D + optional Metal), API version tests, performance sanity tests,
+package consumer, and transform compute tests.
 
 ## Next Resume Steps
 
-1. Decide whether to begin a Direct3D backend milestone or freeze current scope
-  as release-ready.
+1. Complete Direct3D extension milestone from contract backend to
+  platform-specific implementation strategy.
 2. Add machine-readable parity report output alongside markdown.
 3. Expand workload profiling scenarios beyond the current sanity gate.
 4. Validate release packaging flows on additional host platforms.
@@ -158,7 +168,8 @@ tests, performance sanity tests, package consumer, and transform compute tests.
 
 - Advanced parity between production backends remains constrained by
   backend-specific shader compilation models.
-- Direct3D backlog remains an explicit scope decision for next roadmap cycle.
+- Direct3D extension currently provides contract semantics only; native API
+  implementation and platform/runtime integration remain open.
 
 ## Curated Ideas Parking Lot
 

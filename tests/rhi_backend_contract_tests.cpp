@@ -12,6 +12,9 @@
 #if defined(TRUFFLE_HAS_OPENGL_BACKEND)
 #include "truffle/rhi/opengl_backend.hpp"
 #endif
+#if defined(TRUFFLE_HAS_DIRECT3D_BACKEND)
+#include "truffle/rhi/direct3d_backend.hpp"
+#endif
 
 #include <cstring>
 #include <memory>
@@ -278,6 +281,11 @@ int main() {
 #endif
 #if defined(TRUFFLE_HAS_OPENGL_BACKEND)
     if (verify_backend_contract(truffle::rhi::create_opengl_backend()) != 0) {
+        return 1;
+    }
+#endif
+#if defined(TRUFFLE_HAS_DIRECT3D_BACKEND)
+    if (verify_backend_contract(truffle::rhi::create_direct3d_backend()) != 0) {
         return 1;
     }
 #endif
