@@ -267,6 +267,7 @@ public:
     void reset() {
         state_ = State::initial;
         inRenderPass_ = false;
+        debugLabelDepth_ = 0;
     }
 
     NullDevice* device_ = nullptr;
@@ -601,6 +602,10 @@ public:
             return Status::failure(StatusCode::invalid_state,
                                    "command buffer cannot end with active render pass");
         }
+        if (debugLabelDepth_ != 0) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "command buffer cannot end with active debug label");
+        }
         state_ = State::ready;
         return Status::success();
     }
@@ -619,6 +624,46 @@ public:
         return CommandBufferState::initial;
     }
 
+    [[nodiscard]] Status push_debug_label(const DebugLabelDesc& desc) override {
+        if (state_ != State::recording) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "push_debug_label requires recording");
+        }
+        if (!validation::debug_label_valid(desc)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "debug label descriptor is invalid");
+        }
+        ++debugLabelDepth_;
+        ++stats_->value.debugLabelsPushed;
+        return Status::success();
+    }
+
+    [[nodiscard]] Status pop_debug_label() override {
+        if (state_ != State::recording) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "pop_debug_label requires recording");
+        }
+        if (debugLabelDepth_ == 0) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "no active debug label to pop");
+        }
+        --debugLabelDepth_;
+        return Status::success();
+    }
+
+    [[nodiscard]] Status insert_debug_marker(const DebugLabelDesc& desc) override {
+        if (state_ != State::recording) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "insert_debug_marker requires recording");
+        }
+        if (!validation::debug_label_valid(desc)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "debug marker descriptor is invalid");
+        }
+        ++stats_->value.debugMarkersInserted;
+        return Status::success();
+    }
+
     void mark_submitted() noexcept {
         if (state_ == State::ready) {
             state_ = State::submitted;
@@ -630,6 +675,7 @@ private:
     std::shared_ptr<SharedStats> stats_;
     State state_ = State::initial;
     bool inRenderPass_ = false;
+    std::uint32_t debugLabelDepth_ = 0;
 };
 
 Status NullSwapchain::schedule_present(ICommandBuffer& cmd) {

@@ -254,6 +254,15 @@ validation, diagnostics, and backend parity.
     other backend implementations.
   - Expanded core and shared RHI contract tests for bind group validation,
     creation failures, command binding, and mixed-backend rejection.
+- **Low-Level Graphics Foundation Slice 8A** — Complete.
+  - Added backend-neutral command-buffer debug labels and instantaneous debug
+    markers with optional RGBA colors.
+  - Added shared validation for non-empty label names and color ranges.
+  - Enforced recording-time usage and balanced label scopes before
+    `ICommandBuffer::end()` across null, Metal, Vulkan, OpenGL, and Direct3D.
+  - Extended null backend stats with debug label and marker counters.
+  - Expanded core, null, and shared RHI contract tests for valid labels,
+    invalid labels, unbalanced labels, marker insertion, and label stats.
 
 ## Relevant Decisions And Constraints
 
@@ -297,8 +306,8 @@ core contract tests, package consumer, and transform compute tests.
 
 ## Next Resume Steps
 
-1. Continue low-level graphics Slice 8: validation diagnostics, debug
-   names/labels, backend event/stats model, and parity reporting.
+1. Continue low-level graphics Slice 8B: backend event/stats diagnostics and
+   parity reporting.
 2. Decide bindless and dynamic-resource-indexing capability flags before higher
    renderer features rely on descriptor indexing policy.
 3. Add machine-readable parity report output alongside markdown.

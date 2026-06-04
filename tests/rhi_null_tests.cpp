@@ -143,11 +143,20 @@ int main() {
     TRUFFLE_CHECK(presentCmd->end().ok());
     TRUFFLE_CHECK(!swapchain->schedule_present(*presentCmd).ok());
 
+    auto debugCmd = device->create_command_buffer();
+    TRUFFLE_CHECK(debugCmd->begin().ok());
+    TRUFFLE_CHECK(debugCmd->push_debug_label({.name = "null debug scope"}).ok());
+    TRUFFLE_CHECK(debugCmd->insert_debug_marker({.name = "null marker"}).ok());
+    TRUFFLE_CHECK(debugCmd->pop_debug_label().ok());
+    TRUFFLE_CHECK(debugCmd->end().ok());
+
     const auto stats = backend->stats();
     TRUFFLE_CHECK(stats.buffersCreated == 4); // original vb + new vb + ib + indirect
     TRUFFLE_CHECK(stats.surfacesCreated == 1);
     TRUFFLE_CHECK(stats.swapchainsCreated == 1);
     TRUFFLE_CHECK(stats.drawsRecorded == 5); // draw + draw_indexed + draw_indexed_instanced + draw_indirect + draw_indexed_indirect
     TRUFFLE_CHECK(stats.submissions == 2);
+    TRUFFLE_CHECK(stats.debugLabelsPushed == 1);
+    TRUFFLE_CHECK(stats.debugMarkersInserted == 1);
     return 0;
 }

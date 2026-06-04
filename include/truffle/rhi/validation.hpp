@@ -374,6 +374,20 @@ namespace truffle::rhi::validation {
                desc.arrayLayers - view.range.baseArrayLayer;
 }
 
+[[nodiscard]] inline bool debug_label_valid(
+    const DebugLabelDesc& label) noexcept {
+    if (label.name.empty()) {
+        return false;
+    }
+    if (!label.hasColor) {
+        return true;
+    }
+    return label.red >= 0.0f && label.red <= 1.0f &&
+           label.green >= 0.0f && label.green <= 1.0f &&
+           label.blue >= 0.0f && label.blue <= 1.0f &&
+           label.alpha >= 0.0f && label.alpha <= 1.0f;
+}
+
 [[nodiscard]] inline bool bind_group_layout_valid(
     const BindGroupLayoutDesc& layout,
     const Capabilities& capabilities) noexcept {

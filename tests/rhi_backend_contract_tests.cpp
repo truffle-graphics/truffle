@@ -505,6 +505,30 @@ int verify_common_positive_path_contract(truffle::rhi::IDevice& device,
     TRUFFLE_CHECK(!invalidSubmit.ok());
     TRUFFLE_CHECK(invalidSubmit.code == truffle::core::StatusCode::invalid_state);
 
+    auto labelCmd = device.create_command_buffer();
+    TRUFFLE_CHECK(labelCmd != nullptr);
+    TRUFFLE_CHECK(!labelCmd->push_debug_label({.name = "before_begin"}).ok());
+    TRUFFLE_CHECK(labelCmd->begin().ok());
+    TRUFFLE_CHECK(!labelCmd->push_debug_label({}).ok());
+    TRUFFLE_CHECK(!labelCmd->insert_debug_marker({
+        .name = "bad_marker_color",
+        .hasColor = true,
+        .red = -0.1f,
+    }).ok());
+    TRUFFLE_CHECK(labelCmd->push_debug_label({
+        .name = "frame",
+        .hasColor = true,
+        .red = 0.1f,
+        .green = 0.2f,
+        .blue = 0.3f,
+        .alpha = 1.0f,
+    }).ok());
+    TRUFFLE_CHECK(labelCmd->insert_debug_marker({.name = "after_upload"}).ok());
+    TRUFFLE_CHECK(!labelCmd->end().ok());
+    TRUFFLE_CHECK(labelCmd->pop_debug_label().ok());
+    TRUFFLE_CHECK(!labelCmd->pop_debug_label().ok());
+    TRUFFLE_CHECK(labelCmd->end().ok());
+
     auto stateCmd = device.create_command_buffer();
     TRUFFLE_CHECK(stateCmd != nullptr);
     TRUFFLE_CHECK(!stateCmd->draw(3).ok());

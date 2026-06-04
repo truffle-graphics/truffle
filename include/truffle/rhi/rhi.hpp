@@ -614,6 +614,15 @@ struct FenceDesc {
     std::uint64_t initialValue = 0;
 };
 
+struct DebugLabelDesc {
+    std::string name;
+    bool hasColor = false;
+    float red = 0.0f;
+    float green = 0.0f;
+    float blue = 0.0f;
+    float alpha = 1.0f;
+};
+
 // ---------------------------------------------------------------------------
 // Render pass descriptors
 // ---------------------------------------------------------------------------
@@ -796,6 +805,14 @@ public:
     [[nodiscard]] virtual core::Status end() = 0;
     [[nodiscard]] virtual CommandBufferState state() const noexcept = 0;
     [[nodiscard]] virtual bool ready_for_submit() const noexcept = 0;
+
+    // Debug labels and markers are recording-time diagnostics. Labels must be
+    // balanced before end(); markers are instantaneous breadcrumbs.
+    [[nodiscard]] virtual core::Status push_debug_label(
+        const DebugLabelDesc& desc) = 0;
+    [[nodiscard]] virtual core::Status pop_debug_label() = 0;
+    [[nodiscard]] virtual core::Status insert_debug_marker(
+        const DebugLabelDesc& desc) = 0;
 
     // Render pass
     [[nodiscard]] virtual core::Status begin_render_pass(

@@ -15,6 +15,8 @@ struct NullBackendStats {
     std::uint64_t commandBuffersCreated = 0;
     std::uint64_t drawsRecorded = 0;
     std::uint64_t submissions = 0;
+    std::uint64_t debugLabelsPushed = 0;
+    std::uint64_t debugMarkersInserted = 0;
 };
 
 class INullBackend : public IBackend {

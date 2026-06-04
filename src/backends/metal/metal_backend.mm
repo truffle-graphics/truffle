@@ -563,6 +563,7 @@ public:
         indexBuf_ = nil;
         indexBufOffset_ = 0;
         indexBufType_ = MTLIndexTypeUInt32;
+        debugLabelDepth_ = 0;
     }
 
     MetalDevice* device_ = nullptr;
@@ -995,6 +996,10 @@ public:
             compute_encoder_ = nil;
             computePipelineBound_ = false;
         }
+        if (debugLabelDepth_ != 0) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "cannot end command buffer with an active debug label");
+        }
         state_ = State::ready;
         return Status::success();
     }
@@ -1011,6 +1016,44 @@ public:
             case State::submitted: return CommandBufferState::submitted;
         }
         return CommandBufferState::initial;
+    }
+
+    Status push_debug_label(const DebugLabelDesc& desc) override {
+        if (state_ != State::recording) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "push_debug_label requires recording state");
+        }
+        if (!validation::debug_label_valid(desc)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "debug label descriptor is invalid");
+        }
+        ++debugLabelDepth_;
+        return Status::success();
+    }
+
+    Status pop_debug_label() override {
+        if (state_ != State::recording) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "pop_debug_label requires recording state");
+        }
+        if (debugLabelDepth_ == 0) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "no active debug label to pop");
+        }
+        --debugLabelDepth_;
+        return Status::success();
+    }
+
+    Status insert_debug_marker(const DebugLabelDesc& desc) override {
+        if (state_ != State::recording) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "insert_debug_marker requires recording state");
+        }
+        if (!validation::debug_label_valid(desc)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "debug marker descriptor is invalid");
+        }
+        return Status::success();
     }
 
     void mark_submitted() noexcept {
@@ -1044,6 +1087,7 @@ private:
     MTLIndexType                indexBufType_   = MTLIndexTypeUInt32;
     bool                        graphicsPipelineBound_ = false;
     bool                        computePipelineBound_ = false;
+    std::uint32_t               debugLabelDepth_ = 0;
 };
 
 // ---------------------------------------------------------------------------

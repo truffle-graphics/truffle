@@ -98,6 +98,23 @@ int main() {
     TRUFFLE_CHECK(!truffle::rhi::validation::range_fits(8, 9, 16));
     TRUFFLE_CHECK(!truffle::rhi::validation::range_fits(
         static_cast<std::size_t>(-4), 8, static_cast<std::size_t>(-1)));
+    TRUFFLE_CHECK(truffle::rhi::validation::debug_label_valid({
+        .name = "core-label",
+    }));
+    TRUFFLE_CHECK(truffle::rhi::validation::debug_label_valid({
+        .name = "core-label-with-color",
+        .hasColor = true,
+        .red = 0.1f,
+        .green = 0.2f,
+        .blue = 0.3f,
+        .alpha = 1.0f,
+    }));
+    TRUFFLE_CHECK(!truffle::rhi::validation::debug_label_valid({}));
+    TRUFFLE_CHECK(!truffle::rhi::validation::debug_label_valid({
+        .name = "bad-color",
+        .hasColor = true,
+        .red = 1.1f,
+    }));
 
     truffle::rhi::BufferDesc legacyStorage;
     legacyStorage.usage = truffle::rhi::BufferUsage::storage;

@@ -169,6 +169,10 @@ public:
             return Status::failure(StatusCode::invalid_state,
                                    "OpenGLCommandBuffer: cannot end while render pass is active");
         }
+        if (debugLabelDepth_ != 0) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "OpenGLCommandBuffer: cannot end while debug label is active");
+        }
         state_ = State::executable;
         return Status::success();
     }
@@ -185,6 +189,41 @@ public:
             case State::submitted: return CommandBufferState::submitted;
         }
         return CommandBufferState::initial;
+    }
+
+    [[nodiscard]] Status push_debug_label(const DebugLabelDesc& desc) override {
+        if (const auto s = require_recording("push_debug_label"); !s.ok()) {
+            return s;
+        }
+        if (!validation::debug_label_valid(desc)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "OpenGLCommandBuffer: debug label descriptor is invalid");
+        }
+        ++debugLabelDepth_;
+        return Status::success();
+    }
+
+    [[nodiscard]] Status pop_debug_label() override {
+        if (const auto s = require_recording("pop_debug_label"); !s.ok()) {
+            return s;
+        }
+        if (debugLabelDepth_ == 0) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "OpenGLCommandBuffer: no active debug label to pop");
+        }
+        --debugLabelDepth_;
+        return Status::success();
+    }
+
+    [[nodiscard]] Status insert_debug_marker(const DebugLabelDesc& desc) override {
+        if (const auto s = require_recording("insert_debug_marker"); !s.ok()) {
+            return s;
+        }
+        if (!validation::debug_label_valid(desc)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "OpenGLCommandBuffer: debug marker descriptor is invalid");
+        }
+        return Status::success();
     }
 
     [[nodiscard]] Status begin_render_pass(const RenderPassDesc& desc) override {
@@ -448,6 +487,7 @@ private:
 
     State state_ = State::initial;
     bool inRenderPass_ = false;
+    std::uint32_t debugLabelDepth_ = 0;
 };
 
 class OpenGLQueue final : public IQueue {
