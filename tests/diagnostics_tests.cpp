@@ -65,6 +65,16 @@ int main() {
     TRUFFLE_CHECK(batchSummary.channels.size() == 2);
     TRUFFLE_CHECK(batchSummary.bindings.size() == 1);
     TRUFFLE_CHECK(batchSummary.totalBindingBytes == 32'000'000);
+    TRUFFLE_CHECK(diagnostics::evaluate_render_batch_budget(
+        batchSummary, {}).empty());
+    const auto batchFindings = diagnostics::evaluate_render_batch_budget(
+        batchSummary, {
+            .maxInstances = 999'999,
+            .maxChannels = 1,
+            .maxBindingBytes = 1,
+        });
+    TRUFFLE_CHECK(batchFindings.size() == 3);
+    TRUFFLE_CHECK(batchFindings.front().code == "render_batch.instances");
 
     const auto batchReport =
         diagnostics::format_render_batch_summary(batchSummary);
@@ -72,6 +82,12 @@ int main() {
                   std::string::npos);
     TRUFFLE_CHECK(batchReport.find("instances=1000000") != std::string::npos);
     TRUFFLE_CHECK(batchReport.find("bindingBytes=32000000") !=
+                  std::string::npos);
+    const auto batchFindingsReport =
+        diagnostics::format_diagnostic_findings(batchFindings);
+    TRUFFLE_CHECK(batchFindingsReport.find("DiagnosticFindings count=3") !=
+                  std::string::npos);
+    TRUFFLE_CHECK(batchFindingsReport.find("render_batch.binding_bytes") !=
                   std::string::npos);
 
     rhi::RenderPassDesc passDesc;
@@ -125,6 +141,15 @@ int main() {
     TRUFFLE_CHECK(graphSummary.renderNodeCount == 2);
     TRUFFLE_CHECK(graphSummary.renderBatchCount == 1);
     TRUFFLE_CHECK(graphSummary.totalInstanceCount == 1'000'000);
+    TRUFFLE_CHECK(diagnostics::evaluate_frame_graph_budget(
+        graphSummary, {}).empty());
+    const auto graphFindings = diagnostics::evaluate_frame_graph_budget(
+        graphSummary, {
+            .maxRenderNodes = 1,
+            .maxInstances = 999'999,
+            .maxResourceUsages = 1,
+        });
+    TRUFFLE_CHECK(graphFindings.size() == 3);
 
     const auto graphReport =
         diagnostics::format_frame_graph_summary(graphSummary);
@@ -136,6 +161,12 @@ int main() {
     TRUFFLE_CHECK(graphReport.find("access=Write") != std::string::npos);
     TRUFFLE_CHECK(graphReport.find("access=Read") != std::string::npos);
     TRUFFLE_CHECK(graphReport.find("instances=1000000") != std::string::npos);
+    const auto graphFindingsReport =
+        diagnostics::format_diagnostic_findings(graphFindings);
+    TRUFFLE_CHECK(graphFindingsReport.find("frame_graph.render_nodes") !=
+                  std::string::npos);
+    TRUFFLE_CHECK(graphFindingsReport.find("frame_graph.resource_usages") !=
+                  std::string::npos);
 
     const auto statsSummary = diagnostics::summarize_renderer_stats({
         .computeNodesExecuted = 1,

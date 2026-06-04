@@ -122,6 +122,8 @@ contract-backend extension work.
     resources so tool-facing names do not become permanent render-object fields.
   - Added read-only `FrameGraph` dependency/resource usage accessors and included
     those declarations in diagnostics summaries.
+  - Added pull-based diagnostics budget checks that convert render-batch and
+    frame-graph summaries into findings only when requested.
   - Kept diagnostics separate from render and scene runtime dependencies; normal
     consumers only link the diagnostics target when they want inspection helpers.
   - Added `truffle_assets_tests` and `truffle_diagnostics_tests`, and extended
@@ -148,7 +150,8 @@ contract-backend extension work.
   back into diagnostics. Tool-facing labels are passed as diagnostics options
   instead of stored in render objects. Graph dependency/resource usage summaries
   read existing `FrameGraph` declarations only; they do not record runtime
-  events.
+  events. Budget findings are pull-based checks, not logs or background
+  profiling.
 - Keep active handoff state curated and public-safe. Lasting decisions belong in stable docs or ADRs.
 - Normal feature and fix work targets protected `develop`; stable promotion goes through `master`.
 

@@ -108,6 +108,37 @@ struct RendererStatsSummary {
     bool presented = false;
 };
 
+enum class DiagnosticSeverity {
+    Info,
+    Warning,
+    Error,
+};
+
+struct DiagnosticFinding {
+    DiagnosticSeverity severity = DiagnosticSeverity::Warning;
+    std::string code;
+    std::string message;
+    std::uint64_t observed = 0;
+    std::uint64_t limit = 0;
+};
+
+struct RenderBatchBudget {
+    std::uint32_t maxInstances = 0;
+    std::uint32_t maxVertexCount = 0;
+    std::uint32_t maxChannels = 0;
+    std::uint32_t maxBindings = 0;
+    std::uint64_t maxBindingBytes = 0;
+};
+
+struct FrameGraphBudget {
+    std::uint32_t maxComputeNodes = 0;
+    std::uint32_t maxRenderNodes = 0;
+    std::uint32_t maxRenderBatches = 0;
+    std::uint64_t maxInstances = 0;
+    std::uint32_t maxDependencies = 0;
+    std::uint32_t maxResourceUsages = 0;
+};
+
 [[nodiscard]] RenderBatchSummary summarize_render_batch(
     const render::RenderBatch& batch);
 [[nodiscard]] RenderBatchSummary summarize_render_batch(
@@ -120,6 +151,12 @@ struct RendererStatsSummary {
     const FrameGraphInspectionOptions& options);
 [[nodiscard]] RendererStatsSummary summarize_renderer_stats(
     const render::RendererFrameStats& stats) noexcept;
+[[nodiscard]] std::vector<DiagnosticFinding> evaluate_render_batch_budget(
+    const RenderBatchSummary& summary,
+    const RenderBatchBudget& budget);
+[[nodiscard]] std::vector<DiagnosticFinding> evaluate_frame_graph_budget(
+    const FrameGraphSummary& summary,
+    const FrameGraphBudget& budget);
 
 [[nodiscard]] std::string format_render_batch_summary(
     const RenderBatchSummary& summary);
@@ -127,5 +164,7 @@ struct RendererStatsSummary {
     const FrameGraphSummary& summary);
 [[nodiscard]] std::string format_renderer_stats_summary(
     const RendererStatsSummary& summary);
+[[nodiscard]] std::string format_diagnostic_findings(
+    const std::vector<DiagnosticFinding>& findings);
 
 } // namespace truffle::diagnostics

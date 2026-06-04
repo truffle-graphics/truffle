@@ -60,6 +60,18 @@ const char* resource_access_name(render::ResourceAccess access) noexcept {
     return "Unknown";
 }
 
+const char* severity_name(DiagnosticSeverity severity) noexcept {
+    switch (severity) {
+    case DiagnosticSeverity::Info:
+        return "Info";
+    case DiagnosticSeverity::Warning:
+        return "Warning";
+    case DiagnosticSeverity::Error:
+        return "Error";
+    }
+    return "Unknown";
+}
+
 std::string find_node_label(const FrameGraphInspectionOptions& options,
                             render::FrameGraph::NodeId nodeId) {
     for (const auto& label : options.nodeLabels) {
@@ -78,6 +90,23 @@ std::string find_resource_label(const FrameGraphInspectionOptions& options,
         }
     }
     return {};
+}
+
+void append_budget_finding(std::vector<DiagnosticFinding>& findings,
+                           std::string code,
+                           std::string message,
+                           std::uint64_t observed,
+                           std::uint64_t limit) {
+    if (limit == 0 || observed <= limit) {
+        return;
+    }
+    findings.push_back({
+        .severity = DiagnosticSeverity::Warning,
+        .code = std::move(code),
+        .message = std::move(message),
+        .observed = observed,
+        .limit = limit,
+    });
 }
 
 } // namespace
@@ -230,6 +259,69 @@ RendererStatsSummary summarize_renderer_stats(
     };
 }
 
+std::vector<DiagnosticFinding> evaluate_render_batch_budget(
+    const RenderBatchSummary& summary,
+    const RenderBatchBudget& budget) {
+    std::vector<DiagnosticFinding> findings;
+    append_budget_finding(
+        findings, "render_batch.instances",
+        "Render batch instance count exceeds budget", summary.instanceCount,
+        budget.maxInstances);
+    append_budget_finding(
+        findings, "render_batch.vertices",
+        "Render batch vertex count exceeds budget", summary.vertexCount,
+        budget.maxVertexCount);
+    append_budget_finding(
+        findings, "render_batch.channels",
+        "Render batch channel count exceeds budget",
+        static_cast<std::uint64_t>(summary.channels.size()),
+        budget.maxChannels);
+    append_budget_finding(
+        findings, "render_batch.bindings",
+        "Render batch binding count exceeds budget",
+        static_cast<std::uint64_t>(summary.bindings.size()),
+        budget.maxBindings);
+    append_budget_finding(
+        findings, "render_batch.binding_bytes",
+        "Render batch binding byte range exceeds budget",
+        static_cast<std::uint64_t>(summary.totalBindingBytes),
+        budget.maxBindingBytes);
+    return findings;
+}
+
+std::vector<DiagnosticFinding> evaluate_frame_graph_budget(
+    const FrameGraphSummary& summary,
+    const FrameGraphBudget& budget) {
+    std::vector<DiagnosticFinding> findings;
+    append_budget_finding(
+        findings, "frame_graph.compute_nodes",
+        "Frame graph compute node count exceeds budget",
+        summary.computeNodeCount, budget.maxComputeNodes);
+    append_budget_finding(
+        findings, "frame_graph.render_nodes",
+        "Frame graph render node count exceeds budget",
+        summary.renderNodeCount, budget.maxRenderNodes);
+    append_budget_finding(
+        findings, "frame_graph.render_batches",
+        "Frame graph render batch count exceeds budget",
+        summary.renderBatchCount, budget.maxRenderBatches);
+    append_budget_finding(
+        findings, "frame_graph.instances",
+        "Frame graph instance count exceeds budget",
+        summary.totalInstanceCount, budget.maxInstances);
+    append_budget_finding(
+        findings, "frame_graph.dependencies",
+        "Frame graph dependency edge count exceeds budget",
+        static_cast<std::uint64_t>(summary.dependencies.size()),
+        budget.maxDependencies);
+    append_budget_finding(
+        findings, "frame_graph.resource_usages",
+        "Frame graph resource usage declaration count exceeds budget",
+        static_cast<std::uint64_t>(summary.resourceUsages.size()),
+        budget.maxResourceUsages);
+    return findings;
+}
+
 std::string format_render_batch_summary(const RenderBatchSummary& summary) {
     std::ostringstream out;
     out << "RenderBatch"
@@ -290,6 +382,20 @@ std::string format_renderer_stats_summary(
         << " renderNodes=" << summary.renderNodesExecuted
         << " renderBatches=" << summary.renderBatchesExecuted
         << " presented=" << (summary.presented ? "true" : "false");
+    return out.str();
+}
+
+std::string format_diagnostic_findings(
+    const std::vector<DiagnosticFinding>& findings) {
+    std::ostringstream out;
+    out << "DiagnosticFindings count=" << findings.size();
+    for (const auto& finding : findings) {
+        out << "\n  finding severity=" << severity_name(finding.severity)
+            << " code=" << finding.code
+            << " observed=" << finding.observed
+            << " limit=" << finding.limit
+            << " message=" << finding.message;
+    }
     return out.str();
 }
 

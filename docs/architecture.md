@@ -113,7 +113,8 @@ layout channels, and frame-graph nodes rather than per-instance CPU scans.
 Names for batches, graph nodes, and resources are supplied through diagnostics
 inspection options so render objects do not need permanent debug fields.
 Frame-graph diagnostics also read explicit dependency edges and resource usage
-declarations through public `FrameGraph` inspection accessors.
+declarations through public `FrameGraph` inspection accessors. Optional budget
+checks turn summaries into findings only when consumers explicitly ask for them.
 
 ## Dependency Boundary
 
@@ -144,7 +145,7 @@ scope and active extension-backend work continuing in parallel:
   validation.
 - `truffle_diagnostics` provides opt-in render-batch, frame-graph, and renderer
   stats summaries with external labels, dependency edges, and resource usage
-  declarations for tool-facing reports.
+  declarations for tool-facing reports, plus pull-based budget findings.
 - `truffle/core/version.hpp` defines public API version, compatibility policy,
   and deprecation-window semantics.
 - CI emits backend parity matrix artifacts for tracked backend contract and
