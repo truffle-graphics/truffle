@@ -13,6 +13,10 @@ if(TRUFFLE_BUILD_BACKEND_VULKAN)
     add_subdirectory(vulkan)
 endif()
 
+if(TRUFFLE_BUILD_BACKEND_OPENGL)
+    add_subdirectory(opengl)
+endif()
+
 function(truffle_defer_backend option backend)
     if(${option})
         message(FATAL_ERROR
@@ -22,4 +26,3 @@ function(truffle_defer_backend option backend)
 endfunction()
 
 truffle_defer_backend(TRUFFLE_BUILD_BACKEND_DIRECT3D "Direct3D")
-truffle_defer_backend(TRUFFLE_BUILD_BACKEND_OPENGL "OpenGL")

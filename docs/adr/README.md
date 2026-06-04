@@ -19,3 +19,9 @@ Architecture decisions that need long-term tradeoff history belong here.
 - `0007-render-pass-model.md` adopts an inline `RenderPassDesc` model
   (Metal-style) over pre-compiled pass objects, mapping cleanly to
   `MTLRenderPassDescriptor` and leaving a Vulkan caching path open.
+- `0008-frame-graph-orchestration.md` introduces frame-graph node orchestration
+  to execute compute and render passes in a unified frame pipeline.
+- `0009-phase-completion-governance.md` defines mandatory implementation,
+  testing, CI, and documentation gates before any phase can be marked complete.
+- `0010-api-compatibility-versioning.md` establishes Truffle's code-level API
+  version contract and compatibility semantics used by CI gates.
