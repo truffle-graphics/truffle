@@ -1,5 +1,9 @@
-# Direct3D Backend Placeholder
+# Direct3D Backend
 
-This directory owns the future Direct3D backend implementation. The
-`TRUFFLE_BUILD_BACKEND_DIRECT3D` option reserves its build boundary until the
-backend milestone adds platform gating, targets, and implementation code.
+This directory owns the Direct3D contract backend implementation used to
+validate backend-neutral RHI behavior across queue, command-buffer state,
+resource, surface/swapchain, upload-ring, and reflection-backed pipeline paths.
+
+The implementation is intentionally headless and contract-focused so CI can
+exercise Direct3D backend semantics without requiring a platform-specific
+runtime setup.

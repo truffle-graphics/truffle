@@ -5,7 +5,7 @@ option(TRUFFLE_WARNINGS_AS_ERRORS "Treat Truffle target warnings as errors" OFF)
 
 option(TRUFFLE_BUILD_BACKEND_NULL    "Build the Truffle null validation backend" ON)
 option(TRUFFLE_BUILD_BACKEND_VULKAN  "Build the future Truffle Vulkan backend"   OFF)
-option(TRUFFLE_BUILD_BACKEND_DIRECT3D "Build the future Truffle Direct3D backend" OFF)
+option(TRUFFLE_BUILD_BACKEND_DIRECT3D "Build the Truffle Direct3D backend" OFF)
 if(APPLE)
     option(TRUFFLE_BUILD_BACKEND_METAL "Build the Truffle Metal backend" ${PROJECT_IS_TOP_LEVEL})
 else()

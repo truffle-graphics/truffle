@@ -46,7 +46,15 @@ int main() {
     auto pipelineResult = device->create_pipeline({.debugName = "test_pipeline"});
     TRUFFLE_CHECK(pipelineResult.ok());
     auto pipeline = std::move(pipelineResult).value();
+    TRUFFLE_CHECK(pipeline->reflection() == nullptr);
     TRUFFLE_CHECK(commandBuffer->bind_pipeline(*pipeline).ok());
+
+    auto computePipelineResult = device->create_compute_pipeline({
+        .debugName = "test_compute_pipeline",
+    });
+    TRUFFLE_CHECK(computePipelineResult.ok());
+    auto computePipeline = std::move(computePipelineResult).value();
+    TRUFFLE_CHECK(computePipeline->reflection() == nullptr);
 
     auto vbResult = device->create_buffer({
         .size = 256,

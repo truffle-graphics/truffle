@@ -13,120 +13,167 @@ docs, charter, or ADRs instead of leaving it only in this working document.
 
 ## Current Focus
 
-Transitioning into **Phase 5**: Compute & Frame Graph Orchestration.
-Specifically starting Phase 5A: GPU Transform Hierarchy compute pass (ADR 0006).
+Post-Phase-12 stabilization with parity quality gates, distribution validation,
+and active Direct3D contract-backend extension work.
 
 ## Current Work Status
 
 - **Phase 1 to 4** are marked strictly Complete. Refer to `docs/roadmap.md` for historical feature deliverables.
-- **Phase 5A** is scoping implementation logic for the GPU Transform compute pass.
-
-
-- **Phase 3C — Material system** (merged, PR #9):
-  - `PipelineDesc::colorFormat` — pipelines no longer hardcode BGRA8Unorm.
-  - `ShaderBinding` struct + `IPipelineCache::register_shaders()` added.
-  - `PipelineCache` — hash-map cache keyed on `(InstanceLayout::hash(), MaterialId)`.
-  - `RenderBatch::uniformBuffer` — per-batch constant data bound at slot
-    `kMaxBindings` (8) on both VS and FS via new `ICommandBuffer::bind_uniform_buffer()`.
-- **Phase 3D — Async Metal fence** (merged, PR #9):
-  - `MetalFence` uses `dispatch_semaphore_t` + `shared_ptr<atomic<bool>>`; safe
-    against fence outliving the GPU completion block.
-  - `MetalQueue::submit()` uses async `addCompletedHandler:` instead of
-    `waitUntilCompleted`.
-  - `IFence` gains `wait()` for CPU synchronisation; null backend no-ops it.
-- **Phase 3E — CAMetalLayer host wiring** (merged, PR #9):
-  - `host_window_metal.mm` — attaches `CAMetalLayer` to GLFW window content view,
-    returns as `void*` via `HostWindow::native_layer_handle()`.
-  - `application.cpp` — `run_interactive_metal()` uses Metal backend with real
-    MSL shaders, `cocoa_layer` surface, and `PipelineCache`; activated by `--metal`.
-  - CMakeLists.txt conditionally compiles `.mm` and links `truffle_backend_metal`.
-- **Phase 3F — Indexed draw** (on `feat/indexed-draw`, pending merge):
-  - `rhi.hpp`: `IndexFormat` enum (uint16/uint32); `bind_index_buffer` takes
-    `IndexFormat`; `ICommandBuffer` gains `draw_indexed` and
-    `draw_indexed_instanced`.
-  - `render_batch.hpp`: `indexFormat` field added to `RenderBatch`.
-  - `metal_backend.mm`: `to_mtl_index_type` helper; `bind_index_buffer` stores
-    `id<MTLBuffer>`, offset, and `MTLIndexType`; `draw_indexed_instanced` calls
-    `drawIndexedPrimitives:`.
-  - `null_backend.cpp`: updated signatures; `draw_indexed_instanced` increments
-    `drawsRecorded`.
-  - `renderer.cpp`: routes `DrawKind::Indexed` batches through
-    `bind_index_buffer` + `draw_indexed_instanced`.
-  - Tests: `rhi_null_tests.cpp` and `metal_backend_tests.cpp` extended with
-    indexed draw coverage.
+- **Phase 5A** — GPU Transform Hierarchy (Complete).
+  - Created `TransformComputePass` and `TransformComputePassDesc` exposing a high-level shader dispatch orchestration.
+  - Implemented compute capabilities on Metal backend.
+- **Phase 5B** — Frame Graph Orchestration (Complete).
+  - Designed and merged `FrameGraph`, `ComputePassNode`, and `RenderPassNode` abstractions in `truffle/render/frame_graph.hpp`.
+  - Re-wired `Renderer::render()` to accept `FrameGraph`, dynamically interleaving backend render passes and compute passes.
+  - Authored ADR 0008 validating architecture decisions surrounding the node graph.
+  - All test consumers correctly use the Frame Graph injection model instead of passing raw batches.
+- **Phase 5C** — Shader Reflection & Binding Direction (Complete).
+  - Added `IPipelineReflection` contract and `ResourceBinding` model in `truffle/rhi`.
+  - Added reflection extraction path in Metal pipelines (render + compute).
+  - Added runtime validation in `Renderer` and `TransformComputePass` that
+    fails fast when provided bindings do not match reflected shader buffer
+    bindings.
+  - Added reflection assertions in null and Metal backend tests.
+  - Added explicit negative mismatch checks for both render and compute paths in
+    Metal backend tests.
+- **Phase 5D** — Vulkan Parity (Complete).
+  - Implemented Milestone 0 compliance path:
+    - Valid command buffer object with state-machine enforcement.
+    - Valid queue objects for graphics/compute/transfer.
+    - Valid fence object with signal and wait behavior.
+  - Implemented Milestone 1 resource foundation:
+    - Vulkan buffer creation with argument validation.
+    - Vulkan texture and sampler creation with argument validation.
+    - Vulkan upload ring implementation with per-frame allocation and advance.
+  - Implemented Milestone 2 shader/pipeline contracts:
+    - Vulkan shader creation with bytecode validation.
+    - Vulkan graphics and compute pipeline creation with required shader checks.
+  - Implemented Milestone 3 headless surface/swapchain path:
+    - Vulkan surface and swapchain creation with argument validation.
+    - Headless drawable acquire, resize, and schedule_present no-op path.
+  - Implemented Milestone 4 parity hardening:
+    - Vulkan graphics and compute pipelines now expose deterministic reflection metadata.
+    - Vulkan tests now validate reflection presence and binding contract shapes.
+  - Added `truffle_vulkan_tests` and enabled it behind
+    `TRUFFLE_BUILD_BACKEND_VULKAN`.
+- **Phase 6** — API Stabilization & Validation Completeness (Complete).
+  - Added `truffle_rhi_contract_tests` to lock shared null/Vulkan status-code
+    contracts for invalid-argument and invalid-state paths.
+  - Contract checks now cover buffer, texture, surface, swapchain, upload ring,
+    shader creation, and command buffer state behavior across both backends.
+  - Expanded contract checks to include positive-path lifecycle semantics across
+    both backends: swapchain acquire/resize/present flow, upload ring allocation
+    + frame advance, pipeline + compute pipeline creation, and queue submit/fence
+    signaling.
+  - Added `truffle/core/version.hpp` API compatibility primitives and
+    `truffle_api_version_tests` CI coverage.
+  - Added explicit deprecation-window policy semantics and test coverage for
+    symbol availability and deprecated-state detection.
+  - Shared contract tests now compile/link optional backend participants with
+    compile-definition gating for deterministic portability.
+- **Phase 7** — Vulkan Production Confidence (Complete).
+  - Vulkan reflection and lifecycle contracts are now validated as part of the
+    expanded CI contract matrix.
+  - Shared backend contract tests now validate reflection metadata invariants
+    (stage/type validity and duplicate binding checks).
+  - CI now emits backend parity matrix artifacts summarizing tracked backend
+    contract/reflection test outcomes per platform run.
+  - Parity matrix tracking now includes OpenGL backend test status.
+- **Phase 8** — Secondary Backend Expansion (Complete).
+  - Implemented `truffle_backend_opengl` with queue/command/resource/surface/
+    swapchain/upload-ring/shader reflection contract semantics.
+  - Added dedicated `truffle_opengl_tests` and integrated OpenGL in shared
+    RHI backend contract coverage.
+- **Phase 9** — Performance & Dense Workload Readiness (Complete).
+  - Replaced dynamic set-based binding validation in render/compute paths with
+    fixed-size array checks to reduce per-frame allocation overhead.
+  - Added `truffle_performance_sanity_tests` measurable regression gate.
+- **Phase 10** — Advanced Rendering Feature Set (Complete).
+  - Added dependency-aware frame-graph scheduling with cycle detection and
+    explicit dependency declaration API.
+  - Added resource usage declarations and implicit read/write hazard ordering
+    during execution-order resolution.
+  - Explicit dependency edges now override implicit hazard edges for the same
+    node pair to prevent false cycles when callers intentionally order passes.
+  - Added `truffle_frame_graph_dependency_tests` and
+    `truffle_advanced_render_flow_tests` to enforce dependency and multi-pass
+    hazard-safe execution semantics.
+- **Phase 11** — Tooling, Debugging & Profiling (Complete).
+  - Added `RendererFrameStats` diagnostics for compute/render node execution,
+    batch count, and presentation state.
+- **Phase 12** — Packaging, Distribution & Ecosystem (Complete).
+  - Added baseline CPack configuration for distributable archive generation in
+    install-enabled builds.
+  - Added CI package automation job to build/install/package and upload archive
+    artifacts.
+  - Added tag-driven release workflow to publish versioned package artifacts.
+  - Added `docs/distribution.md` onboarding guidance for local packaging,
+    consumer verification, and release flow.
+- **Direct3D Extension Track** — In Progress.
+  - Added `truffle_backend_direct3d` contract backend module and public factory
+    entry point (`create_direct3d_backend`).
+  - Added `truffle_direct3d_tests` and optional shared contract test
+    participation behind `TRUFFLE_HAS_DIRECT3D_BACKEND`.
+  - Added parity report tracking entry for `truffle_direct3d_tests`.
 
 ## Relevant Decisions And Constraints
 
-- Truffle is embeddable graphics infrastructure, not an application host or a
-  dedicated game engine.
-- Consumers may compose Truffle with FrameKit, but Truffle must not depend on it.
-- Public rendering flow stays backend-neutral; production GPU backends are later
-  roadmap work.
-- `truffle_render` must have zero compile-time dependency on `truffle_ecs`.
-  `truffle_scene` is the designated ECS-to-render bridge (see ADR 0004).
+- Truffle is embeddable graphics infrastructure, not an application host or a dedicated game engine.
+- Public rendering flow stays backend-neutral while backend implementations advance behind stable contracts.
+- `FrameGraph` owns high-level order, not rendering states. Individual graph nodes retain responsibility for executing `begin_render_pass` alongside backend queues.
+- `truffle_render` must have zero compile-time dependency on `truffle_ecs`. `truffle_scene` is the designated ECS-to-render bridge.
 - `RenderBatch` and `InstanceLayout` are the universal renderer input contract.
-  All three data lanes (ECS extraction, bulk direct, GPU-resident) converge on
-  `RenderBatch`. `InstanceLayout::hash()` keys pipeline selection.
-- `IFrameUploadRing` lives at the RHI layer. It is the N-buffered CPU-to-GPU
-  upload primitive for both scene extraction and bulk streaming (see ADR 0005).
-- `ChannelKind::LocalTransform` and `ParentIndex` are reserved for a future
-  GPU-side compute pass for hierarchy resolution (see ADR 0006). No implementation
-  yet.
-- `IPipelineCache` now has a real keyed implementation (`PipelineCache`);
-  `NullPipelineCache` remains for null-backend-only use. Production shader
-  variant selection is Phase 4 work.
-- `truffle_scene` is optional. Consumers can build against `truffle_render` only
-  and manage batches directly.
-- Truffle does not own native window helpers in the current baseline. Host apps
-  provide their own windowing and native surface boundary.
-- Runtime dependencies should prefer Git submodules when practical; narrow
-  pinned source copies remain the fallback when a submodule does not fit.
-- The host workspace keeps a pinned, example-local GLFW source copy narrowed to
-  the GLFW library build path rather than a submodule or full upstream repo
-  snapshot.
-- Keep active handoff state curated and public-safe. Lasting decisions belong in
-  stable docs or ADRs.
-- Normal feature and fix work targets protected `develop`; stable promotion goes
-  through `master`.
+- Keep active handoff state curated and public-safe. Lasting decisions belong in stable docs or ADRs.
+- Normal feature and fix work targets protected `develop`; stable promotion goes through `master`.
 
 ## Last Verified Commands And Checks
 
-Verified on 2025-05-22 (Phase 3F indexed draw, `feat/indexed-draw`):
+Verified on macOS Apple Silicon (`feat/phase5c-shader-reflection-layout`):
 
 ```sh
-cmake --preset dev  -DTRUFFLE_BUILD_BACKEND_METAL=ON
+cmake --preset dev
 cmake --build --preset dev
-ctest --preset dev   # 11/11
-cmake --preset ci   -DTRUFFLE_BUILD_BACKEND_METAL=ON
-cmake --build --preset ci  # warnings-as-errors clean
+ctest --preset dev --output-on-failure   # 20/20
+cmake --preset ci
+cmake --build --preset ci
+ctest --preset ci --output-on-failure    # 20/20
+cmake --preset dev -DTRUFFLE_BUILD_BACKEND_DIRECT3D=ON
+cmake --build --preset dev
+ctest --preset dev -R "truffle_direct3d_tests|truffle_rhi_contract_tests" --output-on-failure  # 2/2
+cmake -DTRUFFLE_BUILD_DIR=$PWD/build/ci -DTRUFFLE_REPORT_OUT=$PWD/build/ci/parity-matrix.md -P cmake/GenerateParityReport.cmake
+cat build/ci/parity-matrix.md            # backend parity matrix
+cmake -S . -B build/package-smoke -DTRUFFLE_INSTALL=ON -DTRUFFLE_BUILD_TESTS=OFF -DTRUFFLE_BUILD_EXAMPLES=OFF -DTRUFFLE_BUILD_BACKEND_VULKAN=ON -DTRUFFLE_BUILD_BACKEND_OPENGL=ON
+cmake --build build/package-smoke
+cmake --install build/package-smoke --prefix build/package-smoke/install
+(cd build/package-smoke && cpack --verbose)  # Truffle-0.1.0-Darwin.tar.gz
 ```
 
-11 tests: 3 host workspace smoke, ECS, null RHI (+ indexed draw), render flow,
-render batch, frame ring, scene adapter, Metal backend (+ indexed draw),
-package consumer.
+20 tests: 3 host workspace smoke, ECS, null RHI (+ indexed draw + reflection
+contract check), render flow, advanced render flow, render batch, frame graph
+dependency, frame ring, scene adapter, Metal backend (+ indexed draw + compute
++ reflection checks), Vulkan milestone 0-4 tests, OpenGL backend tests,
+Direct3D backend tests, shared RHI contract tests (null + Vulkan + OpenGL +
+Direct3D + optional Metal), API version tests, performance sanity tests,
+package consumer, and transform compute tests.
 
 ## Next Resume Steps
 
-1. Read `AGENTS.md`, README, contributor guidance, and architecture docs.
-2. Confirm `feat/indexed-draw` PR is merged; verify `develop` has Phase 3F.
-3. Read ADR 0006 for GPU Transform Hierarchy context.
-4. Design and implement the new Compute Pass shader execution.
-4. Update this handoff before stopping on another machine.
+1. Complete Direct3D extension milestone from contract backend to
+  platform-specific implementation strategy.
+2. Add machine-readable parity report output alongside markdown.
+3. Expand workload profiling scenarios beyond the current sanity gate.
+4. Validate release packaging flows on additional host platforms.
 
 ## Open Questions Or Risks
 
-- Workflow files now establish cross-platform CI names, but branch rules,
-  required status checks, and PR-title checks still need a follow-up governance
-  pass after the workflow path proves reliable.
-- Truffle is not currently GitHub Project-managed. If that changes, Doctrine's
-  issue-driven execution guidance becomes mandatory for planned work.
+- Advanced parity between production backends remains constrained by
+  backend-specific shader compilation models.
+- Direct3D extension currently provides contract semantics only; native API
+  implementation and platform/runtime integration remain open.
 
 ## Curated Ideas Parking Lot
 
-- Use this short list for project-relevant ideas that need another pass before
-  they become roadmap items, ADRs, or implementation work.
-- Keep new entries specific enough that a later session can decide whether to
-  promote or discard them.
+- Use this short list for project-relevant ideas that need another pass before they become roadmap items, ADRs, or implementation work.
 
 ## Promotion Rule
 

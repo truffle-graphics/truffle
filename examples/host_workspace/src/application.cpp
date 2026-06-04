@@ -181,7 +181,7 @@ public:
             return Status::failure(StatusCode::invalid_state,
                                    "workspace extracted frame shape changed");
         }
-        if (const auto renderStatus = renderer_->render(frame.meshBatches);
+        if (const auto renderStatus = renderer_->render([&]() { truffle::render::FrameGraph fg; fg.add_node(std::make_unique<truffle::render::RenderPassNode>(true, std::vector<truffle::render::RenderBatch>(frame.meshBatches.begin(), frame.meshBatches.end()))); return fg; }());
             !renderStatus.ok()) {
             return renderStatus;
         }
@@ -436,7 +436,7 @@ fragment float4 frag_main() {
         world.run(systems, fixedDeltaSeconds);
         const auto frame = adapter.extract(world, *ring);
         if (const auto s =
-                renderer.render(frame.meshBatches, swapchain.get());
+                renderer.render([&]() { truffle::render::FrameGraph fg; fg.add_node(std::make_unique<truffle::render::RenderPassNode>(true, std::vector<truffle::render::RenderBatch>(frame.meshBatches.begin(), frame.meshBatches.end()))); return fg; }(), swapchain.get());
             !s.ok()) {
             return fail("render Metal frame", s);
         }

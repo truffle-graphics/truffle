@@ -32,4 +32,5 @@ truffle_add_format_targets()
 
 if(TRUFFLE_INSTALL)
     truffle_install_package()
+    include(TruffleCPack)
 endif()

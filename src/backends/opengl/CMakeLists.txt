@@ -1,0 +1,4 @@
+add_library(truffle_backend_opengl STATIC opengl_backend.cpp)
+target_link_libraries(truffle_backend_opengl PUBLIC truffle_rhi)
+truffle_configure_target(truffle_backend_opengl BackendOpenGL)
+add_library(Truffle::BackendOpenGL ALIAS truffle_backend_opengl)

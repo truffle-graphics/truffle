@@ -1,6 +1,7 @@
 #include "test_support.hpp"
 #include "truffle/render/render_batch.hpp"
 #include "truffle/render/renderer.hpp"
+#include "truffle/render/frame_graph.hpp"
 #include "truffle/rhi/null_backend.hpp"
 
 #include <cstring>
@@ -47,7 +48,13 @@ int main() {
     const truffle::render::RenderBatch batches[] = {batch};
 
     // --- Headless path (no swapchain) ---
-    TRUFFLE_CHECK(truffle::render::Renderer{*device}.render(batches).ok());
+    truffle::render::Renderer headlessRenderer{*device};
+    TRUFFLE_CHECK(headlessRenderer.render([&]() { truffle::render::FrameGraph fg; fg.add_node(std::make_unique<truffle::render::RenderPassNode>(true, std::vector<truffle::render::RenderBatch>(std::begin(batches), std::end(batches)))); return fg; }()).ok());
+    const auto& headlessStats = headlessRenderer.last_frame_stats();
+    TRUFFLE_CHECK(headlessStats.computeNodesExecuted == 0);
+    TRUFFLE_CHECK(headlessStats.renderNodesExecuted == 1);
+    TRUFFLE_CHECK(headlessStats.renderBatchesExecuted == 1);
+    TRUFFLE_CHECK(!headlessStats.presented);
     TRUFFLE_CHECK(backend->stats().drawsRecorded == 1);
     TRUFFLE_CHECK(backend->stats().submissions   == 1);
 
@@ -65,7 +72,12 @@ int main() {
     auto swapchain = std::move(swapchainResult).value();
 
     truffle::render::Renderer renderer{*device};
-    TRUFFLE_CHECK(renderer.render(batches, swapchain.get()).ok());
+    TRUFFLE_CHECK(renderer.render([&]() { truffle::render::FrameGraph fg; fg.add_node(std::make_unique<truffle::render::RenderPassNode>(true, std::vector<truffle::render::RenderBatch>(std::begin(batches), std::end(batches)))); return fg; }(), swapchain.get()).ok());
+    const auto& swapchainStats = renderer.last_frame_stats();
+    TRUFFLE_CHECK(swapchainStats.computeNodesExecuted == 0);
+    TRUFFLE_CHECK(swapchainStats.renderNodesExecuted == 1);
+    TRUFFLE_CHECK(swapchainStats.renderBatchesExecuted == 1);
+    TRUFFLE_CHECK(swapchainStats.presented);
 
     // Two draws total (headless + swapchain), two submissions
     TRUFFLE_CHECK(backend->stats().drawsRecorded == 2);

@@ -1,4 +1,5 @@
 #include "truffle/rhi/null_backend.hpp"
+#include "truffle/rhi/shader_reflection.hpp"
 
 #include <memory>
 #include <utility>
@@ -39,9 +40,20 @@ class NullPipeline final : public IPipeline {
 public:
     explicit NullPipeline(PipelineDesc desc) : desc_(std::move(desc)) {}
     [[nodiscard]] const PipelineDesc& desc() const noexcept override { return desc_; }
+    [[nodiscard]] const IPipelineReflection* reflection() const noexcept override { return nullptr; }
 
 private:
     PipelineDesc desc_;
+};
+
+class NullComputePipeline final : public IComputePipeline {
+public:
+    explicit NullComputePipeline(ComputePipelineDesc desc) : desc_(std::move(desc)) {}
+    [[nodiscard]] const ComputePipelineDesc& desc() const noexcept override { return desc_; }
+    [[nodiscard]] const IPipelineReflection* reflection() const noexcept override { return nullptr; }
+
+private:
+    ComputePipelineDesc desc_;
 };
 
 class NullSurface final : public ISurface {
@@ -146,6 +158,14 @@ public:
         return Status::success();
     }
 
+    [[nodiscard]] Status bind_compute_pipeline(IComputePipeline& /*pipeline*/) override {
+        if (state_ != State::recording) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "bind_compute_pipeline requires recording");
+        }
+        return Status::success();
+    }
+
     [[nodiscard]] Status bind_vertex_buffer(std::uint32_t /*binding*/,
                                              IBuffer& /*buffer*/,
                                              std::size_t /*offset*/) override {
@@ -172,6 +192,16 @@ public:
         if (state_ != State::recording) {
             return Status::failure(StatusCode::invalid_state,
                                    "bind_uniform_buffer requires recording");
+        }
+        return Status::success();
+    }
+
+    [[nodiscard]] Status bind_storage_buffer(std::uint32_t /*binding*/,
+                                              IBuffer& /*buffer*/,
+                                              std::size_t /*offset*/) override {
+        if (state_ != State::recording) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "bind_storage_buffer requires recording");
         }
         return Status::success();
     }
@@ -246,6 +276,17 @@ public:
                                    "draw_indexed_indirect failed validation");
         }
         ++stats_->value.drawsRecorded;
+        return Status::success();
+    }
+
+    [[nodiscard]] Status dispatch_compute(std::uint32_t /*group_count_x*/,
+                                           std::uint32_t /*group_count_y*/,
+                                           std::uint32_t /*group_count_z*/) override {
+        if (state_ != State::recording) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "dispatch_compute requires recording");
+        }
+        ++stats_->value.drawsRecorded; // Re-use draw counter for now
         return Status::success();
     }
     [[nodiscard]] Status end() override {
@@ -390,6 +431,11 @@ public:
     [[nodiscard]] Result<std::unique_ptr<IPipeline>>
     create_pipeline(const PipelineDesc& desc) override {
         return std::unique_ptr<IPipeline>(std::make_unique<NullPipeline>(desc));
+    }
+
+    [[nodiscard]] Result<std::unique_ptr<IComputePipeline>>
+    create_compute_pipeline(const ComputePipelineDesc& desc) override {
+        return std::unique_ptr<IComputePipeline>(std::make_unique<NullComputePipeline>(desc));
     }
 
     [[nodiscard]] Result<std::unique_ptr<ISurface>>
