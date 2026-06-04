@@ -138,7 +138,7 @@ int verify_capability_contract(const truffle::rhi::IBackend& backend,
 }
 
 truffle::rhi::ShaderDesc make_shader_desc(truffle::rhi::BackendKind backendKind,
-                                           truffle::rhi::ShaderStage stage) {
+                                            truffle::rhi::ShaderStage stage) {
     if (backendKind == truffle::rhi::BackendKind::metal) {
         if (stage == truffle::rhi::ShaderStage::vertex) {
             static const char kVertexMSL[] = R"msl(
@@ -195,6 +195,56 @@ kernel void comp_main(device uint* data [[buffer(0)]],
         .entryPoint = "main",
         .bytecode = {std::byte{0x1}, std::byte{0x2}},
     };
+}
+
+std::unique_ptr<truffle::rhi::IDevice> create_foreign_device(
+    truffle::rhi::BackendKind currentKind) {
+    auto try_create = [](std::unique_ptr<truffle::rhi::IBackend> backend)
+        -> std::unique_ptr<truffle::rhi::IDevice> {
+        if (backend->enumerate_adapters().empty()) {
+            return nullptr;
+        }
+        auto device = backend->create_device({});
+        if (!device.ok()) {
+            return nullptr;
+        }
+        return std::move(device).value();
+    };
+
+#if defined(TRUFFLE_HAS_VULKAN_BACKEND)
+    if (currentKind != truffle::rhi::BackendKind::vulkan) {
+        if (auto device = try_create(truffle::rhi::create_vulkan_backend())) {
+            return device;
+        }
+    }
+#endif
+#if defined(TRUFFLE_HAS_OPENGL_BACKEND)
+    if (currentKind != truffle::rhi::BackendKind::opengl) {
+        if (auto device = try_create(truffle::rhi::create_opengl_backend())) {
+            return device;
+        }
+    }
+#endif
+#if defined(TRUFFLE_HAS_DIRECT3D_BACKEND)
+    if (currentKind != truffle::rhi::BackendKind::direct3d) {
+        if (auto device = try_create(truffle::rhi::create_direct3d_backend())) {
+            return device;
+        }
+    }
+#endif
+#if defined(TRUFFLE_HAS_METAL_BACKEND)
+    if (currentKind != truffle::rhi::BackendKind::metal) {
+        if (auto device = try_create(truffle::rhi::create_metal_backend())) {
+            return device;
+        }
+    }
+#endif
+    if (currentKind != truffle::rhi::BackendKind::null_backend) {
+        if (auto device = try_create(truffle::rhi::create_null_backend())) {
+            return device;
+        }
+    }
+    return nullptr;
 }
 
 int verify_common_positive_path_contract(truffle::rhi::IDevice& device,
@@ -341,12 +391,37 @@ int verify_common_positive_path_contract(truffle::rhi::IDevice& device,
     TRUFFLE_CHECK(barrierBuffer.ok());
     TRUFFLE_CHECK(barrierWrongBuffer.ok());
     TRUFFLE_CHECK(barrierTexture.ok());
+    const truffle::rhi::BindGroupLayoutDesc graphicsBindGroupLayoutDesc{
+        .debugName = "contract_graphics_bind_group_layout",
+        .bindings = graphicsLayout.bindings,
+    };
+    auto graphicsBindGroupLayout =
+        device.create_bind_group_layout(graphicsBindGroupLayoutDesc);
+    TRUFFLE_CHECK(graphicsBindGroupLayout.ok());
+    auto graphicsBindGroup = device.create_bind_group({
+        .debugName = "contract_graphics_bind_group",
+        .layout = graphicsBindGroupLayout.value().get(),
+        .entries = {
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::uniform_buffer,
+                .buffer = {.buffer = barrierBuffer.value().get(), .size = 16},
+            },
+            {
+                .bindingIndex = 1,
+                .type = truffle::rhi::BindingResourceType::sampled_texture,
+                .texture = barrierTexture.value().get(),
+            },
+        },
+    });
+    TRUFFLE_CHECK(graphicsBindGroup.ok());
 
     auto commandBuffer = device.create_command_buffer();
     TRUFFLE_CHECK(commandBuffer != nullptr);
     TRUFFLE_CHECK(commandBuffer->state() == truffle::rhi::CommandBufferState::initial);
     TRUFFLE_CHECK(commandBuffer->begin().ok());
     TRUFFLE_CHECK(commandBuffer->state() == truffle::rhi::CommandBufferState::recording);
+    TRUFFLE_CHECK(commandBuffer->bind_group(0, *graphicsBindGroup.value()).ok());
     TRUFFLE_CHECK(!commandBuffer->resource_barrier(
         truffle::rhi::BufferBarrierDesc{}).ok());
     TRUFFLE_CHECK(commandBuffer->resource_barrier(
@@ -456,6 +531,23 @@ int verify_common_positive_path_contract(truffle::rhi::IDevice& device,
     TRUFFLE_CHECK(indexBuffer.ok());
     TRUFFLE_CHECK(storageBuffer.ok());
     TRUFFLE_CHECK(indirectBuffer.ok());
+    const truffle::rhi::BindGroupLayoutDesc computeBindGroupLayoutDesc{
+        .debugName = "contract_compute_bind_group_layout",
+        .bindings = computeLayout.bindings,
+    };
+    auto computeBindGroupLayout =
+        device.create_bind_group_layout(computeBindGroupLayoutDesc);
+    TRUFFLE_CHECK(computeBindGroupLayout.ok());
+    auto computeBindGroup = device.create_bind_group({
+        .debugName = "contract_compute_bind_group",
+        .layout = computeBindGroupLayout.value().get(),
+        .entries = {{
+            .bindingIndex = 0,
+            .type = truffle::rhi::BindingResourceType::storage_buffer,
+            .buffer = {.buffer = storageBuffer.value().get(), .size = 16},
+        }},
+    });
+    TRUFFLE_CHECK(computeBindGroup.ok());
     truffle::rhi::RenderPassDesc passDesc;
     passDesc.extent = swapchain.value()->desc().extent;
     passDesc.colorAttachment.texture = swapchain.value()->acquire_next_texture();
@@ -468,6 +560,7 @@ int verify_common_positive_path_contract(truffle::rhi::IDevice& device,
             .after = truffle::rhi::ResourceState::storage_read_write,
         }).ok());
     TRUFFLE_CHECK(stateCmd->bind_pipeline(*pipeline.value()).ok());
+    TRUFFLE_CHECK(stateCmd->bind_group(0, *graphicsBindGroup.value()).ok());
     TRUFFLE_CHECK(!stateCmd->bind_vertex_buffer(0, *indexBuffer.value()).ok());
     TRUFFLE_CHECK(stateCmd->bind_vertex_buffer(0, *vertexUniformBuffer.value()).ok());
     TRUFFLE_CHECK(!stateCmd->bind_uniform_buffer(0, *indexBuffer.value()).ok());
@@ -480,6 +573,7 @@ int verify_common_positive_path_contract(truffle::rhi::IDevice& device,
     TRUFFLE_CHECK(stateCmd->end_render_pass().ok());
     TRUFFLE_CHECK(!stateCmd->end_render_pass().ok());
     TRUFFLE_CHECK(stateCmd->bind_compute_pipeline(*computePipeline.value()).ok());
+    TRUFFLE_CHECK(stateCmd->bind_group(0, *computeBindGroup.value()).ok());
     TRUFFLE_CHECK(!stateCmd->bind_storage_buffer(0, *indexBuffer.value()).ok());
     TRUFFLE_CHECK(stateCmd->bind_storage_buffer(0, *storageBuffer.value()).ok());
     TRUFFLE_CHECK(stateCmd->end().ok());
@@ -584,6 +678,164 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
         .range = {},
         .requiredUsage = truffle::rhi::TextureUsageFlags::sampled,
     }));
+
+    auto badBindGroupLayout = device.create_bind_group_layout({
+        .bindings = {{
+            .bindingIndex = caps.limits.maxResourceBindings,
+            .visibility = truffle::rhi::ShaderStageFlags::vertex,
+        }},
+    });
+    TRUFFLE_CHECK(!badBindGroupLayout.ok());
+    TRUFFLE_CHECK(badBindGroupLayout.status().code ==
+                  truffle::core::StatusCode::invalid_argument);
+
+    auto bindGroupUniformBuffer = device.create_buffer({
+        .size = 64,
+        .usageFlags = truffle::rhi::BufferUsageFlags::uniform,
+    });
+    auto bindGroupSampler = device.create_sampler({});
+    TRUFFLE_CHECK(bindGroupUniformBuffer.ok());
+    TRUFFLE_CHECK(bindGroupSampler.ok());
+    auto bindGroupLayout = device.create_bind_group_layout({
+        .debugName = "contract_negative_bind_group_layout",
+        .bindings = {
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::uniform_buffer,
+                .visibility = truffle::rhi::ShaderStageFlags::vertex,
+                .minBindingSize = 16,
+            },
+            {
+                .bindingIndex = 1,
+                .type = truffle::rhi::BindingResourceType::sampled_texture,
+                .visibility = truffle::rhi::ShaderStageFlags::fragment,
+            },
+            {
+                .bindingIndex = 2,
+                .type = truffle::rhi::BindingResourceType::sampler,
+                .visibility = truffle::rhi::ShaderStageFlags::fragment,
+            },
+        },
+    });
+    TRUFFLE_CHECK(bindGroupLayout.ok());
+    auto validBindGroup = device.create_bind_group({
+        .layout = bindGroupLayout.value().get(),
+        .entries = {
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::uniform_buffer,
+                .buffer = {.buffer = bindGroupUniformBuffer.value().get(), .size = 16},
+            },
+            {
+                .bindingIndex = 1,
+                .type = truffle::rhi::BindingResourceType::sampled_texture,
+                .texture = goodTexture.value().get(),
+            },
+            {
+                .bindingIndex = 2,
+                .type = truffle::rhi::BindingResourceType::sampler,
+                .sampler = bindGroupSampler.value().get(),
+            },
+        },
+    });
+    TRUFFLE_CHECK(validBindGroup.ok());
+    if (auto foreignDevice = create_foreign_device(backendKind)) {
+        auto foreignBuffer = foreignDevice->create_buffer({
+            .size = 64,
+            .usageFlags = truffle::rhi::BufferUsageFlags::uniform,
+        });
+        TRUFFLE_CHECK(foreignBuffer.ok());
+        auto mixedBackendBindGroup = device.create_bind_group({
+            .layout = bindGroupLayout.value().get(),
+            .entries = {
+                {
+                    .bindingIndex = 0,
+                    .type = truffle::rhi::BindingResourceType::uniform_buffer,
+                    .buffer = {.buffer = foreignBuffer.value().get(), .size = 16},
+                },
+                {
+                    .bindingIndex = 1,
+                    .type = truffle::rhi::BindingResourceType::sampled_texture,
+                    .texture = goodTexture.value().get(),
+                },
+                {
+                    .bindingIndex = 2,
+                    .type = truffle::rhi::BindingResourceType::sampler,
+                    .sampler = bindGroupSampler.value().get(),
+                },
+            },
+        });
+        TRUFFLE_CHECK(!mixedBackendBindGroup.ok());
+        TRUFFLE_CHECK(mixedBackendBindGroup.status().code ==
+                      truffle::core::StatusCode::invalid_argument);
+    }
+    auto missingLayoutBindGroup = device.create_bind_group({
+        .entries = {{
+            .bindingIndex = 0,
+            .type = truffle::rhi::BindingResourceType::uniform_buffer,
+            .buffer = {.buffer = bindGroupUniformBuffer.value().get(), .size = 16},
+        }},
+    });
+    TRUFFLE_CHECK(!missingLayoutBindGroup.ok());
+    TRUFFLE_CHECK(missingLayoutBindGroup.status().code ==
+                  truffle::core::StatusCode::invalid_argument);
+    auto missingEntryBindGroup = device.create_bind_group({
+        .layout = bindGroupLayout.value().get(),
+        .entries = {{
+            .bindingIndex = 0,
+            .type = truffle::rhi::BindingResourceType::uniform_buffer,
+            .buffer = {.buffer = bindGroupUniformBuffer.value().get(), .size = 16},
+        }},
+    });
+    TRUFFLE_CHECK(!missingEntryBindGroup.ok());
+    TRUFFLE_CHECK(missingEntryBindGroup.status().code ==
+                  truffle::core::StatusCode::invalid_argument);
+    auto wrongUsageBindGroup = device.create_bind_group({
+        .layout = bindGroupLayout.value().get(),
+        .entries = {
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::uniform_buffer,
+                .buffer = {.buffer = goodBuffer.value().get(), .size = 16},
+            },
+            {
+                .bindingIndex = 1,
+                .type = truffle::rhi::BindingResourceType::sampled_texture,
+                .texture = goodTexture.value().get(),
+            },
+            {
+                .bindingIndex = 2,
+                .type = truffle::rhi::BindingResourceType::sampler,
+                .sampler = bindGroupSampler.value().get(),
+            },
+        },
+    });
+    TRUFFLE_CHECK(!wrongUsageBindGroup.ok());
+    TRUFFLE_CHECK(wrongUsageBindGroup.status().code ==
+                  truffle::core::StatusCode::invalid_argument);
+    auto duplicateEntryBindGroup = device.create_bind_group({
+        .layout = bindGroupLayout.value().get(),
+        .entries = {
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::uniform_buffer,
+                .buffer = {.buffer = bindGroupUniformBuffer.value().get(), .size = 16},
+            },
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::uniform_buffer,
+                .buffer = {.buffer = bindGroupUniformBuffer.value().get(), .size = 16},
+            },
+            {
+                .bindingIndex = 2,
+                .type = truffle::rhi::BindingResourceType::sampler,
+                .sampler = bindGroupSampler.value().get(),
+            },
+        },
+    });
+    TRUFFLE_CHECK(!duplicateEntryBindGroup.ok());
+    TRUFFLE_CHECK(duplicateEntryBindGroup.status().code ==
+                  truffle::core::StatusCode::invalid_argument);
 
     auto badSurface = device.create_surface({
         .native = {.kind = truffle::rhi::NativeSurfaceKind::headless},

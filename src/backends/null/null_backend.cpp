@@ -101,6 +101,32 @@ private:
 };
 
 class NullSampler final : public ISampler {};
+
+class NullBindGroupLayout final : public IBindGroupLayout {
+public:
+    explicit NullBindGroupLayout(BindGroupLayoutDesc desc)
+        : desc_(std::move(desc)) {}
+
+    [[nodiscard]] const BindGroupLayoutDesc& desc() const noexcept override {
+        return desc_;
+    }
+
+private:
+    BindGroupLayoutDesc desc_;
+};
+
+class NullBindGroup final : public IBindGroup {
+public:
+    explicit NullBindGroup(BindGroupDesc desc) : desc_(std::move(desc)) {}
+
+    [[nodiscard]] const BindGroupDesc& desc() const noexcept override {
+        return desc_;
+    }
+
+private:
+    BindGroupDesc desc_;
+};
+
 class NullShader final : public IShader {};
 
 class NullPipeline final : public IPipeline {
@@ -381,8 +407,8 @@ public:
     }
 
     [[nodiscard]] Status bind_storage_buffer(std::uint32_t /*binding*/,
-                                               IBuffer& buffer,
-                                               std::size_t /*offset*/) override {
+                                                IBuffer& buffer,
+                                                std::size_t /*offset*/) override {
         if (state_ != State::recording) {
             return Status::failure(StatusCode::invalid_state,
                                    "bind_storage_buffer requires recording");
@@ -394,6 +420,23 @@ public:
         if (!validation::buffer_supports_usage(buffer.desc(), BufferUsageFlags::storage)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "buffer lacks storage usage");
+        }
+        return Status::success();
+    }
+
+    [[nodiscard]] Status bind_group(std::uint32_t /*groupIndex*/,
+                                    IBindGroup& group) override {
+        if (state_ != State::recording) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "bind_group requires recording");
+        }
+        if (!dynamic_cast<NullBindGroup*>(&group)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "bind group must be created by null backend");
+        }
+        if (!validation::bind_group_desc_valid(group.desc())) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "bind group descriptor is invalid");
         }
         return Status::success();
     }
@@ -795,6 +838,54 @@ public:
                                    "pipeline render state is invalid");
         }
         return std::unique_ptr<IPipeline>(std::make_unique<NullPipeline>(desc));
+    }
+
+    [[nodiscard]] Result<std::unique_ptr<IBindGroupLayout>>
+    create_bind_group_layout(const BindGroupLayoutDesc& desc) override {
+        if (!validation::bind_group_layout_valid(desc, capabilities_)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "bind group layout is invalid");
+        }
+        return std::unique_ptr<IBindGroupLayout>(
+            std::make_unique<NullBindGroupLayout>(desc));
+    }
+
+    [[nodiscard]] Result<std::unique_ptr<IBindGroup>>
+    create_bind_group(const BindGroupDesc& desc) override {
+        if (!validation::bind_group_desc_valid(desc)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "bind group descriptor is invalid");
+        }
+        if (!dynamic_cast<NullBindGroupLayout*>(desc.layout)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "bind group layout must be created by null backend");
+        }
+        for (const auto& entry : desc.entries) {
+            switch (entry.type) {
+                case BindingResourceType::uniform_buffer:
+                case BindingResourceType::storage_buffer:
+                    if (!dynamic_cast<NullBuffer*>(entry.buffer.buffer)) {
+                        return Status::failure(StatusCode::invalid_argument,
+                                               "bind group buffer must be created by null backend");
+                    }
+                    break;
+                case BindingResourceType::sampled_texture:
+                case BindingResourceType::storage_texture:
+                    if (!dynamic_cast<NullTexture*>(entry.texture)) {
+                        return Status::failure(StatusCode::invalid_argument,
+                                               "bind group texture must be created by null backend");
+                    }
+                    break;
+                case BindingResourceType::sampler:
+                    if (!dynamic_cast<NullSampler*>(entry.sampler)) {
+                        return Status::failure(StatusCode::invalid_argument,
+                                               "bind group sampler must be created by null backend");
+                    }
+                    break;
+            }
+        }
+        return std::unique_ptr<IBindGroup>(
+            std::make_unique<NullBindGroup>(desc));
     }
 
     [[nodiscard]] Result<std::unique_ptr<IComputePipeline>>

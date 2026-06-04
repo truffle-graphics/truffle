@@ -117,6 +117,31 @@ private:
     std::uint64_t value_ = 0;
 };
 
+class OpenGLBindGroupLayout final : public IBindGroupLayout {
+public:
+    explicit OpenGLBindGroupLayout(BindGroupLayoutDesc desc)
+        : desc_(std::move(desc)) {}
+
+    [[nodiscard]] const BindGroupLayoutDesc& desc() const noexcept override {
+        return desc_;
+    }
+
+private:
+    BindGroupLayoutDesc desc_;
+};
+
+class OpenGLBindGroup final : public IBindGroup {
+public:
+    explicit OpenGLBindGroup(BindGroupDesc desc) : desc_(std::move(desc)) {}
+
+    [[nodiscard]] const BindGroupDesc& desc() const noexcept override {
+        return desc_;
+    }
+
+private:
+    BindGroupDesc desc_;
+};
+
 class OpenGLCommandBuffer final : public ICommandBuffer {
 public:
     enum class State {
@@ -267,6 +292,22 @@ public:
         if (!validation::buffer_supports_usage(buffer.desc(), BufferUsageFlags::storage)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "OpenGLCommandBuffer: buffer lacks storage usage");
+        }
+        return Status::success();
+    }
+
+    [[nodiscard]] Status bind_group(std::uint32_t /*groupIndex*/,
+                                    IBindGroup& group) override {
+        if (const auto s = require_recording("bind_group"); !s.ok()) {
+            return s;
+        }
+        if (!dynamic_cast<OpenGLBindGroup*>(&group)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "OpenGLCommandBuffer: bind group must be created by OpenGL backend");
+        }
+        if (!validation::bind_group_desc_valid(group.desc())) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "OpenGLCommandBuffer: bind group descriptor is invalid");
         }
         return Status::success();
     }
@@ -807,6 +848,53 @@ public:
 
         return std::unique_ptr<IPipeline>(
             std::make_unique<OpenGLPipeline>(desc, std::move(reflection)));
+    }
+
+    [[nodiscard]] core::Result<std::unique_ptr<IBindGroupLayout>>
+    create_bind_group_layout(const BindGroupLayoutDesc& desc) override {
+        if (!validation::bind_group_layout_valid(desc, caps_)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "OpenGL backend: bind group layout is invalid");
+        }
+        return std::unique_ptr<IBindGroupLayout>(
+            std::make_unique<OpenGLBindGroupLayout>(desc));
+    }
+
+    [[nodiscard]] core::Result<std::unique_ptr<IBindGroup>>
+    create_bind_group(const BindGroupDesc& desc) override {
+        if (!validation::bind_group_desc_valid(desc)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "OpenGL backend: bind group descriptor is invalid");
+        }
+        if (!dynamic_cast<OpenGLBindGroupLayout*>(desc.layout)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "OpenGL backend: bind group layout must be created by OpenGL backend");
+        }
+        for (const auto& entry : desc.entries) {
+            switch (entry.type) {
+                case BindingResourceType::uniform_buffer:
+                case BindingResourceType::storage_buffer:
+                    if (!dynamic_cast<OpenGLBuffer*>(entry.buffer.buffer)) {
+                        return Status::failure(StatusCode::invalid_argument,
+                                               "OpenGL backend: bind group buffer must be created by OpenGL backend");
+                    }
+                    break;
+                case BindingResourceType::sampled_texture:
+                case BindingResourceType::storage_texture:
+                    if (!dynamic_cast<OpenGLTexture*>(entry.texture)) {
+                        return Status::failure(StatusCode::invalid_argument,
+                                               "OpenGL backend: bind group texture must be created by OpenGL backend");
+                    }
+                    break;
+                case BindingResourceType::sampler:
+                    if (!dynamic_cast<OpenGLSampler*>(entry.sampler)) {
+                        return Status::failure(StatusCode::invalid_argument,
+                                               "OpenGL backend: bind group sampler must be created by OpenGL backend");
+                    }
+                    break;
+            }
+        }
+        return std::unique_ptr<IBindGroup>(std::make_unique<OpenGLBindGroup>(desc));
     }
 
     [[nodiscard]] core::Result<std::unique_ptr<IComputePipeline>> create_compute_pipeline(

@@ -219,6 +219,31 @@ private:
     id<MTLSamplerState> sampler_ = nil;
 };
 
+class MetalBindGroupLayout final : public IBindGroupLayout {
+public:
+    explicit MetalBindGroupLayout(BindGroupLayoutDesc desc)
+        : desc_(std::move(desc)) {}
+
+    const BindGroupLayoutDesc& desc() const noexcept override {
+        return desc_;
+    }
+
+private:
+    BindGroupLayoutDesc desc_;
+};
+
+class MetalBindGroup final : public IBindGroup {
+public:
+    explicit MetalBindGroup(BindGroupDesc desc) : desc_(std::move(desc)) {}
+
+    const BindGroupDesc& desc() const noexcept override {
+        return desc_;
+    }
+
+private:
+    BindGroupDesc desc_;
+};
+
 
 class MetalPipelineReflection final : public IPipelineReflection {
 public:
@@ -737,6 +762,22 @@ public:
         }
         id<MTLBuffer> mtlBuf = static_cast<MetalBuffer&>(buffer).native();
         [compute_encoder_ setBuffer:mtlBuf offset:offset atIndex:binding];
+        return Status::success();
+    }
+
+    Status bind_group(std::uint32_t /*groupIndex*/, IBindGroup& group) override {
+        if (state_ != State::recording) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "bind_group requires recording state");
+        }
+        if (!dynamic_cast<MetalBindGroup*>(&group)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "bind group must be created by the Metal backend");
+        }
+        if (!validation::bind_group_desc_valid(group.desc())) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "bind group descriptor is invalid");
+        }
         return Status::success();
     }
 
@@ -1339,6 +1380,53 @@ public:
                                    "Metal pipeline render state is invalid");
         }
         return MetalPipeline::create(device_, desc);
+    }
+
+    Result<std::unique_ptr<IBindGroupLayout>>
+    create_bind_group_layout(const BindGroupLayoutDesc& desc) override {
+        if (!validation::bind_group_layout_valid(desc, caps_)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Metal bind group layout is invalid");
+        }
+        return std::unique_ptr<IBindGroupLayout>(
+            std::make_unique<MetalBindGroupLayout>(desc));
+    }
+
+    Result<std::unique_ptr<IBindGroup>>
+    create_bind_group(const BindGroupDesc& desc) override {
+        if (!validation::bind_group_desc_valid(desc)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Metal bind group descriptor is invalid");
+        }
+        if (!dynamic_cast<MetalBindGroupLayout*>(desc.layout)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "bind group layout must be created by the Metal backend");
+        }
+        for (const auto& entry : desc.entries) {
+            switch (entry.type) {
+                case BindingResourceType::uniform_buffer:
+                case BindingResourceType::storage_buffer:
+                    if (!dynamic_cast<MetalBuffer*>(entry.buffer.buffer)) {
+                        return Status::failure(StatusCode::invalid_argument,
+                                               "bind group buffer must be created by the Metal backend");
+                    }
+                    break;
+                case BindingResourceType::sampled_texture:
+                case BindingResourceType::storage_texture:
+                    if (!dynamic_cast<MetalTexture*>(entry.texture)) {
+                        return Status::failure(StatusCode::invalid_argument,
+                                               "bind group texture must be created by the Metal backend");
+                    }
+                    break;
+                case BindingResourceType::sampler:
+                    if (!dynamic_cast<MetalSampler*>(entry.sampler)) {
+                        return Status::failure(StatusCode::invalid_argument,
+                                               "bind group sampler must be created by the Metal backend");
+                    }
+                    break;
+            }
+        }
+        return std::unique_ptr<IBindGroup>(std::make_unique<MetalBindGroup>(desc));
     }
 
     Result<std::unique_ptr<IComputePipeline>> create_compute_pipeline(const ComputePipelineDesc& desc) override {

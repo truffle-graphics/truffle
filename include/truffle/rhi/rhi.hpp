@@ -16,6 +16,9 @@ namespace truffle::rhi {
 class IBuffer;
 class IShader;
 class ITexture;
+class ISampler;
+class IBindGroupLayout;
+class IBindGroup;
 class ICommandBuffer; // used in ISwapchain::schedule_present
 
 enum class BackendKind {
@@ -526,6 +529,31 @@ struct PipelineLayoutDesc {
     std::vector<BindingLayoutDesc> bindings;
 };
 
+struct BufferBindingDesc {
+    IBuffer* buffer = nullptr;
+    std::size_t offset = 0;
+    std::size_t size = 0; // 0 means from offset to end of buffer.
+};
+
+struct BindGroupEntry {
+    std::uint32_t bindingIndex = 0;
+    BindingResourceType type = BindingResourceType::uniform_buffer;
+    BufferBindingDesc buffer;
+    ITexture* texture = nullptr;
+    ISampler* sampler = nullptr;
+};
+
+struct BindGroupLayoutDesc {
+    std::string debugName;
+    std::vector<BindingLayoutDesc> bindings;
+};
+
+struct BindGroupDesc {
+    std::string debugName;
+    IBindGroupLayout* layout = nullptr;
+    std::vector<BindGroupEntry> entries;
+};
+
 struct PipelineDesc {
     std::string       debugName;
     std::uint64_t     cacheKey       = 0;
@@ -629,6 +657,18 @@ public:
 class ISampler {
 public:
     virtual ~ISampler() = default;
+};
+
+class IBindGroupLayout {
+public:
+    virtual ~IBindGroupLayout() = default;
+    [[nodiscard]] virtual const BindGroupLayoutDesc& desc() const noexcept = 0;
+};
+
+class IBindGroup {
+public:
+    virtual ~IBindGroup() = default;
+    [[nodiscard]] virtual const BindGroupDesc& desc() const noexcept = 0;
 };
 
 class IShader {
@@ -779,6 +819,8 @@ public:
     [[nodiscard]] virtual core::Status bind_storage_buffer(
         std::uint32_t binding, IBuffer& buffer,
         std::size_t offset = 0) = 0;
+    [[nodiscard]] virtual core::Status bind_group(
+        std::uint32_t groupIndex, IBindGroup& group) = 0;
     [[nodiscard]] virtual core::Status resource_barrier(
         const BufferBarrierDesc& barrier) = 0;
     [[nodiscard]] virtual core::Status resource_barrier(
@@ -833,6 +875,10 @@ public:
     create_texture(const TextureDesc& desc) = 0;
     [[nodiscard]] virtual core::Result<std::unique_ptr<ISampler>>
     create_sampler(const SamplerDesc& desc) = 0;
+    [[nodiscard]] virtual core::Result<std::unique_ptr<IBindGroupLayout>>
+    create_bind_group_layout(const BindGroupLayoutDesc& desc) = 0;
+    [[nodiscard]] virtual core::Result<std::unique_ptr<IBindGroup>>
+    create_bind_group(const BindGroupDesc& desc) = 0;
     [[nodiscard]] virtual core::Result<std::unique_ptr<IShader>>
     create_shader(const ShaderDesc& desc) = 0;
     [[nodiscard]] virtual core::Result<std::unique_ptr<IPipeline>>

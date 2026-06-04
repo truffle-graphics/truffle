@@ -121,6 +121,31 @@ private:
     std::uint64_t value_ = 0;
 };
 
+class Direct3DBindGroupLayout final : public IBindGroupLayout {
+public:
+    explicit Direct3DBindGroupLayout(BindGroupLayoutDesc desc)
+        : desc_(std::move(desc)) {}
+
+    [[nodiscard]] const BindGroupLayoutDesc& desc() const noexcept override {
+        return desc_;
+    }
+
+private:
+    BindGroupLayoutDesc desc_;
+};
+
+class Direct3DBindGroup final : public IBindGroup {
+public:
+    explicit Direct3DBindGroup(BindGroupDesc desc) : desc_(std::move(desc)) {}
+
+    [[nodiscard]] const BindGroupDesc& desc() const noexcept override {
+        return desc_;
+    }
+
+private:
+    BindGroupDesc desc_;
+};
+
 class Direct3DCommandBuffer final : public ICommandBuffer {
 public:
     enum class State {
@@ -271,6 +296,22 @@ public:
         if (!validation::buffer_supports_usage(buffer.desc(), BufferUsageFlags::storage)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "Direct3DCommandBuffer: buffer lacks storage usage");
+        }
+        return Status::success();
+    }
+
+    [[nodiscard]] Status bind_group(std::uint32_t /*groupIndex*/,
+                                    IBindGroup& group) override {
+        if (const auto s = require_recording("bind_group"); !s.ok()) {
+            return s;
+        }
+        if (!dynamic_cast<Direct3DBindGroup*>(&group)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Direct3DCommandBuffer: bind group must be created by Direct3D backend");
+        }
+        if (!validation::bind_group_desc_valid(group.desc())) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Direct3DCommandBuffer: bind group descriptor is invalid");
         }
         return Status::success();
     }
@@ -811,6 +852,53 @@ public:
 
         return std::unique_ptr<IPipeline>(
             std::make_unique<Direct3DPipeline>(desc, std::move(reflection)));
+    }
+
+    [[nodiscard]] core::Result<std::unique_ptr<IBindGroupLayout>>
+    create_bind_group_layout(const BindGroupLayoutDesc& desc) override {
+        if (!validation::bind_group_layout_valid(desc, caps_)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Direct3D backend: bind group layout is invalid");
+        }
+        return std::unique_ptr<IBindGroupLayout>(
+            std::make_unique<Direct3DBindGroupLayout>(desc));
+    }
+
+    [[nodiscard]] core::Result<std::unique_ptr<IBindGroup>>
+    create_bind_group(const BindGroupDesc& desc) override {
+        if (!validation::bind_group_desc_valid(desc)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Direct3D backend: bind group descriptor is invalid");
+        }
+        if (!dynamic_cast<Direct3DBindGroupLayout*>(desc.layout)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Direct3D backend: bind group layout must be created by Direct3D backend");
+        }
+        for (const auto& entry : desc.entries) {
+            switch (entry.type) {
+                case BindingResourceType::uniform_buffer:
+                case BindingResourceType::storage_buffer:
+                    if (!dynamic_cast<Direct3DBuffer*>(entry.buffer.buffer)) {
+                        return Status::failure(StatusCode::invalid_argument,
+                                               "Direct3D backend: bind group buffer must be created by Direct3D backend");
+                    }
+                    break;
+                case BindingResourceType::sampled_texture:
+                case BindingResourceType::storage_texture:
+                    if (!dynamic_cast<Direct3DTexture*>(entry.texture)) {
+                        return Status::failure(StatusCode::invalid_argument,
+                                               "Direct3D backend: bind group texture must be created by Direct3D backend");
+                    }
+                    break;
+                case BindingResourceType::sampler:
+                    if (!dynamic_cast<Direct3DSampler*>(entry.sampler)) {
+                        return Status::failure(StatusCode::invalid_argument,
+                                               "Direct3D backend: bind group sampler must be created by Direct3D backend");
+                    }
+                    break;
+            }
+        }
+        return std::unique_ptr<IBindGroup>(std::make_unique<Direct3DBindGroup>(desc));
     }
 
     [[nodiscard]] core::Result<std::unique_ptr<IComputePipeline>> create_compute_pipeline(

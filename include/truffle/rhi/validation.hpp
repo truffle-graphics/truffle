@@ -370,8 +370,97 @@ namespace truffle::rhi::validation {
            view.range.baseMipLevel < desc.mipLevels &&
            view.range.mipLevelCount <= desc.mipLevels - view.range.baseMipLevel &&
            view.range.baseArrayLayer < desc.arrayLayers &&
-            view.range.arrayLayerCount <=
-                desc.arrayLayers - view.range.baseArrayLayer;
+           view.range.arrayLayerCount <=
+               desc.arrayLayers - view.range.baseArrayLayer;
+}
+
+[[nodiscard]] inline bool bind_group_layout_valid(
+    const BindGroupLayoutDesc& layout,
+    const Capabilities& capabilities) noexcept {
+    return pipeline_layout_valid({
+        .debugName = layout.debugName,
+        .bindings = layout.bindings,
+    }, capabilities);
+}
+
+[[nodiscard]] inline bool bind_group_entry_valid(
+    const BindGroupEntry& entry,
+    const BindingLayoutDesc& layoutBinding) noexcept {
+    if (entry.bindingIndex != layoutBinding.bindingIndex ||
+        entry.type != layoutBinding.type) {
+        return false;
+    }
+
+    switch (entry.type) {
+    case BindingResourceType::uniform_buffer:
+    case BindingResourceType::storage_buffer: {
+        if (!entry.buffer.buffer || entry.texture || entry.sampler) {
+            return false;
+        }
+        const auto& bufferDesc = entry.buffer.buffer->desc();
+        const auto requiredUsage =
+            entry.type == BindingResourceType::uniform_buffer
+                ? BufferUsageFlags::uniform
+                : BufferUsageFlags::storage;
+        if (entry.buffer.offset >= bufferDesc.size) {
+            return false;
+        }
+        const auto bindingSize = entry.buffer.size == 0
+            ? bufferDesc.size - entry.buffer.offset
+            : entry.buffer.size;
+        return range_fits(entry.buffer.offset, bindingSize, bufferDesc.size) &&
+               bindingSize >= layoutBinding.minBindingSize &&
+               buffer_supports_usage(bufferDesc, requiredUsage);
+    }
+    case BindingResourceType::sampled_texture:
+    case BindingResourceType::storage_texture: {
+        if (!entry.texture || entry.buffer.buffer || entry.sampler) {
+            return false;
+        }
+        const auto requiredUsage =
+            entry.type == BindingResourceType::sampled_texture
+                ? TextureUsageFlags::sampled
+                : TextureUsageFlags::storage;
+        return texture_supports_usage(entry.texture->desc(), requiredUsage);
+    }
+    case BindingResourceType::sampler:
+        return entry.sampler != nullptr && !entry.buffer.buffer && !entry.texture;
+    }
+
+    return false;
+}
+
+[[nodiscard]] inline bool bind_group_desc_valid(
+    const BindGroupDesc& desc) noexcept {
+    if (!desc.layout) {
+        return false;
+    }
+
+    const auto& layout = desc.layout->desc();
+    if (desc.entries.size() != layout.bindings.size()) {
+        return false;
+    }
+
+    for (std::size_t i = 0; i < desc.entries.size(); ++i) {
+        const auto& entry = desc.entries[i];
+        const BindingLayoutDesc* layoutBinding = nullptr;
+        for (const auto& candidate : layout.bindings) {
+            if (candidate.bindingIndex == entry.bindingIndex) {
+                layoutBinding = &candidate;
+                break;
+            }
+        }
+        if (!layoutBinding || !bind_group_entry_valid(entry, *layoutBinding)) {
+            return false;
+        }
+        for (std::size_t j = i + 1; j < desc.entries.size(); ++j) {
+            if (entry.bindingIndex == desc.entries[j].bindingIndex) {
+                return false;
+            }
+        }
+    }
+
+    return true;
 }
 
 [[nodiscard]] inline bool buffer_barrier_valid(

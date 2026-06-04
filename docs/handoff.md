@@ -241,6 +241,19 @@ validation, diagnostics, and backend parity.
     reflection-capable backends.
   - Added lightweight graphics/compute pipeline cache-key hooks on descriptors
     and pipeline objects.
+- **Low-Level Graphics Foundation Slice 7** — Complete.
+  - Added backend-neutral bind group layout and bind group descriptors with
+    binding slots, visibility, resource kinds, buffer ranges, textures, and
+    samplers.
+  - Added shared validation for bind group layouts, entries, missing resources,
+    wrong usages, duplicate bindings, minimum buffer sizes, and full-buffer range
+    bindings.
+  - Wired bind group layout/group creation and `ICommandBuffer::bind_group`
+    through null, Metal, Vulkan, OpenGL, and Direct3D backends.
+  - Added backend ownership checks so bind groups reject layouts/resources from
+    other backend implementations.
+  - Expanded core and shared RHI contract tests for bind group validation,
+    creation failures, command binding, and mixed-backend rejection.
 
 ## Relevant Decisions And Constraints
 
@@ -284,10 +297,10 @@ core contract tests, package consumer, and transform compute tests.
 
 ## Next Resume Steps
 
-1. Continue low-level graphics Slice 7: binding/descriptor model and bindless
-   feature gates.
-2. Add shader/pipeline and binding descriptor depth before any
-   new high-level renderer features rely on implicit policy.
+1. Continue low-level graphics Slice 8: validation diagnostics, debug
+   names/labels, backend event/stats model, and parity reporting.
+2. Decide bindless and dynamic-resource-indexing capability flags before higher
+   renderer features rely on descriptor indexing policy.
 3. Add machine-readable parity report output alongside markdown.
 
 ## Open Questions Or Risks
@@ -297,8 +310,10 @@ core contract tests, package consumer, and transform compute tests.
 - Vulkan, OpenGL, and Direct3D backends currently provide deterministic
   contract semantics; native API implementation and platform/runtime
   integration remain open.
-- The low-level synchronization, resource-state, and descriptor-binding models
-  are still intentionally incomplete until later slices land.
+- Native descriptor allocation/mapping depth remains backend-specific future
+  work; the current bind group model is a validated contract layer.
+- Bindless and dynamic-resource-indexing feature gates remain deferred until the
+  diagnostics/parity pass can report feature tiers clearly.
 - Local private Copilot overlay is configured only for this machine for now;
   any cloud/private overlay distribution model remains intentionally deferred.
 

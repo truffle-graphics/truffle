@@ -120,6 +120,31 @@ private:
     std::uint64_t value_ = 0;
 };
 
+class VulkanBindGroupLayout final : public IBindGroupLayout {
+public:
+    explicit VulkanBindGroupLayout(BindGroupLayoutDesc desc)
+        : desc_(std::move(desc)) {}
+
+    [[nodiscard]] const BindGroupLayoutDesc& desc() const noexcept override {
+        return desc_;
+    }
+
+private:
+    BindGroupLayoutDesc desc_;
+};
+
+class VulkanBindGroup final : public IBindGroup {
+public:
+    explicit VulkanBindGroup(BindGroupDesc desc) : desc_(std::move(desc)) {}
+
+    [[nodiscard]] const BindGroupDesc& desc() const noexcept override {
+        return desc_;
+    }
+
+private:
+    BindGroupDesc desc_;
+};
+
 class VulkanCommandBuffer final : public ICommandBuffer {
 public:
     enum class State {
@@ -270,6 +295,22 @@ public:
         if (!validation::buffer_supports_usage(buffer.desc(), BufferUsageFlags::storage)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "VulkanCommandBuffer: buffer lacks storage usage");
+        }
+        return Status::success();
+    }
+
+    [[nodiscard]] Status bind_group(std::uint32_t /*groupIndex*/,
+                                    IBindGroup& group) override {
+        if (const auto s = require_recording("bind_group"); !s.ok()) {
+            return s;
+        }
+        if (!dynamic_cast<VulkanBindGroup*>(&group)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "VulkanCommandBuffer: bind group must be created by Vulkan backend");
+        }
+        if (!validation::bind_group_desc_valid(group.desc())) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "VulkanCommandBuffer: bind group descriptor is invalid");
         }
         return Status::success();
     }
@@ -810,6 +851,53 @@ public:
 
         return std::unique_ptr<IPipeline>(
             std::make_unique<VulkanPipeline>(desc, std::move(reflection)));
+    }
+
+    [[nodiscard]] core::Result<std::unique_ptr<IBindGroupLayout>>
+    create_bind_group_layout(const BindGroupLayoutDesc& desc) override {
+        if (!validation::bind_group_layout_valid(desc, caps_)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Vulkan backend: bind group layout is invalid");
+        }
+        return std::unique_ptr<IBindGroupLayout>(
+            std::make_unique<VulkanBindGroupLayout>(desc));
+    }
+
+    [[nodiscard]] core::Result<std::unique_ptr<IBindGroup>>
+    create_bind_group(const BindGroupDesc& desc) override {
+        if (!validation::bind_group_desc_valid(desc)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Vulkan backend: bind group descriptor is invalid");
+        }
+        if (!dynamic_cast<VulkanBindGroupLayout*>(desc.layout)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Vulkan backend: bind group layout must be created by Vulkan backend");
+        }
+        for (const auto& entry : desc.entries) {
+            switch (entry.type) {
+                case BindingResourceType::uniform_buffer:
+                case BindingResourceType::storage_buffer:
+                    if (!dynamic_cast<VulkanBuffer*>(entry.buffer.buffer)) {
+                        return Status::failure(StatusCode::invalid_argument,
+                                               "Vulkan backend: bind group buffer must be created by Vulkan backend");
+                    }
+                    break;
+                case BindingResourceType::sampled_texture:
+                case BindingResourceType::storage_texture:
+                    if (!dynamic_cast<VulkanTexture*>(entry.texture)) {
+                        return Status::failure(StatusCode::invalid_argument,
+                                               "Vulkan backend: bind group texture must be created by Vulkan backend");
+                    }
+                    break;
+                case BindingResourceType::sampler:
+                    if (!dynamic_cast<VulkanSampler*>(entry.sampler)) {
+                        return Status::failure(StatusCode::invalid_argument,
+                                               "Vulkan backend: bind group sampler must be created by Vulkan backend");
+                    }
+                    break;
+            }
+        }
+        return std::unique_ptr<IBindGroup>(std::make_unique<VulkanBindGroup>(desc));
     }
 
     [[nodiscard]] core::Result<std::unique_ptr<IComputePipeline>> create_compute_pipeline(
