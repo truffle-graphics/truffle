@@ -25,10 +25,14 @@ The first implementation line focuses on stable architecture and build contracts
 with backend-neutral APIs and contract-tested backend modules:
 
 - `truffle_core` owns shared status, configuration, and handle primitives.
+- `truffle_assets` defines declarative asset, material-operation, texture, and
+  geometry stream metadata without owning file loading or GPU upload.
 - `truffle_ecs` provides a general-purpose ECS world.
 - `truffle_rhi` defines backend-neutral GPU and presentation contracts.
 - `truffle_backend_null` validates RHI flow without a GPU dependency.
 - `truffle_render` starts the independently consumable rendering layer above RHI.
+- `truffle_diagnostics` provides opt-in render/frame inspection helpers without
+  adding diagnostics dependencies back into render or scene code.
 
 The renderer layer will accept more than one data path. ECS extraction stays a
 first-party convenience path, while large dynamic workloads can grow toward
@@ -68,8 +72,9 @@ find_package(Truffle CONFIG REQUIRED)
 target_link_libraries(my_tool PRIVATE Truffle::RHI Truffle::Render)
 ```
 
-The package exports `Truffle::Core`, `Truffle::ECS`, `Truffle::RHI`,
-`Truffle::BackendNull`, and `Truffle::Render`. Additional backend exports
+The package exports `Truffle::Core`, `Truffle::Assets`, `Truffle::ECS`,
+`Truffle::RHI`, `Truffle::BackendNull`, `Truffle::Render`,
+`Truffle::Scene`, and `Truffle::Diagnostics`. Additional backend exports
 (`Truffle::BackendMetal`, `Truffle::BackendVulkan`, `Truffle::BackendOpenGL`,
 `Truffle::BackendDirect3D`) are available when their corresponding CMake
 options are enabled.

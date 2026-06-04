@@ -13,8 +13,9 @@ docs, charter, or ADRs instead of leaving it only in this working document.
 
 ## Current Focus
 
-Post-Phase-12 stabilization with parity quality gates, distribution validation,
-and active Direct3D contract-backend extension work.
+Post-Phase-12 stabilization with opt-in high-level asset/diagnostics layers,
+parity quality gates, distribution validation, and active Direct3D
+contract-backend extension work.
 
 ## Current Work Status
 
@@ -109,6 +110,18 @@ and active Direct3D contract-backend extension work.
   - Added tag-driven release workflow to publish versioned package artifacts.
   - Added `docs/distribution.md` onboarding guidance for local packaging,
     consumer verification, and release flow.
+- **High-Level Asset And Diagnostics Track** — First Slice Implemented.
+  - Added `truffle_assets` / `Truffle::Assets` for declarative asset, material,
+    material-operation, texture, and geometry-stream metadata without file
+    loading or GPU upload ownership.
+  - Added `truffle_diagnostics` / `Truffle::Diagnostics` for opt-in,
+    pull-based render-batch, frame-graph, and renderer-stats summaries.
+  - Added external diagnostics labels for batches, frame-graph nodes, and
+    resources so tool-facing names do not become permanent render-object fields.
+  - Kept diagnostics separate from render and scene runtime dependencies; normal
+    consumers only link the diagnostics target when they want inspection helpers.
+  - Added `truffle_assets_tests` and `truffle_diagnostics_tests`, and extended
+    the package consumer smoke check to link the new exported targets.
 - **Direct3D Extension Track** — In Progress.
   - Added `truffle_backend_direct3d` contract backend module and public factory
     entry point (`create_direct3d_backend`).
@@ -123,51 +136,55 @@ and active Direct3D contract-backend extension work.
 - `FrameGraph` owns high-level order, not rendering states. Individual graph nodes retain responsibility for executing `begin_render_pass` alongside backend queues.
 - `truffle_render` must have zero compile-time dependency on `truffle_ecs`. `truffle_scene` is the designated ECS-to-render bridge.
 - `RenderBatch` and `InstanceLayout` are the universal renderer input contract.
+- `truffle_assets` is declarative metadata only for now; file import, backend
+  upload, shader compilation, and material-operation execution are explicitly
+  deferred.
+- `truffle_diagnostics` is strict opt-in tooling: no global tracing, no
+  background logger, and no dependency from `truffle_render` or `truffle_scene`
+  back into diagnostics. Tool-facing labels are passed as diagnostics options
+  instead of stored in render objects.
 - Keep active handoff state curated and public-safe. Lasting decisions belong in stable docs or ADRs.
 - Normal feature and fix work targets protected `develop`; stable promotion goes through `master`.
 
 ## Last Verified Commands And Checks
 
-Verified on macOS Apple Silicon (`feat/phase5c-shader-reflection-layout`):
+Verified on macOS Apple Silicon (`agents/high-level-abstraction-layers`):
 
 ```sh
 cmake --preset dev
 cmake --build --preset dev
-ctest --preset dev --output-on-failure   # 20/20
-cmake --preset ci
-cmake --build --preset ci
-ctest --preset ci --output-on-failure    # 20/20
-cmake --preset dev -DTRUFFLE_BUILD_BACKEND_DIRECT3D=ON
-cmake --build --preset dev
-ctest --preset dev -R "truffle_direct3d_tests|truffle_rhi_contract_tests" --output-on-failure  # 2/2
-cmake -DTRUFFLE_BUILD_DIR=$PWD/build/ci -DTRUFFLE_REPORT_OUT=$PWD/build/ci/parity-matrix.md -P cmake/GenerateParityReport.cmake
-cat build/ci/parity-matrix.md            # backend parity matrix
-cmake -S . -B build/package-smoke -DTRUFFLE_INSTALL=ON -DTRUFFLE_BUILD_TESTS=OFF -DTRUFFLE_BUILD_EXAMPLES=OFF -DTRUFFLE_BUILD_BACKEND_VULKAN=ON -DTRUFFLE_BUILD_BACKEND_OPENGL=ON
-cmake --build build/package-smoke
-cmake --install build/package-smoke --prefix build/package-smoke/install
-(cd build/package-smoke && cpack --verbose)  # Truffle-0.1.0-Darwin.tar.gz
+ctest --preset dev --output-on-failure   # 22/22
+cmake --build --preset dev --target truffle_format_check
+# clang-format was not installed; target reported the missing optional tool.
 ```
 
-20 tests: 3 host workspace smoke, ECS, null RHI (+ indexed draw + reflection
-contract check), render flow, advanced render flow, render batch, frame graph
-dependency, frame ring, scene adapter, Metal backend (+ indexed draw + compute
-+ reflection checks), Vulkan milestone 0-4 tests, OpenGL backend tests,
-Direct3D backend tests, shared RHI contract tests (null + Vulkan + OpenGL +
-Direct3D + optional Metal), API version tests, performance sanity tests,
-package consumer, and transform compute tests.
+22 tests: 3 host workspace smoke, ECS, asset declarations, null RHI (+ indexed
+draw + reflection contract check), render flow, advanced render flow, render
+batch, frame graph dependency, diagnostics, frame ring, scene adapter, Metal
+backend (+ indexed draw + compute + reflection checks), Vulkan milestone 0-4
+tests, OpenGL backend tests, Direct3D backend tests, shared RHI contract tests
+(null + Vulkan + OpenGL + Direct3D + optional Metal), API version tests,
+performance sanity tests, package consumer, and transform compute tests.
 
 ## Next Resume Steps
 
-1. Complete Direct3D extension milestone from contract backend to
-  platform-specific implementation strategy.
-2. Add machine-readable parity report output alongside markdown.
-3. Expand workload profiling scenarios beyond the current sanity gate.
-4. Validate release packaging flows on additional host platforms.
+1. Decide whether the asset/diagnostics first slice should be promoted into a
+   dedicated ADR or roadmap entry.
+2. Decide whether external diagnostics labels should be joined by an optional
+   GPU timing extension interface.
+3. Complete Direct3D extension milestone from contract backend to
+   platform-specific implementation strategy.
+4. Add machine-readable parity report output alongside markdown.
+5. Validate release packaging flows on additional host platforms.
 
 ## Open Questions Or Risks
 
 - Advanced parity between production backends remains constrained by
   backend-specific shader compilation models.
+- Asset/material declarations currently describe intent only; no importer,
+  upload planner, or shader compiler consumes them yet.
+- Diagnostics currently inspect public CPU-side contracts only; backend timing,
+  overlays, and picking require future explicit extension surfaces.
 - Direct3D extension currently provides contract semantics only; native API
   implementation and platform/runtime integration remain open.
 

@@ -56,6 +56,9 @@ This verifies:
 ## Backend Packaging Notes
 
 - `Truffle::BackendNull` is the baseline exported backend.
+- `Truffle::Assets` and `Truffle::Diagnostics` are exported high-level opt-in
+  targets. Consumers link them only when they need asset declarations or
+  diagnostics/tooling helpers.
 - `Truffle::BackendMetal`, `Truffle::BackendVulkan`, and
   `Truffle::BackendOpenGL` are exported when enabled at configure time.
 - `Truffle::BackendDirect3D` is exported when enabled at configure time.

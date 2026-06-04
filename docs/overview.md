@@ -13,6 +13,12 @@ Current baseline:
 - Null backend used to validate contracts without a production GPU backend.
 - Renderer flow that currently proves ECS extraction while reserving non-ECS and
   high-throughput render-data lanes for later rendering work.
+- Declarative asset, material-operation, and geometry-stream descriptors for
+  higher-level consumers that need metadata before GPU upload or
+  backend-specific loading exists.
+- Opt-in diagnostics helpers for render-batch, frame-graph, and renderer stats
+  inspection, including external labels, without making debug/profiling code a
+  runtime dependency.
 - Host-owned workspace example that uses a visible GLFW window for editor, CAD,
   and simulation-facing app roles while the Truffle path stays null-backed.
 - Installable CMake targets plus presets and CI paths for the current foundation.

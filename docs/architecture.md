@@ -19,8 +19,14 @@ Truffle is one product with modules that stay linkable at different levels:
    `SceneAdapter`, which extracts a `SceneFrame` containing camera state, light
    state, and a vector of `RenderBatch` objects written through
    `IFrameUploadRing`.
-6. Future framework-facing modules can add assets, debug hooks, and tool-facing
-   rendering workflows above the lower layers without hiding them from consumers.
+6. `truffle_assets` defines declarative asset, material-operation, texture, and
+   geometry stream metadata. It does not load files, own GPU uploads, or depend
+   on a backend.
+7. `truffle_diagnostics` provides opt-in, pull-based render and frame-graph
+   inspection helpers. Lower runtime layers do not depend on it.
+8. Future framework-facing modules can add debug overlays, picking, asset
+   importers, and tool-facing rendering workflows above the lower layers without
+   hiding them from consumers.
 
 ## Repository Shape
 
@@ -93,7 +99,19 @@ Current state:
 Truffle does not own native windowing, input policy, application lifetime, or
 the consumer simulation model. Consumers provide host loops and native surface
 boundaries, then choose whether to link low-level RHI modules, renderer modules,
-scene adapter modules, or future higher-level framework modules.
+scene adapter modules, asset declaration modules, diagnostics modules, or future
+higher-level framework modules.
+
+## Diagnostics Boundary
+
+Diagnostics and profiling helpers stay opt-in. `truffle_diagnostics` reads
+public render contracts and produces snapshots or text reports when a consumer
+asks for them. It does not install global hooks, run background tracing, or
+become a dependency of `truffle_render` or `truffle_scene`. Dense workloads should
+be inspected at group level: batch counts, instance counts, binding byte ranges,
+layout channels, and frame-graph nodes rather than per-instance CPU scans.
+Names for batches, graph nodes, and resources are supplied through diagnostics
+inspection options so render objects do not need permanent debug fields.
 
 ## Dependency Boundary
 
@@ -119,6 +137,10 @@ scope and active extension-backend work continuing in parallel:
 - `IPipelineReflection` contract validation now includes Direct3D path coverage.
 - `RendererFrameStats` provides per-frame diagnostics for compute/render node and
   batch execution, plus presentation tracking.
+- `truffle_assets` provides declarative asset, material-operation, and
+  geometry-stream descriptors.
+- `truffle_diagnostics` provides opt-in render-batch, frame-graph, and renderer
+  stats summaries with external labels for tool-facing reports.
 - `truffle/core/version.hpp` defines public API version, compatibility policy,
   and deprecation-window semantics.
 - CI emits backend parity matrix artifacts for tracked backend contract and

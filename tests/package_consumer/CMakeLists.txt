@@ -9,8 +9,10 @@ target_link_libraries(
     truffle_package_consumer
     PRIVATE
         Truffle::Core
+        Truffle::Assets
         Truffle::ECS
         Truffle::RHI
         Truffle::BackendNull
         Truffle::Render
-        Truffle::Scene)
+        Truffle::Scene
+        Truffle::Diagnostics)

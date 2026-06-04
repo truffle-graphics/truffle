@@ -1,0 +1,4 @@
+add_library(truffle_diagnostics STATIC diagnostics.cpp)
+target_link_libraries(truffle_diagnostics PUBLIC truffle_render)
+truffle_configure_target(truffle_diagnostics Diagnostics)
+add_library(Truffle::Diagnostics ALIAS truffle_diagnostics)
