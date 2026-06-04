@@ -196,6 +196,27 @@ validation, diagnostics, and backend parity.
     attaching a command-buffer completion handler.
   - Expanded shared backend contract tests for unsignaled timeout, signaled
     zero-time wait success, and reset-to-unsignaled behavior.
+- **Low-Level Graphics Foundation Slice 4D** — Complete.
+  - Added timeline-style fence values with `FenceDesc::initialValue`,
+    `IFence::value()`, and `IFence::wait_for_value()`.
+  - Made queue signal fences advance monotonically across null, Metal, Vulkan,
+    OpenGL, and Direct3D.
+  - Added upload-ring frame-reuse synchronization with
+    `IFrameUploadRing::advance_if_ready()` and `current_frame_index()`.
+  - Expanded shared backend contract tests for timeline fence targets,
+    initialized timeline fences, blocked unsignaled ring reuse, and signaled
+    ring advancement.
+- **Low-Level Graphics Foundation Slice 5A** — Complete.
+  - Added present modes and per-swapchain image-count policy to the RHI contract.
+  - Added present-mode capability reporting across null, Metal, Vulkan, OpenGL,
+    and Direct3D.
+  - Added swapchain image count, current image index, and acquisition-state
+    queries.
+  - Tightened `schedule_present()` so it requires an acquired drawable and
+    consumes that acquisition on success.
+  - Expanded shared/backend tests for present-mode support, image-count limit
+    validation, acquire-after-resize behavior, image index reporting, and
+    acquired-state transitions.
 
 ## Relevant Decisions And Constraints
 
@@ -239,9 +260,9 @@ core contract tests, package consumer, and transform compute tests.
 
 ## Next Resume Steps
 
-1. Continue low-level graphics synchronization depth: timeline-value semantics
-   and upload-ring frame reuse integration.
-2. Add surface/presentation robustness and presentation-state handoff before any
+1. Continue low-level graphics Slice 5B: native-surface validation and richer
+   acquire/present status reporting.
+2. Add shader/pipeline and binding descriptor depth before any
    new high-level renderer features rely on implicit policy.
 3. Add machine-readable parity report output alongside markdown.
 

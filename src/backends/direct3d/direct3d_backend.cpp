@@ -65,41 +65,52 @@ using core::StatusCode;
              .budgetBytes = 256ull * 1024ull * 1024ull,
              .dedicated = false},
         },
+        .presentModes = {
+            PresentMode::immediate,
+            PresentMode::fifo,
+            PresentMode::mailbox,
+        },
     };
 }
 
 class Direct3DFence final : public IFence {
 public:
-    explicit Direct3DFence(bool signaled) : signaled_(signaled) {}
+    explicit Direct3DFence(FenceDesc desc)
+        : value_(desc.signaled && desc.initialValue == 0 ? 1 : desc.initialValue) {}
 
-    [[nodiscard]] bool signaled() const noexcept override { return signaled_; }
+    [[nodiscard]] bool signaled() const noexcept override { return value_ != 0; }
+    [[nodiscard]] std::uint64_t value() const noexcept override { return value_; }
 
     [[nodiscard]] Status wait_for(std::uint64_t timeoutNanoseconds) noexcept override {
-        if (signaled_) {
-            return Status::success();
-        }
+        return wait_for_value(1, timeoutNanoseconds);
+    }
+
+    [[nodiscard]] Status wait_for_value(
+        std::uint64_t targetValue,
+        std::uint64_t timeoutNanoseconds) noexcept override {
+        if (value_ >= targetValue) return Status::success();
         if (timeoutNanoseconds == 0) {
             return Status::failure(StatusCode::timeout,
                                    "Direct3DFence: wait timed out");
         }
-        signaled_ = true;
+        value_ = targetValue;
         return Status::success();
     }
 
     [[nodiscard]] Status reset() noexcept override {
-        signaled_ = false;
+        value_ = 0;
         return Status::success();
     }
 
     void wait() noexcept override {
         // Milestone 0 behavior: avoid indefinite blocking in stub mode.
-        signaled_ = true;
+        if (value_ == 0) value_ = 1;
     }
 
-    void signal() noexcept { signaled_ = true; }
+    void signal() noexcept { ++value_; }
 
 private:
-    bool signaled_ = false;
+    std::uint64_t value_ = 0;
 };
 
 class Direct3DCommandBuffer final : public ICommandBuffer {
@@ -521,7 +532,11 @@ private:
 
 class Direct3DSwapchain final : public ISwapchain {
 public:
-    explicit Direct3DSwapchain(SwapchainDesc desc) : desc_(std::move(desc)) {}
+    explicit Direct3DSwapchain(SwapchainDesc desc) : desc_(std::move(desc)) {
+        if (desc_.imageCount == 0) {
+            desc_.imageCount = desc_.framesInFlight;
+        }
+    }
 
     [[nodiscard]] const SwapchainDesc& desc() const noexcept override { return desc_; }
 
@@ -532,7 +547,22 @@ public:
         }
         desc_.extent = extent;
         drawable_.reset();
+        acquired_ = false;
+        currentImageIndex_ = 0;
+        nextImageIndex_ = 0;
         return Status::success();
+    }
+
+    [[nodiscard]] std::uint32_t image_count() const noexcept override {
+        return effective_swapchain_image_count(desc_);
+    }
+
+    [[nodiscard]] std::uint32_t current_image_index() const noexcept override {
+        return currentImageIndex_;
+    }
+
+    [[nodiscard]] bool has_acquired_texture() const noexcept override {
+        return acquired_;
     }
 
     [[nodiscard]] ITexture* acquire_next_texture() override {
@@ -544,6 +574,9 @@ public:
                 .debugName = "direct3d_swapchain_drawable",
             });
         }
+        currentImageIndex_ = nextImageIndex_;
+        nextImageIndex_ = (nextImageIndex_ + 1) % image_count();
+        acquired_ = true;
         return drawable_.get();
     }
 
@@ -558,12 +591,20 @@ public:
             return Status::failure(StatusCode::invalid_state,
                                    "Direct3D backend: schedule_present requires recording state outside render pass");
         }
+        if (!acquired_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "Direct3D backend: schedule_present requires an acquired drawable");
+        }
+        acquired_ = false;
         return Status::success();
     }
 
 private:
     SwapchainDesc                    desc_;
     std::unique_ptr<Direct3DTexture> drawable_;
+    bool                             acquired_ = false;
+    std::uint32_t                    currentImageIndex_ = 0;
+    std::uint32_t                    nextImageIndex_ = 0;
 };
 
 class Direct3DFrameUploadRing final : public IFrameUploadRing {
@@ -601,12 +642,25 @@ public:
         frameOffset_ = static_cast<std::size_t>(currentFrame_) * capacityPerFrame_;
     }
 
+    [[nodiscard]] Status advance_if_ready(const IFence& completedFence) override {
+        if (!completedFence.signaled()) {
+            return Status::failure(StatusCode::timeout,
+                                   "Direct3DFrameUploadRing: frame is not ready for reuse");
+        }
+        advance();
+        return Status::success();
+    }
+
     [[nodiscard]] std::uint32_t frames_in_flight() const noexcept override {
         return framesInFlight_;
     }
 
     [[nodiscard]] std::size_t capacity_per_frame() const noexcept override {
         return capacityPerFrame_;
+    }
+
+    [[nodiscard]] std::uint32_t current_frame_index() const noexcept override {
+        return currentFrame_;
     }
 
 private:
@@ -632,9 +686,7 @@ public:
 
     [[nodiscard]] core::Result<std::unique_ptr<ISwapchain>> create_swapchain(
         ISurface& /*surface*/, const SwapchainDesc& desc) override {
-        if (!validation::extent_within(desc.extent,
-                                       caps_.limits.maxTextureDimension2D) ||
-            !validation::frame_count_supported(desc.framesInFlight, caps_)) {
+        if (!validation::swapchain_supported(desc, caps_)) {
             return Status::failure(StatusCode::invalid_argument,
                                     "Direct3D backend: swapchain description is invalid");
         }
@@ -781,7 +833,7 @@ public:
     }
 
     [[nodiscard]] FencePtr create_fence(const FenceDesc& desc) override {
-        return FencePtr(new Direct3DFence(desc.signaled), [](IFence* fence) {
+        return FencePtr(new Direct3DFence(desc), [](IFence* fence) {
             delete fence;
         });
     }

@@ -88,6 +88,9 @@ int verify_capability_contract(const truffle::rhi::IBackend& backend,
     TRUFFLE_CHECK(caps.features.indirectDraw);
     TRUFFLE_CHECK(caps.features.validation == caps.validation);
     TRUFFLE_CHECK(caps.features.presentation == caps.presentation);
+    TRUFFLE_CHECK(!caps.presentModes.empty());
+    TRUFFLE_CHECK(truffle::rhi::supports_present_mode(
+        caps, truffle::rhi::PresentMode::fifo));
     TRUFFLE_CHECK(caps.limits.maxTextureDimension2D >= 32);
     TRUFFLE_CHECK(caps.limits.maxBufferSize >= 128);
     TRUFFLE_CHECK(caps.limits.minUniformBufferOffsetAlignment >= 1);
@@ -182,10 +185,18 @@ int verify_common_positive_path_contract(truffle::rhi::IDevice& device,
     TRUFFLE_CHECK(swapchain.ok());
     TRUFFLE_CHECK(swapchain.value()->desc().extent.width == 32);
     TRUFFLE_CHECK(swapchain.value()->desc().extent.height == 32);
+    TRUFFLE_CHECK(swapchain.value()->image_count() == 2);
+    TRUFFLE_CHECK(swapchain.value()->desc().imageCount == 2);
+    TRUFFLE_CHECK(!swapchain.value()->has_acquired_texture());
     TRUFFLE_CHECK(swapchain.value()->acquire_next_texture() != nullptr);
+    TRUFFLE_CHECK(swapchain.value()->has_acquired_texture());
+    TRUFFLE_CHECK(swapchain.value()->current_image_index() == 0);
     TRUFFLE_CHECK(swapchain.value()->resize({64, 64}).ok());
     TRUFFLE_CHECK(swapchain.value()->desc().extent.width == 64);
     TRUFFLE_CHECK(swapchain.value()->desc().extent.height == 64);
+    TRUFFLE_CHECK(!swapchain.value()->has_acquired_texture());
+    TRUFFLE_CHECK(swapchain.value()->acquire_next_texture() != nullptr);
+    TRUFFLE_CHECK(swapchain.value()->has_acquired_texture());
 
     auto uploadRing = device.create_upload_ring(2, 128);
     TRUFFLE_CHECK(uploadRing.ok());
@@ -203,7 +214,17 @@ int verify_common_positive_path_contract(truffle::rhi::IDevice& device,
     TRUFFLE_CHECK((alignedAlloc.offset % 64) == 0);
     auto overflowAlloc = uploadRing.value()->allocate(1024, 16);
     TRUFFLE_CHECK(!overflowAlloc.valid());
+    TRUFFLE_CHECK(uploadRing.value()->current_frame_index() == 0);
+    auto unsignaledReuseFence = device.create_fence({.signaled = false});
+    auto blockedAdvance = uploadRing.value()->advance_if_ready(*unsignaledReuseFence);
+    TRUFFLE_CHECK(!blockedAdvance.ok());
+    TRUFFLE_CHECK(blockedAdvance.code == truffle::core::StatusCode::timeout);
+    TRUFFLE_CHECK(uploadRing.value()->current_frame_index() == 0);
+    auto signaledReuseFence = device.create_fence({.signaled = true});
+    TRUFFLE_CHECK(uploadRing.value()->advance_if_ready(*signaledReuseFence).ok());
+    TRUFFLE_CHECK(uploadRing.value()->current_frame_index() == 1);
     uploadRing.value()->advance();
+    TRUFFLE_CHECK(uploadRing.value()->current_frame_index() == 0);
 
     auto vertexShader =
         device.create_shader(make_shader_desc(backendKind, truffle::rhi::ShaderStage::vertex));
@@ -297,7 +318,9 @@ int verify_common_positive_path_contract(truffle::rhi::IDevice& device,
             .before = truffle::rhi::ResourceState::copy_destination,
             .after = truffle::rhi::ResourceState::shader_read,
         }).ok());
+    TRUFFLE_CHECK(swapchain.value()->has_acquired_texture());
     TRUFFLE_CHECK(swapchain.value()->schedule_present(*commandBuffer).ok());
+    TRUFFLE_CHECK(!swapchain.value()->has_acquired_texture());
     TRUFFLE_CHECK(commandBuffer->end().ok());
     TRUFFLE_CHECK(commandBuffer->state() == truffle::rhi::CommandBufferState::executable);
     auto latePresent = swapchain.value()->schedule_present(*commandBuffer);
@@ -306,22 +329,35 @@ int verify_common_positive_path_contract(truffle::rhi::IDevice& device,
 
     auto submitFence = device.create_fence({.signaled = false});
     TRUFFLE_CHECK(!submitFence->signaled());
+    TRUFFLE_CHECK(submitFence->value() == 0);
     auto timeout = submitFence->wait_for(0);
     TRUFFLE_CHECK(!timeout.ok());
     TRUFFLE_CHECK(timeout.code == truffle::core::StatusCode::timeout);
+    auto timelineTimeout = submitFence->wait_for_value(1, 0);
+    TRUFFLE_CHECK(!timelineTimeout.ok());
+    TRUFFLE_CHECK(timelineTimeout.code == truffle::core::StatusCode::timeout);
+    const auto targetFenceValue = submitFence->value() + 1;
     TRUFFLE_CHECK(device.queue(truffle::rhi::QueueKind::graphics)
                       .submit(*commandBuffer, submitFence.get())
                       .ok());
     TRUFFLE_CHECK(commandBuffer->state() == truffle::rhi::CommandBufferState::submitted);
     submitFence->wait();
     TRUFFLE_CHECK(submitFence->signaled());
+    TRUFFLE_CHECK(submitFence->value() >= targetFenceValue);
+    TRUFFLE_CHECK(submitFence->wait_for_value(targetFenceValue, 0).ok());
     TRUFFLE_CHECK(submitFence->wait_for(0).ok());
     TRUFFLE_CHECK(submitFence->reset().ok());
     TRUFFLE_CHECK(!submitFence->signaled());
+    TRUFFLE_CHECK(submitFence->value() == 0);
     auto duplicateSubmit =
         device.queue(truffle::rhi::QueueKind::graphics).submit(*commandBuffer);
     TRUFFLE_CHECK(!duplicateSubmit.ok());
     TRUFFLE_CHECK(duplicateSubmit.code == truffle::core::StatusCode::invalid_state);
+
+    auto initializedFence = device.create_fence({.initialValue = 7});
+    TRUFFLE_CHECK(initializedFence->signaled());
+    TRUFFLE_CHECK(initializedFence->value() == 7);
+    TRUFFLE_CHECK(initializedFence->wait_for_value(7, 0).ok());
 
     auto notReady = device.create_command_buffer();
     TRUFFLE_CHECK(notReady != nullptr);
@@ -512,6 +548,15 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
     });
     TRUFFLE_CHECK(!tooManyFramesSwapchain.ok());
     TRUFFLE_CHECK(tooManyFramesSwapchain.status().code ==
+                  truffle::core::StatusCode::invalid_argument);
+
+    auto tooManyImagesSwapchain = device.create_swapchain(*surface.value(), {
+        .extent = {32, 32},
+        .framesInFlight = 1,
+        .imageCount = caps.maxFramesInFlight + 1,
+    });
+    TRUFFLE_CHECK(!tooManyImagesSwapchain.ok());
+    TRUFFLE_CHECK(tooManyImagesSwapchain.status().code ==
                   truffle::core::StatusCode::invalid_argument);
 
     auto badRing = device.create_upload_ring(0, 0);

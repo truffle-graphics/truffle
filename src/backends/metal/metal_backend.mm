@@ -13,6 +13,7 @@
 #include "truffle/rhi/shader_reflection.hpp"
 #include "truffle/rhi/validation.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <cstring>
 #include <limits>
@@ -77,6 +78,11 @@ using core::StatusCode;
         {.kind = unifiedMemory ? MemoryHeapKind::unified : MemoryHeapKind::device_local,
          .budgetBytes = 0,
          .dedicated = !unifiedMemory},
+    };
+    caps.presentModes = {
+        PresentMode::immediate,
+        PresentMode::fifo,
+        PresentMode::mailbox,
     };
     return caps;
 }
@@ -395,21 +401,37 @@ private:
 
 class MetalFence final : public IFence {
 public:
-    explicit MetalFence(bool initially_signaled)
-        : signaled_(std::make_shared<std::atomic<bool>>(initially_signaled))
-        , sem_(dispatch_semaphore_create(initially_signaled ? 1 : 0)) {}
+    explicit MetalFence(FenceDesc desc)
+        : completedValue_(std::make_shared<std::atomic<std::uint64_t>>(
+              desc.signaled && desc.initialValue == 0 ? 1 : desc.initialValue))
+        , nextSignalValue_(
+              desc.signaled && desc.initialValue == 0 ? 1 : desc.initialValue)
+        , sem_(dispatch_semaphore_create(signaled() ? 1 : 0)) {}
 
     ~MetalFence() { dispatch_release(sem_); }
 
     bool signaled() const noexcept override {
-        return signaled_->load(std::memory_order_acquire);
+        const auto completed = completedValue_->load(std::memory_order_acquire);
+        return completed != 0 &&
+               completed >= nextSignalValue_.load(std::memory_order_acquire);
+    }
+
+    std::uint64_t value() const noexcept override {
+        return completedValue_->load(std::memory_order_acquire);
     }
 
     Status wait_for(std::uint64_t timeoutNanoseconds) noexcept override {
-        if (signaled()) {
+        const auto target = nextSignalValue_.load(std::memory_order_acquire) == 0
+            ? 1
+            : nextSignalValue_.load(std::memory_order_acquire);
+        return wait_for_value(target, timeoutNanoseconds);
+    }
+
+    Status wait_for_value(std::uint64_t targetValue,
+                          std::uint64_t timeoutNanoseconds) noexcept override {
+        if (value() >= targetValue) {
             return Status::success();
         }
-
         const auto when = timeoutNanoseconds == std::numeric_limits<std::uint64_t>::max()
             ? DISPATCH_TIME_FOREVER
             : dispatch_time(DISPATCH_TIME_NOW,
@@ -420,13 +442,24 @@ public:
             return Status::failure(StatusCode::timeout,
                                    "MetalFence: wait timed out");
         }
-        signaled_->store(true, std::memory_order_release);
+        if (value() < targetValue) {
+            dispatch_semaphore_signal(sem_);
+            return Status::failure(StatusCode::timeout,
+                                   "MetalFence: wait timed out");
+        }
         dispatch_semaphore_signal(sem_);
         return Status::success();
     }
 
     Status reset() noexcept override {
-        signaled_->store(false, std::memory_order_release);
+        if (!signaled() &&
+            nextSignalValue_.load(std::memory_order_acquire) >
+                completedValue_->load(std::memory_order_acquire)) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "MetalFence: cannot reset while GPU work is pending");
+        }
+        completedValue_->store(0, std::memory_order_release);
+        nextSignalValue_.store(0, std::memory_order_release);
         while (dispatch_semaphore_wait(sem_, DISPATCH_TIME_NOW) == 0) {
         }
         return Status::success();
@@ -443,11 +476,11 @@ public:
     // Captures shared_ptr and ARC-retained semaphore — safe even if the fence
     // is destroyed before the GPU fires the handler.
     void attach_completion_handler(id<MTLCommandBuffer> cmdBuf) {
-        reset();
-        auto flagRef = signaled_;          // shared_ptr copy keeps atomic alive
+        const auto target = nextSignalValue_.fetch_add(1, std::memory_order_acq_rel) + 1;
+        auto valueRef = completedValue_;   // shared_ptr copy keeps atomic alive
         dispatch_semaphore_t sem = sem_;   // ARC retains sem for the block
         [cmdBuf addCompletedHandler:^(id<MTLCommandBuffer>) {
-            flagRef->store(true, std::memory_order_release);
+            valueRef->store(target, std::memory_order_release);
             dispatch_semaphore_signal(sem);
         }];
     }
@@ -455,7 +488,8 @@ public:
     MetalDevice* device_ = nullptr;
 
 private:
-    std::shared_ptr<std::atomic<bool>> signaled_;
+    std::shared_ptr<std::atomic<std::uint64_t>> completedValue_;
+    std::atomic<std::uint64_t> nextSignalValue_;
     dispatch_semaphore_t sem_;
 };
 
@@ -969,12 +1003,15 @@ public:
     MetalSwapchain(id<MTLDevice> device, MetalSurface* surface,
                    const SwapchainDesc& desc)
         : device_(device), desc_(desc) {
+        if (desc_.imageCount == 0) {
+            desc_.imageCount = desc_.framesInFlight;
+        }
         layer_ = surface->layer();
         if (layer_) {
             layer_.device           = device;
             layer_.pixelFormat      = MTLPixelFormatBGRA8Unorm;
             layer_.drawableSize     = CGSizeMake(desc.extent.width, desc.extent.height);
-            layer_.maximumDrawableCount = std::min(desc.framesInFlight, 3u);
+            layer_.maximumDrawableCount = std::min(image_count(), 3u);
         }
     }
 
@@ -991,13 +1028,31 @@ public:
         }
         drawable_        = nil;
         drawableTexture_.reset();
+        acquired_ = false;
+        currentImageIndex_ = 0;
+        nextImageIndex_ = 0;
         return Status::success();
+    }
+
+    std::uint32_t image_count() const noexcept override {
+        return effective_swapchain_image_count(desc_);
+    }
+
+    std::uint32_t current_image_index() const noexcept override {
+        return currentImageIndex_;
+    }
+
+    bool has_acquired_texture() const noexcept override {
+        return acquired_;
     }
 
     ITexture* acquire_next_texture() override {
         if (layer_) {
             drawable_ = [layer_ nextDrawable];
-            if (!drawable_) return nullptr;
+            if (!drawable_) {
+                acquired_ = false;
+                return nullptr;
+            }
             TextureDesc td{
                 .extent    = {static_cast<std::uint32_t>(drawable_.texture.width),
                               static_cast<std::uint32_t>(drawable_.texture.height)},
@@ -1016,8 +1071,11 @@ public:
                         .format    = desc_.format,
                         .debugName = "headless_drawable",
                     });
-            }
+                }
         }
+        currentImageIndex_ = nextImageIndex_;
+        nextImageIndex_ = (nextImageIndex_ + 1) % image_count();
+        acquired_ = true;
         return drawableTexture_.get();
     }
 
@@ -1031,9 +1089,17 @@ public:
             return Status::failure(StatusCode::invalid_state,
                                    "schedule_present requires recording state outside active encoder");
         }
-        if (!drawable_) return Status::success(); // headless: nothing to present
+        if (!acquired_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "schedule_present requires an acquired drawable");
+        }
+        if (!drawable_) {
+            acquired_ = false;
+            return Status::success(); // headless: nothing to present
+        }
         mcmd->attach_drawable(drawable_);
         drawable_ = nil;
+        acquired_ = false;
         return Status::success();
     }
 
@@ -1043,6 +1109,9 @@ private:
     CAMetalLayer*                 layer_           = nil;
     id<CAMetalDrawable>           drawable_        = nil;
     std::unique_ptr<MetalTexture> drawableTexture_;
+    bool                          acquired_ = false;
+    std::uint32_t                 currentImageIndex_ = 0;
+    std::uint32_t                 nextImageIndex_ = 0;
 };
 
 // ---------------------------------------------------------------------------
@@ -1086,8 +1155,18 @@ public:
         frames_[currentFrame_].head = 0;
     }
 
+    Status advance_if_ready(const IFence& completedFence) override {
+        if (!completedFence.signaled()) {
+            return Status::failure(StatusCode::timeout,
+                                   "MetalFrameUploadRing: frame is not ready for reuse");
+        }
+        advance();
+        return Status::success();
+    }
+
     std::uint32_t frames_in_flight()   const noexcept override { return framesInFlight_; }
     std::size_t   capacity_per_frame() const noexcept override { return capacity_; }
+    std::uint32_t current_frame_index() const noexcept override { return currentFrame_; }
 
 private:
     struct Frame {
@@ -1237,9 +1316,7 @@ public:
 
     Result<std::unique_ptr<ISwapchain>>
     create_swapchain(ISurface& surface, const SwapchainDesc& desc) override {
-        if (!validation::extent_within(desc.extent,
-                                       caps_.limits.maxTextureDimension2D) ||
-            !validation::frame_count_supported(desc.framesInFlight, caps_)) {
+        if (!validation::swapchain_supported(desc, caps_)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "swapchain description is invalid");
         }
@@ -1270,7 +1347,7 @@ public:
     }
 
     FencePtr create_fence(const FenceDesc& desc) override {
-        MetalFence* f = new MetalFence(desc.signaled);
+        MetalFence* f = new MetalFence(desc);
         f->device_ = this;
         return FencePtr(f, [](IFence* p) {
             auto* obj = static_cast<MetalFence*>(p);

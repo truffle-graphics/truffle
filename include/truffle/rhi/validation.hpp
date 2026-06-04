@@ -24,6 +24,23 @@ namespace truffle::rhi::validation {
            framesInFlight <= capabilities.maxFramesInFlight;
 }
 
+[[nodiscard]] inline bool present_mode_supported(
+    PresentMode presentMode,
+    const Capabilities& capabilities) noexcept {
+    return supports_present_mode(capabilities, presentMode);
+}
+
+[[nodiscard]] inline bool swapchain_supported(
+    const SwapchainDesc& desc,
+    const Capabilities& capabilities) noexcept {
+    const auto imageCount = effective_swapchain_image_count(desc);
+    return extent_within(desc.extent, capabilities.limits.maxTextureDimension2D) &&
+           desc.framesInFlight != 0 &&
+           imageCount != 0 &&
+           imageCount <= capabilities.maxFramesInFlight &&
+           present_mode_supported(desc.presentMode, capabilities);
+}
+
 [[nodiscard]] inline bool memory_domain_supported(
     MemoryDomain domain,
     const Capabilities& capabilities) noexcept {

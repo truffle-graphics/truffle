@@ -123,6 +123,12 @@ enum class NativeSurfaceKind {
     external,
 };
 
+enum class PresentMode {
+    immediate,
+    fifo,
+    mailbox,
+};
+
 enum class ShaderStage {
     vertex,
     fragment,
@@ -237,6 +243,7 @@ struct Capabilities {
     DeviceLimits limits;
     std::vector<FormatSupport> formats;
     std::vector<MemoryHeapInfo> memoryHeaps;
+    std::vector<PresentMode> presentModes;
 };
 
 struct AdapterInfo {
@@ -275,6 +282,17 @@ struct AdapterInfo {
     const Capabilities& capabilities,
     TextureFormat format) noexcept {
     return find_format_support(capabilities, format) != nullptr;
+}
+
+[[nodiscard]] inline bool supports_present_mode(
+    const Capabilities& capabilities,
+    PresentMode mode) noexcept {
+    for (const auto supported : capabilities.presentModes) {
+        if (supported == mode) {
+            return true;
+        }
+    }
+    return false;
 }
 
 [[nodiscard]] constexpr bool has_flag(BufferUsageFlags flags,
@@ -431,10 +449,18 @@ struct SwapchainDesc {
     Extent2D extent;
     TextureFormat format = TextureFormat::bgra8_unorm;
     std::uint32_t framesInFlight = 2;
+    std::uint32_t imageCount = 0;
+    PresentMode presentMode = PresentMode::fifo;
 };
+
+[[nodiscard]] constexpr std::uint32_t effective_swapchain_image_count(
+    const SwapchainDesc& desc) noexcept {
+    return desc.imageCount != 0 ? desc.imageCount : desc.framesInFlight;
+}
 
 struct FenceDesc {
     bool signaled = false;
+    std::uint64_t initialValue = 0;
 };
 
 // ---------------------------------------------------------------------------
@@ -518,6 +544,9 @@ public:
     virtual ~ISwapchain() = default;
     [[nodiscard]] virtual const SwapchainDesc& desc() const noexcept = 0;
     [[nodiscard]] virtual core::Status resize(Extent2D extent) = 0;
+    [[nodiscard]] virtual std::uint32_t image_count() const noexcept = 0;
+    [[nodiscard]] virtual std::uint32_t current_image_index() const noexcept = 0;
+    [[nodiscard]] virtual bool has_acquired_texture() const noexcept = 0;
     // Returns the current frame's color texture. Call once per frame before
     // begin_render_pass. Returns nullptr if no drawable is available.
     [[nodiscard]] virtual ITexture* acquire_next_texture() = 0;
@@ -532,9 +561,14 @@ class IFence {
 public:
     virtual ~IFence() = default;
     [[nodiscard]] virtual bool signaled() const noexcept = 0;
+    [[nodiscard]] virtual std::uint64_t value() const noexcept = 0;
     // Wait up to timeoutNanoseconds. Returns StatusCode::timeout if the fence is
     // still unsignaled when the timeout expires.
     [[nodiscard]] virtual core::Status wait_for(
+        std::uint64_t timeoutNanoseconds) noexcept = 0;
+    // Timeline-style wait. Value 0 is always considered reached.
+    [[nodiscard]] virtual core::Status wait_for_value(
+        std::uint64_t targetValue,
         std::uint64_t timeoutNanoseconds) noexcept = 0;
     // Reset the fence to the unsignaled state when backend rules allow it.
     [[nodiscard]] virtual core::Status reset() noexcept = 0;
@@ -567,9 +601,14 @@ public:
     // Advance to the next frame slot, reclaiming the oldest completed frame.
     // Call once per frame after verifying prior GPU work is complete.
     virtual void advance() = 0;
+    // Advance only if the provided completion fence is signaled; otherwise
+    // returns StatusCode::timeout and leaves the current frame unchanged.
+    [[nodiscard]] virtual core::Status advance_if_ready(
+        const IFence& completedFence) = 0;
 
     [[nodiscard]] virtual std::uint32_t frames_in_flight() const noexcept = 0;
     [[nodiscard]] virtual std::size_t   capacity_per_frame() const noexcept = 0;
+    [[nodiscard]] virtual std::uint32_t current_frame_index() const noexcept = 0;
 };
 
 class ICommandBuffer {

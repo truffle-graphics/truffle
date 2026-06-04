@@ -69,6 +69,7 @@ int main() {
     TRUFFLE_CHECK(swapchain->acquire_next_texture() != nullptr);
     TRUFFLE_CHECK(swapchain->resize({64, 64}).ok());
     TRUFFLE_CHECK(!swapchain->schedule_present(*cmd).ok());
+    TRUFFLE_CHECK(swapchain->acquire_next_texture() != nullptr);
     auto presentCmd = device->create_command_buffer();
     TRUFFLE_CHECK(presentCmd->begin().ok());
     TRUFFLE_CHECK(swapchain->schedule_present(*presentCmd).ok());

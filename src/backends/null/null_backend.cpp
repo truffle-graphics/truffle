@@ -59,6 +59,11 @@ using core::StatusCode;
              .budgetBytes = 256ull * 1024ull * 1024ull,
              .dedicated = false},
         },
+        .presentModes = {
+            PresentMode::immediate,
+            PresentMode::fifo,
+            PresentMode::mailbox,
+        },
     };
 }
 
@@ -118,7 +123,11 @@ private:
 
 class NullSwapchain final : public ISwapchain {
 public:
-    explicit NullSwapchain(SwapchainDesc desc) : desc_(std::move(desc)) {}
+    explicit NullSwapchain(SwapchainDesc desc) : desc_(std::move(desc)) {
+        if (desc_.imageCount == 0) {
+            desc_.imageCount = desc_.framesInFlight;
+        }
+    }
     [[nodiscard]] const SwapchainDesc& desc() const noexcept override { return desc_; }
 
     [[nodiscard]] Status resize(Extent2D extent) override {
@@ -128,7 +137,22 @@ public:
         }
         desc_.extent = extent;
         drawable_.reset();
+        acquired_ = false;
+        currentImageIndex_ = 0;
+        nextImageIndex_ = 0;
         return Status::success();
+    }
+
+    [[nodiscard]] std::uint32_t image_count() const noexcept override {
+        return effective_swapchain_image_count(desc_);
+    }
+
+    [[nodiscard]] std::uint32_t current_image_index() const noexcept override {
+        return currentImageIndex_;
+    }
+
+    [[nodiscard]] bool has_acquired_texture() const noexcept override {
+        return acquired_;
     }
 
     [[nodiscard]] ITexture* acquire_next_texture() override {
@@ -140,6 +164,9 @@ public:
                 .debugName = "swapchain_drawable",
             });
         }
+        currentImageIndex_ = nextImageIndex_;
+        nextImageIndex_ = (nextImageIndex_ + 1) % image_count();
+        acquired_ = true;
         return drawable_.get();
     }
 
@@ -148,32 +175,48 @@ public:
 private:
     SwapchainDesc                desc_;
     std::unique_ptr<NullTexture> drawable_;
+    bool                         acquired_ = false;
+    std::uint32_t                currentImageIndex_ = 0;
+    std::uint32_t                nextImageIndex_ = 0;
 };
 
 class NullFence final : public IFence {
 public:
-    explicit NullFence(FenceDesc desc) : signaled_(desc.signaled) {}
+    explicit NullFence(FenceDesc desc)
+        : value_(desc.signaled && desc.initialValue == 0 ? 1 : desc.initialValue) {}
 
-    [[nodiscard]] bool signaled() const noexcept override { return signaled_; }
-    void signal() noexcept { signaled_ = true; }
+    [[nodiscard]] bool signaled() const noexcept override { return value_ != 0; }
+    [[nodiscard]] std::uint64_t value() const noexcept override { return value_; }
+    void signal() noexcept { ++value_; }
     [[nodiscard]] Status wait_for(std::uint64_t /*timeoutNanoseconds*/) noexcept override {
-        if (!signaled_) {
+        if (!signaled()) {
             return Status::failure(StatusCode::timeout, "fence wait timed out");
         }
         return Status::success();
     }
+    [[nodiscard]] Status wait_for_value(
+        std::uint64_t targetValue,
+        std::uint64_t /*timeoutNanoseconds*/) noexcept override {
+        if (value_ < targetValue) {
+            return Status::failure(StatusCode::timeout,
+                                   "fence timeline wait timed out");
+        }
+        return Status::success();
+    }
     [[nodiscard]] Status reset() noexcept override {
-        signaled_ = false;
+        value_ = 0;
         return Status::success();
     }
     void wait() noexcept override { /* already signaled synchronously before submit returns */ }
 
     // Allows pooling logic to update initial state
-    void reset(bool is_signaled) { signaled_ = is_signaled; }
+    void reset(FenceDesc desc) {
+        value_ = desc.signaled && desc.initialValue == 0 ? 1 : desc.initialValue;
+    }
 
     NullDevice* device_ = nullptr;
 private:
-    bool signaled_ = false;
+    std::uint64_t value_ = 0;
 };
 
 class NullCommandBuffer final : public ICommandBuffer {
@@ -542,6 +585,11 @@ Status NullSwapchain::schedule_present(ICommandBuffer& cmd) {
         return Status::failure(StatusCode::invalid_state,
                                "schedule_present requires recording state outside render pass");
     }
+    if (!acquired_) {
+        return Status::failure(StatusCode::invalid_state,
+                               "schedule_present requires an acquired drawable");
+    }
+    acquired_ = false;
     return Status::success();
 }
 
@@ -616,12 +664,25 @@ public:
         frameOffset_  = static_cast<std::size_t>(currentFrame_) * capacityPerFrame_;
     }
 
+    [[nodiscard]] Status advance_if_ready(const IFence& completedFence) override {
+        if (!completedFence.signaled()) {
+            return Status::failure(StatusCode::timeout,
+                                   "upload ring frame is not ready for reuse");
+        }
+        advance();
+        return Status::success();
+    }
+
     [[nodiscard]] std::uint32_t frames_in_flight() const noexcept override {
         return framesInFlight_;
     }
 
     [[nodiscard]] std::size_t capacity_per_frame() const noexcept override {
         return capacityPerFrame_;
+    }
+
+    [[nodiscard]] std::uint32_t current_frame_index() const noexcept override {
+        return currentFrame_;
     }
 
 private:
@@ -727,9 +788,7 @@ public:
 
     [[nodiscard]] Result<std::unique_ptr<ISwapchain>>
     create_swapchain(ISurface&, const SwapchainDesc& desc) override {
-        if (!validation::extent_within(desc.extent,
-                                       capabilities_.limits.maxTextureDimension2D) ||
-            !validation::frame_count_supported(desc.framesInFlight, capabilities_)) {
+        if (!validation::swapchain_supported(desc, capabilities_)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "swapchain description is invalid");
         }
@@ -761,7 +820,7 @@ public:
         if (!fence_pool_.empty()) {
             f = fence_pool_.back();
             fence_pool_.pop_back();
-            f->reset(desc.signaled);
+            f->reset(desc);
         } else {
             f = new NullFence(desc);
             f->device_ = this;
