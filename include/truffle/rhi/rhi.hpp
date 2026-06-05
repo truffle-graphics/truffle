@@ -383,6 +383,35 @@ struct ColorBlendDesc {
     ColorWriteFlags writeMask = ColorWriteFlags::all;
 };
 
+enum class VertexStepMode {
+    vertex,
+    instance,
+};
+
+enum class VertexFormat {
+    float32,
+    float32x2,
+    float32x3,
+    float32x4,
+    uint32,
+    uint32x2,
+    uint32x3,
+    uint32x4,
+};
+
+struct VertexBufferLayoutDesc {
+    std::uint32_t binding = 0;
+    std::size_t stride = 0;
+    VertexStepMode stepMode = VertexStepMode::vertex;
+};
+
+struct VertexAttributeDesc {
+    std::uint32_t location = 0;
+    std::uint32_t binding = 0;
+    VertexFormat format = VertexFormat::float32x3;
+    std::size_t offset = 0;
+};
+
 struct QueueCapabilities {
     bool graphics = false;
     bool compute  = false;
@@ -411,6 +440,8 @@ struct DeviceLimits {
     std::size_t minStorageBufferOffsetAlignment = 1;
     std::uint32_t maxColorAttachments = 1;
     std::uint32_t maxVertexBuffers = 1;
+    std::uint32_t maxVertexAttributes = 16;
+    std::size_t maxVertexBufferStride = 2048;
     std::uint32_t maxResourceBindings = 64;
     std::uint32_t maxDescriptorArrayElements = 1;
     std::uint32_t maxBindlessResources = 0;
@@ -506,6 +537,8 @@ struct BackendParityReport {
     bool debugLabels = false;
     std::uint32_t maxFramesInFlight = 0;
     std::uint32_t maxResourceBindings = 0;
+    std::uint32_t maxVertexAttributes = 0;
+    std::size_t maxVertexBufferStride = 0;
     std::size_t formatCount = 0;
     std::size_t shaderFormatCount = 0;
     BackendStats stats;
@@ -834,6 +867,8 @@ struct PipelineDesc {
     RasterStateDesc   rasterState;
     DepthStencilStateDesc depthStencilState;
     ColorBlendDesc    colorBlend;
+    std::vector<VertexBufferLayoutDesc> vertexBuffers;
+    std::vector<VertexAttributeDesc> vertexAttributes;
 };
 
 struct ComputePipelineDesc {
@@ -1261,6 +1296,8 @@ public:
     report.unifiedMemory = caps.features.unifiedMemory;
     report.maxFramesInFlight = caps.maxFramesInFlight;
     report.maxResourceBindings = caps.limits.maxResourceBindings;
+    report.maxVertexAttributes = caps.limits.maxVertexAttributes;
+    report.maxVertexBufferStride = caps.limits.maxVertexBufferStride;
     report.maxDescriptorArrayElements = caps.limits.maxDescriptorArrayElements;
     report.maxBindlessResources = caps.limits.maxBindlessResources;
     report.maxSamplerAnisotropy = caps.limits.maxSamplerAnisotropy;

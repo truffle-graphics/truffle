@@ -57,6 +57,8 @@ using core::StatusCode;
         .minStorageBufferOffsetAlignment = 16,
         .maxColorAttachments = 8,
         .maxVertexBuffers = 31,
+        .maxVertexAttributes = 31,
+        .maxVertexBufferStride = 2048,
         .maxSamplerAnisotropy = 16,
     };
     caps.formats = {
@@ -254,6 +256,35 @@ static MTLStoreAction to_mtl_store(StoreOp op) noexcept {
 [[nodiscard]] MTLTriangleFillMode to_metal_fill_mode(FillMode mode) noexcept {
     return mode == FillMode::wireframe ? MTLTriangleFillModeLines
                                        : MTLTriangleFillModeFill;
+}
+
+[[nodiscard]] MTLVertexStepFunction to_metal_step_function(
+    VertexStepMode mode) noexcept {
+    return mode == VertexStepMode::instance ? MTLVertexStepFunctionPerInstance
+                                            : MTLVertexStepFunctionPerVertex;
+}
+
+[[nodiscard]] MTLVertexFormat to_metal_vertex_format(
+    VertexFormat format) noexcept {
+    switch (format) {
+    case VertexFormat::float32:
+        return MTLVertexFormatFloat;
+    case VertexFormat::float32x2:
+        return MTLVertexFormatFloat2;
+    case VertexFormat::float32x3:
+        return MTLVertexFormatFloat3;
+    case VertexFormat::float32x4:
+        return MTLVertexFormatFloat4;
+    case VertexFormat::uint32:
+        return MTLVertexFormatUInt;
+    case VertexFormat::uint32x2:
+        return MTLVertexFormatUInt2;
+    case VertexFormat::uint32x3:
+        return MTLVertexFormatUInt3;
+    case VertexFormat::uint32x4:
+        return MTLVertexFormatUInt4;
+    }
+    return MTLVertexFormatInvalid;
 }
 
 [[nodiscard]] MTLSamplerBorderColor to_metal_border_color(
@@ -571,6 +602,22 @@ public:
                 to_metal_blend_factor(desc.colorBlend.dstAlpha);
             colorAttachment.alphaBlendOperation =
                 to_metal_blend_op(desc.colorBlend.alphaOp);
+        }
+        if (!desc.vertexBuffers.empty() || !desc.vertexAttributes.empty()) {
+            auto* vertexDescriptor = [MTLVertexDescriptor vertexDescriptor];
+            for (const auto& buffer : desc.vertexBuffers) {
+                auto* layout = vertexDescriptor.layouts[buffer.binding];
+                layout.stride = buffer.stride;
+                layout.stepFunction = to_metal_step_function(buffer.stepMode);
+                layout.stepRate = 1;
+            }
+            for (const auto& attribute : desc.vertexAttributes) {
+                auto* metalAttribute = vertexDescriptor.attributes[attribute.location];
+                metalAttribute.format = to_metal_vertex_format(attribute.format);
+                metalAttribute.offset = attribute.offset;
+                metalAttribute.bufferIndex = attribute.binding;
+            }
+            rpd.vertexDescriptor = vertexDescriptor;
         }
 
         NSError* err = nil;

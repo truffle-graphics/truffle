@@ -514,6 +514,17 @@ int main() {
                          truffle::rhi::ColorWriteFlags::green |
                          truffle::rhi::ColorWriteFlags::blue,
         },
+        .vertexBuffers = {{
+            .binding = 0,
+            .stride = 32,
+            .stepMode = truffle::rhi::VertexStepMode::instance,
+        }},
+        .vertexAttributes = {{
+            .location = 0,
+            .binding = 0,
+            .format = truffle::rhi::VertexFormat::float32x4,
+            .offset = 0,
+        }},
     }, capabilities));
     TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_render_state_valid({
         .colorFormat = truffle::rhi::TextureFormat::depth32_float,
@@ -541,6 +552,67 @@ int main() {
         .colorBlend = {
             .writeMask = static_cast<truffle::rhi::ColorWriteFlags>(1u << 8u),
         },
+    }, capabilities));
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_render_state_valid({
+        .colorFormat = truffle::rhi::TextureFormat::rgba8_unorm,
+        .depthTest = false,
+        .depthWrite = false,
+        .vertexBuffers = {{
+            .binding = 0,
+            .stride = 0,
+        }},
+    }, capabilities));
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_render_state_valid({
+        .colorFormat = truffle::rhi::TextureFormat::rgba8_unorm,
+        .depthTest = false,
+        .depthWrite = false,
+        .vertexBuffers = {{
+            .binding = 0,
+            .stride = 8,
+        }},
+        .vertexAttributes = {{
+            .location = 0,
+            .binding = 0,
+            .format = truffle::rhi::VertexFormat::float32x4,
+            .offset = 0,
+        }},
+    }, capabilities));
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_render_state_valid({
+        .colorFormat = truffle::rhi::TextureFormat::rgba8_unorm,
+        .depthTest = false,
+        .depthWrite = false,
+        .vertexAttributes = {{
+            .location = 0,
+            .binding = 0,
+        }},
+    }, capabilities));
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_render_state_valid({
+        .colorFormat = truffle::rhi::TextureFormat::rgba8_unorm,
+        .depthTest = false,
+        .depthWrite = false,
+        .vertexBuffers = {{
+            .binding = 0,
+            .stride = 16,
+        }},
+        .vertexAttributes = {
+            {
+                .location = 0,
+                .binding = 0,
+            },
+            {
+                .location = 0,
+                .binding = 0,
+            },
+        },
+    }, capabilities));
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_render_state_valid({
+        .colorFormat = truffle::rhi::TextureFormat::rgba8_unorm,
+        .depthTest = false,
+        .depthWrite = false,
+        .vertexBuffers = {{
+            .binding = 0,
+            .stride = capabilities.limits.maxVertexBufferStride + 1,
+        }},
     }, capabilities));
 
     const truffle::rhi::BindGroupLayoutDesc bindGroupLayoutDesc{

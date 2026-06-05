@@ -109,6 +109,8 @@ void append_report(std::ostream& out, const truffle::rhi::BackendParityReport& r
     append_bool(out, "unifiedMemory", report.unifiedMemory);
     append_uint(out, "maxFramesInFlight", report.maxFramesInFlight);
     append_uint(out, "maxResourceBindings", report.maxResourceBindings);
+    append_uint(out, "maxVertexAttributes", report.maxVertexAttributes);
+    append_uint(out, "maxVertexBufferStride", report.maxVertexBufferStride);
     append_uint(out, "maxDescriptorArrayElements",
                 report.maxDescriptorArrayElements);
     append_uint(out, "maxBindlessResources", report.maxBindlessResources);

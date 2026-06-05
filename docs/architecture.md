@@ -130,6 +130,9 @@ scope and active extension-backend work continuing in parallel:
 - Graphics pipeline descriptors include explicit raster, depth/stencil, and
   color-blend state so higher layers can express render-state policy without
   inventing backend-specific side channels.
+- Graphics pipeline descriptors include explicit vertex buffer and attribute
+  layouts so higher layers can pass mesh/instance input contracts to RHI without
+  implicit renderer-owned vertex layout policy.
 - CI emits backend parity matrix Markdown/JSON artifacts for tracked backend
   contract/reflection tests, plus a live `rhi-parity-report.json` generated
   from `BackendParityReport` capability summaries.

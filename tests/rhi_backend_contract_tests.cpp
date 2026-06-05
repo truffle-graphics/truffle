@@ -115,6 +115,8 @@ int verify_capability_contract(const truffle::rhi::IBackend& backend,
     TRUFFLE_CHECK(caps.limits.minStorageBufferOffsetAlignment >= 1);
     TRUFFLE_CHECK(caps.limits.maxColorAttachments >= 1);
     TRUFFLE_CHECK(caps.limits.maxVertexBuffers >= 1);
+    TRUFFLE_CHECK(caps.limits.maxVertexAttributes >= 1);
+    TRUFFLE_CHECK(caps.limits.maxVertexBufferStride >= 16);
     TRUFFLE_CHECK(caps.limits.maxDescriptorArrayElements >= 1);
     TRUFFLE_CHECK(caps.limits.maxSamplerAnisotropy >= 1);
     TRUFFLE_CHECK(truffle::rhi::supports_descriptor_arrays(caps) ==
@@ -823,6 +825,10 @@ int verify_backend_diagnostics_contract(truffle::rhi::IBackend& backend) {
                   truffle::rhi::supports_bindless_resources(reportedCaps));
     TRUFFLE_CHECK(report.maxFramesInFlight >= 1);
     TRUFFLE_CHECK(report.maxResourceBindings > 0);
+    TRUFFLE_CHECK(report.maxVertexAttributes ==
+                  reportedCaps.limits.maxVertexAttributes);
+    TRUFFLE_CHECK(report.maxVertexBufferStride ==
+                  reportedCaps.limits.maxVertexBufferStride);
     TRUFFLE_CHECK(report.maxDescriptorArrayElements ==
                   reportedCaps.limits.maxDescriptorArrayElements);
     TRUFFLE_CHECK(report.maxBindlessResources ==
@@ -1448,12 +1454,24 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
             .srcAlpha = truffle::rhi::BlendFactor::one,
             .dstAlpha = truffle::rhi::BlendFactor::one_minus_source_alpha,
         },
+        .vertexBuffers = {{
+            .binding = 0,
+            .stride = 16,
+            .stepMode = truffle::rhi::VertexStepMode::vertex,
+        }},
+        .vertexAttributes = {{
+            .location = 0,
+            .binding = 0,
+            .format = truffle::rhi::VertexFormat::float32x4,
+            .offset = 0,
+        }},
     });
     TRUFFLE_CHECK(richRenderStatePipeline.ok());
     TRUFFLE_CHECK(richRenderStatePipeline.value()->desc().rasterState.fillMode ==
                   truffle::rhi::FillMode::wireframe);
     TRUFFLE_CHECK(!richRenderStatePipeline.value()->desc().rasterState.depthClip);
     TRUFFLE_CHECK(richRenderStatePipeline.value()->desc().colorBlend.enabled);
+    TRUFFLE_CHECK(richRenderStatePipeline.value()->desc().vertexAttributes.size() == 1);
 
     auto badLayoutPipeline = device.create_pipeline({
         .layout = {
@@ -1514,6 +1532,38 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
     });
     TRUFFLE_CHECK(!badBlendStatePipeline.ok());
     TRUFFLE_CHECK(badBlendStatePipeline.status().code ==
+                  truffle::core::StatusCode::invalid_argument);
+    auto badVertexInputPipeline = device.create_pipeline({
+        .vertexShader = stageVertexShader.value().get(),
+        .fragmentShader = stageFragmentShader.value().get(),
+        .depthTest = false,
+        .depthWrite = false,
+        .vertexBuffers = {{
+            .binding = 0,
+            .stride = 8,
+        }},
+        .vertexAttributes = {{
+            .location = 0,
+            .binding = 0,
+            .format = truffle::rhi::VertexFormat::float32x4,
+            .offset = 0,
+        }},
+    });
+    TRUFFLE_CHECK(!badVertexInputPipeline.ok());
+    TRUFFLE_CHECK(badVertexInputPipeline.status().code ==
+                  truffle::core::StatusCode::invalid_argument);
+    auto badVertexStridePipeline = device.create_pipeline({
+        .vertexShader = stageVertexShader.value().get(),
+        .fragmentShader = stageFragmentShader.value().get(),
+        .depthTest = false,
+        .depthWrite = false,
+        .vertexBuffers = {{
+            .binding = 0,
+            .stride = device.capabilities().limits.maxVertexBufferStride + 1,
+        }},
+    });
+    TRUFFLE_CHECK(!badVertexStridePipeline.ok());
+    TRUFFLE_CHECK(badVertexStridePipeline.status().code ==
                   truffle::core::StatusCode::invalid_argument);
 
     auto cmd = device.create_command_buffer();

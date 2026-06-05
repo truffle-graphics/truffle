@@ -379,6 +379,19 @@ validation, diagnostics, and backend parity.
     backend-specific slice.
   - Expanded core and shared backend contract tests for valid rich render state
     and invalid raster/blend/stencil descriptors.
+- **Low-Level Graphics Foundation Slice 9I** — Complete.
+  - Added source-compatible vertex buffer and vertex attribute layout descriptors
+    to `PipelineDesc`, including step modes and typed float/uint formats.
+  - Added advertised vertex-attribute and vertex-buffer stride limits plus
+    shared vertex input validation for stride bounds, format size, duplicate
+    bindings/locations, missing buffers, and capability overflows.
+  - Extended live backend parity reports to include the new vertex input limits
+    so capability JSON tracks backend differences.
+  - Mapped Metal vertex input descriptors to native `MTLVertexDescriptor` state;
+    contract backends retain and validate the descriptors uniformly.
+  - Expanded core and shared backend contract tests for valid vertex input and
+    invalid zero-stride, missing-buffer, stride-overflow, duplicate-location, and
+    limit-overflow descriptors.
 
 ## Relevant Decisions And Constraints
 
@@ -427,6 +440,10 @@ validation, diagnostics, and backend parity.
 - Graphics pipeline descriptors now carry explicit raster, depth/stencil, and
   blend state; validation rejects unsupported stencil state and invalid enum/mask
   values before backend pipeline creation.
+- Graphics pipeline descriptors now carry explicit vertex input layouts; higher
+  layers should describe buffer strides, step rates, attribute locations/formats,
+  and offsets directly instead of relying on renderer-owned implicit layout
+  policy.
 - The repository commits only the public doctrine snapshot. The maintainer's
   private Copilot overlay lives in `~/.copilot/copilot-instructions.md` on the
   local machine and must not be copied into repository history.
@@ -459,7 +476,7 @@ compute tests.
 ## Next Resume Steps
 
 1. Continue backend-native depth work; likely next low-level gaps are native
-   descriptor allocation/mapping depth or richer pipeline/render-state coverage.
+   depth/stencil attachment state and descriptor allocation/mapping depth.
 
 ## Open Questions Or Risks
 

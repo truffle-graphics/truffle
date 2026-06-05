@@ -340,6 +340,107 @@ namespace truffle::rhi::validation {
            color_write_mask_valid(desc.writeMask);
 }
 
+[[nodiscard]] constexpr bool vertex_step_mode_valid(
+    VertexStepMode mode) noexcept {
+    switch (mode) {
+    case VertexStepMode::vertex:
+    case VertexStepMode::instance:
+        return true;
+    }
+    return false;
+}
+
+[[nodiscard]] constexpr bool vertex_format_valid(
+    VertexFormat format) noexcept {
+    switch (format) {
+    case VertexFormat::float32:
+    case VertexFormat::float32x2:
+    case VertexFormat::float32x3:
+    case VertexFormat::float32x4:
+    case VertexFormat::uint32:
+    case VertexFormat::uint32x2:
+    case VertexFormat::uint32x3:
+    case VertexFormat::uint32x4:
+        return true;
+    }
+    return false;
+}
+
+[[nodiscard]] constexpr std::size_t vertex_format_size(
+    VertexFormat format) noexcept {
+    switch (format) {
+    case VertexFormat::float32:
+    case VertexFormat::uint32:
+        return 4;
+    case VertexFormat::float32x2:
+    case VertexFormat::uint32x2:
+        return 8;
+    case VertexFormat::float32x3:
+    case VertexFormat::uint32x3:
+        return 12;
+    case VertexFormat::float32x4:
+    case VertexFormat::uint32x4:
+        return 16;
+    }
+    return 0;
+}
+
+[[nodiscard]] inline bool vertex_input_valid(
+    const PipelineDesc& desc,
+    const Capabilities& capabilities) noexcept {
+    if (desc.vertexBuffers.size() > capabilities.limits.maxVertexBuffers) {
+        return false;
+    }
+    if (desc.vertexAttributes.size() > capabilities.limits.maxVertexAttributes) {
+        return false;
+    }
+
+    for (std::size_t i = 0; i < desc.vertexBuffers.size(); ++i) {
+        const auto& buffer = desc.vertexBuffers[i];
+        if (buffer.binding >= capabilities.limits.maxVertexBuffers ||
+            buffer.stride == 0 ||
+            buffer.stride > capabilities.limits.maxVertexBufferStride ||
+            !vertex_step_mode_valid(buffer.stepMode)) {
+            return false;
+        }
+        for (std::size_t j = i + 1; j < desc.vertexBuffers.size(); ++j) {
+            if (buffer.binding == desc.vertexBuffers[j].binding) {
+                return false;
+            }
+        }
+    }
+
+    for (std::size_t i = 0; i < desc.vertexAttributes.size(); ++i) {
+        const auto& attribute = desc.vertexAttributes[i];
+        const auto size = vertex_format_size(attribute.format);
+        if (attribute.location >= capabilities.limits.maxVertexAttributes ||
+            size == 0 || !vertex_format_valid(attribute.format)) {
+            return false;
+        }
+
+        const VertexBufferLayoutDesc* buffer = nullptr;
+        for (const auto& candidate : desc.vertexBuffers) {
+            if (candidate.binding == attribute.binding) {
+                buffer = &candidate;
+                break;
+            }
+        }
+        if (!buffer ||
+            attribute.offset > buffer->stride ||
+            size > buffer->stride - attribute.offset) {
+            return false;
+        }
+
+        for (std::size_t j = i + 1; j < desc.vertexAttributes.size(); ++j) {
+            if (attribute.location == desc.vertexAttributes[j].location) {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
 [[nodiscard]] inline bool pipeline_render_state_valid(
     const PipelineDesc& desc,
     const Capabilities& capabilities) noexcept {
@@ -351,7 +452,8 @@ namespace truffle::rhi::validation {
 
     if (!raster_state_valid(desc.rasterState) ||
         !depth_stencil_state_valid(desc.depthStencilState) ||
-        !color_blend_valid(desc.colorBlend)) {
+        !color_blend_valid(desc.colorBlend) ||
+        !vertex_input_valid(desc, capabilities)) {
         return false;
     }
 

@@ -42,6 +42,8 @@ using core::StatusCode;
             .minStorageBufferOffsetAlignment = 16,
             .maxColorAttachments = 8,
             .maxVertexBuffers = 16,
+            .maxVertexAttributes = 16,
+            .maxVertexBufferStride = 2048,
             .maxSamplerAnisotropy = 16,
         },
         .formats = {
