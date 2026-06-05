@@ -141,6 +141,9 @@ contract-backend extension work.
   - Added debug overlay declarations and summaries for lines, boxes, points,
     labels, and pick targets without installing renderer hooks or a persistent
     debug subsystem.
+  - Added `truffle_dense_diagnostics_example`, a backend-free dense-data
+    diagnostics smoke example for lidar/radar-style groups, render-batch
+    summaries, and debug overlays.
   - Kept diagnostics separate from render and scene runtime dependencies; normal
     consumers only link the diagnostics target when they want inspection helpers.
   - Added `truffle_assets_tests` and `truffle_diagnostics_tests`, and extended
@@ -183,18 +186,19 @@ Verified on macOS Apple Silicon (`agents/high-level-abstraction-layers`):
 ```sh
 cmake --preset dev
 cmake --build --preset dev
-ctest --preset dev --output-on-failure   # 22/22
+ctest --preset dev --output-on-failure   # 23/23
 cmake --build --preset dev --target truffle_format_check
 # clang-format was not installed; target reported the missing optional tool.
 ```
 
-22 tests: 3 host workspace smoke, ECS, asset declarations, null RHI (+ indexed
-draw + reflection contract check), render flow, advanced render flow, render
-batch, frame graph dependency, diagnostics, frame ring, scene adapter, Metal
-backend (+ indexed draw + compute + reflection checks), Vulkan milestone 0-4
-tests, OpenGL backend tests, Direct3D backend tests, shared RHI contract tests
-(null + Vulkan + OpenGL + Direct3D + optional Metal), API version tests,
-performance sanity tests, package consumer, and transform compute tests.
+23 tests: 3 host workspace smoke, dense diagnostics smoke, ECS, asset
+declarations, null RHI (+ indexed draw + reflection contract check), render
+flow, advanced render flow, render batch, frame graph dependency, diagnostics,
+frame ring, scene adapter, Metal backend (+ indexed draw + compute + reflection
+checks), Vulkan milestone 0-4 tests, OpenGL backend tests, Direct3D backend
+tests, shared RHI contract tests (null + Vulkan + OpenGL + Direct3D + optional
+Metal), API version tests, performance sanity tests, package consumer, and
+transform compute tests.
 
 ## Next Resume Steps
 

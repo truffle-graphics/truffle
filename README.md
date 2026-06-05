@@ -108,7 +108,8 @@ boundary.
 - `src/` module implementations and backend ownership
 - `cmake/` package, install, warning, option, and developer-tooling helpers
 - `tests/` contract tests
-- `examples/` host-owned workspace integration proof
+- `examples/` host-owned workspace integration proof plus dense-data
+  diagnostics examples
 - `docs/` charter, architecture, backend roadmap, handoff, and doctrine snapshot
 
 ## Contributing

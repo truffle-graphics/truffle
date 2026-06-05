@@ -19,14 +19,15 @@ Truffle is one product with modules that stay linkable at different levels:
    `SceneAdapter`, which extracts a `SceneFrame` containing camera state, light
    state, and a vector of `RenderBatch` objects written through
    `IFrameUploadRing`.
-6. `truffle_assets` defines declarative asset, material-operation, texture, and
-   geometry stream metadata. It does not load files, own GPU uploads, or depend
-   on a backend.
-7. `truffle_diagnostics` provides opt-in, pull-based render and frame-graph
-   inspection helpers. Lower runtime layers do not depend on it.
-8. Future framework-facing modules can add debug overlays, picking, asset
-   importers, and tool-facing rendering workflows above the lower layers without
-   hiding them from consumers.
+6. `truffle_assets` defines declarative asset, material-operation, texture,
+   geometry stream, and group/tag metadata. It does not load files, own GPU
+   uploads, or depend on a backend.
+7. `truffle_diagnostics` provides opt-in, pull-based asset, render,
+   frame-graph, renderer-stats, and debug-overlay inspection helpers. Lower
+   runtime layers do not depend on it.
+8. Future framework-facing modules can add asset importers and tool-facing
+   rendering workflows above the lower layers without hiding them from
+   consumers.
 
 ## Repository Shape
 
