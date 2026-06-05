@@ -600,7 +600,83 @@ int verify_common_positive_path_contract(truffle::rhi::IDevice& device,
     TRUFFLE_CHECK(stateCmd->bind_group(0, *computeBindGroup.value()).ok());
     TRUFFLE_CHECK(!stateCmd->bind_storage_buffer(0, *indexBuffer.value()).ok());
     TRUFFLE_CHECK(stateCmd->bind_storage_buffer(0, *storageBuffer.value()).ok());
+    TRUFFLE_CHECK(stateCmd->dispatch_compute(1, 1, 1).ok());
     TRUFFLE_CHECK(stateCmd->end().ok());
+
+    return 0;
+}
+
+bool has_event_kind(const std::vector<truffle::rhi::BackendEvent>& events,
+                    truffle::rhi::BackendEventKind kind) {
+    for (const auto& event : events) {
+        if (event.kind == kind) {
+            return true;
+        }
+    }
+    return false;
+}
+
+int verify_backend_diagnostics_contract(truffle::rhi::IBackend& backend) {
+    const auto stats = backend.backend_stats();
+    TRUFFLE_CHECK(stats.devicesCreated == 1);
+    TRUFFLE_CHECK(stats.buffersCreated > 0);
+    TRUFFLE_CHECK(stats.texturesCreated > 0);
+    TRUFFLE_CHECK(stats.samplersCreated > 0);
+    TRUFFLE_CHECK(stats.shadersCreated >= 3);
+    TRUFFLE_CHECK(stats.graphicsPipelinesCreated > 0);
+    TRUFFLE_CHECK(stats.computePipelinesCreated > 0);
+    TRUFFLE_CHECK(stats.bindGroupLayoutsCreated > 0);
+    TRUFFLE_CHECK(stats.bindGroupsCreated > 0);
+    TRUFFLE_CHECK(stats.surfacesCreated > 0);
+    TRUFFLE_CHECK(stats.swapchainsCreated > 0);
+    TRUFFLE_CHECK(stats.commandBuffersCreated > 0);
+    TRUFFLE_CHECK(stats.fencesCreated > 0);
+    TRUFFLE_CHECK(stats.uploadRingsCreated > 0);
+    TRUFFLE_CHECK(stats.drawsRecorded > 0);
+    TRUFFLE_CHECK(stats.dispatchesRecorded > 0);
+    TRUFFLE_CHECK(stats.submissions > 0);
+    TRUFFLE_CHECK(stats.debugLabelsPushed > 0);
+    TRUFFLE_CHECK(stats.debugMarkersInserted > 0);
+
+    const auto events = backend.recent_events();
+    TRUFFLE_CHECK(!events.empty());
+    std::uint64_t previousSequence = 0;
+    for (const auto& event : events) {
+        TRUFFLE_CHECK(event.backend == backend.kind());
+        TRUFFLE_CHECK(event.status == truffle::core::StatusCode::ok);
+        TRUFFLE_CHECK(event.sequence > previousSequence);
+        previousSequence = event.sequence;
+    }
+    TRUFFLE_CHECK(has_event_kind(events, truffle::rhi::BackendEventKind::command_recorded));
+    TRUFFLE_CHECK(has_event_kind(events, truffle::rhi::BackendEventKind::debug_marker));
+    TRUFFLE_CHECK(has_event_kind(events, truffle::rhi::BackendEventKind::submitted));
+
+    const auto report = truffle::rhi::collect_backend_parity_report(backend);
+    const auto reportedCaps = backend.enumerate_adapters().front().capabilities;
+    TRUFFLE_CHECK(report.backend == backend.kind());
+    TRUFFLE_CHECK(report.adapterCount == backend.enumerate_adapters().size());
+    TRUFFLE_CHECK(report.graphicsQueue == reportedCaps.queues.graphics);
+    TRUFFLE_CHECK(report.computeQueue == reportedCaps.queues.compute);
+    TRUFFLE_CHECK(report.transferQueue == reportedCaps.queues.transfer);
+    TRUFFLE_CHECK(report.presentation == reportedCaps.features.presentation);
+    TRUFFLE_CHECK(report.nativeSurface == reportedCaps.features.nativeSurface);
+    TRUFFLE_CHECK(report.debugLabels == reportedCaps.features.debugLabels);
+    TRUFFLE_CHECK(report.maxFramesInFlight >= 1);
+    TRUFFLE_CHECK(report.maxResourceBindings > 0);
+    TRUFFLE_CHECK(report.formatCount > 0);
+    TRUFFLE_CHECK(report.shaderFormatCount > 0);
+    TRUFFLE_CHECK(report.stats.devicesCreated == stats.devicesCreated);
+    TRUFFLE_CHECK(report.stats.submissions == stats.submissions);
+
+    backend.clear_diagnostics();
+    const auto clearedStats = backend.backend_stats();
+    TRUFFLE_CHECK(clearedStats.devicesCreated == 0);
+    TRUFFLE_CHECK(clearedStats.buffersCreated == 0);
+    TRUFFLE_CHECK(clearedStats.submissions == 0);
+    TRUFFLE_CHECK(backend.recent_events().empty());
+    const auto clearedReport = truffle::rhi::collect_backend_parity_report(backend);
+    TRUFFLE_CHECK(clearedReport.stats.devicesCreated == 0);
+    TRUFFLE_CHECK(clearedReport.stats.submissions == 0);
 
     return 0;
 }
@@ -1028,15 +1104,23 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
 
 int verify_backend_contract(std::unique_ptr<truffle::rhi::IBackend> backend) {
     const auto backendKind = backend->kind();
+    TRUFFLE_CHECK(backend->backend_stats().devicesCreated == 0);
+    TRUFFLE_CHECK(backend->recent_events().empty());
+    const auto emptyReport = truffle::rhi::collect_backend_parity_report(*backend);
+    TRUFFLE_CHECK(emptyReport.backend == backendKind);
+    TRUFFLE_CHECK(emptyReport.stats.devicesCreated == 0);
+
     auto badDevice = backend->create_device({.adapterId = 99});
     TRUFFLE_CHECK(!badDevice.ok());
     TRUFFLE_CHECK(badDevice.status().code == truffle::core::StatusCode::unavailable);
+    TRUFFLE_CHECK(backend->backend_stats().devicesCreated == 0);
 
     auto deviceResult = backend->create_device({});
     TRUFFLE_CHECK(deviceResult.ok());
     auto device = std::move(deviceResult).value();
     TRUFFLE_CHECK(verify_capability_contract(*backend, *device) == 0);
-    return verify_common_device_contract(*device, backendKind);
+    TRUFFLE_CHECK(verify_common_device_contract(*device, backendKind) == 0);
+    return verify_backend_diagnostics_contract(*backend);
 }
 
 } // namespace

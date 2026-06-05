@@ -2,6 +2,8 @@
 #include "truffle/rhi/shader_reflection.hpp"
 #include "truffle/rhi/validation.hpp"
 
+#include "../backend_diagnostics.hpp"
+
 #include <memory>
 #include <vector>
 #include <utility>
@@ -144,6 +146,9 @@ private:
 
 class OpenGLCommandBuffer final : public ICommandBuffer {
 public:
+    explicit OpenGLCommandBuffer(BackendDiagnosticsPtr diagnostics)
+        : diagnostics_(std::move(diagnostics)) {}
+
     enum class State {
         initial,
         recording,
@@ -200,6 +205,11 @@ public:
                                    "OpenGLCommandBuffer: debug label descriptor is invalid");
         }
         ++debugLabelDepth_;
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().debugLabelsPushed;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::command_recorded,
+                             desc.name, "debug label pushed");
         return Status::success();
     }
 
@@ -223,6 +233,11 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "OpenGLCommandBuffer: debug marker descriptor is invalid");
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().debugMarkersInserted;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::debug_marker,
+                             desc.name, "debug marker inserted");
         return Status::success();
     }
 
@@ -396,21 +411,37 @@ public:
     }
 
     [[nodiscard]] Status draw(std::uint32_t /*vertex_count*/) override {
-        return require_render_pass("draw");
+        if (const auto s = require_render_pass("draw"); !s.ok()) {
+            return s;
+        }
+        record_draw();
+        return Status::success();
     }
 
     [[nodiscard]] Status draw_instanced(
         std::uint32_t /*vertex_count*/, std::uint32_t /*instance_count*/) override {
-        return require_render_pass("draw_instanced");
+        if (const auto s = require_render_pass("draw_instanced"); !s.ok()) {
+            return s;
+        }
+        record_draw();
+        return Status::success();
     }
 
     [[nodiscard]] Status draw_indexed(std::uint32_t /*index_count*/) override {
-        return require_render_pass("draw_indexed");
+        if (const auto s = require_render_pass("draw_indexed"); !s.ok()) {
+            return s;
+        }
+        record_draw();
+        return Status::success();
     }
 
     [[nodiscard]] Status draw_indexed_instanced(
         std::uint32_t /*index_count*/, std::uint32_t /*instance_count*/) override {
-        return require_render_pass("draw_indexed_instanced");
+        if (const auto s = require_render_pass("draw_indexed_instanced"); !s.ok()) {
+            return s;
+        }
+        record_draw();
+        return Status::success();
     }
 
     [[nodiscard]] Status draw_indirect(
@@ -423,6 +454,7 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "OpenGLCommandBuffer: buffer lacks indirect usage");
         }
+        record_draw();
         return Status::success();
     }
 
@@ -436,6 +468,7 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "OpenGLCommandBuffer: buffer lacks indirect usage");
         }
+        record_draw();
         return Status::success();
     }
 
@@ -450,6 +483,11 @@ public:
             return Status::failure(StatusCode::invalid_state,
                                    "OpenGLCommandBuffer: dispatch_compute cannot run inside render pass");
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().dispatchesRecorded;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::command_recorded,
+                             {}, "dispatch recorded");
         return Status::success();
     }
 
@@ -485,14 +523,24 @@ private:
         return Status::success();
     }
 
+    void record_draw() {
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().drawsRecorded;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::command_recorded,
+                             {}, "draw recorded");
+    }
+
     State state_ = State::initial;
     bool inRenderPass_ = false;
     std::uint32_t debugLabelDepth_ = 0;
+    BackendDiagnosticsPtr diagnostics_;
 };
 
 class OpenGLQueue final : public IQueue {
 public:
-    explicit OpenGLQueue(QueueKind kind) : kind_(kind) {}
+    OpenGLQueue(QueueKind kind, BackendDiagnosticsPtr diagnostics)
+        : kind_(kind), diagnostics_(std::move(diagnostics)) {}
 
     [[nodiscard]] QueueKind kind() const noexcept override { return kind_; }
 
@@ -506,6 +554,11 @@ public:
         if (auto* cmd = dynamic_cast<OpenGLCommandBuffer*>(&command_buffer)) {
             cmd->mark_submitted();
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().submissions;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::submitted,
+                             {}, "command buffer submitted");
 
         if (signal_fence) {
             if (auto* fence = dynamic_cast<OpenGLFence*>(signal_fence)) {
@@ -518,6 +571,7 @@ public:
 
 private:
     QueueKind kind_;
+    BackendDiagnosticsPtr diagnostics_;
 };
 
 class OpenGLBuffer final : public IBuffer {
@@ -776,11 +830,12 @@ private:
 
 class OpenGLDevice final : public IDevice {
 public:
-    OpenGLDevice()
+    explicit OpenGLDevice(BackendDiagnosticsPtr diagnostics)
         : caps_(make_opengl_capabilities())
-        , graphicsQueue_(QueueKind::graphics)
-        , computeQueue_(QueueKind::compute)
-        , transferQueue_(QueueKind::transfer) {}
+        , graphicsQueue_(QueueKind::graphics, diagnostics)
+        , computeQueue_(QueueKind::compute, diagnostics)
+        , transferQueue_(QueueKind::transfer, diagnostics)
+        , diagnostics_(std::move(diagnostics)) {}
 
     [[nodiscard]] const Capabilities& capabilities() const noexcept override {
         return caps_;
@@ -792,6 +847,11 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                     "OpenGL backend: swapchain description is invalid");
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().swapchainsCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::swapchain_created,
+                             {}, "swapchain created");
         return std::unique_ptr<ISwapchain>(std::make_unique<OpenGLSwapchain>(desc));
     }
 
@@ -809,6 +869,11 @@ public:
             return Status::failure(StatusCode::unsupported,
                                    "OpenGL backend: buffer memory domain is not supported");
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().buffersCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::resource_created,
+                             desc.debugName, "buffer created");
         return std::unique_ptr<IBuffer>(std::make_unique<OpenGLBuffer>(desc));
     }
 
@@ -827,11 +892,21 @@ public:
             return Status::failure(StatusCode::unsupported,
                                    "OpenGL backend: texture format does not support requested usage");
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().texturesCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::resource_created,
+                             desc.debugName, "texture created");
         return std::unique_ptr<ITexture>(std::make_unique<OpenGLTexture>(desc));
     }
     
     [[nodiscard]] core::Result<std::unique_ptr<ISampler>> create_sampler(
         const SamplerDesc& /*desc*/) override {
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().samplersCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::resource_created,
+                             {}, "sampler created");
         return std::unique_ptr<ISampler>(std::make_unique<OpenGLSampler>());
     }
 
@@ -845,6 +920,11 @@ public:
             return Status::failure(StatusCode::unsupported,
                                    "OpenGL backend: shader byte format is not supported");
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().shadersCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::resource_created,
+                             desc.entryPoint, "shader created");
         return std::unique_ptr<IShader>(std::make_unique<OpenGLShader>(desc));
     }
 
@@ -886,6 +966,11 @@ public:
             .dataSize = fragmentShader->desc().bytecode.size(),
         });
 
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().graphicsPipelinesCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::pipeline_created,
+                             desc.debugName, "graphics pipeline created");
         return std::unique_ptr<IPipeline>(
             std::make_unique<OpenGLPipeline>(desc, std::move(reflection)));
     }
@@ -896,6 +981,11 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "OpenGL backend: bind group layout is invalid");
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().bindGroupLayoutsCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::bind_group_created,
+                             desc.debugName, "bind group layout created");
         return std::unique_ptr<IBindGroupLayout>(
             std::make_unique<OpenGLBindGroupLayout>(desc));
     }
@@ -934,6 +1024,11 @@ public:
                     break;
             }
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().bindGroupsCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::bind_group_created,
+                             desc.debugName, "bind group created");
         return std::unique_ptr<IBindGroup>(std::make_unique<OpenGLBindGroup>(desc));
     }
 
@@ -977,12 +1072,22 @@ public:
             .dataSize = 0,
         });
 
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().computePipelinesCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::pipeline_created,
+                             desc.debugName, "compute pipeline created");
         return std::unique_ptr<IComputePipeline>(
             std::make_unique<OpenGLComputePipeline>(desc, std::move(reflection)));
     }
 
     [[nodiscard]] CommandBufferPtr create_command_buffer() override {
-        return CommandBufferPtr(new OpenGLCommandBuffer(), [](ICommandBuffer* cmd) {
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().commandBuffersCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::command_buffer_created,
+                             {}, "command buffer created");
+        return CommandBufferPtr(new OpenGLCommandBuffer(diagnostics_), [](ICommandBuffer* cmd) {
             delete cmd;
         });
     }
@@ -998,6 +1103,11 @@ public:
     }
 
     [[nodiscard]] FencePtr create_fence(const FenceDesc& desc) override {
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().fencesCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::fence_created,
+                             {}, "fence created");
         return FencePtr(new OpenGLFence(desc), [](IFence* fence) {
             delete fence;
         });
@@ -1019,6 +1129,11 @@ public:
             return Status::failure(StatusCode::unsupported,
                                    "OpenGL backend: native surface kind is not supported");
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().surfacesCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::surface_created,
+                             {}, "surface created");
         return std::unique_ptr<ISurface>(std::make_unique<OpenGLSurface>(desc));
     }
 
@@ -1029,6 +1144,11 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                     "OpenGL backend: upload ring frames/capacity must be non-zero");
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().uploadRingsCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::upload_ring_created,
+                             {}, "upload ring created");
         return std::unique_ptr<IFrameUploadRing>(
             std::make_unique<OpenGLFrameUploadRing>(frames_in_flight, buffer_size));
     }
@@ -1038,6 +1158,7 @@ private:
     OpenGLQueue graphicsQueue_;
     OpenGLQueue computeQueue_;
     OpenGLQueue transferQueue_;
+    BackendDiagnosticsPtr diagnostics_;
 };
 
 class OpenGLBackend final : public IBackend {
@@ -1045,6 +1166,18 @@ public:
     OpenGLBackend() = default;
 
     BackendKind kind() const noexcept override { return BackendKind::opengl; }
+
+    [[nodiscard]] BackendStats backend_stats() const noexcept override {
+        return diagnostics_->stats();
+    }
+
+    [[nodiscard]] std::vector<BackendEvent> recent_events() const override {
+        return diagnostics_->recent_events();
+    }
+
+    void clear_diagnostics() noexcept override {
+        diagnostics_->clear();
+    }
 
     std::vector<AdapterInfo> enumerate_adapters() const override {
         return {AdapterInfo{
@@ -1063,8 +1196,15 @@ public:
             return Status::failure(StatusCode::unavailable,
                                    "OpenGL backend currently exposes one adapter (id=0)");
         }
-        return std::unique_ptr<IDevice>(std::make_unique<OpenGLDevice>());
+        ++diagnostics_->mutable_stats().devicesCreated;
+        record_backend_event(diagnostics_, BackendEventKind::device_created,
+                             {}, "device created");
+        return std::unique_ptr<IDevice>(std::make_unique<OpenGLDevice>(diagnostics_));
     }
+
+private:
+    BackendDiagnosticsPtr diagnostics_ =
+        make_backend_diagnostics(BackendKind::opengl);
 };
 
 } // namespace

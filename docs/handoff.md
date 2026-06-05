@@ -263,6 +263,16 @@ validation, diagnostics, and backend parity.
   - Extended null backend stats with debug label and marker counters.
   - Expanded core, null, and shared RHI contract tests for valid labels,
     invalid labels, unbalanced labels, marker insertion, and label stats.
+- **Low-Level Graphics Foundation Slice 8B** — Complete.
+  - Added backend-neutral diagnostics counters, recent backend events, clearable
+    diagnostics state, and a `collect_backend_parity_report()` helper.
+  - Wired diagnostics through null, Metal, Vulkan, OpenGL, and Direct3D for
+    device/resource/pipeline/bind-group/surface/swapchain/command/fence/upload
+    creation, draw/dispatch/debug-marker recording, and submissions.
+  - Preserved null-specific `INullBackend::stats()` compatibility by making
+    `NullBackendStats` an alias of the shared `BackendStats` contract.
+  - Expanded shared backend contract tests for stats growth, event ordering,
+    feature parity reports, and `clear_diagnostics()` reset behavior.
 
 ## Relevant Decisions And Constraints
 
@@ -279,6 +289,9 @@ validation, diagnostics, and backend parity.
   until the RHI/backend foundation is richer.
 - `ISwapchain::schedule_present()` now validates command-buffer sequencing even
   for headless no-op swapchains.
+- Backend diagnostics are now a backend-neutral RHI contract. Backends expose
+  clearable counters, recent ordered events, and capability parity reports while
+  null keeps its stricter reference-backend stats API.
 - The repository commits only the public doctrine snapshot. The maintainer's
   private Copilot overlay lives in `~/.copilot/copilot-instructions.md` on the
   local machine and must not be copied into repository history.
@@ -306,11 +319,11 @@ core contract tests, package consumer, and transform compute tests.
 
 ## Next Resume Steps
 
-1. Continue low-level graphics Slice 8B: backend event/stats diagnostics and
-   parity reporting.
-2. Decide bindless and dynamic-resource-indexing capability flags before higher
+1. Decide bindless and dynamic-resource-indexing capability flags before higher
    renderer features rely on descriptor indexing policy.
-3. Add machine-readable parity report output alongside markdown.
+2. Add machine-readable parity report output alongside markdown/API summaries.
+3. Begin backend-by-backend native depth work while preserving the shared
+   diagnostics/parity contract.
 
 ## Open Questions Or Risks
 
@@ -321,8 +334,9 @@ core contract tests, package consumer, and transform compute tests.
   integration remain open.
 - Native descriptor allocation/mapping depth remains backend-specific future
   work; the current bind group model is a validated contract layer.
-- Bindless and dynamic-resource-indexing feature gates remain deferred until the
-  diagnostics/parity pass can report feature tiers clearly.
+- Bindless and dynamic-resource-indexing feature gates remain deferred; they
+  should now build on the diagnostics/parity report surface rather than ad hoc
+  renderer assumptions.
 - Local private Copilot overlay is configured only for this machine for now;
   any cloud/private overlay distribution model remains intentionally deferred.
 

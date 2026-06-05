@@ -317,6 +317,69 @@ struct Capabilities {
     std::vector<ShaderByteFormat> shaderFormats;
 };
 
+struct BackendStats {
+    std::uint64_t devicesCreated = 0;
+    std::uint64_t buffersCreated = 0;
+    std::uint64_t texturesCreated = 0;
+    std::uint64_t samplersCreated = 0;
+    std::uint64_t shadersCreated = 0;
+    std::uint64_t graphicsPipelinesCreated = 0;
+    std::uint64_t computePipelinesCreated = 0;
+    std::uint64_t bindGroupLayoutsCreated = 0;
+    std::uint64_t bindGroupsCreated = 0;
+    std::uint64_t surfacesCreated = 0;
+    std::uint64_t swapchainsCreated = 0;
+    std::uint64_t commandBuffersCreated = 0;
+    std::uint64_t fencesCreated = 0;
+    std::uint64_t uploadRingsCreated = 0;
+    std::uint64_t drawsRecorded = 0;
+    std::uint64_t dispatchesRecorded = 0;
+    std::uint64_t submissions = 0;
+    std::uint64_t debugLabelsPushed = 0;
+    std::uint64_t debugMarkersInserted = 0;
+};
+
+enum class BackendEventKind {
+    device_created,
+    resource_created,
+    pipeline_created,
+    bind_group_created,
+    surface_created,
+    swapchain_created,
+    command_buffer_created,
+    fence_created,
+    upload_ring_created,
+    command_recorded,
+    debug_marker,
+    submitted,
+};
+
+struct BackendEvent {
+    std::uint64_t sequence = 0;
+    BackendKind backend = BackendKind::null_backend;
+    BackendEventKind kind = BackendEventKind::resource_created;
+    core::StatusCode status = core::StatusCode::ok;
+    std::string label;
+    std::string message;
+};
+
+struct BackendParityReport {
+    BackendKind backend = BackendKind::null_backend;
+    std::size_t adapterCount = 0;
+    bool graphicsQueue = false;
+    bool computeQueue = false;
+    bool transferQueue = false;
+    bool presentation = false;
+    bool nativeSurface = false;
+    bool shaderReflection = false;
+    bool debugLabels = false;
+    std::uint32_t maxFramesInFlight = 0;
+    std::uint32_t maxResourceBindings = 0;
+    std::size_t formatCount = 0;
+    std::size_t shaderFormatCount = 0;
+    BackendStats stats;
+};
+
 struct AdapterInfo {
     std::uint32_t id = 0;
     std::string name;
@@ -925,9 +988,43 @@ public:
     virtual ~IBackend() = default;
 
     [[nodiscard]] virtual BackendKind kind() const noexcept = 0;
+    [[nodiscard]] virtual BackendStats backend_stats() const noexcept {
+        return {};
+    }
+    [[nodiscard]] virtual std::vector<BackendEvent> recent_events() const {
+        return {};
+    }
+    virtual void clear_diagnostics() noexcept {}
     [[nodiscard]] virtual std::vector<AdapterInfo> enumerate_adapters() const = 0;
     [[nodiscard]] virtual core::Result<std::unique_ptr<IDevice>>
     create_device(const DeviceDesc& desc) = 0;
 };
+
+[[nodiscard]] inline BackendParityReport collect_backend_parity_report(
+    const IBackend& backend) {
+    BackendParityReport report;
+    report.backend = backend.kind();
+    report.stats = backend.backend_stats();
+
+    const auto adapters = backend.enumerate_adapters();
+    report.adapterCount = adapters.size();
+    if (adapters.empty()) {
+        return report;
+    }
+
+    const auto& caps = adapters.front().capabilities;
+    report.graphicsQueue = caps.queues.graphics;
+    report.computeQueue = caps.queues.compute;
+    report.transferQueue = caps.queues.transfer;
+    report.presentation = caps.features.presentation;
+    report.nativeSurface = caps.features.nativeSurface;
+    report.shaderReflection = caps.features.shaderReflection;
+    report.debugLabels = caps.features.debugLabels;
+    report.maxFramesInFlight = caps.maxFramesInFlight;
+    report.maxResourceBindings = caps.limits.maxResourceBindings;
+    report.formatCount = caps.formats.size();
+    report.shaderFormatCount = caps.shaderFormats.size();
+    return report;
+}
 
 } // namespace truffle::rhi

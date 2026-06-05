@@ -13,6 +13,8 @@
 #include "truffle/rhi/shader_reflection.hpp"
 #include "truffle/rhi/validation.hpp"
 
+#include "../backend_diagnostics.hpp"
+
 #include <algorithm>
 #include <atomic>
 #include <cstring>
@@ -550,7 +552,8 @@ private:
 
 class MetalCommandBuffer final : public ICommandBuffer {
 public:
-    explicit MetalCommandBuffer(id<MTLCommandQueue> queue) : queue_(queue) {}
+    MetalCommandBuffer(id<MTLCommandQueue> queue, BackendDiagnosticsPtr diagnostics)
+        : queue_(queue), diagnostics_(std::move(diagnostics)) {}
 
     void reset() {
         state_ = State::initial;
@@ -846,6 +849,7 @@ public:
         [encoder_ drawPrimitives:to_mtl_primitive(topology_)
                      vertexStart:0
                      vertexCount:vertex_count];
+        record_draw();
         return Status::success();
     }
 
@@ -863,6 +867,7 @@ public:
                      vertexStart:0
                      vertexCount:vertex_count
                    instanceCount:instance_count];
+        record_draw();
         return Status::success();
     }
 
@@ -890,6 +895,7 @@ public:
                             indexBuffer:indexBuf_
                       indexBufferOffset:indexBufOffset_
                           instanceCount:instance_count];
+        record_draw();
         return Status::success();
     }
 
@@ -919,6 +925,7 @@ public:
         [encoder_ drawPrimitives:to_mtl_primitive(topology_)
                  indirectBuffer:mtlBuf
            indirectBufferOffset:offset];
+        record_draw();
         return Status::success();
     }
 
@@ -955,6 +962,7 @@ public:
                       indexBufferOffset:indexBufOffset_
                          indirectBuffer:mtlBuf
                    indirectBufferOffset:offset];
+        record_draw();
         return Status::success();
     }
 
@@ -979,6 +987,11 @@ public:
         MTLSize threadgroups = MTLSizeMake(group_count_x, group_count_y, group_count_z);
         MTLSize threadsPerThreadgroup = MTLSizeMake(64, 1, 1);
         [compute_encoder_ dispatchThreadgroups:threadgroups threadsPerThreadgroup:threadsPerThreadgroup];
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().dispatchesRecorded;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::command_recorded,
+                             {}, "dispatch recorded");
         return Status::success();
     }
 
@@ -1028,6 +1041,11 @@ public:
                                    "debug label descriptor is invalid");
         }
         ++debugLabelDepth_;
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().debugLabelsPushed;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::command_recorded,
+                             desc.name, "debug label pushed");
         return Status::success();
     }
 
@@ -1053,6 +1071,11 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "debug marker descriptor is invalid");
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().debugMarkersInserted;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::debug_marker,
+                             desc.name, "debug marker inserted");
         return Status::success();
     }
 
@@ -1076,6 +1099,14 @@ public:
 private:
     enum class State { initial, recording, ready, submitted };
 
+    void record_draw() {
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().drawsRecorded;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::command_recorded,
+                             {}, "draw recorded");
+    }
+
     id<MTLCommandQueue>         queue_          = nil;
     id<MTLCommandBuffer>        cmdBuf_         = nil;
     id<MTLRenderCommandEncoder> encoder_        = nil;
@@ -1088,6 +1119,7 @@ private:
     bool                        graphicsPipelineBound_ = false;
     bool                        computePipelineBound_ = false;
     std::uint32_t               debugLabelDepth_ = 0;
+    BackendDiagnosticsPtr       diagnostics_;
 };
 
 // ---------------------------------------------------------------------------
@@ -1304,7 +1336,8 @@ private:
 
 class MetalQueue final : public IQueue {
 public:
-    explicit MetalQueue(QueueKind kind) : kind_(kind) {}
+    MetalQueue(QueueKind kind, BackendDiagnosticsPtr diagnostics)
+        : kind_(kind), diagnostics_(std::move(diagnostics)) {}
 
     QueueKind kind() const noexcept override { return kind_; }
 
@@ -1328,12 +1361,18 @@ public:
         }
         [mcmd->native() commit];
         mcmd->mark_submitted();
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().submissions;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::submitted,
+                             {}, "command buffer submitted");
         return Status::success();
     }
 
 private:
     // Note: submit() drives the command buffer directly; no queue_ field needed.
     QueueKind kind_ = QueueKind::graphics;
+    BackendDiagnosticsPtr diagnostics_;
 };
 
 // ---------------------------------------------------------------------------
@@ -1342,13 +1381,14 @@ private:
 
 class MetalDevice final : public IDevice {
 public:
-    explicit MetalDevice(id<MTLDevice> device)
+    MetalDevice(id<MTLDevice> device, BackendDiagnosticsPtr diagnostics)
         : device_(device)
         , cmdQueue_([device newCommandQueueWithMaxCommandBufferCount:64])
-        , graphicsQueue_(QueueKind::graphics)
-        , computeQueue_(QueueKind::compute)
-        , transferQueue_(QueueKind::transfer)
-        , caps_(make_metal_capabilities(device)) {}
+        , graphicsQueue_(QueueKind::graphics, diagnostics)
+        , computeQueue_(QueueKind::compute, diagnostics)
+        , transferQueue_(QueueKind::transfer, diagnostics)
+        , caps_(make_metal_capabilities(device))
+        , diagnostics_(std::move(diagnostics)) {}
 
     const Capabilities& capabilities() const noexcept override { return caps_; }
     IQueue& queue(QueueKind kind) override {
@@ -1376,8 +1416,13 @@ public:
         auto buffer = std::make_unique<MetalBuffer>(device_, desc);
         if (!buffer->valid()) {
             return Status::failure(StatusCode::backend_error,
-                                   "failed to allocate Metal buffer");
+                                    "failed to allocate Metal buffer");
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().buffersCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::resource_created,
+                             desc.debugName, "buffer created");
         return std::unique_ptr<IBuffer>(std::move(buffer));
     }
 
@@ -1401,17 +1446,35 @@ public:
             return Status::failure(StatusCode::unsupported,
                                    "texture format does not support requested usage");
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().texturesCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::resource_created,
+                             desc.debugName, "texture created");
         return std::unique_ptr<ITexture>(
             std::make_unique<MetalTexture>(device_, desc));
     }
 
     Result<std::unique_ptr<ISampler>> create_sampler(const SamplerDesc& desc) override {
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().samplersCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::resource_created,
+                             {}, "sampler created");
         return std::unique_ptr<ISampler>(
             std::make_unique<MetalSampler>(device_, desc));
     }
 
     Result<std::unique_ptr<IShader>> create_shader(const ShaderDesc& desc) override {
-        return MetalShader::compile(device_, desc);
+        auto result = MetalShader::compile(device_, desc);
+        if (result.ok()) {
+            if (diagnostics_) {
+                ++diagnostics_->mutable_stats().shadersCreated;
+            }
+            record_backend_event(diagnostics_, BackendEventKind::resource_created,
+                                 desc.entryPoint, "shader created");
+        }
+        return result;
     }
 
     Result<std::unique_ptr<IPipeline>> create_pipeline(const PipelineDesc& desc) override {
@@ -1423,7 +1486,15 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "Metal pipeline render state is invalid");
         }
-        return MetalPipeline::create(device_, desc);
+        auto result = MetalPipeline::create(device_, desc);
+        if (result.ok()) {
+            if (diagnostics_) {
+                ++diagnostics_->mutable_stats().graphicsPipelinesCreated;
+            }
+            record_backend_event(diagnostics_, BackendEventKind::pipeline_created,
+                                 desc.debugName, "graphics pipeline created");
+        }
+        return result;
     }
 
     Result<std::unique_ptr<IBindGroupLayout>>
@@ -1432,6 +1503,11 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "Metal bind group layout is invalid");
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().bindGroupLayoutsCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::bind_group_created,
+                             desc.debugName, "bind group layout created");
         return std::unique_ptr<IBindGroupLayout>(
             std::make_unique<MetalBindGroupLayout>(desc));
     }
@@ -1470,6 +1546,11 @@ public:
                     break;
             }
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().bindGroupsCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::bind_group_created,
+                             desc.debugName, "bind group created");
         return std::unique_ptr<IBindGroup>(std::make_unique<MetalBindGroup>(desc));
     }
 
@@ -1478,7 +1559,15 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "Metal compute pipeline layout is invalid");
         }
-        return MetalComputePipeline::create(device_, desc);
+        auto result = MetalComputePipeline::create(device_, desc);
+        if (result.ok()) {
+            if (diagnostics_) {
+                ++diagnostics_->mutable_stats().computePipelinesCreated;
+            }
+            record_backend_event(diagnostics_, BackendEventKind::pipeline_created,
+                                 desc.debugName, "compute pipeline created");
+        }
+        return result;
     }
 
     Result<std::unique_ptr<ISurface>> create_surface(const SurfaceDesc& desc) override {
@@ -1493,8 +1582,13 @@ public:
         }
         if (!validation::native_surface_kind_supported(desc.native.kind, caps_)) {
             return Status::failure(StatusCode::unsupported,
-                                   "native surface kind is not supported by the Metal backend");
+                                    "native surface kind is not supported by the Metal backend");
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().surfacesCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::surface_created,
+                             {}, "surface created");
         return std::unique_ptr<ISurface>(std::make_unique<MetalSurface>(desc));
     }
 
@@ -1509,6 +1603,11 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "surface is not a Metal surface");
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().swapchainsCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::swapchain_created,
+                             {}, "swapchain created");
         return std::unique_ptr<ISwapchain>(
             std::make_unique<MetalSwapchain>(device_, ms, desc));
     }
@@ -1520,9 +1619,14 @@ public:
             cmd = cmd_pool_.back();
             cmd_pool_.pop_back();
         } else {
-            cmd = new MetalCommandBuffer(cmdQueue_);
+            cmd = new MetalCommandBuffer(cmdQueue_, diagnostics_);
             cmd->device_ = this;
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().commandBuffersCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::command_buffer_created,
+                             {}, "command buffer created");
         return CommandBufferPtr(cmd, [](ICommandBuffer* p) {
             auto* obj = static_cast<MetalCommandBuffer*>(p);
             if (obj->device_) { obj->device_->recycle_command_buffer(obj); }
@@ -1533,6 +1637,11 @@ public:
     FencePtr create_fence(const FenceDesc& desc) override {
         MetalFence* f = new MetalFence(desc);
         f->device_ = this;
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().fencesCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::fence_created,
+                             {}, "fence created");
         return FencePtr(f, [](IFence* p) {
             auto* obj = static_cast<MetalFence*>(p);
             if (obj->device_) { obj->device_->recycle_fence(obj); }
@@ -1548,6 +1657,11 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "frames_in_flight and capacity must be non-zero");
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().uploadRingsCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::upload_ring_created,
+                             {}, "upload ring created");
         return std::unique_ptr<IFrameUploadRing>(std::make_unique<MetalFrameUploadRing>(
             device_, frames_in_flight, capacity_per_frame));
     }
@@ -1575,6 +1689,7 @@ private:
     MetalQueue         computeQueue_;
     MetalQueue         transferQueue_;
     Capabilities       caps_;
+    BackendDiagnosticsPtr diagnostics_;
     std::mutex pool_mutex_;
     std::vector<MetalCommandBuffer*> cmd_pool_;
 };
@@ -1588,6 +1703,18 @@ public:
     MetalBackend() { device_ = MTLCreateSystemDefaultDevice(); }
 
     BackendKind kind() const noexcept override { return BackendKind::metal; }
+
+    [[nodiscard]] BackendStats backend_stats() const noexcept override {
+        return diagnostics_->stats();
+    }
+
+    [[nodiscard]] std::vector<BackendEvent> recent_events() const override {
+        return diagnostics_->recent_events();
+    }
+
+    void clear_diagnostics() noexcept override {
+        diagnostics_->clear();
+    }
 
     std::vector<AdapterInfo> enumerate_adapters() const override {
         if (!device_) return {};
@@ -1612,11 +1739,16 @@ public:
             return Status::failure(StatusCode::unavailable,
                                    "Metal backend currently exposes one adapter (id=0)");
         }
-        return std::unique_ptr<IDevice>(std::make_unique<MetalDevice>(device_));
+        ++diagnostics_->mutable_stats().devicesCreated;
+        record_backend_event(diagnostics_, BackendEventKind::device_created,
+                             {}, "device created");
+        return std::unique_ptr<IDevice>(
+            std::make_unique<MetalDevice>(device_, diagnostics_));
     }
 
 private:
     id<MTLDevice> device_ = nil;
+    BackendDiagnosticsPtr diagnostics_ = make_backend_diagnostics(BackendKind::metal);
 };
 
 } // namespace

@@ -4,6 +4,7 @@
 
 #include <memory>
 #include <utility>
+#include <vector>
 
 namespace truffle::rhi {
 namespace {
@@ -80,7 +81,30 @@ using core::StatusCode;
 
 struct SharedStats {
     NullBackendStats value;
+    std::vector<BackendEvent> events;
+    std::uint64_t nextEventSequence = 1;
 };
+
+void record_event(const std::shared_ptr<SharedStats>& stats,
+                  BackendEventKind kind,
+                  std::string label = {},
+                  std::string message = {},
+                  core::StatusCode status = core::StatusCode::ok) {
+    if (!stats) {
+        return;
+    }
+    if (stats->events.size() == 64) {
+        stats->events.erase(stats->events.begin());
+    }
+    stats->events.push_back(BackendEvent{
+        .sequence = stats->nextEventSequence++,
+        .backend = BackendKind::null_backend,
+        .kind = kind,
+        .status = status,
+        .label = std::move(label),
+        .message = std::move(message),
+    });
+}
 class NullDevice;
 class NullBuffer final : public IBuffer {
 public:
@@ -589,7 +613,10 @@ public:
             return Status::failure(StatusCode::invalid_state,
                                    "dispatch_compute cannot run inside render pass");
         }
-        ++stats_->value.drawsRecorded; // Re-use draw counter for now
+        ++stats_->value.drawsRecorded; // Preserved for existing null stats.
+        ++stats_->value.dispatchesRecorded;
+        record_event(stats_, BackendEventKind::command_recorded, {},
+                     "dispatch recorded");
         return Status::success();
     }
 
@@ -635,6 +662,8 @@ public:
         }
         ++debugLabelDepth_;
         ++stats_->value.debugLabelsPushed;
+        record_event(stats_, BackendEventKind::command_recorded, desc.name,
+                     "debug label pushed");
         return Status::success();
     }
 
@@ -661,6 +690,8 @@ public:
                                    "debug marker descriptor is invalid");
         }
         ++stats_->value.debugMarkersInserted;
+        record_event(stats_, BackendEventKind::debug_marker, desc.name,
+                     "debug marker inserted");
         return Status::success();
     }
 
@@ -717,6 +748,8 @@ public:
                                     "command buffer is not ready for submit");
         }
         ++stats_->value.submissions;
+        record_event(stats_, BackendEventKind::submitted, {},
+                     "command buffer submitted");
         cmd->mark_submitted();
         if (signal_fence) {
             auto* fence = dynamic_cast<NullFence*>(signal_fence);
@@ -833,6 +866,8 @@ public:
                                    "buffer memory domain is not supported");
         }
         ++stats_->value.buffersCreated;
+        record_event(stats_, BackendEventKind::resource_created, desc.debugName,
+                     "buffer created");
         return std::unique_ptr<IBuffer>(std::make_unique<NullBuffer>(desc));
     }
 
@@ -852,11 +887,16 @@ public:
                                    "texture format does not support requested usage");
         }
         ++stats_->value.texturesCreated;
+        record_event(stats_, BackendEventKind::resource_created, desc.debugName,
+                     "texture created");
         return std::unique_ptr<ITexture>(std::make_unique<NullTexture>(desc));
     }
 
     [[nodiscard]] Result<std::unique_ptr<ISampler>>
     create_sampler(const SamplerDesc&) override {
+        ++stats_->value.samplersCreated;
+        record_event(stats_, BackendEventKind::resource_created, {},
+                     "sampler created");
         return std::unique_ptr<ISampler>(std::make_unique<NullSampler>());
     }
 
@@ -870,6 +910,9 @@ public:
             return Status::failure(StatusCode::unsupported,
                                    "shader byte format is not supported");
         }
+        ++stats_->value.shadersCreated;
+        record_event(stats_, BackendEventKind::resource_created, desc.entryPoint,
+                     "shader created");
         return std::unique_ptr<IShader>(std::make_unique<NullShader>());
     }
 
@@ -883,6 +926,9 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "pipeline render state is invalid");
         }
+        ++stats_->value.graphicsPipelinesCreated;
+        record_event(stats_, BackendEventKind::pipeline_created, desc.debugName,
+                     "graphics pipeline created");
         return std::unique_ptr<IPipeline>(std::make_unique<NullPipeline>(desc));
     }
 
@@ -892,6 +938,9 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "bind group layout is invalid");
         }
+        ++stats_->value.bindGroupLayoutsCreated;
+        record_event(stats_, BackendEventKind::bind_group_created, desc.debugName,
+                     "bind group layout created");
         return std::unique_ptr<IBindGroupLayout>(
             std::make_unique<NullBindGroupLayout>(desc));
     }
@@ -930,6 +979,9 @@ public:
                     break;
             }
         }
+        ++stats_->value.bindGroupsCreated;
+        record_event(stats_, BackendEventKind::bind_group_created, desc.debugName,
+                     "bind group created");
         return std::unique_ptr<IBindGroup>(
             std::make_unique<NullBindGroup>(desc));
     }
@@ -940,6 +992,9 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "compute pipeline layout is invalid");
         }
+        ++stats_->value.computePipelinesCreated;
+        record_event(stats_, BackendEventKind::pipeline_created, desc.debugName,
+                     "compute pipeline created");
         return std::unique_ptr<IComputePipeline>(std::make_unique<NullComputePipeline>(desc));
     }
 
@@ -959,6 +1014,8 @@ public:
                                    "native surface kind is not supported by the backend");
         }
         ++stats_->value.surfacesCreated;
+        record_event(stats_, BackendEventKind::surface_created, {},
+                     "surface created");
         return std::unique_ptr<ISurface>(std::make_unique<NullSurface>(desc));
     }
 
@@ -969,17 +1026,21 @@ public:
                                    "swapchain description is invalid");
         }
         ++stats_->value.swapchainsCreated;
+        record_event(stats_, BackendEventKind::swapchain_created, {},
+                     "swapchain created");
         return std::unique_ptr<ISwapchain>(std::make_unique<NullSwapchain>(desc));
     }
 
     [[nodiscard]] CommandBufferPtr create_command_buffer() override {
         std::lock_guard<std::mutex> lock(pool_mutex_);
+        ++stats_->value.commandBuffersCreated;
+        record_event(stats_, BackendEventKind::command_buffer_created, {},
+                     "command buffer created");
         NullCommandBuffer* cmd = nullptr;
         if (!cmd_pool_.empty()) {
             cmd = cmd_pool_.back();
             cmd_pool_.pop_back();
         } else {
-            ++stats_->value.commandBuffersCreated;
             cmd = new NullCommandBuffer(stats_);
             cmd->device_ = this; // need to add device_ to NullCommandBuffer
         }
@@ -992,6 +1053,9 @@ public:
 
     [[nodiscard]] FencePtr create_fence(const FenceDesc& desc) override {
         std::lock_guard<std::mutex> lock(pool_mutex_);
+        ++stats_->value.fencesCreated;
+        record_event(stats_, BackendEventKind::fence_created, {},
+                     "fence created");
         NullFence* f = nullptr;
         if (!fence_pool_.empty()) {
             f = fence_pool_.back();
@@ -1016,6 +1080,9 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "frames_in_flight and capacity must be non-zero");
         }
+        ++stats_->value.uploadRingsCreated;
+        record_event(stats_, BackendEventKind::upload_ring_created, {},
+                     "upload ring created");
         return std::unique_ptr<IFrameUploadRing>(
             std::make_unique<NullFrameUploadRing>(frames_in_flight, capacity_per_frame));
     }
@@ -1070,7 +1137,24 @@ public:
             return Status::failure(StatusCode::unavailable,
                                    "null backend has one adapter");
         }
+        ++stats_->value.devicesCreated;
+        record_event(stats_, BackendEventKind::device_created, {},
+                     "device created");
         return std::unique_ptr<IDevice>(std::make_unique<NullDevice>(stats_));
+    }
+
+    [[nodiscard]] BackendStats backend_stats() const noexcept override {
+        return stats_->value;
+    }
+
+    [[nodiscard]] std::vector<BackendEvent> recent_events() const override {
+        return stats_->events;
+    }
+
+    void clear_diagnostics() noexcept override {
+        stats_->value = {};
+        stats_->events.clear();
+        stats_->nextEventSequence = 1;
     }
 
     [[nodiscard]] NullBackendStats stats() const noexcept override {

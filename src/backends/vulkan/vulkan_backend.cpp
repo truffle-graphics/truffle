@@ -2,6 +2,8 @@
 #include "truffle/rhi/shader_reflection.hpp"
 #include "truffle/rhi/validation.hpp"
 
+#include "../backend_diagnostics.hpp"
+
 #include <memory>
 #include <vector>
 #include <utility>
@@ -147,6 +149,9 @@ private:
 
 class VulkanCommandBuffer final : public ICommandBuffer {
 public:
+    explicit VulkanCommandBuffer(BackendDiagnosticsPtr diagnostics)
+        : diagnostics_(std::move(diagnostics)) {}
+
     enum class State {
         initial,
         recording,
@@ -203,6 +208,11 @@ public:
                                    "VulkanCommandBuffer: debug label descriptor is invalid");
         }
         ++debugLabelDepth_;
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().debugLabelsPushed;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::command_recorded,
+                             desc.name, "debug label pushed");
         return Status::success();
     }
 
@@ -226,6 +236,11 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "VulkanCommandBuffer: debug marker descriptor is invalid");
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().debugMarkersInserted;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::debug_marker,
+                             desc.name, "debug marker inserted");
         return Status::success();
     }
 
@@ -399,21 +414,37 @@ public:
     }
 
     [[nodiscard]] Status draw(std::uint32_t /*vertex_count*/) override {
-        return require_render_pass("draw");
+        if (const auto s = require_render_pass("draw"); !s.ok()) {
+            return s;
+        }
+        record_draw();
+        return Status::success();
     }
 
     [[nodiscard]] Status draw_instanced(
         std::uint32_t /*vertex_count*/, std::uint32_t /*instance_count*/) override {
-        return require_render_pass("draw_instanced");
+        if (const auto s = require_render_pass("draw_instanced"); !s.ok()) {
+            return s;
+        }
+        record_draw();
+        return Status::success();
     }
 
     [[nodiscard]] Status draw_indexed(std::uint32_t /*index_count*/) override {
-        return require_render_pass("draw_indexed");
+        if (const auto s = require_render_pass("draw_indexed"); !s.ok()) {
+            return s;
+        }
+        record_draw();
+        return Status::success();
     }
 
     [[nodiscard]] Status draw_indexed_instanced(
         std::uint32_t /*index_count*/, std::uint32_t /*instance_count*/) override {
-        return require_render_pass("draw_indexed_instanced");
+        if (const auto s = require_render_pass("draw_indexed_instanced"); !s.ok()) {
+            return s;
+        }
+        record_draw();
+        return Status::success();
     }
 
     [[nodiscard]] Status draw_indirect(
@@ -426,6 +457,7 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "VulkanCommandBuffer: buffer lacks indirect usage");
         }
+        record_draw();
         return Status::success();
     }
 
@@ -439,6 +471,7 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "VulkanCommandBuffer: buffer lacks indirect usage");
         }
+        record_draw();
         return Status::success();
     }
 
@@ -453,6 +486,11 @@ public:
             return Status::failure(StatusCode::invalid_state,
                                    "VulkanCommandBuffer: dispatch_compute cannot run inside render pass");
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().dispatchesRecorded;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::command_recorded,
+                             {}, "dispatch recorded");
         return Status::success();
     }
 
@@ -488,14 +526,24 @@ private:
         return Status::success();
     }
 
+    void record_draw() {
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().drawsRecorded;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::command_recorded,
+                             {}, "draw recorded");
+    }
+
     State state_ = State::initial;
     bool inRenderPass_ = false;
     std::uint32_t debugLabelDepth_ = 0;
+    BackendDiagnosticsPtr diagnostics_;
 };
 
 class VulkanQueue final : public IQueue {
 public:
-    explicit VulkanQueue(QueueKind kind) : kind_(kind) {}
+    VulkanQueue(QueueKind kind, BackendDiagnosticsPtr diagnostics)
+        : kind_(kind), diagnostics_(std::move(diagnostics)) {}
 
     [[nodiscard]] QueueKind kind() const noexcept override { return kind_; }
 
@@ -509,6 +557,11 @@ public:
         if (auto* cmd = dynamic_cast<VulkanCommandBuffer*>(&command_buffer)) {
             cmd->mark_submitted();
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().submissions;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::submitted,
+                             {}, "command buffer submitted");
 
         if (signal_fence) {
             if (auto* fence = dynamic_cast<VulkanFence*>(signal_fence)) {
@@ -521,6 +574,7 @@ public:
 
 private:
     QueueKind kind_;
+    BackendDiagnosticsPtr diagnostics_;
 };
 
 class VulkanBuffer final : public IBuffer {
@@ -779,11 +833,12 @@ private:
 
 class VulkanDevice final : public IDevice {
 public:
-    VulkanDevice()
+    explicit VulkanDevice(BackendDiagnosticsPtr diagnostics)
         : caps_(make_vulkan_capabilities())
-        , graphicsQueue_(QueueKind::graphics)
-        , computeQueue_(QueueKind::compute)
-        , transferQueue_(QueueKind::transfer) {}
+        , graphicsQueue_(QueueKind::graphics, diagnostics)
+        , computeQueue_(QueueKind::compute, diagnostics)
+        , transferQueue_(QueueKind::transfer, diagnostics)
+        , diagnostics_(std::move(diagnostics)) {}
 
     [[nodiscard]] const Capabilities& capabilities() const noexcept override {
         return caps_;
@@ -795,6 +850,11 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                     "Vulkan backend: swapchain description is invalid");
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().swapchainsCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::swapchain_created,
+                             {}, "swapchain created");
         return std::unique_ptr<ISwapchain>(std::make_unique<VulkanSwapchain>(desc));
     }
 
@@ -812,6 +872,11 @@ public:
             return Status::failure(StatusCode::unsupported,
                                    "Vulkan backend: buffer memory domain is not supported");
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().buffersCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::resource_created,
+                             desc.debugName, "buffer created");
         return std::unique_ptr<IBuffer>(std::make_unique<VulkanBuffer>(desc));
     }
 
@@ -830,11 +895,21 @@ public:
             return Status::failure(StatusCode::unsupported,
                                    "Vulkan backend: texture format does not support requested usage");
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().texturesCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::resource_created,
+                             desc.debugName, "texture created");
         return std::unique_ptr<ITexture>(std::make_unique<VulkanTexture>(desc));
     }
     
     [[nodiscard]] core::Result<std::unique_ptr<ISampler>> create_sampler(
         const SamplerDesc& /*desc*/) override {
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().samplersCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::resource_created,
+                             {}, "sampler created");
         return std::unique_ptr<ISampler>(std::make_unique<VulkanSampler>());
     }
 
@@ -848,6 +923,11 @@ public:
             return Status::failure(StatusCode::unsupported,
                                    "Vulkan backend: shader byte format is not supported");
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().shadersCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::resource_created,
+                             desc.entryPoint, "shader created");
         return std::unique_ptr<IShader>(std::make_unique<VulkanShader>(desc));
     }
 
@@ -889,6 +969,11 @@ public:
             .dataSize = fragmentShader->desc().bytecode.size(),
         });
 
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().graphicsPipelinesCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::pipeline_created,
+                             desc.debugName, "graphics pipeline created");
         return std::unique_ptr<IPipeline>(
             std::make_unique<VulkanPipeline>(desc, std::move(reflection)));
     }
@@ -899,6 +984,11 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "Vulkan backend: bind group layout is invalid");
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().bindGroupLayoutsCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::bind_group_created,
+                             desc.debugName, "bind group layout created");
         return std::unique_ptr<IBindGroupLayout>(
             std::make_unique<VulkanBindGroupLayout>(desc));
     }
@@ -937,6 +1027,11 @@ public:
                     break;
             }
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().bindGroupsCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::bind_group_created,
+                             desc.debugName, "bind group created");
         return std::unique_ptr<IBindGroup>(std::make_unique<VulkanBindGroup>(desc));
     }
 
@@ -980,12 +1075,22 @@ public:
             .dataSize = 0,
         });
 
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().computePipelinesCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::pipeline_created,
+                             desc.debugName, "compute pipeline created");
         return std::unique_ptr<IComputePipeline>(
             std::make_unique<VulkanComputePipeline>(desc, std::move(reflection)));
     }
 
     [[nodiscard]] CommandBufferPtr create_command_buffer() override {
-        return CommandBufferPtr(new VulkanCommandBuffer(), [](ICommandBuffer* cmd) {
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().commandBuffersCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::command_buffer_created,
+                             {}, "command buffer created");
+        return CommandBufferPtr(new VulkanCommandBuffer(diagnostics_), [](ICommandBuffer* cmd) {
             delete cmd;
         });
     }
@@ -1001,6 +1106,11 @@ public:
     }
 
     [[nodiscard]] FencePtr create_fence(const FenceDesc& desc) override {
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().fencesCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::fence_created,
+                             {}, "fence created");
         return FencePtr(new VulkanFence(desc), [](IFence* fence) {
             delete fence;
         });
@@ -1022,6 +1132,11 @@ public:
             return Status::failure(StatusCode::unsupported,
                                    "Vulkan backend: native surface kind is not supported");
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().surfacesCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::surface_created,
+                             {}, "surface created");
         return std::unique_ptr<ISurface>(std::make_unique<VulkanSurface>(desc));
     }
 
@@ -1032,6 +1147,11 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                     "Vulkan backend: upload ring frames/capacity must be non-zero");
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().uploadRingsCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::upload_ring_created,
+                             {}, "upload ring created");
         return std::unique_ptr<IFrameUploadRing>(
             std::make_unique<VulkanFrameUploadRing>(frames_in_flight, buffer_size));
     }
@@ -1041,6 +1161,7 @@ private:
     VulkanQueue graphicsQueue_;
     VulkanQueue computeQueue_;
     VulkanQueue transferQueue_;
+    BackendDiagnosticsPtr diagnostics_;
 };
 
 class VulkanBackend final : public IBackend {
@@ -1048,6 +1169,18 @@ public:
     VulkanBackend() = default;
 
     BackendKind kind() const noexcept override { return BackendKind::vulkan; }
+
+    [[nodiscard]] BackendStats backend_stats() const noexcept override {
+        return diagnostics_->stats();
+    }
+
+    [[nodiscard]] std::vector<BackendEvent> recent_events() const override {
+        return diagnostics_->recent_events();
+    }
+
+    void clear_diagnostics() noexcept override {
+        diagnostics_->clear();
+    }
 
     std::vector<AdapterInfo> enumerate_adapters() const override {
         return {AdapterInfo{
@@ -1066,8 +1199,15 @@ public:
             return Status::failure(StatusCode::unavailable,
                                    "Vulkan backend currently exposes one adapter (id=0)");
         }
-        return std::unique_ptr<IDevice>(std::make_unique<VulkanDevice>());
+        ++diagnostics_->mutable_stats().devicesCreated;
+        record_backend_event(diagnostics_, BackendEventKind::device_created,
+                             {}, "device created");
+        return std::unique_ptr<IDevice>(std::make_unique<VulkanDevice>(diagnostics_));
     }
+
+private:
+    BackendDiagnosticsPtr diagnostics_ =
+        make_backend_diagnostics(BackendKind::vulkan);
 };
 
 } // namespace

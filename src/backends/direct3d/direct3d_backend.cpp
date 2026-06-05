@@ -2,6 +2,8 @@
 #include "truffle/rhi/shader_reflection.hpp"
 #include "truffle/rhi/validation.hpp"
 
+#include "../backend_diagnostics.hpp"
+
 #include <memory>
 #include <vector>
 #include <utility>
@@ -148,6 +150,9 @@ private:
 
 class Direct3DCommandBuffer final : public ICommandBuffer {
 public:
+    explicit Direct3DCommandBuffer(BackendDiagnosticsPtr diagnostics)
+        : diagnostics_(std::move(diagnostics)) {}
+
     enum class State {
         initial,
         recording,
@@ -204,6 +209,11 @@ public:
                                    "Direct3DCommandBuffer: debug label descriptor is invalid");
         }
         ++debugLabelDepth_;
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().debugLabelsPushed;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::command_recorded,
+                             desc.name, "debug label pushed");
         return Status::success();
     }
 
@@ -227,6 +237,11 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "Direct3DCommandBuffer: debug marker descriptor is invalid");
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().debugMarkersInserted;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::debug_marker,
+                             desc.name, "debug marker inserted");
         return Status::success();
     }
 
@@ -400,21 +415,37 @@ public:
     }
 
     [[nodiscard]] Status draw(std::uint32_t /*vertex_count*/) override {
-        return require_render_pass("draw");
+        if (const auto s = require_render_pass("draw"); !s.ok()) {
+            return s;
+        }
+        record_draw();
+        return Status::success();
     }
 
     [[nodiscard]] Status draw_instanced(
         std::uint32_t /*vertex_count*/, std::uint32_t /*instance_count*/) override {
-        return require_render_pass("draw_instanced");
+        if (const auto s = require_render_pass("draw_instanced"); !s.ok()) {
+            return s;
+        }
+        record_draw();
+        return Status::success();
     }
 
     [[nodiscard]] Status draw_indexed(std::uint32_t /*index_count*/) override {
-        return require_render_pass("draw_indexed");
+        if (const auto s = require_render_pass("draw_indexed"); !s.ok()) {
+            return s;
+        }
+        record_draw();
+        return Status::success();
     }
 
     [[nodiscard]] Status draw_indexed_instanced(
         std::uint32_t /*index_count*/, std::uint32_t /*instance_count*/) override {
-        return require_render_pass("draw_indexed_instanced");
+        if (const auto s = require_render_pass("draw_indexed_instanced"); !s.ok()) {
+            return s;
+        }
+        record_draw();
+        return Status::success();
     }
 
     [[nodiscard]] Status draw_indirect(
@@ -427,6 +458,7 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "Direct3DCommandBuffer: buffer lacks indirect usage");
         }
+        record_draw();
         return Status::success();
     }
 
@@ -440,6 +472,7 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "Direct3DCommandBuffer: buffer lacks indirect usage");
         }
+        record_draw();
         return Status::success();
     }
 
@@ -454,6 +487,11 @@ public:
             return Status::failure(StatusCode::invalid_state,
                                    "Direct3DCommandBuffer: dispatch_compute cannot run inside render pass");
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().dispatchesRecorded;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::command_recorded,
+                             {}, "dispatch recorded");
         return Status::success();
     }
 
@@ -489,14 +527,24 @@ private:
         return Status::success();
     }
 
+    void record_draw() {
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().drawsRecorded;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::command_recorded,
+                             {}, "draw recorded");
+    }
+
     State state_ = State::initial;
     bool inRenderPass_ = false;
     std::uint32_t debugLabelDepth_ = 0;
+    BackendDiagnosticsPtr diagnostics_;
 };
 
 class Direct3DQueue final : public IQueue {
 public:
-    explicit Direct3DQueue(QueueKind kind) : kind_(kind) {}
+    Direct3DQueue(QueueKind kind, BackendDiagnosticsPtr diagnostics)
+        : kind_(kind), diagnostics_(std::move(diagnostics)) {}
 
     [[nodiscard]] QueueKind kind() const noexcept override { return kind_; }
 
@@ -510,6 +558,11 @@ public:
         if (auto* cmd = dynamic_cast<Direct3DCommandBuffer*>(&command_buffer)) {
             cmd->mark_submitted();
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().submissions;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::submitted,
+                             {}, "command buffer submitted");
 
         if (signal_fence) {
             if (auto* fence = dynamic_cast<Direct3DFence*>(signal_fence)) {
@@ -522,6 +575,7 @@ public:
 
 private:
     QueueKind kind_;
+    BackendDiagnosticsPtr diagnostics_;
 };
 
 class Direct3DBuffer final : public IBuffer {
@@ -780,11 +834,12 @@ private:
 
 class Direct3DDevice final : public IDevice {
 public:
-    Direct3DDevice()
+    explicit Direct3DDevice(BackendDiagnosticsPtr diagnostics)
         : caps_(make_direct3d_capabilities())
-        , graphicsQueue_(QueueKind::graphics)
-        , computeQueue_(QueueKind::compute)
-        , transferQueue_(QueueKind::transfer) {}
+        , graphicsQueue_(QueueKind::graphics, diagnostics)
+        , computeQueue_(QueueKind::compute, diagnostics)
+        , transferQueue_(QueueKind::transfer, diagnostics)
+        , diagnostics_(std::move(diagnostics)) {}
 
     [[nodiscard]] const Capabilities& capabilities() const noexcept override {
         return caps_;
@@ -796,6 +851,11 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                     "Direct3D backend: swapchain description is invalid");
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().swapchainsCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::swapchain_created,
+                             {}, "swapchain created");
         return std::unique_ptr<ISwapchain>(std::make_unique<Direct3DSwapchain>(desc));
     }
 
@@ -813,6 +873,11 @@ public:
             return Status::failure(StatusCode::unsupported,
                                    "Direct3D backend: buffer memory domain is not supported");
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().buffersCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::resource_created,
+                             desc.debugName, "buffer created");
         return std::unique_ptr<IBuffer>(std::make_unique<Direct3DBuffer>(desc));
     }
 
@@ -831,11 +896,21 @@ public:
             return Status::failure(StatusCode::unsupported,
                                    "Direct3D backend: texture format does not support requested usage");
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().texturesCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::resource_created,
+                             desc.debugName, "texture created");
         return std::unique_ptr<ITexture>(std::make_unique<Direct3DTexture>(desc));
     }
     
     [[nodiscard]] core::Result<std::unique_ptr<ISampler>> create_sampler(
         const SamplerDesc& /*desc*/) override {
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().samplersCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::resource_created,
+                             {}, "sampler created");
         return std::unique_ptr<ISampler>(std::make_unique<Direct3DSampler>());
     }
 
@@ -849,6 +924,11 @@ public:
             return Status::failure(StatusCode::unsupported,
                                    "Direct3D backend: shader byte format is not supported");
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().shadersCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::resource_created,
+                             desc.entryPoint, "shader created");
         return std::unique_ptr<IShader>(std::make_unique<Direct3DShader>(desc));
     }
 
@@ -890,6 +970,11 @@ public:
             .dataSize = fragmentShader->desc().bytecode.size(),
         });
 
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().graphicsPipelinesCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::pipeline_created,
+                             desc.debugName, "graphics pipeline created");
         return std::unique_ptr<IPipeline>(
             std::make_unique<Direct3DPipeline>(desc, std::move(reflection)));
     }
@@ -900,6 +985,11 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "Direct3D backend: bind group layout is invalid");
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().bindGroupLayoutsCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::bind_group_created,
+                             desc.debugName, "bind group layout created");
         return std::unique_ptr<IBindGroupLayout>(
             std::make_unique<Direct3DBindGroupLayout>(desc));
     }
@@ -938,6 +1028,11 @@ public:
                     break;
             }
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().bindGroupsCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::bind_group_created,
+                             desc.debugName, "bind group created");
         return std::unique_ptr<IBindGroup>(std::make_unique<Direct3DBindGroup>(desc));
     }
 
@@ -981,12 +1076,22 @@ public:
             .dataSize = 0,
         });
 
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().computePipelinesCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::pipeline_created,
+                             desc.debugName, "compute pipeline created");
         return std::unique_ptr<IComputePipeline>(
             std::make_unique<Direct3DComputePipeline>(desc, std::move(reflection)));
     }
 
     [[nodiscard]] CommandBufferPtr create_command_buffer() override {
-        return CommandBufferPtr(new Direct3DCommandBuffer(), [](ICommandBuffer* cmd) {
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().commandBuffersCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::command_buffer_created,
+                             {}, "command buffer created");
+        return CommandBufferPtr(new Direct3DCommandBuffer(diagnostics_), [](ICommandBuffer* cmd) {
             delete cmd;
         });
     }
@@ -1002,6 +1107,11 @@ public:
     }
 
     [[nodiscard]] FencePtr create_fence(const FenceDesc& desc) override {
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().fencesCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::fence_created,
+                             {}, "fence created");
         return FencePtr(new Direct3DFence(desc), [](IFence* fence) {
             delete fence;
         });
@@ -1023,6 +1133,11 @@ public:
             return Status::failure(StatusCode::unsupported,
                                    "Direct3D backend: native surface kind is not supported");
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().surfacesCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::surface_created,
+                             {}, "surface created");
         return std::unique_ptr<ISurface>(std::make_unique<Direct3DSurface>(desc));
     }
 
@@ -1033,6 +1148,11 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                     "Direct3D backend: upload ring frames/capacity must be non-zero");
         }
+        if (diagnostics_) {
+            ++diagnostics_->mutable_stats().uploadRingsCreated;
+        }
+        record_backend_event(diagnostics_, BackendEventKind::upload_ring_created,
+                             {}, "upload ring created");
         return std::unique_ptr<IFrameUploadRing>(
             std::make_unique<Direct3DFrameUploadRing>(frames_in_flight, buffer_size));
     }
@@ -1042,6 +1162,7 @@ private:
     Direct3DQueue graphicsQueue_;
     Direct3DQueue computeQueue_;
     Direct3DQueue transferQueue_;
+    BackendDiagnosticsPtr diagnostics_;
 };
 
 class Direct3DBackend final : public IBackend {
@@ -1049,6 +1170,18 @@ public:
     Direct3DBackend() = default;
 
     BackendKind kind() const noexcept override { return BackendKind::direct3d; }
+
+    [[nodiscard]] BackendStats backend_stats() const noexcept override {
+        return diagnostics_->stats();
+    }
+
+    [[nodiscard]] std::vector<BackendEvent> recent_events() const override {
+        return diagnostics_->recent_events();
+    }
+
+    void clear_diagnostics() noexcept override {
+        diagnostics_->clear();
+    }
 
     std::vector<AdapterInfo> enumerate_adapters() const override {
         return {AdapterInfo{
@@ -1067,8 +1200,15 @@ public:
             return Status::failure(StatusCode::unavailable,
                                    "Direct3D backend currently exposes one adapter (id=0)");
         }
-        return std::unique_ptr<IDevice>(std::make_unique<Direct3DDevice>());
+        ++diagnostics_->mutable_stats().devicesCreated;
+        record_backend_event(diagnostics_, BackendEventKind::device_created,
+                             {}, "device created");
+        return std::unique_ptr<IDevice>(std::make_unique<Direct3DDevice>(diagnostics_));
     }
+
+private:
+    BackendDiagnosticsPtr diagnostics_ =
+        make_backend_diagnostics(BackendKind::direct3d);
 };
 
 } // namespace
