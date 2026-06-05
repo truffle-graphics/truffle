@@ -162,8 +162,8 @@ private:
 
 class VulkanCommandBuffer final : public ICommandBuffer {
 public:
-    explicit VulkanCommandBuffer(BackendDiagnosticsPtr diagnostics)
-        : diagnostics_(std::move(diagnostics)) {}
+    VulkanCommandBuffer(BackendDiagnosticsPtr diagnostics, DeviceLimits limits)
+        : limits_(limits), diagnostics_(std::move(diagnostics)) {}
 
     enum class State {
         initial,
@@ -430,6 +430,14 @@ public:
 
     [[nodiscard]] Status bind_group(std::uint32_t groupIndex,
                                     IBindGroup& group) override {
+        static const std::vector<BindGroupDynamicOffset> noDynamicOffsets;
+        return bind_group(groupIndex, group, noDynamicOffsets);
+    }
+
+    [[nodiscard]] Status bind_group(
+        std::uint32_t groupIndex,
+        IBindGroup& group,
+        const std::vector<BindGroupDynamicOffset>& dynamicOffsets) override {
         if (const auto s = require_recording("bind_group"); !s.ok()) {
             return s;
         }
@@ -440,6 +448,11 @@ public:
         if (!validation::bind_group_desc_valid(group.desc())) {
             return Status::failure(StatusCode::invalid_argument,
                                    "VulkanCommandBuffer: bind group descriptor is invalid");
+        }
+        if (!validation::bind_group_dynamic_offsets_valid(
+                group.desc(), dynamicOffsets, limits_)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "VulkanCommandBuffer: bind group dynamic offsets are invalid");
         }
         const auto* activeLayout = inRenderPass_ ? graphicsLayout_ : computeLayout_;
         auto& boundGroups = inRenderPass_ ? boundGraphicsGroups_ : boundComputeGroups_;
@@ -708,6 +721,7 @@ private:
     const PipelineLayoutDesc* computeLayout_ = nullptr;
     std::vector<std::uint32_t> boundGraphicsGroups_;
     std::vector<std::uint32_t> boundComputeGroups_;
+    DeviceLimits limits_;
     BackendDiagnosticsPtr diagnostics_;
 };
 
@@ -1321,7 +1335,9 @@ public:
         }
         record_backend_event(diagnostics_, BackendEventKind::command_buffer_created,
                              {}, "command buffer created");
-        return CommandBufferPtr(new VulkanCommandBuffer(diagnostics_), [](ICommandBuffer* cmd) {
+        return CommandBufferPtr(
+            new VulkanCommandBuffer(diagnostics_, make_vulkan_capabilities().limits),
+            [](ICommandBuffer* cmd) {
             delete cmd;
         });
     }

@@ -412,6 +412,26 @@ validation, diagnostics, and backend parity.
   - Expanded core and shared backend contract tests for valid depth pipelines,
     invalid implicit-depth descriptors, invalid depth formats, and depth/no-depth
     render-pass compatibility failures.
+- **Low-Level Graphics Foundation Slice 9K** — Complete.
+  - Added source-compatible dynamic buffer offsets to bind-group binding through
+    an `ICommandBuffer::bind_group` overload that preserves the existing
+    two-argument call path.
+  - Added shared validation for dynamic-offset binding counts, duplicate
+    binding/array-element offsets, combined static+dynamic buffer ranges, and
+    advertised uniform/storage offset alignment.
+  - Tightened binding-array validation so consecutive native descriptor slots
+    cannot exceed `DeviceLimits::maxResourceBindings`.
+  - Rejected overlapping flat native slot ranges across compatible resource
+    namespaces and shader-stage visibility, including cross-group layouts that
+    would alias on Metal's stage slot model.
+  - Wired null, Metal, Vulkan, OpenGL, and Direct3D command buffers to enforce
+    dynamic-offset contracts using their advertised limits.
+  - Mapped Metal bind-group resources to native buffer, texture, and sampler
+    slots across stage visibility, including descriptor-array elements and
+    dynamic buffer offsets.
+  - Expanded core and shared backend contract tests for valid dynamic offsets,
+    missing offsets, out-of-range offsets, misaligned offsets, native-slot
+    overflows, and native-slot aliasing.
 
 ## Relevant Decisions And Constraints
 
@@ -468,6 +488,10 @@ validation, diagnostics, and backend parity.
   Depth testing and writes are opt-in; a pipeline must match the active render
   pass color/depth attachment formats before it can be bound.
   Depth-only pipelines use `TextureFormat::unknown` as the color format.
+- Bind-group layouts now support dynamic buffer offsets at command binding time.
+  Built-in backends validate counts, ranges, array elements, and advertised
+  uniform/storage alignment; layouts also reject flat native slot aliases before
+  Metal maps bind-group entries into native slots.
 - The repository commits only the public doctrine snapshot. The maintainer's
   private Copilot overlay lives in `~/.copilot/copilot-instructions.md` on the
   local machine and must not be copied into repository history.

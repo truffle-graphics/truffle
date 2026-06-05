@@ -337,8 +337,8 @@ private:
 
 class NullCommandBuffer final : public ICommandBuffer {
 public:
-    explicit NullCommandBuffer(std::shared_ptr<SharedStats> stats)
-        : stats_(std::move(stats)) {}
+    NullCommandBuffer(std::shared_ptr<SharedStats> stats, DeviceLimits limits)
+        : stats_(std::move(stats)), limits_(limits) {}
 
     void reset() {
         state_ = State::initial;
@@ -568,6 +568,14 @@ public:
 
     [[nodiscard]] Status bind_group(std::uint32_t groupIndex,
                                     IBindGroup& group) override {
+        static const std::vector<BindGroupDynamicOffset> noDynamicOffsets;
+        return bind_group(groupIndex, group, noDynamicOffsets);
+    }
+
+    [[nodiscard]] Status bind_group(
+        std::uint32_t groupIndex,
+        IBindGroup& group,
+        const std::vector<BindGroupDynamicOffset>& dynamicOffsets) override {
         if (state_ != State::recording) {
             return Status::failure(StatusCode::invalid_state,
                                    "bind_group requires recording");
@@ -579,6 +587,11 @@ public:
         if (!validation::bind_group_desc_valid(group.desc())) {
             return Status::failure(StatusCode::invalid_argument,
                                    "bind group descriptor is invalid");
+        }
+        if (!validation::bind_group_dynamic_offsets_valid(
+                group.desc(), dynamicOffsets, limits_)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "bind group dynamic offsets are invalid");
         }
         const auto* activeLayout = inRenderPass_ ? graphicsLayout_ : computeLayout_;
         auto& boundGroups = inRenderPass_ ? boundGraphicsGroups_ : boundComputeGroups_;
@@ -907,6 +920,7 @@ private:
     const PipelineLayoutDesc* computeLayout_ = nullptr;
     std::vector<std::uint32_t> boundGraphicsGroups_;
     std::vector<std::uint32_t> boundComputeGroups_;
+    DeviceLimits limits_;
 };
 
 Status NullSwapchain::schedule_present(ICommandBuffer& cmd) {
@@ -1288,7 +1302,7 @@ public:
             cmd = cmd_pool_.back();
             cmd_pool_.pop_back();
         } else {
-            cmd = new NullCommandBuffer(stats_);
+            cmd = new NullCommandBuffer(stats_, make_null_capabilities().limits);
             cmd->device_ = this; // need to add device_ to NullCommandBuffer
         }
         return CommandBufferPtr(cmd, [](ICommandBuffer* p) {

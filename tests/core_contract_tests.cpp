@@ -367,6 +367,13 @@ int main() {
     }, capabilities));
     TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_layout_valid({
         .bindings = {{
+            .bindingIndex = capabilities.limits.maxResourceBindings - 1,
+            .visibility = truffle::rhi::ShaderStageFlags::vertex,
+            .arrayCount = 2,
+        }},
+    }, capabilities));
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_layout_valid({
+        .bindings = {{
             .bindingIndex = 0,
             .visibility = truffle::rhi::ShaderStageFlags::vertex,
             .groupIndex = capabilities.limits.maxBindGroups,
@@ -381,6 +388,37 @@ int main() {
             {
                 .bindingIndex = 1,
                 .visibility = truffle::rhi::ShaderStageFlags::graphics,
+            },
+        },
+    }, capabilities));
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_layout_valid({
+        .bindings = {
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::uniform_buffer,
+                .visibility = truffle::rhi::ShaderStageFlags::vertex,
+                .groupIndex = 0,
+            },
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::storage_buffer,
+                .visibility = truffle::rhi::ShaderStageFlags::vertex,
+                .groupIndex = 1,
+            },
+        },
+    }, capabilities));
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_layout_valid({
+        .bindings = {
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::sampled_texture,
+                .visibility = truffle::rhi::ShaderStageFlags::fragment,
+                .arrayCount = 2,
+            },
+            {
+                .bindingIndex = 1,
+                .type = truffle::rhi::BindingResourceType::storage_texture,
+                .visibility = truffle::rhi::ShaderStageFlags::fragment,
             },
         },
     }, capabilities));
@@ -717,6 +755,29 @@ int main() {
             .visibility = truffle::rhi::ShaderStageFlags::none,
         }},
     }, capabilities));
+    TRUFFLE_CHECK(!truffle::rhi::validation::bind_group_layout_valid({
+        .bindings = {
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::sampled_texture,
+                .visibility = truffle::rhi::ShaderStageFlags::fragment,
+                .arrayCount = 2,
+            },
+            {
+                .bindingIndex = 1,
+                .type = truffle::rhi::BindingResourceType::sampled_texture,
+                .visibility = truffle::rhi::ShaderStageFlags::fragment,
+            },
+        },
+    }, capabilities));
+    TRUFFLE_CHECK(!truffle::rhi::validation::bind_group_layout_valid({
+        .bindings = {{
+            .bindingIndex = 0,
+            .type = truffle::rhi::BindingResourceType::sampler,
+            .visibility = truffle::rhi::ShaderStageFlags::fragment,
+            .dynamicOffset = true,
+        }},
+    }, capabilities));
 
     TestBuffer uniformBuffer{{
         .size = 64,
@@ -801,6 +862,112 @@ int main() {
         .type = truffle::rhi::BindingResourceType::sampled_texture,
         .texture = &colorOnlyTexture,
     }, bindGroupLayoutDesc.bindings[1]));
+
+    const truffle::rhi::BindGroupLayoutDesc dynamicBindGroupLayoutDesc{
+        .debugName = "core_dynamic_bind_group_layout",
+        .bindings = {{
+            .bindingIndex = 0,
+            .type = truffle::rhi::BindingResourceType::uniform_buffer,
+            .visibility = truffle::rhi::ShaderStageFlags::vertex,
+            .arrayCount = 2,
+            .minBindingSize = 16,
+            .dynamicOffset = true,
+        }},
+    };
+    TestBindGroupLayout dynamicBindGroupLayout{dynamicBindGroupLayoutDesc};
+    const truffle::rhi::BindGroupDesc dynamicBindGroupDesc{
+        .layout = &dynamicBindGroupLayout,
+        .entries = {{
+            .bindingIndex = 0,
+            .type = truffle::rhi::BindingResourceType::uniform_buffer,
+            .buffers = {
+                {.buffer = &uniformBuffer, .size = 16},
+                {.buffer = &secondUniformBuffer, .offset = 16, .size = 16},
+            },
+        }},
+    };
+    TRUFFLE_CHECK(truffle::rhi::validation::bind_group_desc_valid(
+        dynamicBindGroupDesc));
+    TRUFFLE_CHECK(truffle::rhi::validation::bind_group_dynamic_offsets_valid(
+        dynamicBindGroupDesc,
+        {
+            {.bindingIndex = 0, .arrayElement = 0, .offset = 16},
+            {.bindingIndex = 0, .arrayElement = 1, .offset = 16},
+        }));
+    TRUFFLE_CHECK(!truffle::rhi::validation::bind_group_dynamic_offsets_valid(
+        dynamicBindGroupDesc,
+        {
+            {.bindingIndex = 0, .arrayElement = 0, .offset = 16},
+        }));
+    TRUFFLE_CHECK(!truffle::rhi::validation::bind_group_dynamic_offsets_valid(
+        dynamicBindGroupDesc,
+        {
+            {.bindingIndex = 0, .arrayElement = 0, .offset = 16},
+            {.bindingIndex = 0, .arrayElement = 0, .offset = 16},
+        }));
+    TRUFFLE_CHECK(!truffle::rhi::validation::bind_group_dynamic_offsets_valid(
+        dynamicBindGroupDesc,
+        {
+            {.bindingIndex = 0, .arrayElement = 0, .offset = 16},
+            {.bindingIndex = 0, .arrayElement = 2, .offset = 16},
+        }));
+    TRUFFLE_CHECK(!truffle::rhi::validation::bind_group_dynamic_offsets_valid(
+        dynamicBindGroupDesc,
+        {
+            {.bindingIndex = 0, .arrayElement = 0, .offset = 56},
+            {.bindingIndex = 0, .arrayElement = 1, .offset = 16},
+        }));
+    auto dynamicOffsetLimits = truffle::rhi::DeviceLimits{};
+    dynamicOffsetLimits.minUniformBufferOffsetAlignment = 16;
+    TRUFFLE_CHECK(!truffle::rhi::validation::bind_group_dynamic_offsets_valid(
+        dynamicBindGroupDesc,
+        {
+            {.bindingIndex = 0, .arrayElement = 0, .offset = 4},
+            {.bindingIndex = 0, .arrayElement = 1, .offset = 16},
+        },
+        dynamicOffsetLimits));
+    const truffle::rhi::BindGroupDesc compensatingStaticOffsetDesc{
+        .layout = &dynamicBindGroupLayout,
+        .entries = {{
+            .bindingIndex = 0,
+            .type = truffle::rhi::BindingResourceType::uniform_buffer,
+            .buffers = {
+                {.buffer = &uniformBuffer, .offset = 8, .size = 16},
+                {.buffer = &secondUniformBuffer, .offset = 16, .size = 16},
+            },
+        }},
+    };
+    TRUFFLE_CHECK(truffle::rhi::validation::bind_group_desc_valid(
+        compensatingStaticOffsetDesc));
+    TRUFFLE_CHECK(!truffle::rhi::validation::bind_group_dynamic_offsets_valid(
+        compensatingStaticOffsetDesc,
+        {
+            {.bindingIndex = 0, .arrayElement = 0, .offset = 8},
+            {.bindingIndex = 0, .arrayElement = 1, .offset = 16},
+        },
+        dynamicOffsetLimits));
+    TRUFFLE_CHECK(!truffle::rhi::validation::bind_group_dynamic_offsets_valid(
+        {
+            .layout = &bindGroupLayout,
+            .entries = {
+                {
+                    .bindingIndex = 0,
+                    .type = truffle::rhi::BindingResourceType::uniform_buffer,
+                    .buffer = {.buffer = &uniformBuffer, .size = 16},
+                },
+                {
+                    .bindingIndex = 1,
+                    .type = truffle::rhi::BindingResourceType::sampled_texture,
+                    .texture = &sampledTexture,
+                },
+                {
+                    .bindingIndex = 2,
+                    .type = truffle::rhi::BindingResourceType::sampler,
+                    .sampler = &sampler,
+                },
+            },
+        },
+        {{.bindingIndex = 0, .offset = 4}}));
 
     const truffle::rhi::BindGroupLayoutDesc arrayBindGroupLayoutDesc{
         .debugName = "core_array_bind_group_layout",

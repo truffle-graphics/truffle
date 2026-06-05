@@ -137,6 +137,11 @@ scope and active extension-backend work continuing in parallel:
   testing/writes are opt-in and command buffers validate active render-pass
   color/depth compatibility before pipeline binding. Depth-only pipelines use
   `TextureFormat::unknown` as the color format.
+- Bind-group layouts can mark uniform/storage buffer bindings as dynamic-offset
+  bindings; command binding validates supplied offsets against descriptor arrays,
+  buffer ranges, and advertised alignment before work can be recorded. Metal maps
+  bind-group buffers, textures, and samplers to native stage-visible slots after
+  shared validation rejects flat native slot aliases.
 - CI emits backend parity matrix Markdown/JSON artifacts for tracked backend
   contract/reflection tests, plus a live `rhi-parity-report.json` generated
   from `BackendParityReport` capability summaries.

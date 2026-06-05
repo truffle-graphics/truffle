@@ -820,6 +820,7 @@ struct BindingLayoutDesc {
     bool dynamicIndexing = false;
     bool bindless = false;
     std::uint32_t groupIndex = 0;
+    bool dynamicOffset = false;
 };
 
 struct PipelineLayoutDesc {
@@ -842,6 +843,12 @@ struct BindGroupEntry {
     std::vector<BufferBindingDesc> buffers;
     std::vector<ITexture*> textures;
     std::vector<ISampler*> samplers;
+};
+
+struct BindGroupDynamicOffset {
+    std::uint32_t bindingIndex = 0;
+    std::uint32_t arrayElement = 0;
+    std::size_t offset = 0;
 };
 
 struct BindGroupLayoutDesc {
@@ -1175,6 +1182,19 @@ public:
         std::size_t offset = 0) = 0;
     [[nodiscard]] virtual core::Status bind_group(
         std::uint32_t groupIndex, IBindGroup& group) = 0;
+    // Optional dynamic buffer offsets are supplied at command binding time and
+    // are added to the static buffer offsets stored in the bind group.
+    [[nodiscard]] virtual core::Status bind_group(
+        std::uint32_t groupIndex,
+        IBindGroup& group,
+        const std::vector<BindGroupDynamicOffset>& dynamicOffsets) {
+        if (!dynamicOffsets.empty()) {
+            return core::Status::failure(
+                core::StatusCode::unsupported,
+                "dynamic bind group offsets are not supported by this command buffer");
+        }
+        return bind_group(groupIndex, group);
+    }
     [[nodiscard]] virtual core::Status resource_barrier(
         const BufferBarrierDesc& barrier) = 0;
     [[nodiscard]] virtual core::Status resource_barrier(

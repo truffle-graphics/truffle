@@ -433,6 +433,24 @@ int verify_common_positive_path_contract(truffle::rhi::IDevice& device,
     TRUFFLE_CHECK(pipeline.value()->cache_key() == 0xABCDEFu);
     TRUFFLE_CHECK(verify_reflection_invariants(pipeline.value()->reflection(), false));
 
+    const truffle::rhi::PipelineLayoutDesc dynamicGraphicsLayout{
+        .debugName = "contract_dynamic_graphics_layout",
+        .bindings = {{
+            .bindingIndex = 0,
+            .type = truffle::rhi::BindingResourceType::uniform_buffer,
+            .visibility = truffle::rhi::ShaderStageFlags::vertex,
+            .minBindingSize = 16,
+            .dynamicOffset = true,
+        }},
+    };
+    auto dynamicPipeline = device.create_pipeline({
+        .cacheKey = 0xD1A0u,
+        .vertexShader = vertexShader.value().get(),
+        .fragmentShader = fragmentShader.value().get(),
+        .layout = dynamicGraphicsLayout,
+    });
+    TRUFFLE_CHECK(dynamicPipeline.ok());
+
     const truffle::rhi::PipelineLayoutDesc computeLayout{
         .debugName = "contract_compute_layout",
         .bindings = {{
@@ -470,6 +488,12 @@ int verify_common_positive_path_contract(truffle::rhi::IDevice& device,
                       truffle::rhi::BufferUsageFlags::uniform |
                       truffle::rhi::BufferUsageFlags::storage,
     });
+    const auto uniformDynamicAlignment =
+        device.capabilities().limits.minUniformBufferOffsetAlignment;
+    auto dynamicUniformBuffer = device.create_buffer({
+        .size = uniformDynamicAlignment + 64,
+        .usageFlags = truffle::rhi::BufferUsageFlags::uniform,
+    });
     auto barrierWrongBuffer = device.create_buffer({
         .size = 64,
         .usage = truffle::rhi::BufferUsage::vertex,
@@ -483,6 +507,7 @@ int verify_common_positive_path_contract(truffle::rhi::IDevice& device,
                       truffle::rhi::TextureUsageFlags::transfer_destination,
     });
     TRUFFLE_CHECK(barrierBuffer.ok());
+    TRUFFLE_CHECK(dynamicUniformBuffer.ok());
     TRUFFLE_CHECK(barrierWrongBuffer.ok());
     TRUFFLE_CHECK(barrierTexture.ok());
     auto foreignComputeRecoveryCmd = device.create_command_buffer();
@@ -516,6 +541,21 @@ int verify_common_positive_path_contract(truffle::rhi::IDevice& device,
         },
     });
     TRUFFLE_CHECK(graphicsBindGroup.ok());
+    auto dynamicGraphicsBindGroupLayout = device.create_bind_group_layout({
+        .debugName = "contract_dynamic_graphics_bind_group_layout",
+        .bindings = dynamicGraphicsLayout.bindings,
+    });
+    TRUFFLE_CHECK(dynamicGraphicsBindGroupLayout.ok());
+    auto dynamicGraphicsBindGroup = device.create_bind_group({
+        .debugName = "contract_dynamic_graphics_bind_group",
+        .layout = dynamicGraphicsBindGroupLayout.value().get(),
+        .entries = {{
+            .bindingIndex = 0,
+            .type = truffle::rhi::BindingResourceType::uniform_buffer,
+            .buffer = {.buffer = dynamicUniformBuffer.value().get(), .size = 16},
+        }},
+    });
+    TRUFFLE_CHECK(dynamicGraphicsBindGroup.ok());
     const truffle::rhi::BindGroupLayoutDesc graphicsTextureBindGroupLayoutDesc{
         .debugName = "contract_graphics_texture_bind_group_layout",
         .bindings = {graphicsLayout.bindings[1]},
@@ -716,6 +756,18 @@ int verify_common_positive_path_contract(truffle::rhi::IDevice& device,
             .after = truffle::rhi::ResourceState::storage_read_write,
         }).ok());
     TRUFFLE_CHECK(!stateCmd->bind_pipeline(foreignPipeline).ok());
+    TRUFFLE_CHECK(stateCmd->bind_pipeline(*dynamicPipeline.value()).ok());
+    TRUFFLE_CHECK(!stateCmd->bind_group(
+        0, *dynamicGraphicsBindGroup.value()).ok());
+    TRUFFLE_CHECK(!stateCmd->bind_group(
+        0,
+        *dynamicGraphicsBindGroup.value(),
+        {{.bindingIndex = 0, .offset = uniformDynamicAlignment + 56}}).ok());
+    TRUFFLE_CHECK(stateCmd->bind_group(
+        0,
+        *dynamicGraphicsBindGroup.value(),
+        {{.bindingIndex = 0, .offset = uniformDynamicAlignment}}).ok());
+    TRUFFLE_CHECK(stateCmd->draw(3).ok());
     TRUFFLE_CHECK(stateCmd->bind_pipeline(*pipeline.value()).ok());
     TRUFFLE_CHECK(!stateCmd->draw(3).ok());
     TRUFFLE_CHECK(!stateCmd->bind_group(1, *graphicsBindGroup.value()).ok());
@@ -990,6 +1042,24 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
     });
     TRUFFLE_CHECK(!badBindGroupLayout.ok());
     TRUFFLE_CHECK(badBindGroupLayout.status().code ==
+                  truffle::core::StatusCode::invalid_argument);
+    auto overlappingBindGroupLayout = device.create_bind_group_layout({
+        .bindings = {
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::sampled_texture,
+                .visibility = truffle::rhi::ShaderStageFlags::fragment,
+                .arrayCount = 2,
+            },
+            {
+                .bindingIndex = 1,
+                .type = truffle::rhi::BindingResourceType::storage_texture,
+                .visibility = truffle::rhi::ShaderStageFlags::fragment,
+            },
+        },
+    });
+    TRUFFLE_CHECK(!overlappingBindGroupLayout.ok());
+    TRUFFLE_CHECK(overlappingBindGroupLayout.status().code ==
                   truffle::core::StatusCode::invalid_argument);
     if (!truffle::rhi::supports_descriptor_arrays(caps)) {
         auto descriptorArrayLayout = device.create_bind_group_layout({

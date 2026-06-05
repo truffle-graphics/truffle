@@ -125,6 +125,8 @@ namespace truffle::rhi::validation {
         binding.bindingIndex >= capabilities.limits.maxResourceBindings ||
         binding.arrayCount == 0 ||
         binding.arrayCount > capabilities.limits.maxDescriptorArrayElements ||
+        binding.arrayCount >
+            capabilities.limits.maxResourceBindings - binding.bindingIndex ||
         !shader_stage_visibility_valid(binding.visibility)) {
         return false;
     }
@@ -147,12 +149,62 @@ namespace truffle::rhi::validation {
     }
 
     if ((binding.type == BindingResourceType::uniform_buffer ||
-         binding.type == BindingResourceType::storage_buffer) &&
+          binding.type == BindingResourceType::storage_buffer) &&
         binding.minBindingSize > capabilities.limits.maxBufferSize) {
         return false;
     }
 
+    if (binding.dynamicOffset &&
+        (binding.type != BindingResourceType::uniform_buffer &&
+         binding.type != BindingResourceType::storage_buffer)) {
+        return false;
+    }
+
     return true;
+}
+
+[[nodiscard]] constexpr bool shader_stage_visibility_intersects(
+    ShaderStageFlags lhs,
+    ShaderStageFlags rhs) noexcept {
+    return (lhs & rhs) != ShaderStageFlags::none;
+}
+
+[[nodiscard]] constexpr bool binding_native_slot_namespace_matches(
+    BindingResourceType lhs,
+    BindingResourceType rhs) noexcept {
+    const auto lhsBuffer = lhs == BindingResourceType::uniform_buffer ||
+                           lhs == BindingResourceType::storage_buffer;
+    const auto rhsBuffer = rhs == BindingResourceType::uniform_buffer ||
+                           rhs == BindingResourceType::storage_buffer;
+    if (lhsBuffer || rhsBuffer) {
+        return lhsBuffer && rhsBuffer;
+    }
+
+    const auto lhsTexture = lhs == BindingResourceType::sampled_texture ||
+                            lhs == BindingResourceType::storage_texture;
+    const auto rhsTexture = rhs == BindingResourceType::sampled_texture ||
+                            rhs == BindingResourceType::storage_texture;
+    if (lhsTexture || rhsTexture) {
+        return lhsTexture && rhsTexture;
+    }
+
+    return lhs == BindingResourceType::sampler && rhs == BindingResourceType::sampler;
+}
+
+[[nodiscard]] constexpr bool binding_native_slot_ranges_overlap(
+    const BindingLayoutDesc& lhs,
+    const BindingLayoutDesc& rhs) noexcept {
+    const auto lhsEnd = lhs.bindingIndex + lhs.arrayCount;
+    const auto rhsEnd = rhs.bindingIndex + rhs.arrayCount;
+    return lhs.bindingIndex < rhsEnd && rhs.bindingIndex < lhsEnd;
+}
+
+[[nodiscard]] constexpr bool binding_native_slots_overlap(
+    const BindingLayoutDesc& lhs,
+    const BindingLayoutDesc& rhs) noexcept {
+    return binding_native_slot_namespace_matches(lhs.type, rhs.type) &&
+           shader_stage_visibility_intersects(lhs.visibility, rhs.visibility) &&
+           binding_native_slot_ranges_overlap(lhs, rhs);
 }
 
 [[nodiscard]] inline bool pipeline_layout_valid(
@@ -169,6 +221,9 @@ namespace truffle::rhi::validation {
                 binding.bindingIndex == other.bindingIndex) {
                 return false;
             }
+            if (binding_native_slots_overlap(binding, other)) {
+                return false;
+            }
         }
     }
     return true;
@@ -180,10 +235,11 @@ namespace truffle::rhi::validation {
     return expected.bindingIndex == actual.bindingIndex &&
            expected.type == actual.type &&
            expected.visibility == actual.visibility &&
-           expected.arrayCount == actual.arrayCount &&
-           expected.minBindingSize == actual.minBindingSize &&
-           expected.dynamicIndexing == actual.dynamicIndexing &&
-           expected.bindless == actual.bindless;
+            expected.arrayCount == actual.arrayCount &&
+            expected.minBindingSize == actual.minBindingSize &&
+            expected.dynamicIndexing == actual.dynamicIndexing &&
+            expected.bindless == actual.bindless &&
+            expected.dynamicOffset == actual.dynamicOffset;
 }
 
 [[nodiscard]] inline bool pipeline_layout_bind_group_compatible(
@@ -832,6 +888,9 @@ namespace truffle::rhi::validation {
             if (binding.bindingIndex == other.bindingIndex) {
                 return false;
             }
+            if (binding_native_slots_overlap(binding, other)) {
+                return false;
+            }
         }
     }
 
@@ -859,6 +918,31 @@ namespace truffle::rhi::validation {
     return range_fits(binding.offset, bindingSize, bufferDesc.size) &&
            bindingSize >= minBindingSize &&
            buffer_supports_usage(bufferDesc, requiredUsage);
+}
+
+[[nodiscard]] inline bool buffer_binding_valid_with_dynamic_offset(
+    const BufferBindingDesc& binding,
+    BindingResourceType type,
+    std::size_t minBindingSize,
+    std::size_t dynamicOffset,
+    const DeviceLimits& limits) noexcept {
+    if (!binding.buffer ||
+        dynamicOffset >
+            std::numeric_limits<std::size_t>::max() - binding.offset) {
+        return false;
+    }
+
+    auto adjusted = binding;
+    adjusted.offset += dynamicOffset;
+    const auto alignment = type == BindingResourceType::uniform_buffer
+        ? limits.minUniformBufferOffsetAlignment
+        : limits.minStorageBufferOffsetAlignment;
+    if (alignment == 0 ||
+        (dynamicOffset % alignment) != 0 ||
+        (adjusted.offset % alignment) != 0) {
+        return false;
+    }
+    return buffer_binding_valid(adjusted, type, minBindingSize);
 }
 
 [[nodiscard]] inline bool texture_binding_valid(
@@ -978,6 +1062,103 @@ namespace truffle::rhi::validation {
     }
 
     return true;
+}
+
+[[nodiscard]] inline const BindingLayoutDesc* find_binding_layout(
+    const BindGroupLayoutDesc& layout,
+    std::uint32_t bindingIndex) noexcept {
+    for (const auto& binding : layout.bindings) {
+        if (binding.bindingIndex == bindingIndex) {
+            return &binding;
+        }
+    }
+    return nullptr;
+}
+
+[[nodiscard]] inline const BindGroupEntry* find_bind_group_entry(
+    const BindGroupDesc& desc,
+    std::uint32_t bindingIndex) noexcept {
+    for (const auto& entry : desc.entries) {
+        if (entry.bindingIndex == bindingIndex) {
+            return &entry;
+        }
+    }
+    return nullptr;
+}
+
+[[nodiscard]] inline const BufferBindingDesc* find_buffer_binding(
+    const BindGroupEntry& entry,
+    std::uint32_t arrayElement) noexcept {
+    if (!entry.buffers.empty()) {
+        if (arrayElement >= entry.buffers.size()) {
+            return nullptr;
+        }
+        return &entry.buffers[arrayElement];
+    }
+    return arrayElement == 0 ? &entry.buffer : nullptr;
+}
+
+[[nodiscard]] inline bool bind_group_dynamic_offsets_valid(
+    const BindGroupDesc& desc,
+    const std::vector<BindGroupDynamicOffset>& dynamicOffsets,
+    const DeviceLimits& limits) noexcept {
+    if (!bind_group_desc_valid(desc)) {
+        return false;
+    }
+
+    const auto& layout = desc.layout->desc();
+    std::size_t expectedOffsetCount = 0;
+    for (const auto& binding : layout.bindings) {
+        if (binding.dynamicOffset) {
+            expectedOffsetCount += binding.arrayCount;
+        }
+    }
+    if (dynamicOffsets.size() != expectedOffsetCount) {
+        return false;
+    }
+
+    for (std::size_t i = 0; i < dynamicOffsets.size(); ++i) {
+        const auto& offset = dynamicOffsets[i];
+        for (std::size_t j = i + 1; j < dynamicOffsets.size(); ++j) {
+            if (offset.bindingIndex == dynamicOffsets[j].bindingIndex &&
+                offset.arrayElement == dynamicOffsets[j].arrayElement) {
+                return false;
+            }
+        }
+
+        const auto* layoutBinding =
+            find_binding_layout(layout, offset.bindingIndex);
+        if (!layoutBinding ||
+            !layoutBinding->dynamicOffset ||
+            (layoutBinding->type != BindingResourceType::uniform_buffer &&
+             layoutBinding->type != BindingResourceType::storage_buffer) ||
+            offset.arrayElement >= layoutBinding->arrayCount) {
+            return false;
+        }
+
+        const auto* entry = find_bind_group_entry(desc, offset.bindingIndex);
+        if (!entry) {
+            return false;
+        }
+        const auto* buffer = find_buffer_binding(*entry, offset.arrayElement);
+        if (!buffer ||
+            !buffer_binding_valid_with_dynamic_offset(
+                *buffer,
+                layoutBinding->type,
+                layoutBinding->minBindingSize,
+                offset.offset,
+                limits)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+[[nodiscard]] inline bool bind_group_dynamic_offsets_valid(
+    const BindGroupDesc& desc,
+    const std::vector<BindGroupDynamicOffset>& dynamicOffsets) noexcept {
+    return bind_group_dynamic_offsets_valid(desc, dynamicOffsets, DeviceLimits{});
 }
 
 [[nodiscard]] inline bool buffer_barrier_valid(

@@ -848,8 +848,10 @@ private:
 
 class MetalCommandBuffer final : public ICommandBuffer {
 public:
-    MetalCommandBuffer(id<MTLCommandQueue> queue, BackendDiagnosticsPtr diagnostics)
-        : queue_(queue), diagnostics_(std::move(diagnostics)) {}
+    MetalCommandBuffer(id<MTLCommandQueue> queue,
+                       DeviceLimits limits,
+                       BackendDiagnosticsPtr diagnostics)
+        : queue_(queue), limits_(limits), diagnostics_(std::move(diagnostics)) {}
 
     void reset() {
         state_ = State::initial;
@@ -1146,6 +1148,14 @@ public:
     }
 
     Status bind_group(std::uint32_t groupIndex, IBindGroup& group) override {
+        static const std::vector<BindGroupDynamicOffset> noDynamicOffsets;
+        return bind_group(groupIndex, group, noDynamicOffsets);
+    }
+
+    Status bind_group(
+        std::uint32_t groupIndex,
+        IBindGroup& group,
+        const std::vector<BindGroupDynamicOffset>& dynamicOffsets) override {
         if (state_ != State::recording) {
             return Status::failure(StatusCode::invalid_state,
                                    "bind_group requires recording state");
@@ -1156,7 +1166,12 @@ public:
         }
         if (!validation::bind_group_desc_valid(group.desc())) {
             return Status::failure(StatusCode::invalid_argument,
-                                   "bind group descriptor is invalid");
+                                    "bind group descriptor is invalid");
+        }
+        if (!validation::bind_group_dynamic_offsets_valid(
+                group.desc(), dynamicOffsets, limits_)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "bind group dynamic offsets are invalid");
         }
         const auto* activeLayout = encoder_ ? graphicsLayout_ : computeLayout_;
         auto& boundGroups = encoder_ ? boundGraphicsGroups_ : boundComputeGroups_;
@@ -1169,6 +1184,10 @@ public:
             return Status::failure(
                 StatusCode::invalid_argument,
                 "bind group layout is incompatible with pipeline layout");
+        }
+        if (auto status = bind_group_resources(group.desc(), dynamicOffsets);
+            !status.ok()) {
+            return status;
         }
         remember_bound_group(boundGroups, groupIndex);
         return Status::success();
@@ -1555,6 +1574,141 @@ private:
         boundGroups.push_back(groupIndex);
     }
 
+    [[nodiscard]] static std::size_t dynamic_offset_for(
+        const std::vector<BindGroupDynamicOffset>& dynamicOffsets,
+        std::uint32_t bindingIndex,
+        std::uint32_t arrayElement) noexcept {
+        for (const auto& offset : dynamicOffsets) {
+            if (offset.bindingIndex == bindingIndex &&
+                offset.arrayElement == arrayElement) {
+                return offset.offset;
+            }
+        }
+        return 0;
+    }
+
+    [[nodiscard]] Status bind_group_resources(
+        const BindGroupDesc& desc,
+        const std::vector<BindGroupDynamicOffset>& dynamicOffsets) {
+        const auto& layout = desc.layout->desc();
+        const auto bindGraphics = encoder_ != nil;
+        for (const auto& entry : desc.entries) {
+            const auto* layoutBinding =
+                validation::find_binding_layout(layout, entry.bindingIndex);
+            if (!layoutBinding) {
+                return Status::failure(StatusCode::invalid_argument,
+                                       "bind group entry is missing layout metadata");
+            }
+
+            const auto arrayCount =
+                static_cast<std::uint32_t>(layoutBinding->arrayCount);
+            for (std::uint32_t element = 0; element < arrayCount; ++element) {
+                const auto slot = entry.bindingIndex + element;
+                switch (entry.type) {
+                case BindingResourceType::uniform_buffer:
+                case BindingResourceType::storage_buffer: {
+                    const auto* bufferBinding =
+                        validation::find_buffer_binding(entry, element);
+                    auto* metalBuffer = bufferBinding
+                        ? dynamic_cast<MetalBuffer*>(bufferBinding->buffer)
+                        : nullptr;
+                    if (!metalBuffer) {
+                        return Status::failure(
+                            StatusCode::invalid_argument,
+                            "bind group buffer must be created by the Metal backend");
+                    }
+                    const auto offset =
+                        bufferBinding->offset +
+                        dynamic_offset_for(dynamicOffsets,
+                                           entry.bindingIndex,
+                                           element);
+                    if (bindGraphics) {
+                        if (has_flag(layoutBinding->visibility,
+                                     ShaderStageFlags::vertex)) {
+                            [encoder_ setVertexBuffer:metalBuffer->native()
+                                               offset:offset
+                                              atIndex:slot];
+                        }
+                        if (has_flag(layoutBinding->visibility,
+                                     ShaderStageFlags::fragment)) {
+                            [encoder_ setFragmentBuffer:metalBuffer->native()
+                                                 offset:offset
+                                                atIndex:slot];
+                        }
+                    } else if (compute_encoder_ &&
+                               has_flag(layoutBinding->visibility,
+                                        ShaderStageFlags::compute)) {
+                        [compute_encoder_ setBuffer:metalBuffer->native()
+                                            offset:offset
+                                           atIndex:slot];
+                    }
+                    break;
+                }
+                case BindingResourceType::sampled_texture:
+                case BindingResourceType::storage_texture: {
+                    ITexture* texture = !entry.textures.empty()
+                        ? entry.textures[element]
+                        : entry.texture;
+                    auto* metalTexture = dynamic_cast<MetalTexture*>(texture);
+                    if (!metalTexture) {
+                        return Status::failure(
+                            StatusCode::invalid_argument,
+                            "bind group texture must be created by the Metal backend");
+                    }
+                    if (bindGraphics) {
+                        if (has_flag(layoutBinding->visibility,
+                                     ShaderStageFlags::vertex)) {
+                            [encoder_ setVertexTexture:metalTexture->native()
+                                               atIndex:slot];
+                        }
+                        if (has_flag(layoutBinding->visibility,
+                                     ShaderStageFlags::fragment)) {
+                            [encoder_ setFragmentTexture:metalTexture->native()
+                                                 atIndex:slot];
+                        }
+                    } else if (compute_encoder_ &&
+                               has_flag(layoutBinding->visibility,
+                                        ShaderStageFlags::compute)) {
+                        [compute_encoder_ setTexture:metalTexture->native()
+                                             atIndex:slot];
+                    }
+                    break;
+                }
+                case BindingResourceType::sampler: {
+                    ISampler* sampler = !entry.samplers.empty()
+                        ? entry.samplers[element]
+                        : entry.sampler;
+                    auto* metalSampler = dynamic_cast<MetalSampler*>(sampler);
+                    if (!metalSampler) {
+                        return Status::failure(
+                            StatusCode::invalid_argument,
+                            "bind group sampler must be created by the Metal backend");
+                    }
+                    if (bindGraphics) {
+                        if (has_flag(layoutBinding->visibility,
+                                     ShaderStageFlags::vertex)) {
+                            [encoder_ setVertexSamplerState:metalSampler->native()
+                                                    atIndex:slot];
+                        }
+                        if (has_flag(layoutBinding->visibility,
+                                     ShaderStageFlags::fragment)) {
+                            [encoder_ setFragmentSamplerState:metalSampler->native()
+                                                      atIndex:slot];
+                        }
+                    } else if (compute_encoder_ &&
+                               has_flag(layoutBinding->visibility,
+                                        ShaderStageFlags::compute)) {
+                        [compute_encoder_ setSamplerState:metalSampler->native()
+                                                  atIndex:slot];
+                    }
+                    break;
+                }
+                }
+            }
+        }
+        return Status::success();
+    }
+
     [[nodiscard]] Status require_graphics_bind_groups(const char* op) const {
         if (!graphicsLayout_) {
             return Status::failure(
@@ -1588,6 +1742,7 @@ private:
     const PipelineLayoutDesc*    computeLayout_ = nullptr;
     std::vector<std::uint32_t>   boundGraphicsGroups_;
     std::vector<std::uint32_t>   boundComputeGroups_;
+    DeviceLimits                 limits_;
     BackendDiagnosticsPtr       diagnostics_;
 };
 
@@ -2116,7 +2271,8 @@ public:
             cmd = cmd_pool_.back();
             cmd_pool_.pop_back();
         } else {
-            cmd = new MetalCommandBuffer(cmdQueue_, diagnostics_);
+            cmd = new MetalCommandBuffer(
+                cmdQueue_, make_metal_capabilities(device_).limits, diagnostics_);
             cmd->device_ = this;
         }
         if (diagnostics_) {
