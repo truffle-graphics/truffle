@@ -16,6 +16,8 @@ docs, charter, or ADRs instead of leaving it only in this working document.
 Post-Phase-12 stabilization with parity quality gates, distribution validation,
 and active Direct3D contract-backend extension work.
 
+Temporary companion automation smoke-test note.
+
 ## Current Work Status
 
 - **Phase 1 to 4** are marked strictly Complete. Refer to `docs/roadmap.md` for historical feature deliverables.
