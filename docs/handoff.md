@@ -128,6 +128,9 @@ and active Direct3D contract-backend extension work.
     `.github/scripts/companion_router.py` to classify same-repository PR diffs
     targeting protected integration branches and start detached Copilot companion
     tasks when `COPILOT_AGENT_TOKEN` is configured.
+  - The default-branch workflow runs trusted automation code from `master` and
+    prefers the protected `develop` router once present, so future router changes
+    only need the normal `develop` path.
   - Kept companion lane instructions centralized in `companion_router.py` instead
     of duplicating them in repo custom-agent files.
   - Added `.github/workflows/copilot-setup-steps.yml` so Copilot cloud-agent

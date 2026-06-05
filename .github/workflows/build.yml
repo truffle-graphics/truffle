@@ -14,10 +14,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - ubuntu-latest
-          - macos-latest
-          - windows-latest
+        include:
+          - os: ubuntu-latest
+            metal: OFF
+          - os: macos-latest
+            metal: ON
+          - os: windows-latest
+            metal: OFF
 
     steps:
       - uses: actions/checkout@v4
@@ -38,7 +41,7 @@ jobs:
             wayland-protocols
 
       - name: Configure
-        run: cmake --preset ci
+        run: cmake --preset ci -DTRUFFLE_BUILD_BACKEND_METAL=${{ matrix.metal }}
 
       - name: Build
         run: cmake --build --preset ci
@@ -47,11 +50,7 @@ jobs:
         run: ctest --preset ci
 
       - name: Generate backend parity report
-        run: |
-          cmake \
-            -DTRUFFLE_BUILD_DIR=${{ github.workspace }}/build/ci \
-            -DTRUFFLE_REPORT_OUT=${{ github.workspace }}/build/ci/parity-matrix.md \
-            -P cmake/GenerateParityReport.cmake
+        run: cmake -DTRUFFLE_BUILD_DIR="${{ github.workspace }}/build/ci" -DTRUFFLE_REPORT_OUT="${{ github.workspace }}/build/ci/parity-matrix.md" -P cmake/GenerateParityReport.cmake
 
       - name: Upload backend parity report
         uses: actions/upload-artifact@v4
