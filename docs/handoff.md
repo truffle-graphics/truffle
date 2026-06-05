@@ -324,6 +324,13 @@ validation, diagnostics, and backend parity.
   - Expanded core and shared backend contract tests for valid descriptor arrays,
     short arrays, mixed scalar/array entries, wrong usage, and mixed-backend
     array rejection.
+- **Low-Level Graphics Foundation Slice 9D** — Complete.
+  - Added `truffle_rhi_parity_report`, a live backend parity report executable
+    that emits `BackendParityReport` JSON for every compiled backend.
+  - Added CTest coverage that writes `rhi-parity-report.json` in the build
+    directory and validates the executable path.
+  - Updated CI/release parity artifact uploads and distribution/architecture docs
+    to include the live RHI parity JSON alongside the test-status matrix.
 
 ## Relevant Decisions And Constraints
 
@@ -359,6 +366,8 @@ validation, diagnostics, and backend parity.
 - Bind groups now support explicit array resource population through
   `BindGroupEntry::buffers`, `textures`, and `samplers`; scalar fields remain
   the compatibility path for single-resource bindings.
+- `parity-matrix.json` is the CI test-status matrix; `rhi-parity-report.json`
+  is the live RHI capability/parity summary generated from backend contracts.
 - The repository commits only the public doctrine snapshot. The maintainer's
   private Copilot overlay lives in `~/.copilot/copilot-instructions.md` on the
   local machine and must not be copied into repository history.
@@ -370,24 +379,25 @@ Verified on macOS Apple Silicon (`agents/low-level-code-enhancements`):
 ```sh
 cmake --preset dev
 cmake --build --preset dev
-ctest --preset dev --output-on-failure   # 21/21
+ctest --preset dev --output-on-failure   # 22/22
 cmake --preset ci
 cmake --build --preset ci
-ctest --preset ci --output-on-failure    # 21/21
+ctest --preset ci --output-on-failure    # 22/22
 ```
 
-21 tests: 3 host workspace smoke, ECS, null RHI (+ indexed draw + reflection
+22 tests: 3 host workspace smoke, ECS, null RHI (+ indexed draw + reflection
 contract check), render flow, advanced render flow, render batch, frame graph
 dependency, frame ring, scene adapter, Metal backend (+ indexed draw + compute
 + reflection checks), Vulkan milestone 0-4 tests, OpenGL backend tests,
 Direct3D backend tests, shared RHI contract tests (null + Vulkan + OpenGL +
-Direct3D + optional Metal), API version tests, performance sanity tests,
-core contract tests, package consumer, and transform compute tests.
+Direct3D + optional Metal), live RHI parity report, API version tests,
+performance sanity tests, core contract tests, package consumer, and transform
+compute tests.
 
 ## Next Resume Steps
 
-1. Consider adding a dedicated RHI parity-report executable if JSON needs to
-   include live capability counters rather than CI test status rows.
+1. Continue backend-native depth work, starting with stricter sampler descriptor
+   validation once `SamplerDesc` grows beyond its placeholder shape.
 
 ## Open Questions Or Risks
 
@@ -398,9 +408,10 @@ core contract tests, package consumer, and transform compute tests.
   integration remain open.
 - Native descriptor allocation/mapping depth remains backend-specific future
   work; the current bind group model is a validated contract layer.
-- Bindless and dynamic-resource-indexing are now feature-gated at the layout
-  contract level; actual descriptor-array resource population remains future
-  work before higher layers can use bindless descriptors end-to-end.
+- Bindless and dynamic-resource-indexing are feature-gated and descriptor arrays
+  can now be populated, but backend-native bindless heap/argument-buffer mapping
+  remains future work before higher layers can use bindless descriptors
+  end-to-end.
 - Local private Copilot overlay is configured only for this machine for now;
   any cloud/private overlay distribution model remains intentionally deferred.
 

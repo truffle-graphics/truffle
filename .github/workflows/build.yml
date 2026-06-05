@@ -60,6 +60,7 @@ jobs:
           path: |
             build/ci/parity-matrix.md
             build/ci/parity-matrix.json
+            build/ci/rhi-parity-report.json
             build/ci/*.parity.log
           if-no-files-found: error
 

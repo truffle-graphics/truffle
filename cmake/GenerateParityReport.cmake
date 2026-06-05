@@ -10,6 +10,10 @@ if(NOT DEFINED TRUFFLE_REPORT_JSON_OUT)
     string(REGEX REPLACE "\\.[^.]*$" ".json" TRUFFLE_REPORT_JSON_OUT "${TRUFFLE_REPORT_OUT}")
 endif()
 
+if(NOT DEFINED TRUFFLE_RHI_PARITY_JSON_OUT)
+    set(TRUFFLE_RHI_PARITY_JSON_OUT "${TRUFFLE_BUILD_DIR}/rhi-parity-report.json")
+endif()
+
 function(_truffle_json_escape out input)
     string(REPLACE "\\" "\\\\" _escaped "${input}")
     string(REPLACE "\"" "\\\"" _escaped "${_escaped}")
@@ -27,11 +31,15 @@ set(_tracked_tests
 
 get_filename_component(_report_dir "${TRUFFLE_REPORT_OUT}" DIRECTORY)
 get_filename_component(_json_report_dir "${TRUFFLE_REPORT_JSON_OUT}" DIRECTORY)
+get_filename_component(_rhi_json_report_dir "${TRUFFLE_RHI_PARITY_JSON_OUT}" DIRECTORY)
 if(_report_dir)
     file(MAKE_DIRECTORY "${_report_dir}")
 endif()
 if(_json_report_dir)
     file(MAKE_DIRECTORY "${_json_report_dir}")
+endif()
+if(_rhi_json_report_dir)
+    file(MAKE_DIRECTORY "${_rhi_json_report_dir}")
 endif()
 
 execute_process(
@@ -111,6 +119,33 @@ endforeach()
 file(WRITE "${TRUFFLE_REPORT_OUT}" "${_report}")
 string(APPEND _json "\n  ]\n}\n")
 file(WRITE "${TRUFFLE_REPORT_JSON_OUT}" "${_json}")
+
+if(CMAKE_HOST_WIN32)
+    set(_truffle_exe_suffix ".exe")
+else()
+    set(_truffle_exe_suffix "")
+endif()
+
+set(_rhi_parity_report_exe
+    "${TRUFFLE_BUILD_DIR}/tests/truffle_rhi_parity_report${_truffle_exe_suffix}")
+if(EXISTS "${_rhi_parity_report_exe}")
+    execute_process(
+        COMMAND "${_rhi_parity_report_exe}" "${TRUFFLE_RHI_PARITY_JSON_OUT}"
+        RESULT_VARIABLE _rhi_report_result
+        OUTPUT_VARIABLE _rhi_report_output
+        ERROR_VARIABLE _rhi_report_error
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+
+    if(NOT _rhi_report_result EQUAL 0)
+        message(FATAL_ERROR
+            "Failed to write live RHI parity report with ${_rhi_parity_report_exe}: "
+            "${_rhi_report_error}")
+    endif()
+    message(STATUS "Wrote live RHI parity JSON to ${TRUFFLE_RHI_PARITY_JSON_OUT}")
+else()
+    message(STATUS "Live RHI parity reporter not built in ${TRUFFLE_BUILD_DIR}")
+endif()
 
 message(STATUS "Wrote backend parity report to ${TRUFFLE_REPORT_OUT}")
 message(STATUS "Wrote backend parity JSON to ${TRUFFLE_REPORT_JSON_OUT}")
