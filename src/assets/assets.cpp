@@ -143,6 +143,38 @@ AssetValidationReport AssetCatalog::validate_all_mesh_materials() const {
     return report;
 }
 
+AssetCatalogStats AssetCatalog::stats() const noexcept {
+    AssetCatalogStats result;
+    result.geometryStreamCount = geometryStreams_.size();
+    result.textureCount = textures_.size();
+    result.materialCount = materials_.size();
+    result.meshCount = meshes_.size();
+
+    for (const auto& [streamId, stream] : geometryStreams_) {
+        result.totalGeometryElements += stream.elementCount;
+        result.totalGeometryBytes += stream.byteSize;
+
+        switch (stream.residency) {
+        case DataResidency::CpuMemory:
+            ++result.cpuGeometryStreamCount;
+            break;
+        case DataResidency::GpuResident:
+            ++result.gpuResidentGeometryStreamCount;
+            break;
+        case DataResidency::External:
+            ++result.externalGeometryStreamCount;
+            break;
+        }
+
+        if (stream.byteSize > result.largestGeometryStreamBytes) {
+            result.largestGeometryStream = streamId;
+            result.largestGeometryStreamBytes = stream.byteSize;
+        }
+    }
+
+    return result;
+}
+
 core::Status AssetCatalog::validate_mesh_material(AssetId meshId) const {
     const auto* foundMesh = mesh(meshId);
     if (foundMesh == nullptr) {

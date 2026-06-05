@@ -221,6 +221,20 @@ struct AssetValidationReport {
     }
 };
 
+struct AssetCatalogStats {
+    std::size_t geometryStreamCount = 0;
+    std::size_t textureCount = 0;
+    std::size_t materialCount = 0;
+    std::size_t meshCount = 0;
+    std::size_t cpuGeometryStreamCount = 0;
+    std::size_t gpuResidentGeometryStreamCount = 0;
+    std::size_t externalGeometryStreamCount = 0;
+    std::size_t totalGeometryElements = 0;
+    std::size_t totalGeometryBytes = 0;
+    AssetId largestGeometryStream;
+    std::size_t largestGeometryStreamBytes = 0;
+};
+
 class AssetCatalog {
 public:
     [[nodiscard]] core::Status add_geometry_stream(GeometryStreamDesc stream);
@@ -239,6 +253,7 @@ public:
     [[nodiscard]] AssetValidationReport validate_mesh_material_report(
         AssetId meshId) const;
     [[nodiscard]] AssetValidationReport validate_all_mesh_materials() const;
+    [[nodiscard]] AssetCatalogStats stats() const noexcept;
 
     [[nodiscard]] std::size_t geometry_stream_count() const noexcept {
         return geometryStreams_.size();

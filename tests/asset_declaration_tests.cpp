@@ -142,6 +142,12 @@ int main() {
     TRUFFLE_CHECK(texture.id.valid());
     TRUFFLE_CHECK(texture.width == 256);
 
+    AssetCatalog emptyCatalog;
+    const auto emptyStats = emptyCatalog.stats();
+    TRUFFLE_CHECK(emptyStats.geometryStreamCount == 0);
+    TRUFFLE_CHECK(emptyStats.totalGeometryBytes == 0);
+    TRUFFLE_CHECK(!emptyStats.largestGeometryStream.valid());
+
     AssetCatalog catalog;
     TRUFFLE_CHECK(catalog.add_geometry_stream(detections).ok());
     TRUFFLE_CHECK(catalog.add_material(material).ok());
@@ -157,6 +163,20 @@ int main() {
     TRUFFLE_CHECK(catalog.mesh(mesh.id) != nullptr);
     TRUFFLE_CHECK(catalog.validate_mesh_material(mesh.id).ok());
     TRUFFLE_CHECK(catalog.validate_mesh_material_report(mesh.id).ok());
+    const auto initialStats = catalog.stats();
+    TRUFFLE_CHECK(initialStats.geometryStreamCount == 1);
+    TRUFFLE_CHECK(initialStats.textureCount == 1);
+    TRUFFLE_CHECK(initialStats.materialCount == 1);
+    TRUFFLE_CHECK(initialStats.meshCount == 1);
+    TRUFFLE_CHECK(initialStats.externalGeometryStreamCount == 1);
+    TRUFFLE_CHECK(initialStats.cpuGeometryStreamCount == 0);
+    TRUFFLE_CHECK(initialStats.gpuResidentGeometryStreamCount == 0);
+    TRUFFLE_CHECK(initialStats.totalGeometryElements ==
+                  detections.elementCount);
+    TRUFFLE_CHECK(initialStats.totalGeometryBytes == detections.byteSize);
+    TRUFFLE_CHECK(initialStats.largestGeometryStream == detections.id);
+    TRUFFLE_CHECK(initialStats.largestGeometryStreamBytes ==
+                  detections.byteSize);
 
     const auto duplicateStatus = catalog.add_mesh(mesh);
     TRUFFLE_CHECK(!duplicateStatus.ok());
