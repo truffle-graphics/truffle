@@ -124,6 +124,9 @@ scope and active extension-backend work continuing in parallel:
 - Low-level sampler descriptors expose explicit filter, address, LOD,
   anisotropy, compare, and border-color state while preserving the legacy
   `linear_filtering` compatibility path.
+- RHI command buffers require an explicit graphics/compute pipeline before
+  draw/dispatch, and pipeline layouts define required bind-group indices that
+  must be bound with compatible group layouts before recording work.
 - CI emits backend parity matrix Markdown/JSON artifacts for tracked backend
   contract/reflection tests, plus a live `rhi-parity-report.json` generated
   from `BackendParityReport` capability summaries.

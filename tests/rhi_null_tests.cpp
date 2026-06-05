@@ -95,6 +95,7 @@ int main() {
     passIdx.extent                  = {640, 480};
     passIdx.colorAttachment.texture = drawable;
     TRUFFLE_CHECK(cmdIdx->begin_render_pass(passIdx).ok());
+    TRUFFLE_CHECK(cmdIdx->bind_pipeline(*pipeline).ok());
     TRUFFLE_CHECK(
         cmdIdx->bind_index_buffer(*ib, 0, truffle::rhi::IndexFormat::uint16).ok());
     TRUFFLE_CHECK(cmdIdx->draw_indexed(6).ok());
@@ -115,6 +116,18 @@ int main() {
     TRUFFLE_CHECK(device->queue(truffle::rhi::QueueKind::graphics)
                       .submit(*cmdIdx)
                       .ok());
+
+    {
+        auto computeCmd = device->create_command_buffer();
+        TRUFFLE_CHECK(computeCmd->begin().ok());
+        TRUFFLE_CHECK(computeCmd->bind_compute_pipeline(*computePipeline).ok());
+        TRUFFLE_CHECK(computeCmd->dispatch_compute(1, 1, 1).ok());
+        TRUFFLE_CHECK(computeCmd->end().ok());
+    }
+    auto recycledCmd = device->create_command_buffer();
+    TRUFFLE_CHECK(recycledCmd->begin().ok());
+    TRUFFLE_CHECK(!recycledCmd->dispatch_compute(1, 1, 1).ok());
+    TRUFFLE_CHECK(recycledCmd->end().ok());
 
     // Strict null validation catches command-lifecycle and encoder mistakes.
     auto invalidCmd = device->create_command_buffer();
@@ -154,7 +167,7 @@ int main() {
     TRUFFLE_CHECK(stats.buffersCreated == 4); // original vb + new vb + ib + indirect
     TRUFFLE_CHECK(stats.surfacesCreated == 1);
     TRUFFLE_CHECK(stats.swapchainsCreated == 1);
-    TRUFFLE_CHECK(stats.drawsRecorded == 5); // draw + draw_indexed + draw_indexed_instanced + draw_indirect + draw_indexed_indirect
+    TRUFFLE_CHECK(stats.drawsRecorded == 6); // five graphics draws + one compute dispatch
     TRUFFLE_CHECK(stats.submissions == 2);
     TRUFFLE_CHECK(stats.debugLabelsPushed == 1);
     TRUFFLE_CHECK(stats.debugMarkersInserted == 1);

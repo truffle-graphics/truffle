@@ -304,6 +304,8 @@ public:
                                    "VulkanCommandBuffer: no active render pass");
         }
         inRenderPass_ = false;
+        graphicsLayout_ = nullptr;
+        boundGraphicsGroups_.clear();
         return Status::success();
     }
 
@@ -315,6 +317,10 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "VulkanCommandBuffer: pipeline must be created by Vulkan backend");
         }
+        graphicsLayout_ = &pipeline.desc().layout;
+        boundGraphicsGroups_.clear();
+        computeLayout_ = nullptr;
+        boundComputeGroups_.clear();
         return Status::success();
     }
 
@@ -330,6 +336,10 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "VulkanCommandBuffer: compute pipeline must be created by Vulkan backend");
         }
+        computeLayout_ = &pipeline.desc().layout;
+        boundComputeGroups_.clear();
+        graphicsLayout_ = nullptr;
+        boundGraphicsGroups_.clear();
         return Status::success();
     }
 
@@ -401,7 +411,7 @@ public:
         return Status::success();
     }
 
-    [[nodiscard]] Status bind_group(std::uint32_t /*groupIndex*/,
+    [[nodiscard]] Status bind_group(std::uint32_t groupIndex,
                                     IBindGroup& group) override {
         if (const auto s = require_recording("bind_group"); !s.ok()) {
             return s;
@@ -414,6 +424,19 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "VulkanCommandBuffer: bind group descriptor is invalid");
         }
+        const auto* activeLayout = inRenderPass_ ? graphicsLayout_ : computeLayout_;
+        auto& boundGroups = inRenderPass_ ? boundGraphicsGroups_ : boundComputeGroups_;
+        if (!activeLayout) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "VulkanCommandBuffer: bind_group requires a bound pipeline");
+        }
+        if (!validation::pipeline_layout_bind_group_compatible(
+                *activeLayout, groupIndex, group.desc().layout->desc())) {
+            return Status::failure(
+                StatusCode::invalid_argument,
+                "VulkanCommandBuffer: bind group layout is incompatible with pipeline layout");
+        }
+        remember_bound_group(boundGroups, groupIndex);
         return Status::success();
     }
 
@@ -487,6 +510,9 @@ public:
         if (const auto s = require_render_pass("draw"); !s.ok()) {
             return s;
         }
+        if (const auto s = require_graphics_bind_groups("draw"); !s.ok()) {
+            return s;
+        }
         record_draw();
         return Status::success();
     }
@@ -494,6 +520,9 @@ public:
     [[nodiscard]] Status draw_instanced(
         std::uint32_t /*vertex_count*/, std::uint32_t /*instance_count*/) override {
         if (const auto s = require_render_pass("draw_instanced"); !s.ok()) {
+            return s;
+        }
+        if (const auto s = require_graphics_bind_groups("draw_instanced"); !s.ok()) {
             return s;
         }
         record_draw();
@@ -504,6 +533,9 @@ public:
         if (const auto s = require_render_pass("draw_indexed"); !s.ok()) {
             return s;
         }
+        if (const auto s = require_graphics_bind_groups("draw_indexed"); !s.ok()) {
+            return s;
+        }
         record_draw();
         return Status::success();
     }
@@ -511,6 +543,9 @@ public:
     [[nodiscard]] Status draw_indexed_instanced(
         std::uint32_t /*index_count*/, std::uint32_t /*instance_count*/) override {
         if (const auto s = require_render_pass("draw_indexed_instanced"); !s.ok()) {
+            return s;
+        }
+        if (const auto s = require_graphics_bind_groups("draw_indexed_instanced"); !s.ok()) {
             return s;
         }
         record_draw();
@@ -527,6 +562,9 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "VulkanCommandBuffer: buffer lacks indirect usage");
         }
+        if (const auto s = require_graphics_bind_groups("draw_indirect"); !s.ok()) {
+            return s;
+        }
         record_draw();
         return Status::success();
     }
@@ -540,6 +578,9 @@ public:
                                                BufferUsageFlags::indirect)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "VulkanCommandBuffer: buffer lacks indirect usage");
+        }
+        if (const auto s = require_graphics_bind_groups("draw_indexed_indirect"); !s.ok()) {
+            return s;
         }
         record_draw();
         return Status::success();
@@ -555,6 +596,16 @@ public:
         if (inRenderPass_) {
             return Status::failure(StatusCode::invalid_state,
                                    "VulkanCommandBuffer: dispatch_compute cannot run inside render pass");
+        }
+        if (!computeLayout_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "VulkanCommandBuffer: dispatch_compute requires a bound compute pipeline");
+        }
+        if (!validation::pipeline_layout_required_groups_bound(
+                *computeLayout_, boundComputeGroups_)) {
+            return Status::failure(
+                StatusCode::invalid_state,
+                "VulkanCommandBuffer: dispatch_compute requires all pipeline bind groups");
         }
         if (diagnostics_) {
             ++diagnostics_->mutable_stats().dispatchesRecorded;
@@ -604,9 +655,40 @@ private:
                              {}, "draw recorded");
     }
 
+    static void remember_bound_group(std::vector<std::uint32_t>& boundGroups,
+                                     std::uint32_t groupIndex) {
+        for (const auto bound : boundGroups) {
+            if (bound == groupIndex) {
+                return;
+            }
+        }
+        boundGroups.push_back(groupIndex);
+    }
+
+    [[nodiscard]] Status require_graphics_bind_groups(const char* op) const {
+        if (!graphicsLayout_) {
+            return Status::failure(
+                StatusCode::invalid_state,
+                std::string{"VulkanCommandBuffer: "} + op +
+                    " requires a bound graphics pipeline");
+        }
+        if (!validation::pipeline_layout_required_groups_bound(
+                *graphicsLayout_, boundGraphicsGroups_)) {
+            return Status::failure(
+                StatusCode::invalid_state,
+                std::string{"VulkanCommandBuffer: "} + op +
+                    " requires all pipeline bind groups");
+        }
+        return Status::success();
+    }
+
     State state_ = State::initial;
     bool inRenderPass_ = false;
     std::uint32_t debugLabelDepth_ = 0;
+    const PipelineLayoutDesc* graphicsLayout_ = nullptr;
+    const PipelineLayoutDesc* computeLayout_ = nullptr;
+    std::vector<std::uint32_t> boundGraphicsGroups_;
+    std::vector<std::uint32_t> boundComputeGroups_;
     BackendDiagnosticsPtr diagnostics_;
 };
 

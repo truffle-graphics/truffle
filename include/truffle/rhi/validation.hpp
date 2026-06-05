@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <vector>
 
 namespace truffle::rhi::validation {
 
@@ -120,7 +121,8 @@ namespace truffle::rhi::validation {
 [[nodiscard]] constexpr bool pipeline_layout_binding_valid(
     const BindingLayoutDesc& binding,
     const Capabilities& capabilities) noexcept {
-    if (binding.bindingIndex >= capabilities.limits.maxResourceBindings ||
+    if (binding.groupIndex >= capabilities.limits.maxBindGroups ||
+        binding.bindingIndex >= capabilities.limits.maxResourceBindings ||
         binding.arrayCount == 0 ||
         binding.arrayCount > capabilities.limits.maxDescriptorArrayElements ||
         !shader_stage_visibility_valid(binding.visibility)) {
@@ -163,10 +165,73 @@ namespace truffle::rhi::validation {
         }
         for (std::size_t j = i + 1; j < layout.bindings.size(); ++j) {
             const auto& other = layout.bindings[j];
-            if (binding.bindingIndex == other.bindingIndex &&
-                (binding.visibility & other.visibility) != ShaderStageFlags::none) {
+            if (binding.groupIndex == other.groupIndex &&
+                binding.bindingIndex == other.bindingIndex) {
                 return false;
             }
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] constexpr bool binding_layout_compatible(
+    const BindingLayoutDesc& expected,
+    const BindingLayoutDesc& actual) noexcept {
+    return expected.bindingIndex == actual.bindingIndex &&
+           expected.type == actual.type &&
+           expected.visibility == actual.visibility &&
+           expected.arrayCount == actual.arrayCount &&
+           expected.minBindingSize == actual.minBindingSize &&
+           expected.dynamicIndexing == actual.dynamicIndexing &&
+           expected.bindless == actual.bindless;
+}
+
+[[nodiscard]] inline bool pipeline_layout_bind_group_compatible(
+    const PipelineLayoutDesc& pipelineLayout,
+    std::uint32_t groupIndex,
+    const BindGroupLayoutDesc& bindGroupLayout) noexcept {
+    std::size_t expectedCount = 0;
+    for (const auto& binding : pipelineLayout.bindings) {
+        if (binding.groupIndex == groupIndex) {
+            ++expectedCount;
+        }
+    }
+    if (expectedCount == 0 || bindGroupLayout.bindings.size() != expectedCount) {
+        return false;
+    }
+
+    for (const auto& expected : pipelineLayout.bindings) {
+        if (expected.groupIndex != groupIndex) {
+            continue;
+        }
+        bool found = false;
+        for (const auto& actual : bindGroupLayout.bindings) {
+            if (binding_layout_compatible(expected, actual)) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+[[nodiscard]] inline bool pipeline_layout_required_groups_bound(
+    const PipelineLayoutDesc& pipelineLayout,
+    const std::vector<std::uint32_t>& boundGroups) noexcept {
+    for (const auto& binding : pipelineLayout.bindings) {
+        bool found = false;
+        for (const auto groupIndex : boundGroups) {
+            if (groupIndex == binding.groupIndex) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            return false;
         }
     }
     return true;
@@ -516,10 +581,24 @@ namespace truffle::rhi::validation {
 [[nodiscard]] inline bool bind_group_layout_valid(
     const BindGroupLayoutDesc& layout,
     const Capabilities& capabilities) noexcept {
-    return pipeline_layout_valid({
+    if (!pipeline_layout_valid({
         .debugName = layout.debugName,
         .bindings = layout.bindings,
-    }, capabilities);
+    }, capabilities)) {
+        return false;
+    }
+
+    for (std::size_t i = 0; i < layout.bindings.size(); ++i) {
+        const auto& binding = layout.bindings[i];
+        for (std::size_t j = i + 1; j < layout.bindings.size(); ++j) {
+            const auto& other = layout.bindings[j];
+            if (binding.bindingIndex == other.bindingIndex) {
+                return false;
+            }
+        }
+    }
+
+    return true;
 }
 
 [[nodiscard]] inline bool buffer_binding_valid(

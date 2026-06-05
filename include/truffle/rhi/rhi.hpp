@@ -326,6 +326,7 @@ struct DeviceLimits {
     std::uint32_t maxDescriptorArrayElements = 1;
     std::uint32_t maxBindlessResources = 0;
     std::uint32_t maxSamplerAnisotropy = 1;
+    std::uint32_t maxBindGroups = 4;
 };
 
 struct FormatSupport {
@@ -690,6 +691,7 @@ struct BindingLayoutDesc {
     std::size_t minBindingSize = 0;
     bool dynamicIndexing = false;
     bool bindless = false;
+    std::uint32_t groupIndex = 0;
 };
 
 struct PipelineLayoutDesc {

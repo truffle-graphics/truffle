@@ -322,22 +322,26 @@ int main() {
     TRUFFLE_CHECK(truffle::rhi::shader_stage_flag(
         truffle::rhi::ShaderStage::compute) ==
                   truffle::rhi::ShaderStageFlags::compute);
-    TRUFFLE_CHECK(truffle::rhi::validation::pipeline_layout_valid({
+    const truffle::rhi::PipelineLayoutDesc groupedPipelineLayout{
         .bindings = {
             {
                 .bindingIndex = 0,
                 .type = truffle::rhi::BindingResourceType::uniform_buffer,
                 .visibility = truffle::rhi::ShaderStageFlags::vertex,
                 .minBindingSize = 64,
+                .groupIndex = 0,
             },
             {
                 .bindingIndex = 0,
                 .type = truffle::rhi::BindingResourceType::sampler,
                 .visibility = truffle::rhi::ShaderStageFlags::fragment,
                 .arrayCount = 2,
+                .groupIndex = 1,
             },
         },
-    }, capabilities));
+    };
+    TRUFFLE_CHECK(truffle::rhi::validation::pipeline_layout_valid(
+        groupedPipelineLayout, capabilities));
     TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_layout_valid({
         .bindings = {{
             .bindingIndex = 0,
@@ -348,6 +352,13 @@ int main() {
         .bindings = {{
             .bindingIndex = 99,
             .visibility = truffle::rhi::ShaderStageFlags::vertex,
+        }},
+    }, capabilities));
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_layout_valid({
+        .bindings = {{
+            .bindingIndex = 0,
+            .visibility = truffle::rhi::ShaderStageFlags::vertex,
+            .groupIndex = capabilities.limits.maxBindGroups,
         }},
     }, capabilities));
     TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_layout_valid({
@@ -362,6 +373,36 @@ int main() {
             },
         },
     }, capabilities));
+    const truffle::rhi::BindGroupLayoutDesc group0Layout{
+        .bindings = {{
+            .bindingIndex = 0,
+            .type = truffle::rhi::BindingResourceType::uniform_buffer,
+            .visibility = truffle::rhi::ShaderStageFlags::vertex,
+            .minBindingSize = 64,
+        }},
+    };
+    const truffle::rhi::BindGroupLayoutDesc group1Layout{
+        .bindings = {{
+            .bindingIndex = 0,
+            .type = truffle::rhi::BindingResourceType::sampler,
+            .visibility = truffle::rhi::ShaderStageFlags::fragment,
+            .arrayCount = 2,
+        }},
+    };
+    TRUFFLE_CHECK(truffle::rhi::validation::pipeline_layout_bind_group_compatible(
+        groupedPipelineLayout, 0, group0Layout));
+    TRUFFLE_CHECK(truffle::rhi::validation::pipeline_layout_bind_group_compatible(
+        groupedPipelineLayout, 1, group1Layout));
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_layout_bind_group_compatible(
+        groupedPipelineLayout, 2, group0Layout));
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_layout_bind_group_compatible(
+        groupedPipelineLayout, 1, group0Layout));
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_layout_required_groups_bound(
+        groupedPipelineLayout, {}));
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_layout_required_groups_bound(
+        groupedPipelineLayout, {0}));
+    TRUFFLE_CHECK(truffle::rhi::validation::pipeline_layout_required_groups_bound(
+        groupedPipelineLayout, {1, 0}));
     auto noDescriptorArrayCaps = capabilities;
     noDescriptorArrayCaps.features.descriptorArrays = false;
     noDescriptorArrayCaps.limits.maxDescriptorArrayElements = 1;

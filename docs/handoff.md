@@ -355,6 +355,20 @@ validation, diagnostics, and backend parity.
     descriptors.
   - Expanded core and shared backend contract tests for invalid viewport/scissor
     descriptors and active-pass enforcement.
+- **Low-Level Graphics Foundation Slice 9G** — Complete.
+  - Added bind-group indices to pipeline layout bindings and a shared
+    compatibility check between active pipeline layouts and bound group layouts.
+  - Enforced explicit graphics/compute pipeline binding and all required
+    pipeline bind groups before draw/dispatch across null, Metal, Vulkan,
+    OpenGL, and Direct3D command buffers.
+  - Tightened duplicate binding validation so each pipeline group and bind-group
+    layout has unambiguous binding slots.
+  - Updated `Renderer` to use an internal null pipeline cache when callers do
+    not provide one, preserving smoke paths while satisfying the stricter RHI
+    contract.
+  - Expanded core, backend-specific, null, and shared RHI contract tests for
+    multi-group layouts, missing bind groups, wrong group indices, and
+    pipeline-required draw/dispatch behavior.
 
 ## Relevant Decisions And Constraints
 
@@ -397,6 +411,9 @@ validation, diagnostics, and backend parity.
   legacy compatibility.
 - Viewport and scissor state is render-pass scoped across all built-in backends;
   invalid dimensions/depth ranges are rejected before native calls.
+- Draw and dispatch commands require an explicitly bound graphics/compute
+  pipeline, and every bind-group index referenced by that pipeline layout must
+  be bound with a compatible bind-group layout before the command records.
 - The repository commits only the public doctrine snapshot. The maintainer's
   private Copilot overlay lives in `~/.copilot/copilot-instructions.md` on the
   local machine and must not be copied into repository history.
@@ -412,6 +429,9 @@ ctest --preset dev --output-on-failure   # 22/22
 cmake --preset ci
 cmake --build --preset ci
 ctest --preset ci --output-on-failure    # 22/22
+cmake -DTRUFFLE_BUILD_DIR=$PWD/build/ci -DTRUFFLE_REPORT_OUT=$PWD/build/ci/parity-matrix.md -P cmake/GenerateParityReport.cmake
+python3 -m json.tool build/ci/parity-matrix.json
+python3 -m json.tool build/ci/rhi-parity-report.json
 ```
 
 22 tests: 3 host workspace smoke, ECS, null RHI (+ indexed draw + reflection

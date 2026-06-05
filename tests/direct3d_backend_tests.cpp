@@ -87,7 +87,7 @@ int main() {
     TRUFFLE_CHECK(cmdInvalid->begin_render_pass(passDesc).ok());
     TRUFFLE_CHECK(!cmdInvalid->dispatch_compute(1, 1, 1).ok());
     TRUFFLE_CHECK(cmdInvalid->end_render_pass().ok());
-    TRUFFLE_CHECK(cmdInvalid->dispatch_compute(1, 1, 1).ok());
+    TRUFFLE_CHECK(!cmdInvalid->dispatch_compute(1, 1, 1).ok());
     TRUFFLE_CHECK(cmdInvalid->end().ok());
 
     // Milestone 1 resource foundation checks.
