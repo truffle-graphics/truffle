@@ -13,8 +13,9 @@ docs, charter, or ADRs instead of leaving it only in this working document.
 
 ## Current Focus
 
-Post-Phase-12 stabilization with parity quality gates, distribution validation,
-and active Direct3D contract-backend extension work.
+Post-Phase-12 stabilization with opt-in high-level asset/diagnostics layers,
+parity quality gates, distribution validation, and active Direct3D
+contract-backend extension work.
 
 ## Current Work Status
 
@@ -109,6 +110,51 @@ and active Direct3D contract-backend extension work.
   - Added tag-driven release workflow to publish versioned package artifacts.
   - Added `docs/distribution.md` onboarding guidance for local packaging,
     consumer verification, and release flow.
+- **High-Level Asset And Diagnostics Track** — First Slice Implemented.
+  - Added `truffle_assets` / `Truffle::Assets` for declarative asset, material,
+    material-operation, texture, and geometry-stream metadata without file
+    loading or GPU upload ownership.
+  - Added backend-free material-to-mesh requirement validation so high-level
+    tools can catch missing dynamic attributes before render/backend execution.
+  - Added `AssetCatalog` registration and lookup for declarative mesh, material,
+    texture, and geometry-stream descriptors.
+  - Added catalog validation reports so tools can collect all mesh/material
+    metadata issues without running loaders, uploads, or backend code.
+  - Added catalog stats snapshots for grouped stream volume and residency counts
+    without scanning individual detections or instances.
+  - Added asset catalog groups and tags so tools can partition dense domains like
+    lidar, radar, static meshes, or overlays and request group-level
+    stats/validation without backend work.
+  - Added `truffle_diagnostics` / `Truffle::Diagnostics` for opt-in,
+    pull-based render-batch, frame-graph, and renderer-stats summaries.
+  - Added external diagnostics labels for batches, frame-graph nodes, and
+    resources so tool-facing names do not become permanent render-object fields.
+  - Added read-only `FrameGraph` dependency/resource usage accessors and included
+    those declarations in diagnostics summaries.
+  - Added pull-based diagnostics budget checks that convert render-batch and
+    frame-graph summaries into findings only when requested.
+  - Added combined diagnostics bundles so tools can pull one report spanning
+    asset catalog metadata, render batches, frame graphs, renderer stats, and
+    budget findings.
+  - Added group-filtered asset diagnostics so bundle reports can include all
+    groups or selected groups by id/tag.
+  - Added debug overlay declarations and summaries for lines, boxes, points,
+    labels, and pick targets without installing renderer hooks or a persistent
+    debug subsystem.
+  - Added `truffle_dense_diagnostics_example`, a backend-free dense-data
+    diagnostics smoke example for lidar/radar-style groups, render-batch
+    summaries, and debug overlays.
+  - Added `truffle_asset_render` / `Truffle::AssetRender` for metadata-only
+    asset-to-render batch planning from declared mesh, material, stream, and
+    group metadata.
+  - Added asset-render plan diagnostics summaries for planned attributes,
+    bindings, byte totals, and group totals without inspecting buffers or backend
+    state.
+  - Kept diagnostics separate from render and scene runtime dependencies; normal
+    consumers only link the diagnostics target when they want inspection helpers.
+  - Added `truffle_assets_tests`, `truffle_asset_render_tests`, and
+    `truffle_diagnostics_tests`, and extended the package consumer smoke check to
+    link the new exported targets.
 - **Direct3D Extension Track** — In Progress.
   - Added `truffle_backend_direct3d` contract backend module and public factory
     entry point (`create_direct3d_backend`).
@@ -134,56 +180,75 @@ and active Direct3D contract-backend extension work.
 - `FrameGraph` owns high-level order, not rendering states. Individual graph nodes retain responsibility for executing `begin_render_pass` alongside backend queues.
 - `truffle_render` must have zero compile-time dependency on `truffle_ecs`. `truffle_scene` is the designated ECS-to-render bridge.
 - `RenderBatch` and `InstanceLayout` are the universal renderer input contract.
+- `truffle_assets` is declarative metadata only for now; file import, backend
+  upload, shader compilation, and material-operation execution are explicitly
+  deferred. Catalog lookup and requirement validation check declared metadata
+  only; validation reports and stats snapshots collect metadata issues and
+  grouped counts without side effects. Groups/tags are catalog metadata only:
+  they do not imply loading, upload, or per-element iteration.
+- `truffle_asset_render` consumes asset declarations and render contracts only.
+  It emits `RenderBatch` layout plans with null buffers, validates
+  material-required attributes, preserves declared binding/offset/stride
+  metadata, and requires explicit channel mappings for dense/custom semantics
+  that do not have native render channels.
+- `truffle_diagnostics` is strict opt-in tooling: no global tracing, no
+  background logger, and no dependency from `truffle_render` or `truffle_scene`
+  back into diagnostics. Tool-facing labels are passed as diagnostics options
+  instead of stored in render objects. Graph dependency/resource usage summaries
+  read existing `FrameGraph` declarations only; they do not record runtime
+  events. Budget findings, group-filtered asset summaries, debug-overlay
+  summaries, asset-render plan summaries, and bundle reports are pull-based
+  checks, not logs or background profiling.
 - Keep active handoff state curated and public-safe. Lasting decisions belong in stable docs or ADRs.
 - Normal feature and fix work targets protected `develop`; stable promotion goes through `master`.
 
 ## Last Verified Commands And Checks
 
-Verified on macOS Apple Silicon (`feat/phase5c-shader-reflection-layout`):
+Verified on macOS Apple Silicon (`agents/high-level-abstraction-layers`):
 
 ```sh
 cmake --preset dev
 cmake --build --preset dev
-ctest --preset dev --output-on-failure   # 20/20
-cmake --preset ci
-cmake --build --preset ci
-ctest --preset ci --output-on-failure    # 20/20
-cmake --preset dev -DTRUFFLE_BUILD_BACKEND_DIRECT3D=ON
-cmake --build --preset dev
-ctest --preset dev -R "truffle_direct3d_tests|truffle_rhi_contract_tests" --output-on-failure  # 2/2
-cmake -DTRUFFLE_BUILD_DIR=$PWD/build/ci -DTRUFFLE_REPORT_OUT=$PWD/build/ci/parity-matrix.md -P cmake/GenerateParityReport.cmake
-cat build/ci/parity-matrix.md            # backend parity matrix
-cmake -S . -B build/package-smoke -DTRUFFLE_INSTALL=ON -DTRUFFLE_BUILD_TESTS=OFF -DTRUFFLE_BUILD_EXAMPLES=OFF -DTRUFFLE_BUILD_BACKEND_VULKAN=ON -DTRUFFLE_BUILD_BACKEND_OPENGL=ON
-cmake --build build/package-smoke
-cmake --install build/package-smoke --prefix build/package-smoke/install
-(cd build/package-smoke && cpack --verbose)  # Truffle-0.1.0-Darwin.tar.gz
+ctest --preset dev --output-on-failure   # 24/24
+cmake --build --preset dev --target truffle_format_check
+# clang-format was not installed; target reported the missing optional tool.
 ```
 
-20 tests: 3 host workspace smoke, ECS, null RHI (+ indexed draw + reflection
-contract check), render flow, advanced render flow, render batch, frame graph
-dependency, frame ring, scene adapter, Metal backend (+ indexed draw + compute
-+ reflection checks), Vulkan milestone 0-4 tests, OpenGL backend tests,
-Direct3D backend tests, shared RHI contract tests (null + Vulkan + OpenGL +
-Direct3D + optional Metal), API version tests, performance sanity tests,
+24 tests: 3 host workspace smoke, dense diagnostics smoke, ECS, asset
+declarations, null RHI (+ indexed draw + reflection contract check), render
+flow, advanced render flow, render batch, asset render planning, frame graph
+dependency, diagnostics, frame ring, scene adapter, Metal backend (+ indexed
+draw + compute + reflection checks), Vulkan milestone 0-4 tests, OpenGL backend
+tests, Direct3D backend tests, shared RHI contract tests (null + Vulkan + OpenGL
++ Direct3D + optional Metal), API version tests, performance sanity tests,
 package consumer, and transform compute tests.
 
 ## Next Resume Steps
 
-1. Complete Direct3D extension milestone from contract backend to
-  platform-specific implementation strategy.
-2. Add machine-readable parity report output alongside markdown.
-3. Expand workload profiling scenarios beyond the current sanity gate.
-4. Validate release packaging flows on additional host platforms.
-5. Configure `COPILOT_AGENT_TOKEN` as a repository secret with a user-to-server
+1. Decide whether the asset/diagnostics first slice should be promoted into a
+   dedicated ADR or roadmap entry.
+2. Decide whether external diagnostics labels should be joined by an optional
+   GPU timing extension interface.
+3. Complete Direct3D extension milestone from contract backend to
+   platform-specific implementation strategy.
+4. Add machine-readable parity report output alongside markdown.
+5. Expand workload profiling scenarios beyond the current sanity gate.
+6. Validate release packaging flows on additional host platforms.
+7. Configure `COPILOT_AGENT_TOKEN` as a repository secret with a user-to-server
    token that can start Copilot cloud-agent tasks through the GitHub agent-task
    API.
-6. Exercise the detached companion automation on the next implementation branch
+8. Exercise the detached companion automation on the next implementation branch
    and tighten routing heuristics if any lane proves noisy.
 
 ## Open Questions Or Risks
 
 - Advanced parity between production backends remains constrained by
   backend-specific shader compilation models.
+- Asset/material declarations currently describe intent only; layout planning can
+  consume them, but no importer, upload planner, or shader compiler consumes
+  them yet.
+- Diagnostics currently inspect public CPU-side contracts only; backend timing,
+  overlays, and picking require future explicit extension surfaces.
 - Direct3D extension currently provides contract semantics only; native API
   implementation and platform/runtime integration remain open.
 

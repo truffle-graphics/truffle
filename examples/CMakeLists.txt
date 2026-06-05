@@ -1,1 +1,2 @@
 add_subdirectory(host_workspace)
+add_subdirectory(dense_diagnostics)
