@@ -2,6 +2,10 @@ add_executable(truffle_ecs_tests ecs_contract_tests.cpp)
 target_link_libraries(truffle_ecs_tests PRIVATE truffle_ecs)
 add_test(NAME truffle_ecs_tests COMMAND truffle_ecs_tests)
 
+add_executable(truffle_assets_tests asset_declaration_tests.cpp)
+target_link_libraries(truffle_assets_tests PRIVATE truffle_assets)
+add_test(NAME truffle_assets_tests COMMAND truffle_assets_tests)
+
 add_executable(truffle_rhi_tests rhi_null_tests.cpp)
 target_link_libraries(truffle_rhi_tests PRIVATE truffle_backend_null)
 add_test(NAME truffle_rhi_tests COMMAND truffle_rhi_tests)
@@ -18,9 +22,17 @@ add_executable(truffle_render_batch_tests render_batch_tests.cpp)
 target_link_libraries(truffle_render_batch_tests PRIVATE truffle_render)
 add_test(NAME truffle_render_batch_tests COMMAND truffle_render_batch_tests)
 
+add_executable(truffle_asset_render_tests asset_render_plan_tests.cpp)
+target_link_libraries(truffle_asset_render_tests PRIVATE truffle_asset_render)
+add_test(NAME truffle_asset_render_tests COMMAND truffle_asset_render_tests)
+
 add_executable(truffle_frame_graph_dependency_tests frame_graph_dependency_tests.cpp)
 target_link_libraries(truffle_frame_graph_dependency_tests PRIVATE truffle_backend_null truffle_render)
 add_test(NAME truffle_frame_graph_dependency_tests COMMAND truffle_frame_graph_dependency_tests)
+
+add_executable(truffle_diagnostics_tests diagnostics_tests.cpp)
+target_link_libraries(truffle_diagnostics_tests PRIVATE truffle_diagnostics)
+add_test(NAME truffle_diagnostics_tests COMMAND truffle_diagnostics_tests)
 
 add_executable(truffle_frame_ring_tests frame_ring_tests.cpp)
 target_link_libraries(truffle_frame_ring_tests PRIVATE truffle_backend_null)

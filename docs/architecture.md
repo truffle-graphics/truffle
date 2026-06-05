@@ -14,13 +14,23 @@ Truffle is one product with modules that stay linkable at different levels:
 4. Rendering modules such as `truffle_render` expose `RenderBatch`,
    `InstanceLayout`, `Renderer`, and the `IPipelineCache` interface. This layer
    has zero compile-time dependency on `truffle_ecs`.
-5. The optional `truffle_scene` module bridges ECS worlds into render batches.
+5. `truffle_assets` defines declarative asset, material-operation, texture,
+   geometry stream, and group/tag metadata. It does not load files, own GPU
+   uploads, or depend on a backend.
+6. `truffle_asset_render` maps declared asset streams into metadata-only render
+   layout and batch plans. It does not allocate buffers, upload data, compile
+   shaders, or own backend state.
+7. The optional `truffle_scene` module bridges ECS worlds into render batches.
    It depends on both `truffle_ecs` and `truffle_render` and provides
    `SceneAdapter`, which extracts a `SceneFrame` containing camera state, light
    state, and a vector of `RenderBatch` objects written through
    `IFrameUploadRing`.
-6. Future framework-facing modules can add assets, debug hooks, and tool-facing
-   rendering workflows above the lower layers without hiding them from consumers.
+8. `truffle_diagnostics` provides opt-in, pull-based asset, render,
+   asset-render-plan, frame-graph, renderer-stats, and debug-overlay inspection
+   helpers. Lower runtime layers do not depend on it.
+9. Future framework-facing modules can add asset importers and tool-facing
+   rendering workflows above the lower layers without hiding them from
+   consumers.
 
 ## Repository Shape
 
@@ -40,7 +50,9 @@ directly. No ECS or scene abstraction required.
 ### Level 2 — Render module consumer
 Add `truffle_render`. Build `RenderBatch` objects directly from any data source
 (typed arrays, streaming buffers, or GPU-resident handles) and call
-`Renderer::render()`. Use `IFrameUploadRing` for CPU-to-GPU uploads.
+`Renderer::render()`. Use `IFrameUploadRing` for CPU-to-GPU uploads, or add
+`truffle_asset_render` when asset declarations should produce render layout
+plans before any backend work exists.
 
 ### Level 3 — Full framework consumer
 Add `truffle_ecs` and `truffle_scene`. Populate an ECS world and call
@@ -77,6 +89,13 @@ the per-instance stride. A `BindingModel` flag chooses Separate (SoA, default)
 or Interleaved (AoS). `InstanceLayout::hash()` keys pipeline cache lookup and
 future shader permutation selection.
 
+`truffle_asset_render` is the declarative bridge between `truffle_assets` and
+`truffle_render`. It validates material-required attributes, preserves declared
+binding/offset/stride metadata, and emits `RenderBatch` plans with null buffers.
+Dense or custom semantics such as position, confidence, classification,
+intensity, or velocity require explicit channel mappings; the bridge does not
+guess how low-level backends or shaders should interpret them.
+
 ## GPU Transform Hierarchy (Phase 5)
 
 Large hierarchies resolve world matrices on the GPU via a compute pass over
@@ -93,7 +112,28 @@ Current state:
 Truffle does not own native windowing, input policy, application lifetime, or
 the consumer simulation model. Consumers provide host loops and native surface
 boundaries, then choose whether to link low-level RHI modules, renderer modules,
-scene adapter modules, or future higher-level framework modules.
+scene adapter modules, asset declaration modules, diagnostics modules, or future
+higher-level framework modules.
+
+## Diagnostics Boundary
+
+Diagnostics and profiling helpers stay opt-in. `truffle_diagnostics` reads
+public asset and render contracts and produces snapshots, text reports, or
+combined diagnostics bundles when a consumer asks for them. It does not install
+global hooks, run background tracing, or become a dependency of `truffle_render`
+or `truffle_scene`. Dense workloads should be inspected at group level: catalog
+counts, stream byte ranges, batch counts, instance counts, binding byte ranges,
+layout channels, and frame-graph nodes rather than per-instance CPU scans.
+Asset catalog groups and tags let tools select domains such as lidar detections,
+radar tracks, static meshes, or debug overlays for focused summaries.
+Debug overlay declarations describe lines, boxes, points, labels, and pick
+targets as tool-facing metadata; Truffle does not install an overlay renderer or
+background debug subsystem for them.
+Names for batches, graph nodes, and resources are supplied through diagnostics
+inspection options so render objects do not need permanent debug fields.
+Frame-graph diagnostics also read explicit dependency edges and resource usage
+declarations through public `FrameGraph` inspection accessors. Optional budget
+checks turn summaries into findings only when consumers explicitly ask for them.
 
 ## Dependency Boundary
 
@@ -119,6 +159,19 @@ scope and active extension-backend work continuing in parallel:
 - `IPipelineReflection` contract validation now includes Direct3D path coverage.
 - `RendererFrameStats` provides per-frame diagnostics for compute/render node and
   batch execution, plus presentation tracking.
+- `truffle_assets` provides declarative asset, material-operation, and
+  geometry-stream descriptors plus backend-free material-to-mesh requirement
+  validation, catalog lookup, full-catalog validation reports, and metadata
+  stats snapshots, with optional group/tag descriptors for dense data domains.
+- `truffle_asset_render` provides metadata-only render batch planning from
+  asset catalog meshes and groups, preserving declared dense stream layouts while
+  leaving buffers, uploads, shader compilation, and backend interpretation to
+  later layers.
+- `truffle_diagnostics` provides opt-in render-batch, asset-render-plan,
+  frame-graph, and renderer stats summaries with external labels, dependency
+  edges, and resource usage declarations for tool-facing reports, plus
+  pull-based budget findings and group-filtered combined diagnostics bundles
+  with optional debug-overlay declaration summaries.
 - `truffle/core/version.hpp` defines public API version, compatibility policy,
   and deprecation-window semantics.
 - CI emits backend parity matrix artifacts for tracked backend contract and

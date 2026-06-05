@@ -1,0 +1,5 @@
+add_library(truffle_asset_render STATIC asset_render.cpp)
+target_link_libraries(truffle_asset_render PUBLIC truffle_assets truffle_render)
+truffle_configure_target(truffle_asset_render AssetRender)
+add_library(Truffle::AssetRender ALIAS truffle_asset_render)
+
