@@ -508,6 +508,17 @@ validation, diagnostics, and backend parity.
   - Expanded core and shared backend contract tests for valid stencil pipelines,
     invalid stencil ops/formats, valid stencil reference binding, and negative
     no-pass/depth-only reference rejection.
+- **Low-Level Graphics Foundation Slice 9Q** — Complete.
+  - Added backend-neutral descriptor footprint summaries for bind-group layouts
+    and bind groups, including binding count, total descriptor count,
+    dynamic-offset count, per-namespace descriptor counts, and native
+    buffer/texture/sampler slot spans.
+  - Added shared helper queries so higher layers can inspect descriptor pressure
+    and flattened native slot coverage directly from the public RHI contract.
+  - Kept backend implementations source-compatible by providing default footprint
+    queries derived from retained layout/group descriptors.
+  - Expanded core and shared backend contract tests for footprint counts, array
+    sizing, dynamic-offset cardinality, and namespace slot-span reporting.
 
 ## Relevant Decisions And Constraints
 
@@ -588,6 +599,10 @@ validation, diagnostics, and backend parity.
   plus a command-buffer stencil reference hook. Built-in backends reject stencil
   reference changes outside an active render pass with a stencil-capable depth
   attachment.
+- Bind-group layouts and bind groups now expose descriptor footprint summaries
+  derived from the public descriptor model. Higher layers can use these counts
+  and native slot spans to plan descriptor caches/arenas without backend-private
+  introspection.
 - The repository commits only the public doctrine snapshot. The maintainer's
   private Copilot overlay lives in `~/.copilot/copilot-instructions.md` on the
   local machine and must not be copied into repository history.
@@ -621,7 +636,8 @@ compute tests.
 
 1. Return to deeper backend-native descriptor allocation/mapping policy now that
    bind-group lifetime, native slots, depth-stencil attachments, and stencil
-   pipeline/reference state are all explicit at the public RHI layer.
+   pipeline/reference state are all explicit at the public RHI layer and
+   descriptor footprints are queryable.
 2. Continue expanding shared contract tests around descriptor caching/allocation
    policy so higher-level renderer work can reuse descriptors without inventing
    backend-specific policy.

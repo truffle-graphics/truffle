@@ -915,6 +915,95 @@ struct BindGroupDesc {
     std::vector<BindGroupEntry> entries;
 };
 
+struct NativeDescriptorSpan {
+    std::uint32_t firstSlot = 0;
+    std::uint32_t slotCount = 0;
+
+    [[nodiscard]] constexpr bool empty() const noexcept {
+        return slotCount == 0;
+    }
+};
+
+struct BindGroupDescriptorFootprint {
+    std::uint32_t bindingCount = 0;
+    std::uint32_t descriptorCount = 0;
+    std::uint32_t dynamicOffsetCount = 0;
+    std::uint32_t bufferDescriptorCount = 0;
+    std::uint32_t textureDescriptorCount = 0;
+    std::uint32_t samplerDescriptorCount = 0;
+    NativeDescriptorSpan bufferSlots;
+    NativeDescriptorSpan textureSlots;
+    NativeDescriptorSpan samplerSlots;
+};
+
+[[nodiscard]] constexpr bool binding_resource_type_is_buffer(
+    BindingResourceType type) noexcept {
+    return type == BindingResourceType::uniform_buffer ||
+           type == BindingResourceType::storage_buffer;
+}
+
+[[nodiscard]] constexpr bool binding_resource_type_is_texture(
+    BindingResourceType type) noexcept {
+    return type == BindingResourceType::sampled_texture ||
+           type == BindingResourceType::storage_texture;
+}
+
+[[nodiscard]] constexpr bool binding_resource_type_is_sampler(
+    BindingResourceType type) noexcept {
+    return type == BindingResourceType::sampler;
+}
+
+constexpr void include_native_descriptor_slots(
+    NativeDescriptorSpan& span,
+    std::uint32_t firstSlot,
+    std::uint32_t slotCount) noexcept {
+    if (slotCount == 0) {
+        return;
+    }
+    if (span.slotCount == 0) {
+        span.firstSlot = firstSlot;
+        span.slotCount = slotCount;
+        return;
+    }
+
+    const auto spanEnd = span.firstSlot + span.slotCount;
+    const auto slotEnd = firstSlot + slotCount;
+    const auto minSlot = span.firstSlot < firstSlot ? span.firstSlot : firstSlot;
+    const auto maxEnd = spanEnd > slotEnd ? spanEnd : slotEnd;
+    span.firstSlot = minSlot;
+    span.slotCount = maxEnd - minSlot;
+}
+
+[[nodiscard]] inline BindGroupDescriptorFootprint bind_group_descriptor_footprint(
+    const BindGroupLayoutDesc& desc) noexcept {
+    BindGroupDescriptorFootprint footprint;
+    footprint.bindingCount = static_cast<std::uint32_t>(desc.bindings.size());
+
+    for (const auto& binding : desc.bindings) {
+        footprint.descriptorCount += binding.arrayCount;
+        if (binding.dynamicOffset) {
+            footprint.dynamicOffsetCount += binding.arrayCount;
+        }
+
+        const auto firstSlot = binding.nativeSlot.value_or(binding.bindingIndex);
+        if (binding_resource_type_is_buffer(binding.type)) {
+            footprint.bufferDescriptorCount += binding.arrayCount;
+            include_native_descriptor_slots(
+                footprint.bufferSlots, firstSlot, binding.arrayCount);
+        } else if (binding_resource_type_is_texture(binding.type)) {
+            footprint.textureDescriptorCount += binding.arrayCount;
+            include_native_descriptor_slots(
+                footprint.textureSlots, firstSlot, binding.arrayCount);
+        } else if (binding_resource_type_is_sampler(binding.type)) {
+            footprint.samplerDescriptorCount += binding.arrayCount;
+            include_native_descriptor_slots(
+                footprint.samplerSlots, firstSlot, binding.arrayCount);
+        }
+    }
+
+    return footprint;
+}
+
 struct PipelineDesc {
     std::string       debugName;
     std::uint64_t     cacheKey       = 0;
@@ -1075,6 +1164,10 @@ public:
     [[nodiscard]] virtual std::uint64_t cache_key() const noexcept {
         return desc().cacheKey;
     }
+    [[nodiscard]] virtual BindGroupDescriptorFootprint descriptor_footprint()
+        const noexcept {
+        return bind_group_descriptor_footprint(desc());
+    }
 };
 
 class IBindGroup {
@@ -1093,6 +1186,11 @@ public:
     }
     [[nodiscard]] virtual std::uint32_t allocation_frame_index() const noexcept {
         return desc().allocationFrameIndex;
+    }
+    [[nodiscard]] virtual BindGroupDescriptorFootprint descriptor_footprint()
+        const noexcept {
+        return desc().layout ? bind_group_descriptor_footprint(desc().layout->desc())
+                             : BindGroupDescriptorFootprint{};
     }
 };
 

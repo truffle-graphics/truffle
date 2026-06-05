@@ -386,6 +386,53 @@ int main() {
     };
     TRUFFLE_CHECK(truffle::rhi::validation::pipeline_layout_valid(
         groupedPipelineLayout, capabilities));
+    const truffle::rhi::BindGroupLayoutDesc footprintLayout{
+        .bindings = {
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::uniform_buffer,
+                .visibility = truffle::rhi::ShaderStageFlags::vertex,
+                .arrayCount = 1,
+                .dynamicOffset = true,
+                .nativeSlot = 4,
+            },
+            {
+                .bindingIndex = 1,
+                .type = truffle::rhi::BindingResourceType::storage_buffer,
+                .visibility = truffle::rhi::ShaderStageFlags::compute,
+                .arrayCount = 2,
+                .dynamicOffset = true,
+                .nativeSlot = 5,
+            },
+            {
+                .bindingIndex = 2,
+                .type = truffle::rhi::BindingResourceType::sampled_texture,
+                .visibility = truffle::rhi::ShaderStageFlags::fragment,
+                .arrayCount = 2,
+                .nativeSlot = 7,
+            },
+            {
+                .bindingIndex = 3,
+                .type = truffle::rhi::BindingResourceType::sampler,
+                .visibility = truffle::rhi::ShaderStageFlags::fragment,
+                .nativeSlot = 3,
+            },
+        },
+    };
+    const auto footprint =
+        truffle::rhi::bind_group_descriptor_footprint(footprintLayout);
+    TRUFFLE_CHECK(footprint.bindingCount == 4);
+    TRUFFLE_CHECK(footprint.descriptorCount == 6);
+    TRUFFLE_CHECK(footprint.dynamicOffsetCount == 3);
+    TRUFFLE_CHECK(footprint.bufferDescriptorCount == 3);
+    TRUFFLE_CHECK(footprint.textureDescriptorCount == 2);
+    TRUFFLE_CHECK(footprint.samplerDescriptorCount == 1);
+    TRUFFLE_CHECK(footprint.bufferSlots.firstSlot == 4);
+    TRUFFLE_CHECK(footprint.bufferSlots.slotCount == 3);
+    TRUFFLE_CHECK(footprint.textureSlots.firstSlot == 7);
+    TRUFFLE_CHECK(footprint.textureSlots.slotCount == 2);
+    TRUFFLE_CHECK(footprint.samplerSlots.firstSlot == 3);
+    TRUFFLE_CHECK(footprint.samplerSlots.slotCount == 1);
     TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_layout_valid({
         .bindings = {{
             .bindingIndex = 0,

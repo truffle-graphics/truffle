@@ -152,7 +152,10 @@ scope and active extension-backend work continuing in parallel:
   can also specify explicit native descriptor slots for flattened backend binding
   models. Bind groups expose persistent/transient-frame allocation policy and
   layout/group cache keys so higher layers can choose descriptor reuse strategy
-  without inventing backend-specific side channels.
+  without inventing backend-specific side channels. Layouts and groups now also
+  expose descriptor footprint summaries (binding count, descriptor counts,
+  dynamic-offset count, and native buffer/texture/sampler slot spans) so higher
+  layers can size descriptor allocation/caching policies from the public RHI.
 - Buffers expose explicit CPU mapping hooks, including `mapped_data()` access for
   mapped-at-creation buffers. The low-level contract treats
   automatic/upload/readback buffer memory as CPU-mappable and rejects

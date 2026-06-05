@@ -1369,6 +1369,19 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
     });
     TRUFFLE_CHECK(bindGroupLayout.ok());
     TRUFFLE_CHECK(bindGroupLayout.value()->cache_key() == 0xB100u);
+    const auto layoutFootprint = bindGroupLayout.value()->descriptor_footprint();
+    TRUFFLE_CHECK(layoutFootprint.bindingCount == 3);
+    TRUFFLE_CHECK(layoutFootprint.descriptorCount == 3);
+    TRUFFLE_CHECK(layoutFootprint.dynamicOffsetCount == 0);
+    TRUFFLE_CHECK(layoutFootprint.bufferDescriptorCount == 1);
+    TRUFFLE_CHECK(layoutFootprint.textureDescriptorCount == 1);
+    TRUFFLE_CHECK(layoutFootprint.samplerDescriptorCount == 1);
+    TRUFFLE_CHECK(layoutFootprint.bufferSlots.firstSlot == 0);
+    TRUFFLE_CHECK(layoutFootprint.bufferSlots.slotCount == 1);
+    TRUFFLE_CHECK(layoutFootprint.textureSlots.firstSlot == 1);
+    TRUFFLE_CHECK(layoutFootprint.textureSlots.slotCount == 1);
+    TRUFFLE_CHECK(layoutFootprint.samplerSlots.firstSlot == 2);
+    TRUFFLE_CHECK(layoutFootprint.samplerSlots.slotCount == 1);
     auto validBindGroup = device.create_bind_group({
         .cacheKey = 0xB101u,
         .layout = bindGroupLayout.value().get(),
@@ -1395,6 +1408,16 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
     TRUFFLE_CHECK(validBindGroup.value()->allocation_policy() ==
                   truffle::rhi::BindGroupAllocationPolicy::persistent);
     TRUFFLE_CHECK(validBindGroup.value()->allocation_frame_index() == 0);
+    const auto bindGroupFootprint = validBindGroup.value()->descriptor_footprint();
+    TRUFFLE_CHECK(bindGroupFootprint.bindingCount == layoutFootprint.bindingCount);
+    TRUFFLE_CHECK(bindGroupFootprint.descriptorCount ==
+                  layoutFootprint.descriptorCount);
+    TRUFFLE_CHECK(bindGroupFootprint.bufferSlots.firstSlot ==
+                  layoutFootprint.bufferSlots.firstSlot);
+    TRUFFLE_CHECK(bindGroupFootprint.textureSlots.firstSlot ==
+                  layoutFootprint.textureSlots.firstSlot);
+    TRUFFLE_CHECK(bindGroupFootprint.samplerSlots.firstSlot ==
+                  layoutFootprint.samplerSlots.firstSlot);
     const auto transientFrameIndex =
         caps.maxFramesInFlight > 1 ? 1u : 0u;
     auto transientBindGroup = device.create_bind_group({
