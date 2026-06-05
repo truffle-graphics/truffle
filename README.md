@@ -28,6 +28,8 @@ with backend-neutral APIs and contract-tested backend modules:
 - `truffle_assets` defines declarative asset, material-operation, texture,
   geometry stream, and group/tag metadata without owning file loading or GPU
   upload.
+- `truffle_asset_render` turns declared asset streams into metadata-only render
+  layout and batch plans without owning buffers, uploads, shaders, or backends.
 - `truffle_ecs` provides a general-purpose ECS world.
 - `truffle_rhi` defines backend-neutral GPU and presentation contracts.
 - `truffle_backend_null` validates RHI flow without a GPU dependency.
@@ -74,9 +76,10 @@ find_package(Truffle CONFIG REQUIRED)
 target_link_libraries(my_tool PRIVATE Truffle::RHI Truffle::Render)
 ```
 
-The package exports `Truffle::Core`, `Truffle::Assets`, `Truffle::ECS`,
-`Truffle::RHI`, `Truffle::BackendNull`, `Truffle::Render`,
-`Truffle::Scene`, and `Truffle::Diagnostics`. Additional backend exports
+The package exports `Truffle::Core`, `Truffle::Assets`,
+`Truffle::AssetRender`, `Truffle::ECS`, `Truffle::RHI`,
+`Truffle::BackendNull`, `Truffle::Render`, `Truffle::Scene`, and
+`Truffle::Diagnostics`. Additional backend exports
 (`Truffle::BackendMetal`, `Truffle::BackendVulkan`, `Truffle::BackendOpenGL`,
 `Truffle::BackendDirect3D`) are available when their corresponding CMake
 options are enabled.

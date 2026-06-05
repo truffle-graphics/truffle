@@ -16,6 +16,9 @@ Current baseline:
 - Declarative asset, material-operation, geometry-stream, and group/tag
   descriptors for higher-level consumers that need metadata before GPU upload or
   backend-specific loading exists.
+- Metadata-only asset-to-render planning that maps declared streams into
+  `RenderBatch` layouts without allocating buffers, compiling shaders, or
+  depending on a backend.
 - Opt-in diagnostics helpers for asset catalogs, render batches, frame graphs,
   renderer stats, and debug overlay declarations, including bundle reports and
   external labels, without making debug/profiling code a runtime dependency.

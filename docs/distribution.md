@@ -56,8 +56,9 @@ This verifies:
 ## Backend Packaging Notes
 
 - `Truffle::BackendNull` is the baseline exported backend.
-- `Truffle::Assets` and `Truffle::Diagnostics` are exported high-level opt-in
-  targets. Consumers link them only when they need asset declarations or
+- `Truffle::Assets`, `Truffle::AssetRender`, and `Truffle::Diagnostics` are
+  exported high-level opt-in targets. Consumers link them only when they need
+  asset declarations, metadata-only asset-to-render planning, or
   diagnostics/tooling helpers. Diagnostics links assets so bundle reports can
   include catalog metadata without making render or scene depend on diagnostics.
 - `Truffle::BackendMetal`, `Truffle::BackendVulkan`, and

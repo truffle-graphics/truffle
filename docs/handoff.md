@@ -144,10 +144,14 @@ contract-backend extension work.
   - Added `truffle_dense_diagnostics_example`, a backend-free dense-data
     diagnostics smoke example for lidar/radar-style groups, render-batch
     summaries, and debug overlays.
+  - Added `truffle_asset_render` / `Truffle::AssetRender` for metadata-only
+    asset-to-render batch planning from declared mesh, material, stream, and
+    group metadata.
   - Kept diagnostics separate from render and scene runtime dependencies; normal
     consumers only link the diagnostics target when they want inspection helpers.
-  - Added `truffle_assets_tests` and `truffle_diagnostics_tests`, and extended
-    the package consumer smoke check to link the new exported targets.
+  - Added `truffle_assets_tests`, `truffle_asset_render_tests`, and
+    `truffle_diagnostics_tests`, and extended the package consumer smoke check to
+    link the new exported targets.
 - **Direct3D Extension Track** — In Progress.
   - Added `truffle_backend_direct3d` contract backend module and public factory
     entry point (`create_direct3d_backend`).
@@ -168,6 +172,11 @@ contract-backend extension work.
   only; validation reports and stats snapshots collect metadata issues and
   grouped counts without side effects. Groups/tags are catalog metadata only:
   they do not imply loading, upload, or per-element iteration.
+- `truffle_asset_render` consumes asset declarations and render contracts only.
+  It emits `RenderBatch` layout plans with null buffers, validates
+  material-required attributes, preserves declared binding/offset/stride
+  metadata, and requires explicit channel mappings for dense/custom semantics
+  that do not have native render channels.
 - `truffle_diagnostics` is strict opt-in tooling: no global tracing, no
   background logger, and no dependency from `truffle_render` or `truffle_scene`
   back into diagnostics. Tool-facing labels are passed as diagnostics options
@@ -186,19 +195,19 @@ Verified on macOS Apple Silicon (`agents/high-level-abstraction-layers`):
 ```sh
 cmake --preset dev
 cmake --build --preset dev
-ctest --preset dev --output-on-failure   # 23/23
+ctest --preset dev --output-on-failure   # 24/24
 cmake --build --preset dev --target truffle_format_check
 # clang-format was not installed; target reported the missing optional tool.
 ```
 
-23 tests: 3 host workspace smoke, dense diagnostics smoke, ECS, asset
+24 tests: 3 host workspace smoke, dense diagnostics smoke, ECS, asset
 declarations, null RHI (+ indexed draw + reflection contract check), render
-flow, advanced render flow, render batch, frame graph dependency, diagnostics,
-frame ring, scene adapter, Metal backend (+ indexed draw + compute + reflection
-checks), Vulkan milestone 0-4 tests, OpenGL backend tests, Direct3D backend
-tests, shared RHI contract tests (null + Vulkan + OpenGL + Direct3D + optional
-Metal), API version tests, performance sanity tests, package consumer, and
-transform compute tests.
+flow, advanced render flow, render batch, asset render planning, frame graph
+dependency, diagnostics, frame ring, scene adapter, Metal backend (+ indexed
+draw + compute + reflection checks), Vulkan milestone 0-4 tests, OpenGL backend
+tests, Direct3D backend tests, shared RHI contract tests (null + Vulkan + OpenGL
++ Direct3D + optional Metal), API version tests, performance sanity tests,
+package consumer, and transform compute tests.
 
 ## Next Resume Steps
 
@@ -215,8 +224,9 @@ transform compute tests.
 
 - Advanced parity between production backends remains constrained by
   backend-specific shader compilation models.
-- Asset/material declarations currently describe intent only; no importer,
-  upload planner, or shader compiler consumes them yet.
+- Asset/material declarations currently describe intent only; layout planning can
+  consume them, but no importer, upload planner, or shader compiler consumes
+  them yet.
 - Diagnostics currently inspect public CPU-side contracts only; backend timing,
   overlays, and picking require future explicit extension surfaces.
 - Direct3D extension currently provides contract semantics only; native API

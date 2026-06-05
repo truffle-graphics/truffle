@@ -10,6 +10,7 @@ target_link_libraries(
     PRIVATE
         Truffle::Core
         Truffle::Assets
+        Truffle::AssetRender
         Truffle::ECS
         Truffle::RHI
         Truffle::BackendNull

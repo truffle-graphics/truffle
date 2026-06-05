@@ -14,18 +14,21 @@ Truffle is one product with modules that stay linkable at different levels:
 4. Rendering modules such as `truffle_render` expose `RenderBatch`,
    `InstanceLayout`, `Renderer`, and the `IPipelineCache` interface. This layer
    has zero compile-time dependency on `truffle_ecs`.
-5. The optional `truffle_scene` module bridges ECS worlds into render batches.
+5. `truffle_assets` defines declarative asset, material-operation, texture,
+   geometry stream, and group/tag metadata. It does not load files, own GPU
+   uploads, or depend on a backend.
+6. `truffle_asset_render` maps declared asset streams into metadata-only render
+   layout and batch plans. It does not allocate buffers, upload data, compile
+   shaders, or own backend state.
+7. The optional `truffle_scene` module bridges ECS worlds into render batches.
    It depends on both `truffle_ecs` and `truffle_render` and provides
    `SceneAdapter`, which extracts a `SceneFrame` containing camera state, light
    state, and a vector of `RenderBatch` objects written through
    `IFrameUploadRing`.
-6. `truffle_assets` defines declarative asset, material-operation, texture,
-   geometry stream, and group/tag metadata. It does not load files, own GPU
-   uploads, or depend on a backend.
-7. `truffle_diagnostics` provides opt-in, pull-based asset, render,
+8. `truffle_diagnostics` provides opt-in, pull-based asset, render,
    frame-graph, renderer-stats, and debug-overlay inspection helpers. Lower
    runtime layers do not depend on it.
-8. Future framework-facing modules can add asset importers and tool-facing
+9. Future framework-facing modules can add asset importers and tool-facing
    rendering workflows above the lower layers without hiding them from
    consumers.
 
@@ -47,7 +50,9 @@ directly. No ECS or scene abstraction required.
 ### Level 2 — Render module consumer
 Add `truffle_render`. Build `RenderBatch` objects directly from any data source
 (typed arrays, streaming buffers, or GPU-resident handles) and call
-`Renderer::render()`. Use `IFrameUploadRing` for CPU-to-GPU uploads.
+`Renderer::render()`. Use `IFrameUploadRing` for CPU-to-GPU uploads, or add
+`truffle_asset_render` when asset declarations should produce render layout
+plans before any backend work exists.
 
 ### Level 3 — Full framework consumer
 Add `truffle_ecs` and `truffle_scene`. Populate an ECS world and call
@@ -83,6 +88,13 @@ plus resource usage declarations that inject implicit read/write hazard edges.
 the per-instance stride. A `BindingModel` flag chooses Separate (SoA, default)
 or Interleaved (AoS). `InstanceLayout::hash()` keys pipeline cache lookup and
 future shader permutation selection.
+
+`truffle_asset_render` is the declarative bridge between `truffle_assets` and
+`truffle_render`. It validates material-required attributes, preserves declared
+binding/offset/stride metadata, and emits `RenderBatch` plans with null buffers.
+Dense or custom semantics such as position, confidence, classification,
+intensity, or velocity require explicit channel mappings; the bridge does not
+guess how low-level backends or shaders should interpret them.
 
 ## GPU Transform Hierarchy (Phase 5)
 
@@ -151,6 +163,10 @@ scope and active extension-backend work continuing in parallel:
   geometry-stream descriptors plus backend-free material-to-mesh requirement
   validation, catalog lookup, full-catalog validation reports, and metadata
   stats snapshots, with optional group/tag descriptors for dense data domains.
+- `truffle_asset_render` provides metadata-only render batch planning from
+  asset catalog meshes and groups, preserving declared dense stream layouts while
+  leaving buffers, uploads, shader compilation, and backend interpretation to
+  later layers.
 - `truffle_diagnostics` provides opt-in render-batch, frame-graph, and renderer
   stats summaries with external labels, dependency edges, and resource usage
   declarations for tool-facing reports, plus pull-based budget findings and

@@ -1,5 +1,5 @@
+#include "truffle/asset_render/asset_render.hpp"
 #include "truffle/diagnostics/diagnostics.hpp"
-#include "truffle/rhi/rhi.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -8,19 +8,6 @@
 #include <utility>
 
 namespace {
-
-class ExampleBuffer final : public truffle::rhi::IBuffer {
-public:
-    explicit ExampleBuffer(truffle::rhi::BufferDesc desc)
-        : desc_(std::move(desc)) {}
-
-    [[nodiscard]] const truffle::rhi::BufferDesc& desc() const noexcept override {
-        return desc_;
-    }
-
-private:
-    truffle::rhi::BufferDesc desc_;
-};
 
 truffle::assets::GeometryStreamDesc make_dense_stream(
     truffle::assets::AssetId id,
@@ -123,34 +110,25 @@ int run_example(bool smoke) {
     if (!catalog.add_group(lidarGroup).ok()) return 6;
     if (!catalog.add_group(radarGroup).ok()) return 7;
 
-    ExampleBuffer lidarBuffer{{
-        .size = lidarStream.byteSize,
-        .usage = rhi::BufferUsage::vertex,
-        .debugName = "lidar-instance-buffer",
-    }};
-
-    render::RenderBatch lidarBatch;
-    lidarBatch.instanceCount = lidarStream.elementCount;
-    lidarBatch.vertexCount = 1;
-    lidarBatch.material = 10;
-    lidarBatch.layout.bindingModel = render::BindingModel::Interleaved;
-    lidarBatch.layout.channels.push_back({
-        .kind = render::ChannelKind::Transform,
-        .binding = 0,
-        .offset = 0,
-        .stride = 32,
-    });
-    lidarBatch.layout.channels.push_back({
-        .kind = render::ChannelKind::CustomFloat4,
-        .binding = 0,
-        .offset = 12,
-        .stride = 32,
-    });
-    lidarBatch.bindings[0] = {
-        .buffer = &lidarBuffer,
-        .offset = 0,
-        .size = lidarStream.byteSize,
+    asset_render::RenderBatchPlanOptions renderPlanOptions;
+    renderPlanOptions.bindingModel = render::BindingModel::Interleaved;
+    renderPlanOptions.channelMappings = {
+        {assets::AttributeSemantic::Position,
+         render::ChannelKind::CustomFloat4},
+        {assets::AttributeSemantic::Confidence,
+         render::ChannelKind::CustomFloat4},
+        {assets::AttributeSemantic::Classification,
+         render::ChannelKind::CustomFloat4},
     };
+    auto lidarPlanResult = asset_render::plan_catalog_render_batch(
+        catalog, lidarMesh.id, renderPlanOptions);
+    if (!lidarPlanResult.ok()) return 8;
+    const auto& lidarPlan = lidarPlanResult.value();
+    if (lidarPlan.bindings.size() != 1 ||
+        lidarPlan.bindings.front().byteSize != lidarStream.byteSize) {
+        return 9;
+    }
+    const auto& lidarBatch = lidarPlan.batch;
 
     diagnostics::DebugOverlayLayer overlay;
     overlay.name = "dense-sensor-overlay";
@@ -200,25 +178,25 @@ int run_example(bool smoke) {
     options.renderBatchBudget.maxInstances = 2'000'000;
 
     auto bundleResult = diagnostics::collect_diagnostics_bundle(options);
-    if (!bundleResult.ok()) return 8;
+    if (!bundleResult.ok()) return 10;
 
     const auto& bundle = bundleResult.value();
     if (!bundle.hasAssetCatalog || bundle.assetCatalog.groups.size() != 1) {
-        return 9;
+        return 11;
     }
     if (bundle.assetCatalog.groups.front().stats.totalGeometryBytes !=
         lidarStream.byteSize) {
-        return 10;
+        return 12;
     }
     if (bundle.renderBatches.size() != 1 ||
         bundle.renderBatches.front().instanceCount != lidarStream.elementCount) {
-        return 11;
+        return 13;
     }
     if (!bundle.hasDebugOverlay || bundle.debugOverlay.primitiveCount != 3) {
-        return 12;
+        return 14;
     }
     if (!bundle.findings.empty()) {
-        return 13;
+        return 15;
     }
 
     if (!smoke) {
