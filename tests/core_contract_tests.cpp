@@ -164,6 +164,7 @@ int main() {
     capabilities.queues = {.graphics = true, .compute = true};
     capabilities.limits.maxTextureDimension2D = 64;
     capabilities.limits.maxDescriptorArrayElements = 4;
+    capabilities.limits.maxSamplerAnisotropy = 8;
     capabilities.features.descriptorArrays = true;
     capabilities.memoryHeaps = {{
         .kind = truffle::rhi::MemoryHeapKind::unified,
@@ -232,6 +233,46 @@ int main() {
         capabilities, truffle::rhi::ShaderByteFormat::contract));
     TRUFFLE_CHECK(!truffle::rhi::supports_shader_byte_format(
         capabilities, truffle::rhi::ShaderByteFormat::msl_source));
+    truffle::rhi::SamplerDesc legacyNearestSampler;
+    legacyNearestSampler.linear_filtering = false;
+    TRUFFLE_CHECK(truffle::rhi::effective_min_filter(legacyNearestSampler) ==
+                  truffle::rhi::SamplerFilter::nearest);
+    TRUFFLE_CHECK(truffle::rhi::effective_mag_filter(legacyNearestSampler) ==
+                  truffle::rhi::SamplerFilter::nearest);
+    TRUFFLE_CHECK(truffle::rhi::effective_mipmap_mode(legacyNearestSampler) ==
+                  truffle::rhi::SamplerMipmapMode::nearest);
+    TRUFFLE_CHECK(truffle::rhi::validation::sampler_desc_valid(
+        legacyNearestSampler, capabilities));
+    TRUFFLE_CHECK(truffle::rhi::validation::sampler_desc_valid({
+        .minFilter = truffle::rhi::SamplerFilter::nearest,
+        .magFilter = truffle::rhi::SamplerFilter::linear,
+        .mipmapMode = truffle::rhi::SamplerMipmapMode::nearest,
+        .addressModeU = truffle::rhi::SamplerAddressMode::repeat,
+        .addressModeV = truffle::rhi::SamplerAddressMode::mirrored_repeat,
+        .addressModeW = truffle::rhi::SamplerAddressMode::clamp_to_border,
+        .minLod = 0.0f,
+        .maxLod = 4.0f,
+        .maxAnisotropy = 8,
+        .compareEnabled = true,
+        .compareOp = truffle::rhi::SamplerCompareOp::less_equal,
+        .borderColor = truffle::rhi::SamplerBorderColor::opaque_white,
+    }, capabilities));
+    TRUFFLE_CHECK(!truffle::rhi::validation::sampler_desc_valid({
+        .maxAnisotropy = 0,
+    }, capabilities));
+    TRUFFLE_CHECK(!truffle::rhi::validation::sampler_desc_valid({
+        .maxAnisotropy = 9,
+    }, capabilities));
+    TRUFFLE_CHECK(!truffle::rhi::validation::sampler_desc_valid({
+        .minLod = 2.0f,
+        .maxLod = 1.0f,
+    }, capabilities));
+    TRUFFLE_CHECK(!truffle::rhi::validation::sampler_desc_valid({
+        .minFilter = static_cast<truffle::rhi::SamplerFilter>(99),
+    }, capabilities));
+    TRUFFLE_CHECK(!truffle::rhi::validation::sampler_desc_valid({
+        .addressModeU = static_cast<truffle::rhi::SamplerAddressMode>(99),
+    }, capabilities));
     TRUFFLE_CHECK(truffle::rhi::validation::shader_desc_supported({
         .stage = truffle::rhi::ShaderStage::vertex,
         .byteFormat = truffle::rhi::ShaderByteFormat::contract,

@@ -331,6 +331,21 @@ validation, diagnostics, and backend parity.
     directory and validates the executable path.
   - Updated CI/release parity artifact uploads and distribution/architecture docs
     to include the live RHI parity JSON alongside the test-status matrix.
+- **Low-Level Graphics Foundation Slice 9E** — Complete.
+  - Expanded `SamplerDesc` with explicit min/mag/mipmap filters, address modes,
+    LOD clamps, anisotropy, compare function, border color, and debug name while
+    preserving the legacy `linear_filtering` compatibility path.
+  - Added sampler descriptor retention through `ISampler::desc()` and
+    backend-neutral validation for invalid enum values, LOD ranges, and
+    advertised anisotropy limits.
+  - Wired null, Metal, Vulkan, OpenGL, and Direct3D sampler creation to reject
+    invalid descriptors, record sampler debug names in diagnostics, and report
+    `maxSamplerAnisotropy` through capabilities/parity reports.
+  - Mapped the richer sampler descriptor to native Metal sampler state; Metal
+    explicitly rejects non-zero LOD bias until that backend can honor it.
+  - Expanded core and shared backend contract tests for valid rich samplers,
+    legacy nearest filtering, descriptor retention, invalid LODs, and
+    anisotropy-limit rejection.
 
 ## Relevant Decisions And Constraints
 
@@ -368,6 +383,9 @@ validation, diagnostics, and backend parity.
   the compatibility path for single-resource bindings.
 - `parity-matrix.json` is the CI test-status matrix; `rhi-parity-report.json`
   is the live RHI capability/parity summary generated from backend contracts.
+- Sampler descriptors are now explicit RHI state. Higher layers should set
+  filter/address/LOD/compare fields directly and use `linear_filtering` only for
+  legacy compatibility.
 - The repository commits only the public doctrine snapshot. The maintainer's
   private Copilot overlay lives in `~/.copilot/copilot-instructions.md` on the
   local machine and must not be copied into repository history.
@@ -396,8 +414,8 @@ compute tests.
 
 ## Next Resume Steps
 
-1. Continue backend-native depth work, starting with stricter sampler descriptor
-   validation once `SamplerDesc` grows beyond its placeholder shape.
+1. Continue backend-native depth work; likely next low-level gaps are native
+   descriptor allocation/mapping depth or richer pipeline/render-state coverage.
 
 ## Open Questions Or Risks
 

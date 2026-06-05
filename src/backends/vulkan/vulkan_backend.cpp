@@ -42,6 +42,7 @@ using core::StatusCode;
             .minStorageBufferOffsetAlignment = 16,
             .maxColorAttachments = 8,
             .maxVertexBuffers = 16,
+            .maxSamplerAnisotropy = 16,
         },
         .formats = {
             {.format = TextureFormat::rgba8_unorm,
@@ -658,11 +659,15 @@ private:
 
 class VulkanSampler final : public ISampler {
 public:
-    VulkanSampler() = default;
+    explicit VulkanSampler(SamplerDesc desc) : desc_(std::move(desc)) {}
 
     [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
         return BackendKind::vulkan;
     }
+    [[nodiscard]] const SamplerDesc& desc() const noexcept override { return desc_; }
+
+private:
+    SamplerDesc desc_;
 };
 
 class VulkanShader final : public IShader {
@@ -981,13 +986,17 @@ public:
     }
     
     [[nodiscard]] core::Result<std::unique_ptr<ISampler>> create_sampler(
-        const SamplerDesc& /*desc*/) override {
+        const SamplerDesc& desc) override {
+        if (!validation::sampler_desc_valid(desc, caps_)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "sampler descriptor is invalid");
+        }
         if (diagnostics_) {
             ++diagnostics_->mutable_stats().samplersCreated;
         }
         record_backend_event(diagnostics_, BackendEventKind::resource_created,
-                             {}, "sampler created");
-        return std::unique_ptr<ISampler>(std::make_unique<VulkanSampler>());
+                             desc.debugName, "sampler created");
+        return std::unique_ptr<ISampler>(std::make_unique<VulkanSampler>(desc));
     }
 
     [[nodiscard]] core::Result<std::unique_ptr<IShader>> create_shader(

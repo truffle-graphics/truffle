@@ -42,6 +42,7 @@ using core::StatusCode;
             .minStorageBufferOffsetAlignment = 16,
             .maxColorAttachments = 8,
             .maxVertexBuffers = 16,
+            .maxSamplerAnisotropy = 16,
         },
         .formats = {
             {.format = TextureFormat::rgba8_unorm,
@@ -655,11 +656,15 @@ private:
 
 class OpenGLSampler final : public ISampler {
 public:
-    OpenGLSampler() = default;
+    explicit OpenGLSampler(SamplerDesc desc) : desc_(std::move(desc)) {}
 
     [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
         return BackendKind::opengl;
     }
+    [[nodiscard]] const SamplerDesc& desc() const noexcept override { return desc_; }
+
+private:
+    SamplerDesc desc_;
 };
 
 class OpenGLShader final : public IShader {
@@ -978,13 +983,17 @@ public:
     }
     
     [[nodiscard]] core::Result<std::unique_ptr<ISampler>> create_sampler(
-        const SamplerDesc& /*desc*/) override {
+        const SamplerDesc& desc) override {
+        if (!validation::sampler_desc_valid(desc, caps_)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "sampler descriptor is invalid");
+        }
         if (diagnostics_) {
             ++diagnostics_->mutable_stats().samplersCreated;
         }
         record_backend_event(diagnostics_, BackendEventKind::resource_created,
-                             {}, "sampler created");
-        return std::unique_ptr<ISampler>(std::make_unique<OpenGLSampler>());
+                             desc.debugName, "sampler created");
+        return std::unique_ptr<ISampler>(std::make_unique<OpenGLSampler>(desc));
     }
 
     [[nodiscard]] core::Result<std::unique_ptr<IShader>> create_shader(

@@ -116,6 +116,7 @@ int verify_capability_contract(const truffle::rhi::IBackend& backend,
     TRUFFLE_CHECK(caps.limits.maxColorAttachments >= 1);
     TRUFFLE_CHECK(caps.limits.maxVertexBuffers >= 1);
     TRUFFLE_CHECK(caps.limits.maxDescriptorArrayElements >= 1);
+    TRUFFLE_CHECK(caps.limits.maxSamplerAnisotropy >= 1);
     TRUFFLE_CHECK(truffle::rhi::supports_descriptor_arrays(caps) ==
                   (caps.features.descriptorArrays &&
                    caps.limits.maxDescriptorArrayElements > 1));
@@ -796,6 +797,8 @@ int verify_backend_diagnostics_contract(truffle::rhi::IBackend& backend) {
                   reportedCaps.limits.maxDescriptorArrayElements);
     TRUFFLE_CHECK(report.maxBindlessResources ==
                   reportedCaps.limits.maxBindlessResources);
+    TRUFFLE_CHECK(report.maxSamplerAnisotropy ==
+                  reportedCaps.limits.maxSamplerAnisotropy);
     TRUFFLE_CHECK(report.unifiedMemory == reportedCaps.features.unifiedMemory);
     TRUFFLE_CHECK(report.memoryHeapCount == reportedCaps.memoryHeaps.size());
     TRUFFLE_CHECK(report.memoryBudgetBytes ==
@@ -977,6 +980,54 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
     auto bindGroupSampler = device.create_sampler({});
     TRUFFLE_CHECK(bindGroupUniformBuffer.ok());
     TRUFFLE_CHECK(bindGroupSampler.ok());
+    TRUFFLE_CHECK(truffle::rhi::effective_min_filter(
+                      bindGroupSampler.value()->desc()) ==
+                  truffle::rhi::SamplerFilter::linear);
+    auto nearestSampler = device.create_sampler({
+        .linear_filtering = false,
+        .debugName = "contract_nearest_sampler",
+    });
+    TRUFFLE_CHECK(nearestSampler.ok());
+    TRUFFLE_CHECK(truffle::rhi::effective_min_filter(
+                      nearestSampler.value()->desc()) ==
+                  truffle::rhi::SamplerFilter::nearest);
+    auto richSampler = device.create_sampler({
+        .minFilter = truffle::rhi::SamplerFilter::nearest,
+        .magFilter = truffle::rhi::SamplerFilter::linear,
+        .mipmapMode = truffle::rhi::SamplerMipmapMode::nearest,
+        .addressModeU = truffle::rhi::SamplerAddressMode::repeat,
+        .addressModeV = truffle::rhi::SamplerAddressMode::mirrored_repeat,
+        .addressModeW = truffle::rhi::SamplerAddressMode::clamp_to_border,
+        .minLod = 0.0f,
+        .maxLod = 4.0f,
+        .maxAnisotropy = caps.limits.maxSamplerAnisotropy,
+        .compareEnabled = true,
+        .compareOp = truffle::rhi::SamplerCompareOp::less_equal,
+        .borderColor = truffle::rhi::SamplerBorderColor::opaque_white,
+        .debugName = "contract_rich_sampler",
+    });
+    TRUFFLE_CHECK(richSampler.ok());
+    TRUFFLE_CHECK(richSampler.value()->desc().maxAnisotropy ==
+                  caps.limits.maxSamplerAnisotropy);
+    auto zeroAnisotropySampler = device.create_sampler({
+        .maxAnisotropy = 0,
+    });
+    TRUFFLE_CHECK(!zeroAnisotropySampler.ok());
+    TRUFFLE_CHECK(zeroAnisotropySampler.status().code ==
+                  truffle::core::StatusCode::invalid_argument);
+    auto excessiveAnisotropySampler = device.create_sampler({
+        .maxAnisotropy = caps.limits.maxSamplerAnisotropy + 1,
+    });
+    TRUFFLE_CHECK(!excessiveAnisotropySampler.ok());
+    TRUFFLE_CHECK(excessiveAnisotropySampler.status().code ==
+                  truffle::core::StatusCode::invalid_argument);
+    auto invalidLodSampler = device.create_sampler({
+        .minLod = 2.0f,
+        .maxLod = 1.0f,
+    });
+    TRUFFLE_CHECK(!invalidLodSampler.ok());
+    TRUFFLE_CHECK(invalidLodSampler.status().code ==
+                  truffle::core::StatusCode::invalid_argument);
     auto bindGroupLayout = device.create_bind_group_layout({
         .debugName = "contract_negative_bind_group_layout",
         .bindings = {

@@ -43,6 +43,7 @@ using core::StatusCode;
             .maxVertexBuffers = 16,
             .maxDescriptorArrayElements = 16,
             .maxBindlessResources = 64,
+            .maxSamplerAnisotropy = 16,
         },
         .formats = {
             {.format = TextureFormat::rgba8_unorm,
@@ -138,9 +139,15 @@ private:
 
 class NullSampler final : public ISampler {
 public:
+    explicit NullSampler(SamplerDesc desc) : desc_(std::move(desc)) {}
+
     [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
         return BackendKind::null_backend;
     }
+    [[nodiscard]] const SamplerDesc& desc() const noexcept override { return desc_; }
+
+private:
+    SamplerDesc desc_;
 };
 
 class NullBindGroupLayout final : public IBindGroupLayout {
@@ -978,11 +985,15 @@ public:
     }
 
     [[nodiscard]] Result<std::unique_ptr<ISampler>>
-    create_sampler(const SamplerDesc&) override {
+    create_sampler(const SamplerDesc& desc) override {
+        if (!validation::sampler_desc_valid(desc, capabilities_)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "sampler descriptor is invalid");
+        }
         ++stats_->value.samplersCreated;
-        record_event(stats_, BackendEventKind::resource_created, {},
+        record_event(stats_, BackendEventKind::resource_created, desc.debugName,
                      "sampler created");
-        return std::unique_ptr<ISampler>(std::make_unique<NullSampler>());
+        return std::unique_ptr<ISampler>(std::make_unique<NullSampler>(desc));
     }
 
     [[nodiscard]] Result<std::unique_ptr<IShader>>

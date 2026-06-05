@@ -112,6 +112,7 @@ void append_report(std::ostream& out, const truffle::rhi::BackendParityReport& r
     append_uint(out, "maxDescriptorArrayElements",
                 report.maxDescriptorArrayElements);
     append_uint(out, "maxBindlessResources", report.maxBindlessResources);
+    append_uint(out, "maxSamplerAnisotropy", report.maxSamplerAnisotropy);
     append_uint(out, "formatCount", report.formatCount);
     append_uint(out, "shaderFormatCount", report.shaderFormatCount);
     append_uint(out, "memoryHeapCount", report.memoryHeapCount);

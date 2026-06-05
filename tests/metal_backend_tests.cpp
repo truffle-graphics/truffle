@@ -91,6 +91,12 @@ int main() {
 
     // --- Sampler ---
     TRUFFLE_CHECK(device->create_sampler({}).ok());
+    auto unsupportedLodBiasSampler = device->create_sampler({
+        .mipLodBias = 1.0f,
+    });
+    TRUFFLE_CHECK(!unsupportedLodBiasSampler.ok());
+    TRUFFLE_CHECK(unsupportedLodBiasSampler.status().code ==
+                  truffle::core::StatusCode::unsupported);
 
     // --- Shaders (MSL source as bytecode) ---
     auto vertResult = device->create_shader({

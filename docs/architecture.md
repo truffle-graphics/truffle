@@ -121,6 +121,9 @@ scope and active extension-backend work continuing in parallel:
   batch execution, plus presentation tracking.
 - `truffle/core/version.hpp` defines public API version, compatibility policy,
   and deprecation-window semantics.
+- Low-level sampler descriptors expose explicit filter, address, LOD,
+  anisotropy, compare, and border-color state while preserving the legacy
+  `linear_filtering` compatibility path.
 - CI emits backend parity matrix Markdown/JSON artifacts for tracked backend
   contract/reflection tests, plus a live `rhi-parity-report.json` generated
   from `BackendParityReport` capability summaries.

@@ -260,6 +260,40 @@ enum class BindingResourceType {
     sampler,
 };
 
+enum class SamplerFilter {
+    nearest,
+    linear,
+};
+
+enum class SamplerMipmapMode {
+    nearest,
+    linear,
+};
+
+enum class SamplerAddressMode {
+    repeat,
+    mirrored_repeat,
+    clamp_to_edge,
+    clamp_to_border,
+};
+
+enum class SamplerCompareOp {
+    never,
+    less,
+    equal,
+    less_equal,
+    greater,
+    not_equal,
+    greater_equal,
+    always,
+};
+
+enum class SamplerBorderColor {
+    transparent_black,
+    opaque_black,
+    opaque_white,
+};
+
 struct QueueCapabilities {
     bool graphics = false;
     bool compute  = false;
@@ -291,6 +325,7 @@ struct DeviceLimits {
     std::uint32_t maxResourceBindings = 64;
     std::uint32_t maxDescriptorArrayElements = 1;
     std::uint32_t maxBindlessResources = 0;
+    std::uint32_t maxSamplerAnisotropy = 1;
 };
 
 struct FormatSupport {
@@ -389,6 +424,7 @@ struct BackendParityReport {
     bool bindlessResources = false;
     std::uint32_t maxDescriptorArrayElements = 0;
     std::uint32_t maxBindlessResources = 0;
+    std::uint32_t maxSamplerAnisotropy = 0;
     bool unifiedMemory = false;
     std::size_t memoryHeapCount = 0;
     std::uint64_t memoryBudgetBytes = 0;
@@ -604,7 +640,40 @@ struct TextureBarrierDesc {
 
 struct SamplerDesc {
     bool linear_filtering = true;
+    std::optional<SamplerFilter> minFilter;
+    std::optional<SamplerFilter> magFilter;
+    std::optional<SamplerMipmapMode> mipmapMode;
+    SamplerAddressMode addressModeU = SamplerAddressMode::clamp_to_edge;
+    SamplerAddressMode addressModeV = SamplerAddressMode::clamp_to_edge;
+    SamplerAddressMode addressModeW = SamplerAddressMode::clamp_to_edge;
+    float mipLodBias = 0.0f;
+    float minLod = 0.0f;
+    float maxLod = 32.0f;
+    std::uint32_t maxAnisotropy = 1;
+    bool compareEnabled = false;
+    SamplerCompareOp compareOp = SamplerCompareOp::less_equal;
+    SamplerBorderColor borderColor = SamplerBorderColor::opaque_black;
+    std::string debugName;
 };
+
+[[nodiscard]] inline SamplerFilter effective_min_filter(
+    const SamplerDesc& desc) noexcept {
+    return desc.minFilter.value_or(desc.linear_filtering ? SamplerFilter::linear
+                                                         : SamplerFilter::nearest);
+}
+
+[[nodiscard]] inline SamplerFilter effective_mag_filter(
+    const SamplerDesc& desc) noexcept {
+    return desc.magFilter.value_or(desc.linear_filtering ? SamplerFilter::linear
+                                                         : SamplerFilter::nearest);
+}
+
+[[nodiscard]] inline SamplerMipmapMode effective_mipmap_mode(
+    const SamplerDesc& desc) noexcept {
+    return desc.mipmapMode.value_or(desc.linear_filtering
+                                        ? SamplerMipmapMode::linear
+                                        : SamplerMipmapMode::nearest);
+}
 
 struct ShaderDesc {
     ShaderStage            stage      = ShaderStage::vertex;
@@ -776,6 +845,10 @@ public:
     virtual ~ISampler() = default;
     [[nodiscard]] virtual std::optional<BackendKind> backend_kind() const noexcept {
         return std::nullopt;
+    }
+    [[nodiscard]] virtual const SamplerDesc& desc() const noexcept {
+        static const SamplerDesc defaultDesc{};
+        return defaultDesc;
     }
 };
 
@@ -1091,6 +1164,7 @@ public:
     report.maxResourceBindings = caps.limits.maxResourceBindings;
     report.maxDescriptorArrayElements = caps.limits.maxDescriptorArrayElements;
     report.maxBindlessResources = caps.limits.maxBindlessResources;
+    report.maxSamplerAnisotropy = caps.limits.maxSamplerAnisotropy;
     report.formatCount = caps.formats.size();
     report.shaderFormatCount = caps.shaderFormats.size();
     report.memoryHeapCount = caps.memoryHeaps.size();

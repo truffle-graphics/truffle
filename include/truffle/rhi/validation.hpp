@@ -2,6 +2,7 @@
 
 #include "truffle/rhi/rhi.hpp"
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -404,6 +405,83 @@ namespace truffle::rhi::validation {
            label.green >= 0.0f && label.green <= 1.0f &&
            label.blue >= 0.0f && label.blue <= 1.0f &&
            label.alpha >= 0.0f && label.alpha <= 1.0f;
+}
+
+[[nodiscard]] constexpr bool sampler_filter_valid(SamplerFilter filter) noexcept {
+    switch (filter) {
+    case SamplerFilter::nearest:
+    case SamplerFilter::linear:
+        return true;
+    }
+    return false;
+}
+
+[[nodiscard]] constexpr bool sampler_mipmap_mode_valid(
+    SamplerMipmapMode mode) noexcept {
+    switch (mode) {
+    case SamplerMipmapMode::nearest:
+    case SamplerMipmapMode::linear:
+        return true;
+    }
+    return false;
+}
+
+[[nodiscard]] constexpr bool sampler_address_mode_valid(
+    SamplerAddressMode mode) noexcept {
+    switch (mode) {
+    case SamplerAddressMode::repeat:
+    case SamplerAddressMode::mirrored_repeat:
+    case SamplerAddressMode::clamp_to_edge:
+    case SamplerAddressMode::clamp_to_border:
+        return true;
+    }
+    return false;
+}
+
+[[nodiscard]] constexpr bool sampler_compare_op_valid(
+    SamplerCompareOp op) noexcept {
+    switch (op) {
+    case SamplerCompareOp::never:
+    case SamplerCompareOp::less:
+    case SamplerCompareOp::equal:
+    case SamplerCompareOp::less_equal:
+    case SamplerCompareOp::greater:
+    case SamplerCompareOp::not_equal:
+    case SamplerCompareOp::greater_equal:
+    case SamplerCompareOp::always:
+        return true;
+    }
+    return false;
+}
+
+[[nodiscard]] constexpr bool sampler_border_color_valid(
+    SamplerBorderColor color) noexcept {
+    switch (color) {
+    case SamplerBorderColor::transparent_black:
+    case SamplerBorderColor::opaque_black:
+    case SamplerBorderColor::opaque_white:
+        return true;
+    }
+    return false;
+}
+
+[[nodiscard]] inline bool sampler_desc_valid(
+    const SamplerDesc& desc,
+    const Capabilities& capabilities) noexcept {
+    return (!desc.minFilter || sampler_filter_valid(*desc.minFilter)) &&
+           (!desc.magFilter || sampler_filter_valid(*desc.magFilter)) &&
+           (!desc.mipmapMode || sampler_mipmap_mode_valid(*desc.mipmapMode)) &&
+           sampler_address_mode_valid(desc.addressModeU) &&
+           sampler_address_mode_valid(desc.addressModeV) &&
+           sampler_address_mode_valid(desc.addressModeW) &&
+           sampler_compare_op_valid(desc.compareOp) &&
+           sampler_border_color_valid(desc.borderColor) &&
+           std::isfinite(desc.mipLodBias) &&
+           std::isfinite(desc.minLod) &&
+           std::isfinite(desc.maxLod) &&
+           desc.minLod <= desc.maxLod &&
+           desc.maxAnisotropy != 0 &&
+           desc.maxAnisotropy <= capabilities.limits.maxSamplerAnisotropy;
 }
 
 [[nodiscard]] inline bool bind_group_layout_valid(

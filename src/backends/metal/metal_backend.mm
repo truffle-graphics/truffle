@@ -57,6 +57,7 @@ using core::StatusCode;
         .minStorageBufferOffsetAlignment = 16,
         .maxColorAttachments = 8,
         .maxVertexBuffers = 31,
+        .maxSamplerAnisotropy = 16,
     };
     caps.formats = {
         {.format = TextureFormat::rgba8_unorm,
@@ -121,6 +122,68 @@ static MTLStoreAction to_mtl_store(StoreOp op) noexcept {
         case StoreOp::store:     return MTLStoreActionStore;
         case StoreOp::dont_care: return MTLStoreActionDontCare;
     }
+}
+
+[[nodiscard]] MTLSamplerMinMagFilter to_metal_filter(SamplerFilter filter) noexcept {
+    return filter == SamplerFilter::linear ? MTLSamplerMinMagFilterLinear
+                                           : MTLSamplerMinMagFilterNearest;
+}
+
+[[nodiscard]] MTLSamplerMipFilter to_metal_mipmap_mode(
+    SamplerMipmapMode mode) noexcept {
+    return mode == SamplerMipmapMode::linear ? MTLSamplerMipFilterLinear
+                                             : MTLSamplerMipFilterNearest;
+}
+
+[[nodiscard]] MTLSamplerAddressMode to_metal_address_mode(
+    SamplerAddressMode mode) noexcept {
+    switch (mode) {
+    case SamplerAddressMode::repeat:
+        return MTLSamplerAddressModeRepeat;
+    case SamplerAddressMode::mirrored_repeat:
+        return MTLSamplerAddressModeMirrorRepeat;
+    case SamplerAddressMode::clamp_to_edge:
+        return MTLSamplerAddressModeClampToEdge;
+    case SamplerAddressMode::clamp_to_border:
+        return MTLSamplerAddressModeClampToBorderColor;
+    }
+    return MTLSamplerAddressModeClampToEdge;
+}
+
+[[nodiscard]] MTLCompareFunction to_metal_compare_function(
+    SamplerCompareOp op) noexcept {
+    switch (op) {
+    case SamplerCompareOp::never:
+        return MTLCompareFunctionNever;
+    case SamplerCompareOp::less:
+        return MTLCompareFunctionLess;
+    case SamplerCompareOp::equal:
+        return MTLCompareFunctionEqual;
+    case SamplerCompareOp::less_equal:
+        return MTLCompareFunctionLessEqual;
+    case SamplerCompareOp::greater:
+        return MTLCompareFunctionGreater;
+    case SamplerCompareOp::not_equal:
+        return MTLCompareFunctionNotEqual;
+    case SamplerCompareOp::greater_equal:
+        return MTLCompareFunctionGreaterEqual;
+    case SamplerCompareOp::always:
+        return MTLCompareFunctionAlways;
+    }
+    return MTLCompareFunctionNever;
+}
+
+[[nodiscard]] MTLSamplerBorderColor to_metal_border_color(
+    SamplerBorderColor color) noexcept {
+    switch (color) {
+    case SamplerBorderColor::transparent_black:
+        return MTLSamplerBorderColorTransparentBlack;
+    case SamplerBorderColor::opaque_black:
+        return MTLSamplerBorderColorOpaqueBlack;
+    case SamplerBorderColor::opaque_white:
+        return MTLSamplerBorderColorOpaqueWhite;
+    }
+    return MTLSamplerBorderColorOpaqueBlack;
 }
 
 static MTLPrimitiveType to_mtl_primitive(PrimitiveTopology topo) noexcept {
@@ -213,20 +276,31 @@ private:
 
 class MetalSampler final : public ISampler {
 public:
-    MetalSampler(id<MTLDevice> device, const SamplerDesc& desc) {
+    MetalSampler(id<MTLDevice> device, SamplerDesc desc) : desc_(std::move(desc)) {
         auto* sd = [MTLSamplerDescriptor new];
-        const auto filter = desc.linear_filtering ? MTLSamplerMinMagFilterLinear
-                                                  : MTLSamplerMinMagFilterNearest;
-        sd.minFilter = filter;
-        sd.magFilter = filter;
+        sd.minFilter = to_metal_filter(effective_min_filter(desc_));
+        sd.magFilter = to_metal_filter(effective_mag_filter(desc_));
+        sd.mipFilter = to_metal_mipmap_mode(effective_mipmap_mode(desc_));
+        sd.sAddressMode = to_metal_address_mode(desc_.addressModeU);
+        sd.tAddressMode = to_metal_address_mode(desc_.addressModeV);
+        sd.rAddressMode = to_metal_address_mode(desc_.addressModeW);
+        sd.lodMinClamp = desc_.minLod;
+        sd.lodMaxClamp = desc_.maxLod;
+        sd.maxAnisotropy = desc_.maxAnisotropy;
+        sd.compareFunction = desc_.compareEnabled
+            ? to_metal_compare_function(desc_.compareOp)
+            : MTLCompareFunctionNever;
+        sd.borderColor = to_metal_border_color(desc_.borderColor);
         sampler_ = [device newSamplerStateWithDescriptor:sd];
     }
     std::optional<BackendKind> backend_kind() const noexcept override {
         return BackendKind::metal;
     }
+    const SamplerDesc& desc() const noexcept override { return desc_; }
     id<MTLSamplerState> native() const noexcept { return sampler_; }
 
 private:
+    SamplerDesc desc_;
     id<MTLSamplerState> sampler_ = nil;
 };
 
@@ -1562,13 +1636,26 @@ public:
     }
 
     Result<std::unique_ptr<ISampler>> create_sampler(const SamplerDesc& desc) override {
+        if (!validation::sampler_desc_valid(desc, caps_)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "sampler descriptor is invalid");
+        }
+        if (desc.mipLodBias != 0.0f) {
+            return Status::failure(
+                StatusCode::unsupported,
+                "Metal sampler LOD bias is not supported by this backend");
+        }
+        auto sampler = std::make_unique<MetalSampler>(device_, desc);
+        if (!static_cast<MetalSampler*>(sampler.get())->native()) {
+            return Status::failure(StatusCode::backend_error,
+                                   "failed to create Metal sampler");
+        }
         if (diagnostics_) {
             ++diagnostics_->mutable_stats().samplersCreated;
         }
         record_backend_event(diagnostics_, BackendEventKind::resource_created,
-                             {}, "sampler created");
-        return std::unique_ptr<ISampler>(
-            std::make_unique<MetalSampler>(device_, desc));
+                             desc.debugName, "sampler created");
+        return std::unique_ptr<ISampler>(std::move(sampler));
     }
 
     Result<std::unique_ptr<IShader>> create_shader(const ShaderDesc& desc) override {
