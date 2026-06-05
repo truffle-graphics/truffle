@@ -163,6 +163,8 @@ int main() {
     capabilities.maxFramesInFlight = 2;
     capabilities.queues = {.graphics = true, .compute = true};
     capabilities.limits.maxTextureDimension2D = 64;
+    capabilities.limits.maxDescriptorArrayElements = 4;
+    capabilities.features.descriptorArrays = true;
     capabilities.memoryHeaps = {{
         .kind = truffle::rhi::MemoryHeapKind::unified,
     }};
@@ -305,6 +307,94 @@ int main() {
             },
         },
     }, capabilities));
+    auto noDescriptorArrayCaps = capabilities;
+    noDescriptorArrayCaps.features.descriptorArrays = false;
+    noDescriptorArrayCaps.limits.maxDescriptorArrayElements = 1;
+    TRUFFLE_CHECK(!truffle::rhi::supports_descriptor_arrays(
+        noDescriptorArrayCaps));
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_layout_valid({
+        .bindings = {{
+            .bindingIndex = 0,
+            .type = truffle::rhi::BindingResourceType::sampled_texture,
+            .visibility = truffle::rhi::ShaderStageFlags::fragment,
+            .arrayCount = 2,
+        }},
+    }, noDescriptorArrayCaps));
+    TRUFFLE_CHECK(!truffle::rhi::supports_dynamic_resource_indexing(
+        capabilities));
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_layout_valid({
+        .bindings = {{
+            .bindingIndex = 0,
+            .type = truffle::rhi::BindingResourceType::sampled_texture,
+            .visibility = truffle::rhi::ShaderStageFlags::fragment,
+            .arrayCount = 2,
+            .dynamicIndexing = true,
+        }},
+    }, capabilities));
+    auto dynamicIndexingCaps = capabilities;
+    dynamicIndexingCaps.features.dynamicResourceIndexing = true;
+    TRUFFLE_CHECK(truffle::rhi::supports_dynamic_resource_indexing(
+        dynamicIndexingCaps));
+    TRUFFLE_CHECK(truffle::rhi::validation::pipeline_layout_valid({
+        .bindings = {{
+            .bindingIndex = 0,
+            .type = truffle::rhi::BindingResourceType::sampled_texture,
+            .visibility = truffle::rhi::ShaderStageFlags::fragment,
+            .arrayCount = 2,
+            .dynamicIndexing = true,
+        }},
+    }, dynamicIndexingCaps));
+    TRUFFLE_CHECK(!truffle::rhi::supports_bindless_resources(
+        dynamicIndexingCaps));
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_layout_valid({
+        .bindings = {{
+            .bindingIndex = 0,
+            .type = truffle::rhi::BindingResourceType::sampled_texture,
+            .visibility = truffle::rhi::ShaderStageFlags::fragment,
+            .arrayCount = 2,
+            .dynamicIndexing = true,
+            .bindless = true,
+        }},
+    }, dynamicIndexingCaps));
+    auto singleSlotBindlessCaps = dynamicIndexingCaps;
+    singleSlotBindlessCaps.features.bindlessResources = true;
+    singleSlotBindlessCaps.limits.maxBindlessResources = 1;
+    TRUFFLE_CHECK(!truffle::rhi::supports_bindless_resources(
+        singleSlotBindlessCaps));
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_layout_valid({
+        .bindings = {{
+            .bindingIndex = 0,
+            .type = truffle::rhi::BindingResourceType::sampled_texture,
+            .visibility = truffle::rhi::ShaderStageFlags::fragment,
+            .arrayCount = 1,
+            .dynamicIndexing = true,
+            .bindless = true,
+        }},
+    }, singleSlotBindlessCaps));
+    auto bindlessCaps = dynamicIndexingCaps;
+    bindlessCaps.features.bindlessResources = true;
+    bindlessCaps.limits.maxBindlessResources = 3;
+    TRUFFLE_CHECK(truffle::rhi::supports_bindless_resources(bindlessCaps));
+    TRUFFLE_CHECK(truffle::rhi::validation::pipeline_layout_valid({
+        .bindings = {{
+            .bindingIndex = 0,
+            .type = truffle::rhi::BindingResourceType::sampled_texture,
+            .visibility = truffle::rhi::ShaderStageFlags::fragment,
+            .arrayCount = 3,
+            .dynamicIndexing = true,
+            .bindless = true,
+        }},
+    }, bindlessCaps));
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_layout_valid({
+        .bindings = {{
+            .bindingIndex = 0,
+            .type = truffle::rhi::BindingResourceType::sampled_texture,
+            .visibility = truffle::rhi::ShaderStageFlags::fragment,
+            .arrayCount = 4,
+            .dynamicIndexing = true,
+            .bindless = true,
+        }},
+    }, bindlessCaps));
     TRUFFLE_CHECK(truffle::rhi::validation::pipeline_render_state_valid({
         .colorFormat = truffle::rhi::TextureFormat::rgba8_unorm,
         .depthTest = false,

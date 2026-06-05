@@ -121,7 +121,25 @@ namespace truffle::rhi::validation {
     const Capabilities& capabilities) noexcept {
     if (binding.bindingIndex >= capabilities.limits.maxResourceBindings ||
         binding.arrayCount == 0 ||
+        binding.arrayCount > capabilities.limits.maxDescriptorArrayElements ||
         !shader_stage_visibility_valid(binding.visibility)) {
+        return false;
+    }
+
+    if (binding.arrayCount > 1 && !supports_descriptor_arrays(capabilities)) {
+        return false;
+    }
+
+    if (binding.dynamicIndexing &&
+        (binding.arrayCount <= 1 ||
+         !supports_dynamic_resource_indexing(capabilities))) {
+        return false;
+    }
+
+    if (binding.bindless &&
+        (!binding.dynamicIndexing ||
+         !supports_bindless_resources(capabilities) ||
+         binding.arrayCount > capabilities.limits.maxBindlessResources)) {
         return false;
     }
 

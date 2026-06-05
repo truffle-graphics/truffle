@@ -115,6 +115,17 @@ int verify_capability_contract(const truffle::rhi::IBackend& backend,
     TRUFFLE_CHECK(caps.limits.minStorageBufferOffsetAlignment >= 1);
     TRUFFLE_CHECK(caps.limits.maxColorAttachments >= 1);
     TRUFFLE_CHECK(caps.limits.maxVertexBuffers >= 1);
+    TRUFFLE_CHECK(caps.limits.maxDescriptorArrayElements >= 1);
+    TRUFFLE_CHECK(truffle::rhi::supports_descriptor_arrays(caps) ==
+                  (caps.features.descriptorArrays &&
+                   caps.limits.maxDescriptorArrayElements > 1));
+    TRUFFLE_CHECK(truffle::rhi::supports_dynamic_resource_indexing(caps) ==
+                  (truffle::rhi::supports_descriptor_arrays(caps) &&
+                   caps.features.dynamicResourceIndexing));
+    TRUFFLE_CHECK(truffle::rhi::supports_bindless_resources(caps) ==
+                  (truffle::rhi::supports_dynamic_resource_indexing(caps) &&
+                   caps.features.bindlessResources &&
+                   caps.limits.maxBindlessResources > 0));
     TRUFFLE_CHECK(!caps.formats.empty());
     TRUFFLE_CHECK(!caps.memoryHeaps.empty());
     TRUFFLE_CHECK(truffle::rhi::supports_texture_format(
@@ -661,8 +672,18 @@ int verify_backend_diagnostics_contract(truffle::rhi::IBackend& backend) {
     TRUFFLE_CHECK(report.presentation == reportedCaps.features.presentation);
     TRUFFLE_CHECK(report.nativeSurface == reportedCaps.features.nativeSurface);
     TRUFFLE_CHECK(report.debugLabels == reportedCaps.features.debugLabels);
+    TRUFFLE_CHECK(report.descriptorArrays ==
+                  truffle::rhi::supports_descriptor_arrays(reportedCaps));
+    TRUFFLE_CHECK(report.dynamicResourceIndexing ==
+                  truffle::rhi::supports_dynamic_resource_indexing(reportedCaps));
+    TRUFFLE_CHECK(report.bindlessResources ==
+                  truffle::rhi::supports_bindless_resources(reportedCaps));
     TRUFFLE_CHECK(report.maxFramesInFlight >= 1);
     TRUFFLE_CHECK(report.maxResourceBindings > 0);
+    TRUFFLE_CHECK(report.maxDescriptorArrayElements ==
+                  reportedCaps.limits.maxDescriptorArrayElements);
+    TRUFFLE_CHECK(report.maxBindlessResources ==
+                  reportedCaps.limits.maxBindlessResources);
     TRUFFLE_CHECK(report.formatCount > 0);
     TRUFFLE_CHECK(report.shaderFormatCount > 0);
     TRUFFLE_CHECK(report.stats.devicesCreated == stats.devicesCreated);
@@ -788,6 +809,48 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
     TRUFFLE_CHECK(!badBindGroupLayout.ok());
     TRUFFLE_CHECK(badBindGroupLayout.status().code ==
                   truffle::core::StatusCode::invalid_argument);
+    if (!truffle::rhi::supports_descriptor_arrays(caps)) {
+        auto descriptorArrayLayout = device.create_bind_group_layout({
+            .bindings = {{
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::sampled_texture,
+                .visibility = truffle::rhi::ShaderStageFlags::fragment,
+                .arrayCount = 2,
+            }},
+        });
+        TRUFFLE_CHECK(!descriptorArrayLayout.ok());
+        TRUFFLE_CHECK(descriptorArrayLayout.status().code ==
+                      truffle::core::StatusCode::invalid_argument);
+    }
+    if (!truffle::rhi::supports_dynamic_resource_indexing(caps)) {
+        auto dynamicIndexingLayout = device.create_bind_group_layout({
+            .bindings = {{
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::sampled_texture,
+                .visibility = truffle::rhi::ShaderStageFlags::fragment,
+                .arrayCount = 2,
+                .dynamicIndexing = true,
+            }},
+        });
+        TRUFFLE_CHECK(!dynamicIndexingLayout.ok());
+        TRUFFLE_CHECK(dynamicIndexingLayout.status().code ==
+                      truffle::core::StatusCode::invalid_argument);
+    }
+    if (!truffle::rhi::supports_bindless_resources(caps)) {
+        auto bindlessLayout = device.create_bind_group_layout({
+            .bindings = {{
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::sampled_texture,
+                .visibility = truffle::rhi::ShaderStageFlags::fragment,
+                .arrayCount = 2,
+                .dynamicIndexing = true,
+                .bindless = true,
+            }},
+        });
+        TRUFFLE_CHECK(!bindlessLayout.ok());
+        TRUFFLE_CHECK(bindlessLayout.status().code ==
+                      truffle::core::StatusCode::invalid_argument);
+    }
 
     auto bindGroupUniformBuffer = device.create_buffer({
         .size = 64,

@@ -275,6 +275,9 @@ struct FeatureSupport {
     bool debugLabels     = false;
     bool validation      = false;
     bool unifiedMemory   = false;
+    bool descriptorArrays = false;
+    bool dynamicResourceIndexing = false;
+    bool bindlessResources = false;
 };
 
 struct DeviceLimits {
@@ -285,6 +288,8 @@ struct DeviceLimits {
     std::uint32_t maxColorAttachments = 1;
     std::uint32_t maxVertexBuffers = 1;
     std::uint32_t maxResourceBindings = 64;
+    std::uint32_t maxDescriptorArrayElements = 1;
+    std::uint32_t maxBindlessResources = 0;
 };
 
 struct FormatSupport {
@@ -378,6 +383,11 @@ struct BackendParityReport {
     std::size_t formatCount = 0;
     std::size_t shaderFormatCount = 0;
     BackendStats stats;
+    bool descriptorArrays = false;
+    bool dynamicResourceIndexing = false;
+    bool bindlessResources = false;
+    std::uint32_t maxDescriptorArrayElements = 0;
+    std::uint32_t maxBindlessResources = 0;
 };
 
 struct AdapterInfo {
@@ -452,6 +462,25 @@ struct AdapterInfo {
         }
     }
     return false;
+}
+
+[[nodiscard]] constexpr bool supports_descriptor_arrays(
+    const Capabilities& capabilities) noexcept {
+    return capabilities.features.descriptorArrays &&
+           capabilities.limits.maxDescriptorArrayElements > 1;
+}
+
+[[nodiscard]] constexpr bool supports_dynamic_resource_indexing(
+    const Capabilities& capabilities) noexcept {
+    return supports_descriptor_arrays(capabilities) &&
+           capabilities.features.dynamicResourceIndexing;
+}
+
+[[nodiscard]] constexpr bool supports_bindless_resources(
+    const Capabilities& capabilities) noexcept {
+    return supports_dynamic_resource_indexing(capabilities) &&
+           capabilities.features.bindlessResources &&
+           capabilities.limits.maxBindlessResources > 1;
 }
 
 [[nodiscard]] constexpr bool has_flag(BufferUsageFlags flags,
@@ -585,6 +614,8 @@ struct BindingLayoutDesc {
     ShaderStageFlags visibility = ShaderStageFlags::all;
     std::uint32_t arrayCount = 1;
     std::size_t minBindingSize = 0;
+    bool dynamicIndexing = false;
+    bool bindless = false;
 };
 
 struct PipelineLayoutDesc {
@@ -1020,8 +1051,13 @@ public:
     report.nativeSurface = caps.features.nativeSurface;
     report.shaderReflection = caps.features.shaderReflection;
     report.debugLabels = caps.features.debugLabels;
+    report.descriptorArrays = supports_descriptor_arrays(caps);
+    report.dynamicResourceIndexing = supports_dynamic_resource_indexing(caps);
+    report.bindlessResources = supports_bindless_resources(caps);
     report.maxFramesInFlight = caps.maxFramesInFlight;
     report.maxResourceBindings = caps.limits.maxResourceBindings;
+    report.maxDescriptorArrayElements = caps.limits.maxDescriptorArrayElements;
+    report.maxBindlessResources = caps.limits.maxBindlessResources;
     report.formatCount = caps.formats.size();
     report.shaderFormatCount = caps.shaderFormats.size();
     return report;

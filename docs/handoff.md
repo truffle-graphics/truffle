@@ -273,6 +273,16 @@ validation, diagnostics, and backend parity.
     `NullBackendStats` an alias of the shared `BackendStats` contract.
   - Expanded shared backend contract tests for stats growth, event ordering,
     feature parity reports, and `clear_diagnostics()` reset behavior.
+- **Low-Level Graphics Foundation Slice 8C** — Complete.
+  - Added explicit descriptor-array, dynamic-resource-indexing, and bindless
+    resource feature gates to RHI capabilities and parity reports.
+  - Added descriptor-array and bindless resource limits to device limits.
+  - Added per-binding `dynamicIndexing` and `bindless` opt-in flags.
+  - Hardened shared layout validation so descriptor arrays, dynamic indexing,
+    and bindless layouts are rejected unless advertised by capabilities and
+    within limits.
+  - Expanded core and shared backend contract tests for descriptor feature-gate
+    helpers, invalid layout rejection, and parity report consistency.
 
 ## Relevant Decisions And Constraints
 
@@ -292,6 +302,9 @@ validation, diagnostics, and backend parity.
 - Backend diagnostics are now a backend-neutral RHI contract. Backends expose
   clearable counters, recent ordered events, and capability parity reports while
   null keeps its stricter reference-backend stats API.
+- Descriptor arrays, dynamic resource indexing, and bindless resources are
+  explicit feature-gated RHI capabilities. Higher layers must check the parity
+  report/capability helpers before emitting indexed descriptor layouts.
 - The repository commits only the public doctrine snapshot. The maintainer's
   private Copilot overlay lives in `~/.copilot/copilot-instructions.md` on the
   local machine and must not be copied into repository history.
@@ -319,11 +332,11 @@ core contract tests, package consumer, and transform compute tests.
 
 ## Next Resume Steps
 
-1. Decide bindless and dynamic-resource-indexing capability flags before higher
-   renderer features rely on descriptor indexing policy.
-2. Add machine-readable parity report output alongside markdown/API summaries.
-3. Begin backend-by-backend native depth work while preserving the shared
+1. Add machine-readable parity report output alongside markdown/API summaries.
+2. Begin backend-by-backend native depth work while preserving the shared
    diagnostics/parity contract.
+3. Expand descriptor array bind-group resource population if a higher layer
+   needs actual array resources rather than only feature-gated layout contracts.
 
 ## Open Questions Or Risks
 
@@ -334,9 +347,9 @@ core contract tests, package consumer, and transform compute tests.
   integration remain open.
 - Native descriptor allocation/mapping depth remains backend-specific future
   work; the current bind group model is a validated contract layer.
-- Bindless and dynamic-resource-indexing feature gates remain deferred; they
-  should now build on the diagnostics/parity report surface rather than ad hoc
-  renderer assumptions.
+- Bindless and dynamic-resource-indexing are now feature-gated at the layout
+  contract level; actual descriptor-array resource population remains future
+  work before higher layers can use bindless descriptors end-to-end.
 - Local private Copilot overlay is configured only for this machine for now;
   any cloud/private overlay distribution model remains intentionally deferred.
 
