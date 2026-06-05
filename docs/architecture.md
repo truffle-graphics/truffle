@@ -113,6 +113,9 @@ counts, stream byte ranges, batch counts, instance counts, binding byte ranges,
 layout channels, and frame-graph nodes rather than per-instance CPU scans.
 Asset catalog groups and tags let tools select domains such as lidar detections,
 radar tracks, static meshes, or debug overlays for focused summaries.
+Debug overlay declarations describe lines, boxes, points, labels, and pick
+targets as tool-facing metadata; Truffle does not install an overlay renderer or
+background debug subsystem for them.
 Names for batches, graph nodes, and resources are supplied through diagnostics
 inspection options so render objects do not need permanent debug fields.
 Frame-graph diagnostics also read explicit dependency edges and resource usage
@@ -150,7 +153,8 @@ scope and active extension-backend work continuing in parallel:
 - `truffle_diagnostics` provides opt-in render-batch, frame-graph, and renderer
   stats summaries with external labels, dependency edges, and resource usage
   declarations for tool-facing reports, plus pull-based budget findings and
-  group-filtered combined diagnostics bundles.
+  group-filtered combined diagnostics bundles with optional debug-overlay
+  declaration summaries.
 - `truffle/core/version.hpp` defines public API version, compatibility policy,
   and deprecation-window semantics.
 - CI emits backend parity matrix artifacts for tracked backend contract and

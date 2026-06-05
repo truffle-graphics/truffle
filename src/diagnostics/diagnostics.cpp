@@ -1,5 +1,6 @@
 #include "truffle/diagnostics/diagnostics.hpp"
 
+#include <algorithm>
 #include <sstream>
 
 namespace truffle::diagnostics {
@@ -143,6 +144,22 @@ void append_unique_asset_id(std::vector<assets::AssetId>& ids,
     }
 }
 
+bool contains_string(const std::vector<std::string>& values,
+                     const std::string& value) noexcept {
+    return std::any_of(
+        values.begin(), values.end(),
+        [&value](const std::string& candidate) {
+            return candidate == value;
+        });
+}
+
+void append_unique_string(std::vector<std::string>& values,
+                          const std::string& value) {
+    if (!contains_string(values, value)) {
+        values.push_back(value);
+    }
+}
+
 std::vector<assets::AssetId> resolve_asset_group_ids(
     const assets::AssetCatalog& catalog,
     const AssetCatalogInspectionOptions& options) {
@@ -160,6 +177,52 @@ std::vector<assets::AssetId> resolve_asset_group_ids(
         ids = catalog.group_ids();
     }
     return ids;
+}
+
+bool matches_debug_overlay_filter(
+    const DebugOverlayMetadata& metadata,
+    const DebugOverlayInspectionOptions& options) {
+    const auto hasGroupFilter = !options.groupIds.empty();
+    const auto hasTagFilter = !options.tags.empty();
+    if (!hasGroupFilter && !hasTagFilter) {
+        return true;
+    }
+    if (hasGroupFilter && contains_asset_id(options.groupIds, metadata.group)) {
+        return true;
+    }
+    if (hasTagFilter) {
+        for (const auto& tag : metadata.tags) {
+            if (contains_string(options.tags, tag)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+void expand_bounds(DebugOverlayBounds& bounds, DebugVec3 point) noexcept {
+    if (!bounds.valid) {
+        bounds.valid = true;
+        bounds.min = point;
+        bounds.max = point;
+        return;
+    }
+    bounds.min.x = std::min(bounds.min.x, point.x);
+    bounds.min.y = std::min(bounds.min.y, point.y);
+    bounds.min.z = std::min(bounds.min.z, point.z);
+    bounds.max.x = std::max(bounds.max.x, point.x);
+    bounds.max.y = std::max(bounds.max.y, point.y);
+    bounds.max.z = std::max(bounds.max.z, point.z);
+}
+
+void record_debug_overlay_metadata(DebugOverlaySummary& summary,
+                                   const DebugOverlayMetadata& metadata) {
+    if (metadata.group.valid()) {
+        append_unique_asset_id(summary.groups, metadata.group);
+    }
+    for (const auto& tag : metadata.tags) {
+        append_unique_string(summary.tags, tag);
+    }
 }
 
 std::string find_node_label(const FrameGraphInspectionOptions& options,
@@ -381,6 +444,66 @@ RendererStatsSummary summarize_renderer_stats(
     };
 }
 
+DebugOverlaySummary summarize_debug_overlay(const DebugOverlayLayer& layer) {
+    return summarize_debug_overlay(layer, {});
+}
+
+DebugOverlaySummary summarize_debug_overlay(
+    const DebugOverlayLayer& layer,
+    const DebugOverlayInspectionOptions& options) {
+    DebugOverlaySummary summary;
+    summary.name = layer.name;
+
+    for (const auto& line : layer.lines) {
+        if (!matches_debug_overlay_filter(line.metadata, options)) {
+            continue;
+        }
+        ++summary.lineCount;
+        record_debug_overlay_metadata(summary, line.metadata);
+        expand_bounds(summary.bounds, line.begin);
+        expand_bounds(summary.bounds, line.end);
+    }
+    for (const auto& box : layer.boxes) {
+        if (!matches_debug_overlay_filter(box.metadata, options)) {
+            continue;
+        }
+        ++summary.boxCount;
+        record_debug_overlay_metadata(summary, box.metadata);
+        expand_bounds(summary.bounds, box.min);
+        expand_bounds(summary.bounds, box.max);
+    }
+    for (const auto& point : layer.points) {
+        if (!matches_debug_overlay_filter(point.metadata, options)) {
+            continue;
+        }
+        ++summary.pointCount;
+        record_debug_overlay_metadata(summary, point.metadata);
+        expand_bounds(summary.bounds, point.position);
+    }
+    for (const auto& label : layer.labels) {
+        if (!matches_debug_overlay_filter(label.metadata, options)) {
+            continue;
+        }
+        ++summary.labelCount;
+        record_debug_overlay_metadata(summary, label.metadata);
+        expand_bounds(summary.bounds, label.position);
+    }
+    for (const auto& target : layer.pickTargets) {
+        if (!matches_debug_overlay_filter(target.metadata, options)) {
+            continue;
+        }
+        ++summary.pickTargetCount;
+        record_debug_overlay_metadata(summary, target.metadata);
+        expand_bounds(summary.bounds, target.min);
+        expand_bounds(summary.bounds, target.max);
+    }
+
+    summary.primitiveCount =
+        summary.lineCount + summary.boxCount + summary.pointCount +
+        summary.labelCount + summary.pickTargetCount;
+    return summary;
+}
+
 std::vector<DiagnosticFinding> evaluate_render_batch_budget(
     const RenderBatchSummary& summary,
     const RenderBatchBudget& budget) {
@@ -488,6 +611,12 @@ core::Result<DiagnosticsBundle> collect_diagnostics_bundle(
     if (options.rendererStats != nullptr) {
         bundle.hasRendererStats = true;
         bundle.rendererStats = summarize_renderer_stats(*options.rendererStats);
+    }
+
+    if (options.debugOverlay != nullptr) {
+        bundle.hasDebugOverlay = true;
+        bundle.debugOverlay = summarize_debug_overlay(
+            *options.debugOverlay, options.debugOverlayOptions);
     }
 
     return bundle;
@@ -609,6 +738,36 @@ std::string format_renderer_stats_summary(
     return out.str();
 }
 
+std::string format_debug_overlay_summary(
+    const DebugOverlaySummary& summary) {
+    std::ostringstream out;
+    out << "DebugOverlay"
+        << " name=" << summary.name
+        << " primitives=" << summary.primitiveCount
+        << " lines=" << summary.lineCount
+        << " boxes=" << summary.boxCount
+        << " points=" << summary.pointCount
+        << " labels=" << summary.labelCount
+        << " pickTargets=" << summary.pickTargetCount
+        << " bounds=" << (summary.bounds.valid ? "true" : "false");
+    if (summary.bounds.valid) {
+        out << " min=(" << summary.bounds.min.x
+            << "," << summary.bounds.min.y
+            << "," << summary.bounds.min.z
+            << ") max=(" << summary.bounds.max.x
+            << "," << summary.bounds.max.y
+            << "," << summary.bounds.max.z
+            << ")";
+    }
+    for (const auto group : summary.groups) {
+        out << "\n  group " << group.value;
+    }
+    for (const auto& tag : summary.tags) {
+        out << "\n  tag " << tag;
+    }
+    return out.str();
+}
+
 std::string format_diagnostic_findings(
     const std::vector<DiagnosticFinding>& findings) {
     std::ostringstream out;
@@ -630,6 +789,7 @@ std::string format_diagnostics_bundle(const DiagnosticsBundle& bundle) {
         << " renderBatches=" << bundle.renderBatches.size()
         << " frameGraph=" << (bundle.hasFrameGraph ? "true" : "false")
         << " rendererStats=" << (bundle.hasRendererStats ? "true" : "false")
+        << " debugOverlay=" << (bundle.hasDebugOverlay ? "true" : "false")
         << " findings=" << bundle.findings.size();
 
     if (bundle.hasAssetCatalog) {
@@ -643,6 +803,9 @@ std::string format_diagnostics_bundle(const DiagnosticsBundle& bundle) {
     }
     if (bundle.hasRendererStats) {
         out << "\n" << format_renderer_stats_summary(bundle.rendererStats);
+    }
+    if (bundle.hasDebugOverlay) {
+        out << "\n" << format_debug_overlay_summary(bundle.debugOverlay);
     }
     if (!bundle.findings.empty()) {
         out << "\n" << format_diagnostic_findings(bundle.findings);

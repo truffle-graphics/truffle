@@ -123,6 +123,93 @@ struct DiagnosticFinding {
     std::uint64_t limit = 0;
 };
 
+struct DebugVec3 {
+    float x = 0.0F;
+    float y = 0.0F;
+    float z = 0.0F;
+};
+
+struct DebugColor {
+    float r = 1.0F;
+    float g = 1.0F;
+    float b = 1.0F;
+    float a = 1.0F;
+};
+
+struct DebugOverlayMetadata {
+    std::string name;
+    assets::AssetId group;
+    std::vector<std::string> tags;
+};
+
+struct DebugLineDesc {
+    DebugOverlayMetadata metadata;
+    DebugVec3 begin;
+    DebugVec3 end;
+    DebugColor color;
+};
+
+struct DebugBoxDesc {
+    DebugOverlayMetadata metadata;
+    DebugVec3 min;
+    DebugVec3 max;
+    DebugColor color;
+};
+
+struct DebugPointDesc {
+    DebugOverlayMetadata metadata;
+    DebugVec3 position;
+    float radius = 1.0F;
+    DebugColor color;
+};
+
+struct DebugLabelDesc {
+    DebugOverlayMetadata metadata;
+    DebugVec3 position;
+    std::string text;
+    DebugColor color;
+};
+
+struct DebugPickTargetDesc {
+    DebugOverlayMetadata metadata;
+    std::uint64_t targetId = 0;
+    DebugVec3 min;
+    DebugVec3 max;
+};
+
+struct DebugOverlayLayer {
+    std::string name;
+    std::vector<DebugLineDesc> lines;
+    std::vector<DebugBoxDesc> boxes;
+    std::vector<DebugPointDesc> points;
+    std::vector<DebugLabelDesc> labels;
+    std::vector<DebugPickTargetDesc> pickTargets;
+};
+
+struct DebugOverlayInspectionOptions {
+    std::vector<assets::AssetId> groupIds;
+    std::vector<std::string> tags;
+};
+
+struct DebugOverlayBounds {
+    bool valid = false;
+    DebugVec3 min;
+    DebugVec3 max;
+};
+
+struct DebugOverlaySummary {
+    std::string name;
+    std::uint32_t lineCount = 0;
+    std::uint32_t boxCount = 0;
+    std::uint32_t pointCount = 0;
+    std::uint32_t labelCount = 0;
+    std::uint32_t pickTargetCount = 0;
+    std::uint32_t primitiveCount = 0;
+    DebugOverlayBounds bounds;
+    std::vector<assets::AssetId> groups;
+    std::vector<std::string> tags;
+};
+
 struct RenderBatchBudget {
     std::uint32_t maxInstances = 0;
     std::uint32_t maxVertexCount = 0;
@@ -175,6 +262,8 @@ struct DiagnosticsBundleOptions {
     const render::FrameGraph* frameGraph = nullptr;
     FrameGraphInspectionOptions frameGraphOptions;
     const render::RendererFrameStats* rendererStats = nullptr;
+    const DebugOverlayLayer* debugOverlay = nullptr;
+    DebugOverlayInspectionOptions debugOverlayOptions;
     RenderBatchBudget renderBatchBudget;
     FrameGraphBudget frameGraphBudget;
 };
@@ -187,6 +276,8 @@ struct DiagnosticsBundle {
     FrameGraphSummary frameGraph;
     bool hasRendererStats = false;
     RendererStatsSummary rendererStats;
+    bool hasDebugOverlay = false;
+    DebugOverlaySummary debugOverlay;
     std::vector<DiagnosticFinding> findings;
 };
 
@@ -207,6 +298,11 @@ struct DiagnosticsBundle {
     const FrameGraphInspectionOptions& options);
 [[nodiscard]] RendererStatsSummary summarize_renderer_stats(
     const render::RendererFrameStats& stats) noexcept;
+[[nodiscard]] DebugOverlaySummary summarize_debug_overlay(
+    const DebugOverlayLayer& layer);
+[[nodiscard]] DebugOverlaySummary summarize_debug_overlay(
+    const DebugOverlayLayer& layer,
+    const DebugOverlayInspectionOptions& options);
 [[nodiscard]] std::vector<DiagnosticFinding> evaluate_render_batch_budget(
     const RenderBatchSummary& summary,
     const RenderBatchBudget& budget);
@@ -224,6 +320,8 @@ struct DiagnosticsBundle {
     const FrameGraphSummary& summary);
 [[nodiscard]] std::string format_renderer_stats_summary(
     const RendererStatsSummary& summary);
+[[nodiscard]] std::string format_debug_overlay_summary(
+    const DebugOverlaySummary& summary);
 [[nodiscard]] std::string format_diagnostic_findings(
     const std::vector<DiagnosticFinding>& findings);
 [[nodiscard]] std::string format_diagnostics_bundle(

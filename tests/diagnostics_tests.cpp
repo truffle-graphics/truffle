@@ -100,6 +100,81 @@ int main() {
                   std::string::npos);
     TRUFFLE_CHECK(assetReport.find("tag lidar") != std::string::npos);
 
+    diagnostics::DebugOverlayLayer overlay;
+    overlay.name = "tool-overlay";
+    overlay.lines.push_back({
+        .metadata = {
+            .name = "velocity-ray",
+            .group = assetGroup.id,
+            .tags = {"dense", "lidar"},
+        },
+        .begin = {-1.0F, 0.0F, 0.0F},
+        .end = {1.0F, 0.0F, 0.0F},
+        .color = {0.0F, 1.0F, 0.0F, 1.0F},
+    });
+    overlay.boxes.push_back({
+        .metadata = {
+            .name = "sensor-bounds",
+            .group = assetGroup.id,
+            .tags = {"lidar"},
+        },
+        .min = {-2.0F, -3.0F, -4.0F},
+        .max = {10.0F, 3.0F, 4.0F},
+        .color = {1.0F, 1.0F, 0.0F, 1.0F},
+    });
+    overlay.points.push_back({
+        .metadata = {
+            .name = "radar-hit",
+            .tags = {"radar"},
+        },
+        .position = {100.0F, 100.0F, 100.0F},
+        .radius = 2.0F,
+        .color = {1.0F, 0.0F, 0.0F, 1.0F},
+    });
+    overlay.labels.push_back({
+        .metadata = {
+            .name = "sensor-label",
+            .group = assetGroup.id,
+            .tags = {"lidar"},
+        },
+        .position = {0.0F, 2.0F, 0.0F},
+        .text = "lidar",
+        .color = {1.0F, 1.0F, 1.0F, 1.0F},
+    });
+    overlay.pickTargets.push_back({
+        .metadata = {
+            .name = "sensor-pick-target",
+            .group = assetGroup.id,
+            .tags = {"lidar"},
+        },
+        .targetId = 42,
+        .min = {-2.0F, -3.0F, -4.0F},
+        .max = {10.0F, 3.0F, 4.0F},
+    });
+
+    const auto overlaySummary = diagnostics::summarize_debug_overlay(overlay);
+    TRUFFLE_CHECK(overlaySummary.primitiveCount == 5);
+    TRUFFLE_CHECK(overlaySummary.pointCount == 1);
+    TRUFFLE_CHECK(overlaySummary.bounds.valid);
+    TRUFFLE_CHECK(overlaySummary.bounds.max.x == 100.0F);
+    TRUFFLE_CHECK(overlaySummary.groups.size() == 1);
+
+    const auto lidarOverlaySummary = diagnostics::summarize_debug_overlay(
+        overlay, {
+            .tags = {"lidar"},
+        });
+    TRUFFLE_CHECK(lidarOverlaySummary.primitiveCount == 4);
+    TRUFFLE_CHECK(lidarOverlaySummary.pointCount == 0);
+    TRUFFLE_CHECK(lidarOverlaySummary.bounds.max.x == 10.0F);
+    TRUFFLE_CHECK(lidarOverlaySummary.tags.size() == 2);
+    const auto overlayReport =
+        diagnostics::format_debug_overlay_summary(lidarOverlaySummary);
+    TRUFFLE_CHECK(overlayReport.find("DebugOverlay name=tool-overlay") !=
+                  std::string::npos);
+    TRUFFLE_CHECK(overlayReport.find("primitives=4") != std::string::npos);
+    TRUFFLE_CHECK(overlayReport.find("pickTargets=1") != std::string::npos);
+    TRUFFLE_CHECK(overlayReport.find("group 15") != std::string::npos);
+
     TestBuffer instanceBuffer{{
         .size = 32'000'000,
         .usage = rhi::BufferUsage::vertex,
@@ -273,6 +348,8 @@ int main() {
     bundleOptions.frameGraph = &graph;
     bundleOptions.frameGraphOptions = options;
     bundleOptions.rendererStats = &frameStats;
+    bundleOptions.debugOverlay = &overlay;
+    bundleOptions.debugOverlayOptions.tags.push_back("lidar");
     bundleOptions.renderBatchBudget.maxInstances = 999'999;
     bundleOptions.frameGraphBudget.maxRenderNodes = 1;
 
@@ -288,6 +365,8 @@ int main() {
     TRUFFLE_CHECK(bundle.renderBatches.size() == 1);
     TRUFFLE_CHECK(bundle.hasFrameGraph);
     TRUFFLE_CHECK(bundle.hasRendererStats);
+    TRUFFLE_CHECK(bundle.hasDebugOverlay);
+    TRUFFLE_CHECK(bundle.debugOverlay.primitiveCount == 4);
     TRUFFLE_CHECK(bundle.findings.size() == 2);
 
     const auto bundleReport = diagnostics::format_diagnostics_bundle(bundle);
@@ -299,6 +378,8 @@ int main() {
                   std::string::npos);
     TRUFFLE_CHECK(bundleReport.find("FrameGraph nodes=2") != std::string::npos);
     TRUFFLE_CHECK(bundleReport.find("RendererStats computeNodes=1") !=
+                  std::string::npos);
+    TRUFFLE_CHECK(bundleReport.find("DebugOverlay name=tool-overlay") !=
                   std::string::npos);
     TRUFFLE_CHECK(bundleReport.find("DiagnosticFindings count=2") !=
                   std::string::npos);

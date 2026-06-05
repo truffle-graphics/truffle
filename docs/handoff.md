@@ -138,6 +138,9 @@ contract-backend extension work.
     budget findings.
   - Added group-filtered asset diagnostics so bundle reports can include all
     groups or selected groups by id/tag.
+  - Added debug overlay declarations and summaries for lines, boxes, points,
+    labels, and pick targets without installing renderer hooks or a persistent
+    debug subsystem.
   - Kept diagnostics separate from render and scene runtime dependencies; normal
     consumers only link the diagnostics target when they want inspection helpers.
   - Added `truffle_assets_tests` and `truffle_diagnostics_tests`, and extended
@@ -167,8 +170,9 @@ contract-backend extension work.
   back into diagnostics. Tool-facing labels are passed as diagnostics options
   instead of stored in render objects. Graph dependency/resource usage summaries
   read existing `FrameGraph` declarations only; they do not record runtime
-  events. Budget findings, group-filtered asset summaries, and bundle reports
-  are pull-based checks, not logs or background profiling.
+  events. Budget findings, group-filtered asset summaries, debug-overlay
+  summaries, and bundle reports are pull-based checks, not logs or background
+  profiling.
 - Keep active handoff state curated and public-safe. Lasting decisions belong in stable docs or ADRs.
 - Normal feature and fix work targets protected `develop`; stable promotion goes through `master`.
 
