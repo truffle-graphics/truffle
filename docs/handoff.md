@@ -147,6 +147,9 @@ contract-backend extension work.
   - Added `truffle_asset_render` / `Truffle::AssetRender` for metadata-only
     asset-to-render batch planning from declared mesh, material, stream, and
     group metadata.
+  - Added asset-render plan diagnostics summaries for planned attributes,
+    bindings, byte totals, and group totals without inspecting buffers or backend
+    state.
   - Kept diagnostics separate from render and scene runtime dependencies; normal
     consumers only link the diagnostics target when they want inspection helpers.
   - Added `truffle_assets_tests`, `truffle_asset_render_tests`, and
@@ -183,8 +186,8 @@ contract-backend extension work.
   instead of stored in render objects. Graph dependency/resource usage summaries
   read existing `FrameGraph` declarations only; they do not record runtime
   events. Budget findings, group-filtered asset summaries, debug-overlay
-  summaries, and bundle reports are pull-based checks, not logs or background
-  profiling.
+  summaries, asset-render plan summaries, and bundle reports are pull-based
+  checks, not logs or background profiling.
 - Keep active handoff state curated and public-safe. Lasting decisions belong in stable docs or ADRs.
 - Normal feature and fix work targets protected `develop`; stable promotion goes through `master`.
 

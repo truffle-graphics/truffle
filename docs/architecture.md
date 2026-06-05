@@ -26,8 +26,8 @@ Truffle is one product with modules that stay linkable at different levels:
    state, and a vector of `RenderBatch` objects written through
    `IFrameUploadRing`.
 8. `truffle_diagnostics` provides opt-in, pull-based asset, render,
-   frame-graph, renderer-stats, and debug-overlay inspection helpers. Lower
-   runtime layers do not depend on it.
+   asset-render-plan, frame-graph, renderer-stats, and debug-overlay inspection
+   helpers. Lower runtime layers do not depend on it.
 9. Future framework-facing modules can add asset importers and tool-facing
    rendering workflows above the lower layers without hiding them from
    consumers.
@@ -167,11 +167,11 @@ scope and active extension-backend work continuing in parallel:
   asset catalog meshes and groups, preserving declared dense stream layouts while
   leaving buffers, uploads, shader compilation, and backend interpretation to
   later layers.
-- `truffle_diagnostics` provides opt-in render-batch, frame-graph, and renderer
-  stats summaries with external labels, dependency edges, and resource usage
-  declarations for tool-facing reports, plus pull-based budget findings and
-  group-filtered combined diagnostics bundles with optional debug-overlay
-  declaration summaries.
+- `truffle_diagnostics` provides opt-in render-batch, asset-render-plan,
+  frame-graph, and renderer stats summaries with external labels, dependency
+  edges, and resource usage declarations for tool-facing reports, plus
+  pull-based budget findings and group-filtered combined diagnostics bundles
+  with optional debug-overlay declaration summaries.
 - `truffle/core/version.hpp` defines public API version, compatibility policy,
   and deprecation-window semantics.
 - CI emits backend parity matrix artifacts for tracked backend contract and

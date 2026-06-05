@@ -128,6 +128,45 @@ const char* asset_attribute_name(assets::AttributeSemantic semantic) noexcept {
     return "Unknown";
 }
 
+const char* asset_attribute_format_name(assets::AttributeFormat format) noexcept {
+    switch (format) {
+    case assets::AttributeFormat::Float32:
+        return "Float32";
+    case assets::AttributeFormat::Float32x2:
+        return "Float32x2";
+    case assets::AttributeFormat::Float32x3:
+        return "Float32x3";
+    case assets::AttributeFormat::Float32x4:
+        return "Float32x4";
+    case assets::AttributeFormat::Float32x4x4:
+        return "Float32x4x4";
+    case assets::AttributeFormat::UInt32:
+        return "UInt32";
+    case assets::AttributeFormat::SInt32:
+        return "SInt32";
+    case assets::AttributeFormat::UInt16:
+        return "UInt16";
+    case assets::AttributeFormat::UInt8x4Norm:
+        return "UInt8x4Norm";
+    }
+    return "Unknown";
+}
+
+const char* asset_stream_role_name(
+    assets::GeometryStreamRole role) noexcept {
+    switch (role) {
+    case assets::GeometryStreamRole::Vertex:
+        return "Vertex";
+    case assets::GeometryStreamRole::Index:
+        return "Index";
+    case assets::GeometryStreamRole::Instance:
+        return "Instance";
+    case assets::GeometryStreamRole::Custom:
+        return "Custom";
+    }
+    return "Unknown";
+}
+
 bool contains_asset_id(const std::vector<assets::AssetId>& ids,
                        assets::AssetId id) noexcept {
     return std::any_of(
@@ -353,6 +392,62 @@ RenderBatchSummary summarize_render_batch(
         .size    = batch.uniformBuffer.size,
     };
 
+    return summary;
+}
+
+AssetRenderBatchPlanSummary summarize_asset_render_batch_plan(
+    const asset_render::RenderBatchPlan& plan) {
+    AssetRenderBatchPlanSummary summary;
+    summary.mesh = plan.mesh;
+    summary.material = plan.material;
+    summary.instanceCount = plan.batch.instanceCount;
+    summary.vertexCount = plan.batch.vertexCount;
+    summary.drawKind = plan.batch.kind;
+    summary.bindingModel = plan.batch.layout.bindingModel;
+    summary.layoutHash = plan.batch.layout.hash();
+    summary.variantHash = plan.batch.variantHash;
+
+    summary.attributes.reserve(plan.attributes.size());
+    for (const auto& attribute : plan.attributes) {
+        summary.attributes.push_back({
+            .stream = attribute.stream,
+            .semantic = attribute.attribute.semantic,
+            .format = attribute.attribute.format,
+            .name = attribute.attribute.name,
+            .channel = attribute.channel.kind,
+            .binding = attribute.channel.binding,
+            .offset = attribute.channel.offset,
+            .stride = attribute.channel.stride,
+        });
+    }
+
+    summary.bindings.reserve(plan.bindings.size());
+    for (const auto& binding : plan.bindings) {
+        summary.bindings.push_back({
+            .binding = binding.binding,
+            .stream = binding.stream,
+            .role = binding.role,
+            .elementCount = binding.elementCount,
+            .byteSize = binding.byteSize,
+        });
+        summary.totalBindingBytes += binding.byteSize;
+    }
+
+    return summary;
+}
+
+AssetRenderGroupPlanSummary summarize_asset_render_group_plan(
+    const asset_render::AssetGroupRenderPlan& plan) {
+    AssetRenderGroupPlanSummary summary;
+    summary.group = plan.group;
+    summary.batchCount = static_cast<std::uint32_t>(plan.batches.size());
+    summary.batches.reserve(plan.batches.size());
+    for (const auto& batch : plan.batches) {
+        auto batchSummary = summarize_asset_render_batch_plan(batch);
+        summary.totalInstanceCount += batchSummary.instanceCount;
+        summary.totalBindingBytes += batchSummary.totalBindingBytes;
+        summary.batches.push_back(std::move(batchSummary));
+    }
     return summary;
 }
 
@@ -691,6 +786,52 @@ std::string format_render_batch_summary(const RenderBatchSummary& summary) {
             << " binding=" << channel.binding
             << " offset=" << channel.offset
             << " stride=" << channel.stride;
+    }
+    return out.str();
+}
+
+std::string format_asset_render_batch_plan_summary(
+    const AssetRenderBatchPlanSummary& summary) {
+    std::ostringstream out;
+    out << "AssetRenderBatchPlan"
+        << " mesh=" << summary.mesh.value
+        << " material=" << summary.material.value
+        << " draw=" << draw_kind_name(summary.drawKind)
+        << " instances=" << summary.instanceCount
+        << " vertices=" << summary.vertexCount
+        << " attributes=" << summary.attributes.size()
+        << " bindings=" << summary.bindings.size()
+        << " bindingBytes=" << summary.totalBindingBytes;
+    for (const auto& attribute : summary.attributes) {
+        out << "\n  planned_attribute stream=" << attribute.stream.value
+            << " semantic=" << asset_attribute_name(attribute.semantic)
+            << " format=" << asset_attribute_format_name(attribute.format)
+            << " name=" << attribute.name
+            << " channel=" << channel_kind_name(attribute.channel)
+            << " binding=" << attribute.binding
+            << " offset=" << attribute.offset
+            << " stride=" << attribute.stride;
+    }
+    for (const auto& binding : summary.bindings) {
+        out << "\n  planned_binding binding=" << binding.binding
+            << " stream=" << binding.stream.value
+            << " role=" << asset_stream_role_name(binding.role)
+            << " elements=" << binding.elementCount
+            << " bytes=" << binding.byteSize;
+    }
+    return out.str();
+}
+
+std::string format_asset_render_group_plan_summary(
+    const AssetRenderGroupPlanSummary& summary) {
+    std::ostringstream out;
+    out << "AssetRenderGroupPlan"
+        << " group=" << summary.group.value
+        << " batches=" << summary.batchCount
+        << " instances=" << summary.totalInstanceCount
+        << " bindingBytes=" << summary.totalBindingBytes;
+    for (const auto& batch : summary.batches) {
+        out << "\n" << format_asset_render_batch_plan_summary(batch);
     }
     return out.str();
 }

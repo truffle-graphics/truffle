@@ -1,5 +1,6 @@
 #pragma once
 
+#include "truffle/asset_render/asset_render.hpp"
 #include "truffle/assets/assets.hpp"
 #include "truffle/core/status.hpp"
 #include "truffle/render/frame_graph.hpp"
@@ -51,6 +52,47 @@ struct RenderBatchSummary {
     BufferViewSummary indexBuffer;
     BufferViewSummary indirectBuffer;
     BufferViewSummary uniformBuffer;
+};
+
+struct AssetRenderAttributeSummary {
+    assets::AssetId stream;
+    assets::AttributeSemantic semantic = assets::AttributeSemantic::Custom;
+    assets::AttributeFormat format = assets::AttributeFormat::Float32;
+    std::string name;
+    render::ChannelKind channel = render::ChannelKind::CustomFloat4;
+    std::uint32_t binding = 0;
+    std::uint32_t offset = 0;
+    std::uint32_t stride = 0;
+};
+
+struct AssetRenderBindingSummary {
+    std::uint32_t binding = 0;
+    assets::AssetId stream;
+    assets::GeometryStreamRole role = assets::GeometryStreamRole::Instance;
+    std::uint32_t elementCount = 0;
+    std::size_t byteSize = 0;
+};
+
+struct AssetRenderBatchPlanSummary {
+    assets::AssetId mesh;
+    assets::AssetId material;
+    std::uint32_t instanceCount = 0;
+    std::uint32_t vertexCount = 0;
+    render::DrawKind drawKind = render::DrawKind::Direct;
+    render::BindingModel bindingModel = render::BindingModel::Separate;
+    std::size_t layoutHash = 0;
+    std::size_t variantHash = 0;
+    std::vector<AssetRenderAttributeSummary> attributes;
+    std::vector<AssetRenderBindingSummary> bindings;
+    std::size_t totalBindingBytes = 0;
+};
+
+struct AssetRenderGroupPlanSummary {
+    assets::AssetId group;
+    std::uint32_t batchCount = 0;
+    std::uint64_t totalInstanceCount = 0;
+    std::size_t totalBindingBytes = 0;
+    std::vector<AssetRenderBatchPlanSummary> batches;
 };
 
 struct FrameGraphNodeLabel {
@@ -291,6 +333,10 @@ struct DiagnosticsBundle {
 [[nodiscard]] RenderBatchSummary summarize_render_batch(
     const render::RenderBatch& batch,
     const RenderBatchInspectionOptions& options);
+[[nodiscard]] AssetRenderBatchPlanSummary summarize_asset_render_batch_plan(
+    const asset_render::RenderBatchPlan& plan);
+[[nodiscard]] AssetRenderGroupPlanSummary summarize_asset_render_group_plan(
+    const asset_render::AssetGroupRenderPlan& plan);
 [[nodiscard]] core::Result<FrameGraphSummary> summarize_frame_graph(
     const render::FrameGraph& graph);
 [[nodiscard]] core::Result<FrameGraphSummary> summarize_frame_graph(
@@ -316,6 +362,10 @@ struct DiagnosticsBundle {
     const AssetCatalogSummary& summary);
 [[nodiscard]] std::string format_render_batch_summary(
     const RenderBatchSummary& summary);
+[[nodiscard]] std::string format_asset_render_batch_plan_summary(
+    const AssetRenderBatchPlanSummary& summary);
+[[nodiscard]] std::string format_asset_render_group_plan_summary(
+    const AssetRenderGroupPlanSummary& summary);
 [[nodiscard]] std::string format_frame_graph_summary(
     const FrameGraphSummary& summary);
 [[nodiscard]] std::string format_renderer_stats_summary(

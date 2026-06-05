@@ -34,9 +34,9 @@ with backend-neutral APIs and contract-tested backend modules:
 - `truffle_rhi` defines backend-neutral GPU and presentation contracts.
 - `truffle_backend_null` validates RHI flow without a GPU dependency.
 - `truffle_render` starts the independently consumable rendering layer above RHI.
-- `truffle_diagnostics` provides opt-in asset/render/frame/debug-overlay
-  inspection helpers and bundle reports without adding diagnostics dependencies
-  back into render or scene code.
+- `truffle_diagnostics` provides opt-in asset/render/frame/asset-render-plan/
+  debug-overlay inspection helpers and bundle reports without adding diagnostics
+  dependencies back into render or scene code.
 
 The renderer layer will accept more than one data path. ECS extraction stays a
 first-party convenience path, while large dynamic workloads can grow toward

@@ -19,9 +19,10 @@ Current baseline:
 - Metadata-only asset-to-render planning that maps declared streams into
   `RenderBatch` layouts without allocating buffers, compiling shaders, or
   depending on a backend.
-- Opt-in diagnostics helpers for asset catalogs, render batches, frame graphs,
-  renderer stats, and debug overlay declarations, including bundle reports and
-  external labels, without making debug/profiling code a runtime dependency.
+- Opt-in diagnostics helpers for asset catalogs, render batches, asset-render
+  plans, frame graphs, renderer stats, and debug overlay declarations, including
+  bundle reports and external labels, without making debug/profiling code a
+  runtime dependency.
 - Host-owned workspace example that uses a visible GLFW window for editor, CAD,
   and simulation-facing app roles while the Truffle path stays null-backed.
 - Dense-data diagnostics example that declares lidar/radar-style grouped streams

@@ -1,7 +1,5 @@
 add_executable(truffle_dense_diagnostics_example src/main.cpp)
-target_link_libraries(
-    truffle_dense_diagnostics_example
-    PRIVATE truffle_asset_render truffle_diagnostics)
+target_link_libraries(truffle_dense_diagnostics_example PRIVATE truffle_diagnostics)
 
 if(TRUFFLE_BUILD_TESTS)
     add_test(

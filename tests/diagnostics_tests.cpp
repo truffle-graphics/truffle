@@ -100,6 +100,64 @@ int main() {
                   std::string::npos);
     TRUFFLE_CHECK(assetReport.find("tag lidar") != std::string::npos);
 
+    asset_render::RenderBatchPlanOptions assetRenderOptions;
+    assetRenderOptions.channelMappings.push_back({
+        assets::AttributeSemantic::Position,
+        render::ChannelKind::CustomFloat4,
+    });
+    auto assetRenderPlanResult = asset_render::plan_render_batch(
+        assetMesh, assetMaterial, assetRenderOptions);
+    TRUFFLE_CHECK(assetRenderPlanResult.ok());
+    const auto assetRenderSummary =
+        diagnostics::summarize_asset_render_batch_plan(
+            assetRenderPlanResult.value());
+    TRUFFLE_CHECK(assetRenderSummary.mesh == assetMesh.id);
+    TRUFFLE_CHECK(assetRenderSummary.material == assetMaterial.id);
+    TRUFFLE_CHECK(assetRenderSummary.instanceCount ==
+                  assetStream.elementCount);
+    TRUFFLE_CHECK(assetRenderSummary.attributes.size() == 1);
+    TRUFFLE_CHECK(assetRenderSummary.attributes.front().stream ==
+                  assetStream.id);
+    TRUFFLE_CHECK(assetRenderSummary.attributes.front().semantic ==
+                  assets::AttributeSemantic::Position);
+    TRUFFLE_CHECK(assetRenderSummary.attributes.front().channel ==
+                  render::ChannelKind::CustomFloat4);
+    TRUFFLE_CHECK(assetRenderSummary.bindings.size() == 1);
+    TRUFFLE_CHECK(assetRenderSummary.bindings.front().byteSize ==
+                  assetStream.byteSize);
+    TRUFFLE_CHECK(assetRenderSummary.totalBindingBytes ==
+                  assetStream.byteSize);
+    const auto assetRenderReport =
+        diagnostics::format_asset_render_batch_plan_summary(
+            assetRenderSummary);
+    TRUFFLE_CHECK(assetRenderReport.find("AssetRenderBatchPlan mesh=11") !=
+                  std::string::npos);
+    TRUFFLE_CHECK(assetRenderReport.find("semantic=Position") !=
+                  std::string::npos);
+    TRUFFLE_CHECK(assetRenderReport.find("channel=CustomFloat4") !=
+                  std::string::npos);
+    TRUFFLE_CHECK(assetRenderReport.find("planned_binding binding=0") !=
+                  std::string::npos);
+
+    asset_render::AssetGroupRenderPlan assetRenderGroupPlan;
+    assetRenderGroupPlan.group = assets::AssetId{17};
+    assetRenderGroupPlan.batches.push_back(assetRenderPlanResult.value());
+    const auto assetRenderGroupSummary =
+        diagnostics::summarize_asset_render_group_plan(assetRenderGroupPlan);
+    TRUFFLE_CHECK(assetRenderGroupSummary.group == assetRenderGroupPlan.group);
+    TRUFFLE_CHECK(assetRenderGroupSummary.batchCount == 1);
+    TRUFFLE_CHECK(assetRenderGroupSummary.totalInstanceCount ==
+                  assetStream.elementCount);
+    TRUFFLE_CHECK(assetRenderGroupSummary.totalBindingBytes ==
+                  assetStream.byteSize);
+    const auto assetRenderGroupReport =
+        diagnostics::format_asset_render_group_plan_summary(
+            assetRenderGroupSummary);
+    TRUFFLE_CHECK(assetRenderGroupReport.find("AssetRenderGroupPlan group=17") !=
+                  std::string::npos);
+    TRUFFLE_CHECK(assetRenderGroupReport.find("instances=1000000") !=
+                  std::string::npos);
+
     diagnostics::DebugOverlayLayer overlay;
     overlay.name = "tool-overlay";
     overlay.lines.push_back({
