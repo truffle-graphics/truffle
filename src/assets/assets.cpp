@@ -164,7 +164,10 @@ AssetValidationReport AssetCatalog::validate_mesh_material_report(
         report.issues.push_back({
             .kind = AssetValidationIssueKind::MissingMesh,
             .asset = meshId,
+            .group = {},
             .mesh = meshId,
+            .material = {},
+            .attribute = AttributeSemantic::Custom,
             .message = "Assets: mesh asset is not registered",
         });
         return report;
@@ -174,8 +177,10 @@ AssetValidationReport AssetCatalog::validate_mesh_material_report(
         report.issues.push_back({
             .kind = AssetValidationIssueKind::InvalidMaterialReference,
             .asset = foundMesh->material,
+            .group = {},
             .mesh = foundMesh->id,
             .material = foundMesh->material,
+            .attribute = AttributeSemantic::Custom,
             .message = "Assets: mesh does not reference a valid material",
         });
         return report;
@@ -186,8 +191,10 @@ AssetValidationReport AssetCatalog::validate_mesh_material_report(
         report.issues.push_back({
             .kind = AssetValidationIssueKind::MissingMaterial,
             .asset = foundMesh->material,
+            .group = {},
             .mesh = foundMesh->id,
             .material = foundMesh->material,
+            .attribute = AttributeSemantic::Custom,
             .message = "Assets: material asset is not registered",
         });
         return report;
@@ -198,6 +205,7 @@ AssetValidationReport AssetCatalog::validate_mesh_material_report(
             report.issues.push_back({
                 .kind = AssetValidationIssueKind::MissingAttribute,
                 .asset = foundMaterial->id,
+                .group = {},
                 .mesh = foundMesh->id,
                 .material = foundMaterial->id,
                 .attribute = semantic,
@@ -230,6 +238,9 @@ AssetValidationReport AssetCatalog::validate_group(AssetId groupId) const {
             .kind = AssetValidationIssueKind::MissingGroup,
             .asset = groupId,
             .group = groupId,
+            .mesh = {},
+            .material = {},
+            .attribute = AttributeSemantic::Custom,
             .message = "Assets: asset group is not registered",
         });
         return report;
@@ -241,6 +252,9 @@ AssetValidationReport AssetCatalog::validate_group(AssetId groupId) const {
                 .kind = AssetValidationIssueKind::MissingGeometryStream,
                 .asset = streamId,
                 .group = foundGroup->id,
+                .mesh = {},
+                .material = {},
+                .attribute = AttributeSemantic::Custom,
                 .message =
                     "Assets: asset group references an unregistered geometry stream",
             });
@@ -253,6 +267,9 @@ AssetValidationReport AssetCatalog::validate_group(AssetId groupId) const {
                 .kind = AssetValidationIssueKind::MissingTexture,
                 .asset = textureId,
                 .group = foundGroup->id,
+                .mesh = {},
+                .material = {},
+                .attribute = AttributeSemantic::Custom,
                 .message =
                     "Assets: asset group references an unregistered texture",
             });
@@ -265,7 +282,9 @@ AssetValidationReport AssetCatalog::validate_group(AssetId groupId) const {
                 .kind = AssetValidationIssueKind::MissingMaterial,
                 .asset = materialId,
                 .group = foundGroup->id,
+                .mesh = {},
                 .material = materialId,
+                .attribute = AttributeSemantic::Custom,
                 .message =
                     "Assets: asset group references an unregistered material",
             });
@@ -279,6 +298,8 @@ AssetValidationReport AssetCatalog::validate_group(AssetId groupId) const {
                 .asset = meshId,
                 .group = foundGroup->id,
                 .mesh = meshId,
+                .material = {},
+                .attribute = AttributeSemantic::Custom,
                 .message =
                     "Assets: asset group references an unregistered mesh",
             });
