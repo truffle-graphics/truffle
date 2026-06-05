@@ -109,6 +109,9 @@ class NullDevice;
 class NullBuffer final : public IBuffer {
 public:
     explicit NullBuffer(BufferDesc desc) : desc_(std::move(desc)) {}
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::null_backend;
+    }
     [[nodiscard]] const BufferDesc& desc() const noexcept override { return desc_; }
 
 private:
@@ -118,18 +121,30 @@ private:
 class NullTexture final : public ITexture {
 public:
     explicit NullTexture(TextureDesc desc) : desc_(std::move(desc)) {}
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::null_backend;
+    }
     [[nodiscard]] const TextureDesc& desc() const noexcept override { return desc_; }
 
 private:
     TextureDesc desc_;
 };
 
-class NullSampler final : public ISampler {};
+class NullSampler final : public ISampler {
+public:
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::null_backend;
+    }
+};
 
 class NullBindGroupLayout final : public IBindGroupLayout {
 public:
     explicit NullBindGroupLayout(BindGroupLayoutDesc desc)
         : desc_(std::move(desc)) {}
+
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::null_backend;
+    }
 
     [[nodiscard]] const BindGroupLayoutDesc& desc() const noexcept override {
         return desc_;
@@ -143,6 +158,10 @@ class NullBindGroup final : public IBindGroup {
 public:
     explicit NullBindGroup(BindGroupDesc desc) : desc_(std::move(desc)) {}
 
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::null_backend;
+    }
+
     [[nodiscard]] const BindGroupDesc& desc() const noexcept override {
         return desc_;
     }
@@ -151,11 +170,26 @@ private:
     BindGroupDesc desc_;
 };
 
-class NullShader final : public IShader {};
+class NullShader final : public IShader {
+public:
+    explicit NullShader(ShaderDesc desc) : desc_(std::move(desc)) {}
+
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::null_backend;
+    }
+
+    [[nodiscard]] const ShaderDesc& desc() const noexcept { return desc_; }
+
+private:
+    ShaderDesc desc_;
+};
 
 class NullPipeline final : public IPipeline {
 public:
     explicit NullPipeline(PipelineDesc desc) : desc_(std::move(desc)) {}
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::null_backend;
+    }
     [[nodiscard]] const PipelineDesc& desc() const noexcept override { return desc_; }
     [[nodiscard]] const IPipelineReflection* reflection() const noexcept override { return nullptr; }
 
@@ -166,6 +200,9 @@ private:
 class NullComputePipeline final : public IComputePipeline {
 public:
     explicit NullComputePipeline(ComputePipelineDesc desc) : desc_(std::move(desc)) {}
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::null_backend;
+    }
     [[nodiscard]] const ComputePipelineDesc& desc() const noexcept override { return desc_; }
     [[nodiscard]] const IPipelineReflection* reflection() const noexcept override { return nullptr; }
 
@@ -323,11 +360,21 @@ public:
                                    "render pass extent must be non-zero");
         }
         if (desc.colorAttachment.texture &&
+            desc.colorAttachment.texture->backend_kind() != BackendKind::null_backend) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "color attachment texture must be created by null backend");
+        }
+        if (desc.colorAttachment.texture &&
             !validation::texture_supports_usage(
                 desc.colorAttachment.texture->desc(),
                 TextureUsageFlags::color_attachment)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "color attachment texture lacks color attachment usage");
+        }
+        if (desc.depthAttachment.texture &&
+            desc.depthAttachment.texture->backend_kind() != BackendKind::null_backend) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "depth attachment texture must be created by null backend");
         }
         if (desc.depthAttachment.texture &&
             !validation::texture_supports_usage(
@@ -353,7 +400,7 @@ public:
         return Status::success();
     }
 
-    [[nodiscard]] Status bind_pipeline(IPipeline& /*pipeline*/) override {
+    [[nodiscard]] Status bind_pipeline(IPipeline& pipeline) override {
         if (state_ != State::recording) {
             return Status::failure(StatusCode::invalid_state,
                                    "bind_pipeline requires recording");
@@ -362,10 +409,14 @@ public:
             return Status::failure(StatusCode::invalid_state,
                                    "bind_pipeline requires active render pass");
         }
+        if (pipeline.backend_kind() != BackendKind::null_backend) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "pipeline must be created by null backend");
+        }
         return Status::success();
     }
 
-    [[nodiscard]] Status bind_compute_pipeline(IComputePipeline& /*pipeline*/) override {
+    [[nodiscard]] Status bind_compute_pipeline(IComputePipeline& pipeline) override {
         if (state_ != State::recording) {
             return Status::failure(StatusCode::invalid_state,
                                    "bind_compute_pipeline requires recording");
@@ -373,6 +424,10 @@ public:
         if (inRenderPass_) {
             return Status::failure(StatusCode::invalid_state,
                                    "bind_compute_pipeline cannot run inside render pass");
+        }
+        if (pipeline.backend_kind() != BackendKind::null_backend) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "compute pipeline must be created by null backend");
         }
         return Status::success();
     }
@@ -392,6 +447,10 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "buffer lacks vertex usage");
         }
+        if (buffer.backend_kind() != BackendKind::null_backend) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "vertex buffer must be created by null backend");
+        }
         return Status::success();
     }
 
@@ -409,6 +468,10 @@ public:
         if (!validation::buffer_supports_usage(buffer.desc(), BufferUsageFlags::index)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "buffer lacks index usage");
+        }
+        if (buffer.backend_kind() != BackendKind::null_backend) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "index buffer must be created by null backend");
         }
         return Status::success();
     }
@@ -428,6 +491,10 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "buffer lacks uniform usage");
         }
+        if (buffer.backend_kind() != BackendKind::null_backend) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "uniform buffer must be created by null backend");
+        }
         return Status::success();
     }
 
@@ -445,6 +512,10 @@ public:
         if (!validation::buffer_supports_usage(buffer.desc(), BufferUsageFlags::storage)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "buffer lacks storage usage");
+        }
+        if (buffer.backend_kind() != BackendKind::null_backend) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "storage buffer must be created by null backend");
         }
         return Status::success();
     }
@@ -480,6 +551,10 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "buffer barrier is invalid");
         }
+        if (barrier.buffer->backend_kind() != BackendKind::null_backend) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "buffer barrier resource must be created by null backend");
+        }
         return Status::success();
     }
 
@@ -496,6 +571,10 @@ public:
         if (!validation::texture_barrier_valid(barrier)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "texture barrier is invalid");
+        }
+        if (barrier.texture->backend_kind() != BackendKind::null_backend) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "texture barrier resource must be created by null backend");
         }
         return Status::success();
     }
@@ -913,7 +992,7 @@ public:
         ++stats_->value.shadersCreated;
         record_event(stats_, BackendEventKind::resource_created, desc.entryPoint,
                      "shader created");
-        return std::unique_ptr<IShader>(std::make_unique<NullShader>());
+        return std::unique_ptr<IShader>(std::make_unique<NullShader>(desc));
     }
 
     [[nodiscard]] Result<std::unique_ptr<IPipeline>>
@@ -925,6 +1004,24 @@ public:
         if (!validation::pipeline_render_state_valid(desc, capabilities_)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "pipeline render state is invalid");
+        }
+        if ((desc.vertexShader == nullptr) != (desc.fragmentShader == nullptr)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "pipeline requires both vertex and fragment shaders or neither");
+        }
+        auto* vertexShader =
+            desc.vertexShader ? dynamic_cast<NullShader*>(desc.vertexShader) : nullptr;
+        auto* fragmentShader =
+            desc.fragmentShader ? dynamic_cast<NullShader*>(desc.fragmentShader) : nullptr;
+        if ((desc.vertexShader && !vertexShader) ||
+            (desc.fragmentShader && !fragmentShader)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "pipeline shaders must be created by null backend");
+        }
+        if ((vertexShader && vertexShader->desc().stage != ShaderStage::vertex) ||
+            (fragmentShader && fragmentShader->desc().stage != ShaderStage::fragment)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "pipeline shader stages are invalid");
         }
         ++stats_->value.graphicsPipelinesCreated;
         record_event(stats_, BackendEventKind::pipeline_created, desc.debugName,
@@ -991,6 +1088,16 @@ public:
         if (!validation::pipeline_layout_valid(desc.layout, capabilities_)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "compute pipeline layout is invalid");
+        }
+        auto* computeShader =
+            desc.computeShader ? dynamic_cast<NullShader*>(desc.computeShader) : nullptr;
+        if (desc.computeShader && !computeShader) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "compute shader must be created by null backend");
+        }
+        if (computeShader && computeShader->desc().stage != ShaderStage::compute) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "compute pipeline requires compute shader stage");
         }
         ++stats_->value.computePipelinesCreated;
         record_event(stats_, BackendEventKind::pipeline_created, desc.debugName,

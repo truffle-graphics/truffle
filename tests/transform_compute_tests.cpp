@@ -10,7 +10,10 @@ int main() {
     auto backend = rhi::create_null_backend();
     auto device = backend->create_device({}).value();
 
-    auto shader = device->create_shader({.bytecode={std::byte{0x00}}}).value();
+    auto shader = device->create_shader({
+        .stage = rhi::ShaderStage::compute,
+        .bytecode = {std::byte{0x00}},
+    }).value();
 
     render::TransformComputePass pass(*device, shader.get());
 

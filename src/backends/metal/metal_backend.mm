@@ -158,6 +158,9 @@ public:
     // Wrap an existing MTLBuffer (used by upload ring frames).
     MetalBuffer(id<MTLBuffer> buf, const BufferDesc& desc) : desc_(desc), buf_(buf) {}
 
+    std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::metal;
+    }
     const BufferDesc& desc() const noexcept override { return desc_; }
     bool              valid() const noexcept { return buf_ != nil; }
     id<MTLBuffer>     native() const noexcept { return buf_; }
@@ -197,6 +200,9 @@ public:
     // Wrap an existing MTLTexture (swapchain drawable, etc.).
     MetalTexture(id<MTLTexture> tex, const TextureDesc& desc) : desc_(desc), tex_(tex) {}
 
+    std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::metal;
+    }
     const TextureDesc& desc() const noexcept override { return desc_; }
     id<MTLTexture>     native() const noexcept { return tex_; }
 
@@ -215,6 +221,9 @@ public:
         sd.magFilter = filter;
         sampler_ = [device newSamplerStateWithDescriptor:sd];
     }
+    std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::metal;
+    }
     id<MTLSamplerState> native() const noexcept { return sampler_; }
 
 private:
@@ -225,6 +234,10 @@ class MetalBindGroupLayout final : public IBindGroupLayout {
 public:
     explicit MetalBindGroupLayout(BindGroupLayoutDesc desc)
         : desc_(std::move(desc)) {}
+
+    std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::metal;
+    }
 
     const BindGroupLayoutDesc& desc() const noexcept override {
         return desc_;
@@ -237,6 +250,10 @@ private:
 class MetalBindGroup final : public IBindGroup {
 public:
     explicit MetalBindGroup(BindGroupDesc desc) : desc_(std::move(desc)) {}
+
+    std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::metal;
+    }
 
     const BindGroupDesc& desc() const noexcept override {
         return desc_;
@@ -338,13 +355,19 @@ public:
                                    "entry point not found in compiled library");
         }
         auto shader      = std::make_unique<MetalShader>();
+        shader->desc_ = desc;
         shader->function_ = fn;
         return std::unique_ptr<IShader>(std::move(shader));
     }
 
+    std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::metal;
+    }
+    const ShaderDesc& desc() const noexcept { return desc_; }
     id<MTLFunction> function() const noexcept { return function_; }
 
 private:
+    ShaderDesc desc_;
     id<MTLFunction> function_ = nil;
 };
 
@@ -358,10 +381,21 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "PipelineDesc must provide both vertex and fragment shaders");
         }
+        auto* vertexShader = dynamic_cast<MetalShader*>(desc.vertexShader);
+        auto* fragmentShader = dynamic_cast<MetalShader*>(desc.fragmentShader);
+        if (!vertexShader || !fragmentShader) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "PipelineDesc shaders must be created by Metal backend");
+        }
+        if (vertexShader->desc().stage != ShaderStage::vertex ||
+            fragmentShader->desc().stage != ShaderStage::fragment) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "PipelineDesc shader stages are invalid");
+        }
         auto* rpd           = [MTLRenderPipelineDescriptor new];
         rpd.label           = [NSString stringWithUTF8String:desc.debugName.c_str()];
-        rpd.vertexFunction  = static_cast<MetalShader*>(desc.vertexShader)->function();
-        rpd.fragmentFunction = static_cast<MetalShader*>(desc.fragmentShader)->function();
+        rpd.vertexFunction  = vertexShader->function();
+        rpd.fragmentFunction = fragmentShader->function();
         rpd.colorAttachments[0].pixelFormat = to_mtl_format(desc.colorFormat);
 
         NSError* err = nil;
@@ -391,6 +425,9 @@ public:
     }
 
     const PipelineDesc&        desc()   const noexcept override { return desc_; }
+    std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::metal;
+    }
     const IPipelineReflection* reflection() const noexcept override { return reflection_.get(); }
     id<MTLRenderPipelineState> native() const noexcept { return pso_; }
 
@@ -411,9 +448,19 @@ public:
                                    "ComputePipelineDesc must provide compute shader");
         }
 
+        auto* computeShader = dynamic_cast<MetalShader*>(desc.computeShader);
+        if (!computeShader) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "ComputePipelineDesc shader must be created by Metal backend");
+        }
+        if (computeShader->desc().stage != ShaderStage::compute) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "ComputePipelineDesc requires compute shader stage");
+        }
+
         NSError* err = nil;
         MTLComputePipelineReflection* reflectionInfo = nil;
-        id<MTLComputePipelineState> pso = [device newComputePipelineStateWithFunction:static_cast<MetalShader*>(desc.computeShader)->function() options:MTLPipelineOptionBufferTypeInfo reflection:&reflectionInfo error:&err];
+        id<MTLComputePipelineState> pso = [device newComputePipelineStateWithFunction:computeShader->function() options:MTLPipelineOptionBufferTypeInfo reflection:&reflectionInfo error:&err];
         
         if (!pso) {
             const char* msg = err ? [err.localizedDescription UTF8String]
@@ -439,6 +486,9 @@ public:
 
 
     const ComputePipelineDesc&  desc()   const noexcept override { return desc_; }
+    std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::metal;
+    }
     const IPipelineReflection* reflection() const noexcept override { return reflection_.get(); }
     id<MTLComputePipelineState> native() const noexcept { return pso_; }
 
@@ -603,11 +653,21 @@ public:
                                    "cannot begin render pass while compute encoder is active");
         }
         if (desc.colorAttachment.texture &&
+            desc.colorAttachment.texture->backend_kind() != BackendKind::metal) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "color attachment texture must be created by the Metal backend");
+        }
+        if (desc.colorAttachment.texture &&
             !validation::texture_supports_usage(
                 desc.colorAttachment.texture->desc(),
                 TextureUsageFlags::color_attachment)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "color attachment texture lacks color attachment usage");
+        }
+        if (desc.depthAttachment.texture &&
+            desc.depthAttachment.texture->backend_kind() != BackendKind::metal) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "depth attachment texture must be created by the Metal backend");
         }
         if (desc.depthAttachment.texture &&
             !validation::texture_supports_usage(
@@ -670,9 +730,13 @@ public:
             return Status::failure(StatusCode::invalid_state,
                                    "bind_pipeline requires an active render pass");
         }
-        auto& mp = static_cast<MetalPipeline&>(pipeline);
-        [encoder_ setRenderPipelineState:mp.native()];
-        topology_ = mp.desc().topology;
+        auto* mp = dynamic_cast<MetalPipeline*>(&pipeline);
+        if (!mp) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "pipeline must be created by the Metal backend");
+        }
+        [encoder_ setRenderPipelineState:mp->native()];
+        topology_ = mp->desc().topology;
         graphicsPipelineBound_ = true;
         return Status::success();
     }
@@ -686,11 +750,15 @@ public:
             return Status::failure(StatusCode::invalid_state,
                                    "Cannot bind compute pipeline during a render pass");
         }
+        auto* mp = dynamic_cast<MetalComputePipeline*>(&pipeline);
+        if (!mp) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "compute pipeline must be created by the Metal backend");
+        }
         if (!compute_encoder_) {
             compute_encoder_ = [cmdBuf_ computeCommandEncoder];
         }
-        auto& mp = static_cast<MetalComputePipeline&>(pipeline);
-        [compute_encoder_ setComputePipelineState:mp.native()];
+        [compute_encoder_ setComputePipelineState:mp->native()];
         computePipelineBound_ = true;
         return Status::success();
     }
@@ -706,7 +774,12 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "buffer lacks vertex usage");
         }
-        [encoder_ setVertexBuffer:static_cast<MetalBuffer&>(buffer).native()
+        auto* metalBuffer = dynamic_cast<MetalBuffer*>(&buffer);
+        if (!metalBuffer) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "vertex buffer must be created by the Metal backend");
+        }
+        [encoder_ setVertexBuffer:metalBuffer->native()
                            offset:offset
                           atIndex:binding];
         return Status::success();
@@ -722,7 +795,12 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "buffer lacks index usage");
         }
-        indexBuf_       = static_cast<MetalBuffer&>(buffer).native();
+        auto* metalBuffer = dynamic_cast<MetalBuffer*>(&buffer);
+        if (!metalBuffer) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "index buffer must be created by the Metal backend");
+        }
+        indexBuf_       = metalBuffer->native();
         indexBufOffset_ = offset;
         indexBufType_   = to_mtl_index_type(format);
         return Status::success();
@@ -739,7 +817,12 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "buffer lacks uniform usage");
         }
-        id<MTLBuffer> mtlBuf = static_cast<MetalBuffer&>(buffer).native();
+        auto* metalBuffer = dynamic_cast<MetalBuffer*>(&buffer);
+        if (!metalBuffer) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "uniform buffer must be created by the Metal backend");
+        }
+        id<MTLBuffer> mtlBuf = metalBuffer->native();
         [encoder_ setVertexBuffer:mtlBuf   offset:offset atIndex:binding];
         [encoder_ setFragmentBuffer:mtlBuf offset:offset atIndex:binding];
         return Status::success();
@@ -764,7 +847,12 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "buffer lacks storage usage");
         }
-        id<MTLBuffer> mtlBuf = static_cast<MetalBuffer&>(buffer).native();
+        auto* metalBuffer = dynamic_cast<MetalBuffer*>(&buffer);
+        if (!metalBuffer) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "storage buffer must be created by the Metal backend");
+        }
+        id<MTLBuffer> mtlBuf = metalBuffer->native();
         [compute_encoder_ setBuffer:mtlBuf offset:offset atIndex:binding];
         return Status::success();
     }
@@ -798,6 +886,10 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "buffer barrier is invalid");
         }
+        if (barrier.buffer->backend_kind() != BackendKind::metal) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "buffer barrier resource must be created by the Metal backend");
+        }
         return Status::success();
     }
 
@@ -813,6 +905,10 @@ public:
         if (!validation::texture_barrier_valid(barrier)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "texture barrier is invalid");
+        }
+        if (barrier.texture->backend_kind() != BackendKind::metal) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "texture barrier resource must be created by the Metal backend");
         }
         return Status::success();
     }
@@ -921,7 +1017,12 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "invalid indirect draw argument range");
         }
-        id<MTLBuffer> mtlBuf = static_cast<MetalBuffer&>(indirect_buffer).native();
+        auto* metalBuffer = dynamic_cast<MetalBuffer*>(&indirect_buffer);
+        if (!metalBuffer) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "indirect buffer must be created by the Metal backend");
+        }
+        id<MTLBuffer> mtlBuf = metalBuffer->native();
         [encoder_ drawPrimitives:to_mtl_primitive(topology_)
                  indirectBuffer:mtlBuf
            indirectBufferOffset:offset];
@@ -955,7 +1056,12 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "invalid indexed indirect draw argument range");
         }
-        id<MTLBuffer> mtlBuf = static_cast<MetalBuffer&>(indirect_buffer).native();
+        auto* metalBuffer = dynamic_cast<MetalBuffer*>(&indirect_buffer);
+        if (!metalBuffer) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "indirect buffer must be created by the Metal backend");
+        }
+        id<MTLBuffer> mtlBuf = metalBuffer->native();
         [encoder_ drawIndexedPrimitives:to_mtl_primitive(topology_)
                               indexType:indexBufType_
                             indexBuffer:indexBuf_

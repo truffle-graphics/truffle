@@ -127,6 +127,10 @@ public:
     explicit VulkanBindGroupLayout(BindGroupLayoutDesc desc)
         : desc_(std::move(desc)) {}
 
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::vulkan;
+    }
+
     [[nodiscard]] const BindGroupLayoutDesc& desc() const noexcept override {
         return desc_;
     }
@@ -138,6 +142,10 @@ private:
 class VulkanBindGroup final : public IBindGroup {
 public:
     explicit VulkanBindGroup(BindGroupDesc desc) : desc_(std::move(desc)) {}
+
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::vulkan;
+    }
 
     [[nodiscard]] const BindGroupDesc& desc() const noexcept override {
         return desc_;
@@ -257,11 +265,21 @@ public:
                                    "VulkanCommandBuffer: render pass extent must be non-zero");
         }
         if (desc.colorAttachment.texture &&
+            desc.colorAttachment.texture->backend_kind() != BackendKind::vulkan) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "VulkanCommandBuffer: color attachment texture must be created by Vulkan backend");
+        }
+        if (desc.colorAttachment.texture &&
             !validation::texture_supports_usage(
                 desc.colorAttachment.texture->desc(),
                 TextureUsageFlags::color_attachment)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "VulkanCommandBuffer: color attachment texture lacks color attachment usage");
+        }
+        if (desc.depthAttachment.texture &&
+            desc.depthAttachment.texture->backend_kind() != BackendKind::vulkan) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "VulkanCommandBuffer: depth attachment texture must be created by Vulkan backend");
         }
         if (desc.depthAttachment.texture &&
             !validation::texture_supports_usage(
@@ -286,17 +304,28 @@ public:
         return Status::success();
     }
 
-    [[nodiscard]] Status bind_pipeline(IPipeline& /*pipeline*/) override {
-        return require_render_pass("bind_pipeline");
+    [[nodiscard]] Status bind_pipeline(IPipeline& pipeline) override {
+        if (const auto s = require_render_pass("bind_pipeline"); !s.ok()) {
+            return s;
+        }
+        if (pipeline.backend_kind() != BackendKind::vulkan) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "VulkanCommandBuffer: pipeline must be created by Vulkan backend");
+        }
+        return Status::success();
     }
 
-    [[nodiscard]] Status bind_compute_pipeline(IComputePipeline& /*pipeline*/) override {
+    [[nodiscard]] Status bind_compute_pipeline(IComputePipeline& pipeline) override {
         if (const auto s = require_recording("bind_compute_pipeline"); !s.ok()) {
             return s;
         }
         if (inRenderPass_) {
             return Status::failure(StatusCode::invalid_state,
                                    "VulkanCommandBuffer: bind_compute_pipeline cannot run inside render pass");
+        }
+        if (pipeline.backend_kind() != BackendKind::vulkan) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "VulkanCommandBuffer: compute pipeline must be created by Vulkan backend");
         }
         return Status::success();
     }
@@ -310,6 +339,10 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "VulkanCommandBuffer: buffer lacks vertex usage");
         }
+        if (buffer.backend_kind() != BackendKind::vulkan) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "VulkanCommandBuffer: vertex buffer must be created by Vulkan backend");
+        }
         return Status::success();
     }
 
@@ -322,6 +355,10 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "VulkanCommandBuffer: buffer lacks index usage");
         }
+        if (buffer.backend_kind() != BackendKind::vulkan) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "VulkanCommandBuffer: index buffer must be created by Vulkan backend");
+        }
         return Status::success();
     }
 
@@ -333,6 +370,10 @@ public:
         if (!validation::buffer_supports_usage(buffer.desc(), BufferUsageFlags::uniform)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "VulkanCommandBuffer: buffer lacks uniform usage");
+        }
+        if (buffer.backend_kind() != BackendKind::vulkan) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "VulkanCommandBuffer: uniform buffer must be created by Vulkan backend");
         }
         return Status::success();
     }
@@ -349,6 +390,10 @@ public:
         if (!validation::buffer_supports_usage(buffer.desc(), BufferUsageFlags::storage)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "VulkanCommandBuffer: buffer lacks storage usage");
+        }
+        if (buffer.backend_kind() != BackendKind::vulkan) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "VulkanCommandBuffer: storage buffer must be created by Vulkan backend");
         }
         return Status::success();
     }
@@ -382,6 +427,10 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "VulkanCommandBuffer: buffer barrier is invalid");
         }
+        if (barrier.buffer->backend_kind() != BackendKind::vulkan) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "VulkanCommandBuffer: buffer barrier resource must be created by Vulkan backend");
+        }
         return Status::success();
     }
 
@@ -397,6 +446,10 @@ public:
         if (!validation::texture_barrier_valid(barrier)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "VulkanCommandBuffer: texture barrier is invalid");
+        }
+        if (barrier.texture->backend_kind() != BackendKind::vulkan) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "VulkanCommandBuffer: texture barrier resource must be created by Vulkan backend");
         }
         return Status::success();
     }
@@ -580,6 +633,9 @@ private:
 class VulkanBuffer final : public IBuffer {
 public:
     explicit VulkanBuffer(BufferDesc desc) : desc_(std::move(desc)) {}
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::vulkan;
+    }
     [[nodiscard]] const BufferDesc& desc() const noexcept override { return desc_; }
 
 private:
@@ -589,6 +645,9 @@ private:
 class VulkanTexture final : public ITexture {
 public:
     explicit VulkanTexture(TextureDesc desc) : desc_(std::move(desc)) {}
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::vulkan;
+    }
     [[nodiscard]] const TextureDesc& desc() const noexcept override { return desc_; }
 
 private:
@@ -598,11 +657,19 @@ private:
 class VulkanSampler final : public ISampler {
 public:
     VulkanSampler() = default;
+
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::vulkan;
+    }
 };
 
 class VulkanShader final : public IShader {
 public:
     explicit VulkanShader(ShaderDesc desc) : desc_(std::move(desc)) {}
+
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::vulkan;
+    }
 
     [[nodiscard]] const ShaderDesc& desc() const noexcept { return desc_; }
 
@@ -650,6 +717,10 @@ public:
                    std::unique_ptr<VulkanPipelineReflection> reflection)
         : desc_(std::move(desc)), reflection_(std::move(reflection)) {}
 
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::vulkan;
+    }
+
     [[nodiscard]] const PipelineDesc& desc() const noexcept override { return desc_; }
     [[nodiscard]] const IPipelineReflection* reflection() const noexcept override {
         return reflection_.get();
@@ -665,6 +736,10 @@ public:
     VulkanComputePipeline(ComputePipelineDesc desc,
                           std::unique_ptr<VulkanPipelineReflection> reflection)
         : desc_(std::move(desc)), reflection_(std::move(reflection)) {}
+
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::vulkan;
+    }
 
     [[nodiscard]] const ComputePipelineDesc& desc() const noexcept override { return desc_; }
     [[nodiscard]] const IPipelineReflection* reflection() const noexcept override {
@@ -941,33 +1016,44 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "Vulkan backend: pipeline render state is invalid");
         }
-        if (!desc.vertexShader || !desc.fragmentShader) {
+        if ((desc.vertexShader == nullptr) != (desc.fragmentShader == nullptr)) {
             return Status::failure(StatusCode::invalid_argument,
-                                   "Vulkan backend: pipeline requires vertex and fragment shaders");
+                                   "Vulkan backend: pipeline requires both vertex and fragment shaders or neither");
         }
-
-        auto* vertexShader = dynamic_cast<VulkanShader*>(desc.vertexShader);
-        auto* fragmentShader = dynamic_cast<VulkanShader*>(desc.fragmentShader);
-        if (!vertexShader || !fragmentShader) {
+        auto* vertexShader =
+            desc.vertexShader ? dynamic_cast<VulkanShader*>(desc.vertexShader) : nullptr;
+        auto* fragmentShader =
+            desc.fragmentShader ? dynamic_cast<VulkanShader*>(desc.fragmentShader) : nullptr;
+        if ((desc.vertexShader && !vertexShader) ||
+            (desc.fragmentShader && !fragmentShader)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "Vulkan backend: pipeline shaders must be created by Vulkan backend");
         }
+        if ((vertexShader && vertexShader->desc().stage != ShaderStage::vertex) ||
+            (fragmentShader && fragmentShader->desc().stage != ShaderStage::fragment)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Vulkan backend: pipeline shader stages are invalid");
+        }
 
         auto reflection = std::make_unique<VulkanPipelineReflection>();
-        reflection->add_binding(ResourceBinding{
-            .name = "vertex_buffer_0",
-            .stage = ShaderStage::vertex,
-            .type = ResourceBindingType::Buffer,
-            .bindingIndex = 0,
-            .dataSize = vertexShader->desc().bytecode.size(),
-        });
-        reflection->add_binding(ResourceBinding{
-            .name = "fragment_buffer_1",
-            .stage = ShaderStage::fragment,
-            .type = ResourceBindingType::Buffer,
-            .bindingIndex = 1,
-            .dataSize = fragmentShader->desc().bytecode.size(),
-        });
+        if (vertexShader) {
+            reflection->add_binding(ResourceBinding{
+                .name = "vertex_buffer_0",
+                .stage = ShaderStage::vertex,
+                .type = ResourceBindingType::Buffer,
+                .bindingIndex = 0,
+                .dataSize = vertexShader->desc().bytecode.size(),
+            });
+        }
+        if (fragmentShader) {
+            reflection->add_binding(ResourceBinding{
+                .name = "fragment_buffer_1",
+                .stage = ShaderStage::fragment,
+                .type = ResourceBindingType::Buffer,
+                .bindingIndex = 1,
+                .dataSize = fragmentShader->desc().bytecode.size(),
+            });
+        }
 
         if (diagnostics_) {
             ++diagnostics_->mutable_stats().graphicsPipelinesCreated;
@@ -1050,6 +1136,10 @@ public:
         if (!computeShader) {
             return Status::failure(StatusCode::invalid_argument,
                                    "Vulkan backend: compute shader must be created by Vulkan backend");
+        }
+        if (computeShader->desc().stage != ShaderStage::compute) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Vulkan backend: compute pipeline requires compute shader stage");
         }
 
         auto reflection = std::make_unique<VulkanPipelineReflection>();

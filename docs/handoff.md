@@ -289,6 +289,19 @@ validation, diagnostics, and backend parity.
   - Updated CI and release workflows to upload the JSON parity artifact.
   - Updated distribution and architecture docs to describe Markdown + JSON parity
     artifacts.
+- **Low-Level Graphics Foundation Slice 9A** — Complete.
+  - Added a backend ownership hook to low-level RHI resources, shaders,
+    pipelines, and bind groups.
+  - Wired null, Metal, Vulkan, OpenGL, and Direct3D objects to report their
+    backend kind.
+  - Hardened render-pass attachments, pipeline binds, buffer binds, and
+    barriers so built-in backends reject resources from another backend before
+    native casts or contract execution.
+  - Added shader-stage validation for graphics and compute pipeline creation
+    while preserving legacy shaderless null/contract graphics pipeline
+    descriptors where existing tests rely on them.
+  - Expanded shared backend contract tests for foreign resource misuse and
+    wrong-stage shader rejection.
 
 ## Relevant Decisions And Constraints
 
@@ -311,6 +324,13 @@ validation, diagnostics, and backend parity.
 - Descriptor arrays, dynamic resource indexing, and bindless resources are
   explicit feature-gated RHI capabilities. Higher layers must check the parity
   report/capability helpers before emitting indexed descriptor layouts.
+- Built-in backend resources now expose `backend_kind()`; external/custom
+  resource implementations default to unknown and are rejected by built-in
+  backend command paths that need concrete backend ownership.
+- Graphics pipeline creation accepts no shaders or a complete vertex+fragment
+  pair. If shaders are supplied, they must belong to the creating backend and
+  match the required stages. Contract compute backends require a compute shader;
+  null preserves its shaderless compute-pipeline compatibility path.
 - The repository commits only the public doctrine snapshot. The maintainer's
   private Copilot overlay lives in `~/.copilot/copilot-instructions.md` on the
   local machine and must not be copied into repository history.
@@ -338,8 +358,8 @@ core contract tests, package consumer, and transform compute tests.
 
 ## Next Resume Steps
 
-1. Begin backend-by-backend native depth work while preserving the shared
-   diagnostics/parity contract.
+1. Continue backend parity hardening by exposing memory-topology parity details
+   such as unified/discrete memory in `BackendParityReport`.
 2. Expand descriptor array bind-group resource population if a higher layer
    needs actual array resources rather than only feature-gated layout contracts.
 3. Consider adding a dedicated RHI parity-report executable if JSON needs to

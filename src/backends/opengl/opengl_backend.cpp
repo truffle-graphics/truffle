@@ -124,6 +124,10 @@ public:
     explicit OpenGLBindGroupLayout(BindGroupLayoutDesc desc)
         : desc_(std::move(desc)) {}
 
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::opengl;
+    }
+
     [[nodiscard]] const BindGroupLayoutDesc& desc() const noexcept override {
         return desc_;
     }
@@ -135,6 +139,10 @@ private:
 class OpenGLBindGroup final : public IBindGroup {
 public:
     explicit OpenGLBindGroup(BindGroupDesc desc) : desc_(std::move(desc)) {}
+
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::opengl;
+    }
 
     [[nodiscard]] const BindGroupDesc& desc() const noexcept override {
         return desc_;
@@ -254,11 +262,21 @@ public:
                                    "OpenGLCommandBuffer: render pass extent must be non-zero");
         }
         if (desc.colorAttachment.texture &&
+            desc.colorAttachment.texture->backend_kind() != BackendKind::opengl) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "OpenGLCommandBuffer: color attachment texture must be created by OpenGL backend");
+        }
+        if (desc.colorAttachment.texture &&
             !validation::texture_supports_usage(
                 desc.colorAttachment.texture->desc(),
                 TextureUsageFlags::color_attachment)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "OpenGLCommandBuffer: color attachment texture lacks color attachment usage");
+        }
+        if (desc.depthAttachment.texture &&
+            desc.depthAttachment.texture->backend_kind() != BackendKind::opengl) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "OpenGLCommandBuffer: depth attachment texture must be created by OpenGL backend");
         }
         if (desc.depthAttachment.texture &&
             !validation::texture_supports_usage(
@@ -283,17 +301,28 @@ public:
         return Status::success();
     }
 
-    [[nodiscard]] Status bind_pipeline(IPipeline& /*pipeline*/) override {
-        return require_render_pass("bind_pipeline");
+    [[nodiscard]] Status bind_pipeline(IPipeline& pipeline) override {
+        if (const auto s = require_render_pass("bind_pipeline"); !s.ok()) {
+            return s;
+        }
+        if (pipeline.backend_kind() != BackendKind::opengl) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "OpenGLCommandBuffer: pipeline must be created by OpenGL backend");
+        }
+        return Status::success();
     }
 
-    [[nodiscard]] Status bind_compute_pipeline(IComputePipeline& /*pipeline*/) override {
+    [[nodiscard]] Status bind_compute_pipeline(IComputePipeline& pipeline) override {
         if (const auto s = require_recording("bind_compute_pipeline"); !s.ok()) {
             return s;
         }
         if (inRenderPass_) {
             return Status::failure(StatusCode::invalid_state,
                                    "OpenGLCommandBuffer: bind_compute_pipeline cannot run inside render pass");
+        }
+        if (pipeline.backend_kind() != BackendKind::opengl) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "OpenGLCommandBuffer: compute pipeline must be created by OpenGL backend");
         }
         return Status::success();
     }
@@ -307,6 +336,10 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "OpenGLCommandBuffer: buffer lacks vertex usage");
         }
+        if (buffer.backend_kind() != BackendKind::opengl) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "OpenGLCommandBuffer: vertex buffer must be created by OpenGL backend");
+        }
         return Status::success();
     }
 
@@ -319,6 +352,10 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "OpenGLCommandBuffer: buffer lacks index usage");
         }
+        if (buffer.backend_kind() != BackendKind::opengl) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "OpenGLCommandBuffer: index buffer must be created by OpenGL backend");
+        }
         return Status::success();
     }
 
@@ -330,6 +367,10 @@ public:
         if (!validation::buffer_supports_usage(buffer.desc(), BufferUsageFlags::uniform)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "OpenGLCommandBuffer: buffer lacks uniform usage");
+        }
+        if (buffer.backend_kind() != BackendKind::opengl) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "OpenGLCommandBuffer: uniform buffer must be created by OpenGL backend");
         }
         return Status::success();
     }
@@ -346,6 +387,10 @@ public:
         if (!validation::buffer_supports_usage(buffer.desc(), BufferUsageFlags::storage)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "OpenGLCommandBuffer: buffer lacks storage usage");
+        }
+        if (buffer.backend_kind() != BackendKind::opengl) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "OpenGLCommandBuffer: storage buffer must be created by OpenGL backend");
         }
         return Status::success();
     }
@@ -379,6 +424,10 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "OpenGLCommandBuffer: buffer barrier is invalid");
         }
+        if (barrier.buffer->backend_kind() != BackendKind::opengl) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "OpenGLCommandBuffer: buffer barrier resource must be created by OpenGL backend");
+        }
         return Status::success();
     }
 
@@ -394,6 +443,10 @@ public:
         if (!validation::texture_barrier_valid(barrier)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "OpenGLCommandBuffer: texture barrier is invalid");
+        }
+        if (barrier.texture->backend_kind() != BackendKind::opengl) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "OpenGLCommandBuffer: texture barrier resource must be created by OpenGL backend");
         }
         return Status::success();
     }
@@ -577,6 +630,9 @@ private:
 class OpenGLBuffer final : public IBuffer {
 public:
     explicit OpenGLBuffer(BufferDesc desc) : desc_(std::move(desc)) {}
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::opengl;
+    }
     [[nodiscard]] const BufferDesc& desc() const noexcept override { return desc_; }
 
 private:
@@ -586,6 +642,9 @@ private:
 class OpenGLTexture final : public ITexture {
 public:
     explicit OpenGLTexture(TextureDesc desc) : desc_(std::move(desc)) {}
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::opengl;
+    }
     [[nodiscard]] const TextureDesc& desc() const noexcept override { return desc_; }
 
 private:
@@ -595,11 +654,19 @@ private:
 class OpenGLSampler final : public ISampler {
 public:
     OpenGLSampler() = default;
+
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::opengl;
+    }
 };
 
 class OpenGLShader final : public IShader {
 public:
     explicit OpenGLShader(ShaderDesc desc) : desc_(std::move(desc)) {}
+
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::opengl;
+    }
 
     [[nodiscard]] const ShaderDesc& desc() const noexcept { return desc_; }
 
@@ -647,6 +714,10 @@ public:
                    std::unique_ptr<OpenGLPipelineReflection> reflection)
         : desc_(std::move(desc)), reflection_(std::move(reflection)) {}
 
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::opengl;
+    }
+
     [[nodiscard]] const PipelineDesc& desc() const noexcept override { return desc_; }
     [[nodiscard]] const IPipelineReflection* reflection() const noexcept override {
         return reflection_.get();
@@ -662,6 +733,10 @@ public:
     OpenGLComputePipeline(ComputePipelineDesc desc,
                           std::unique_ptr<OpenGLPipelineReflection> reflection)
         : desc_(std::move(desc)), reflection_(std::move(reflection)) {}
+
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::opengl;
+    }
 
     [[nodiscard]] const ComputePipelineDesc& desc() const noexcept override { return desc_; }
     [[nodiscard]] const IPipelineReflection* reflection() const noexcept override {
@@ -938,33 +1013,44 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "OpenGL backend: pipeline render state is invalid");
         }
-        if (!desc.vertexShader || !desc.fragmentShader) {
+        if ((desc.vertexShader == nullptr) != (desc.fragmentShader == nullptr)) {
             return Status::failure(StatusCode::invalid_argument,
-                                   "OpenGL backend: pipeline requires vertex and fragment shaders");
+                                   "OpenGL backend: pipeline requires both vertex and fragment shaders or neither");
         }
-
-        auto* vertexShader = dynamic_cast<OpenGLShader*>(desc.vertexShader);
-        auto* fragmentShader = dynamic_cast<OpenGLShader*>(desc.fragmentShader);
-        if (!vertexShader || !fragmentShader) {
+        auto* vertexShader =
+            desc.vertexShader ? dynamic_cast<OpenGLShader*>(desc.vertexShader) : nullptr;
+        auto* fragmentShader =
+            desc.fragmentShader ? dynamic_cast<OpenGLShader*>(desc.fragmentShader) : nullptr;
+        if ((desc.vertexShader && !vertexShader) ||
+            (desc.fragmentShader && !fragmentShader)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "OpenGL backend: pipeline shaders must be created by OpenGL backend");
         }
+        if ((vertexShader && vertexShader->desc().stage != ShaderStage::vertex) ||
+            (fragmentShader && fragmentShader->desc().stage != ShaderStage::fragment)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "OpenGL backend: pipeline shader stages are invalid");
+        }
 
         auto reflection = std::make_unique<OpenGLPipelineReflection>();
-        reflection->add_binding(ResourceBinding{
-            .name = "vertex_buffer_0",
-            .stage = ShaderStage::vertex,
-            .type = ResourceBindingType::Buffer,
-            .bindingIndex = 0,
-            .dataSize = vertexShader->desc().bytecode.size(),
-        });
-        reflection->add_binding(ResourceBinding{
-            .name = "fragment_buffer_1",
-            .stage = ShaderStage::fragment,
-            .type = ResourceBindingType::Buffer,
-            .bindingIndex = 1,
-            .dataSize = fragmentShader->desc().bytecode.size(),
-        });
+        if (vertexShader) {
+            reflection->add_binding(ResourceBinding{
+                .name = "vertex_buffer_0",
+                .stage = ShaderStage::vertex,
+                .type = ResourceBindingType::Buffer,
+                .bindingIndex = 0,
+                .dataSize = vertexShader->desc().bytecode.size(),
+            });
+        }
+        if (fragmentShader) {
+            reflection->add_binding(ResourceBinding{
+                .name = "fragment_buffer_1",
+                .stage = ShaderStage::fragment,
+                .type = ResourceBindingType::Buffer,
+                .bindingIndex = 1,
+                .dataSize = fragmentShader->desc().bytecode.size(),
+            });
+        }
 
         if (diagnostics_) {
             ++diagnostics_->mutable_stats().graphicsPipelinesCreated;
@@ -1047,6 +1133,10 @@ public:
         if (!computeShader) {
             return Status::failure(StatusCode::invalid_argument,
                                    "OpenGL backend: compute shader must be created by OpenGL backend");
+        }
+        if (computeShader->desc().stage != ShaderStage::compute) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "OpenGL backend: compute pipeline requires compute shader stage");
         }
 
         auto reflection = std::make_unique<OpenGLPipelineReflection>();

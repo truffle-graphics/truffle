@@ -128,6 +128,10 @@ public:
     explicit Direct3DBindGroupLayout(BindGroupLayoutDesc desc)
         : desc_(std::move(desc)) {}
 
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::direct3d;
+    }
+
     [[nodiscard]] const BindGroupLayoutDesc& desc() const noexcept override {
         return desc_;
     }
@@ -139,6 +143,10 @@ private:
 class Direct3DBindGroup final : public IBindGroup {
 public:
     explicit Direct3DBindGroup(BindGroupDesc desc) : desc_(std::move(desc)) {}
+
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::direct3d;
+    }
 
     [[nodiscard]] const BindGroupDesc& desc() const noexcept override {
         return desc_;
@@ -258,11 +266,21 @@ public:
                                    "Direct3DCommandBuffer: render pass extent must be non-zero");
         }
         if (desc.colorAttachment.texture &&
+            desc.colorAttachment.texture->backend_kind() != BackendKind::direct3d) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Direct3DCommandBuffer: color attachment texture must be created by Direct3D backend");
+        }
+        if (desc.colorAttachment.texture &&
             !validation::texture_supports_usage(
                 desc.colorAttachment.texture->desc(),
                 TextureUsageFlags::color_attachment)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "Direct3DCommandBuffer: color attachment texture lacks color attachment usage");
+        }
+        if (desc.depthAttachment.texture &&
+            desc.depthAttachment.texture->backend_kind() != BackendKind::direct3d) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Direct3DCommandBuffer: depth attachment texture must be created by Direct3D backend");
         }
         if (desc.depthAttachment.texture &&
             !validation::texture_supports_usage(
@@ -287,17 +305,28 @@ public:
         return Status::success();
     }
 
-    [[nodiscard]] Status bind_pipeline(IPipeline& /*pipeline*/) override {
-        return require_render_pass("bind_pipeline");
+    [[nodiscard]] Status bind_pipeline(IPipeline& pipeline) override {
+        if (const auto s = require_render_pass("bind_pipeline"); !s.ok()) {
+            return s;
+        }
+        if (pipeline.backend_kind() != BackendKind::direct3d) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Direct3DCommandBuffer: pipeline must be created by Direct3D backend");
+        }
+        return Status::success();
     }
 
-    [[nodiscard]] Status bind_compute_pipeline(IComputePipeline& /*pipeline*/) override {
+    [[nodiscard]] Status bind_compute_pipeline(IComputePipeline& pipeline) override {
         if (const auto s = require_recording("bind_compute_pipeline"); !s.ok()) {
             return s;
         }
         if (inRenderPass_) {
             return Status::failure(StatusCode::invalid_state,
                                    "Direct3DCommandBuffer: bind_compute_pipeline cannot run inside render pass");
+        }
+        if (pipeline.backend_kind() != BackendKind::direct3d) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Direct3DCommandBuffer: compute pipeline must be created by Direct3D backend");
         }
         return Status::success();
     }
@@ -311,6 +340,10 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "Direct3DCommandBuffer: buffer lacks vertex usage");
         }
+        if (buffer.backend_kind() != BackendKind::direct3d) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Direct3DCommandBuffer: vertex buffer must be created by Direct3D backend");
+        }
         return Status::success();
     }
 
@@ -323,6 +356,10 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "Direct3DCommandBuffer: buffer lacks index usage");
         }
+        if (buffer.backend_kind() != BackendKind::direct3d) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Direct3DCommandBuffer: index buffer must be created by Direct3D backend");
+        }
         return Status::success();
     }
 
@@ -334,6 +371,10 @@ public:
         if (!validation::buffer_supports_usage(buffer.desc(), BufferUsageFlags::uniform)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "Direct3DCommandBuffer: buffer lacks uniform usage");
+        }
+        if (buffer.backend_kind() != BackendKind::direct3d) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Direct3DCommandBuffer: uniform buffer must be created by Direct3D backend");
         }
         return Status::success();
     }
@@ -350,6 +391,10 @@ public:
         if (!validation::buffer_supports_usage(buffer.desc(), BufferUsageFlags::storage)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "Direct3DCommandBuffer: buffer lacks storage usage");
+        }
+        if (buffer.backend_kind() != BackendKind::direct3d) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Direct3DCommandBuffer: storage buffer must be created by Direct3D backend");
         }
         return Status::success();
     }
@@ -383,6 +428,10 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "Direct3DCommandBuffer: buffer barrier is invalid");
         }
+        if (barrier.buffer->backend_kind() != BackendKind::direct3d) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Direct3DCommandBuffer: buffer barrier resource must be created by Direct3D backend");
+        }
         return Status::success();
     }
 
@@ -398,6 +447,10 @@ public:
         if (!validation::texture_barrier_valid(barrier)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "Direct3DCommandBuffer: texture barrier is invalid");
+        }
+        if (barrier.texture->backend_kind() != BackendKind::direct3d) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Direct3DCommandBuffer: texture barrier resource must be created by Direct3D backend");
         }
         return Status::success();
     }
@@ -581,6 +634,9 @@ private:
 class Direct3DBuffer final : public IBuffer {
 public:
     explicit Direct3DBuffer(BufferDesc desc) : desc_(std::move(desc)) {}
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::direct3d;
+    }
     [[nodiscard]] const BufferDesc& desc() const noexcept override { return desc_; }
 
 private:
@@ -590,6 +646,9 @@ private:
 class Direct3DTexture final : public ITexture {
 public:
     explicit Direct3DTexture(TextureDesc desc) : desc_(std::move(desc)) {}
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::direct3d;
+    }
     [[nodiscard]] const TextureDesc& desc() const noexcept override { return desc_; }
 
 private:
@@ -599,11 +658,19 @@ private:
 class Direct3DSampler final : public ISampler {
 public:
     Direct3DSampler() = default;
+
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::direct3d;
+    }
 };
 
 class Direct3DShader final : public IShader {
 public:
     explicit Direct3DShader(ShaderDesc desc) : desc_(std::move(desc)) {}
+
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::direct3d;
+    }
 
     [[nodiscard]] const ShaderDesc& desc() const noexcept { return desc_; }
 
@@ -651,6 +718,10 @@ public:
                    std::unique_ptr<Direct3DPipelineReflection> reflection)
         : desc_(std::move(desc)), reflection_(std::move(reflection)) {}
 
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::direct3d;
+    }
+
     [[nodiscard]] const PipelineDesc& desc() const noexcept override { return desc_; }
     [[nodiscard]] const IPipelineReflection* reflection() const noexcept override {
         return reflection_.get();
@@ -664,8 +735,12 @@ private:
 class Direct3DComputePipeline final : public IComputePipeline {
 public:
     Direct3DComputePipeline(ComputePipelineDesc desc,
-                          std::unique_ptr<Direct3DPipelineReflection> reflection)
+                           std::unique_ptr<Direct3DPipelineReflection> reflection)
         : desc_(std::move(desc)), reflection_(std::move(reflection)) {}
+
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::direct3d;
+    }
 
     [[nodiscard]] const ComputePipelineDesc& desc() const noexcept override { return desc_; }
     [[nodiscard]] const IPipelineReflection* reflection() const noexcept override {
@@ -942,33 +1017,44 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "Direct3D backend: pipeline render state is invalid");
         }
-        if (!desc.vertexShader || !desc.fragmentShader) {
+        if ((desc.vertexShader == nullptr) != (desc.fragmentShader == nullptr)) {
             return Status::failure(StatusCode::invalid_argument,
-                                   "Direct3D backend: pipeline requires vertex and fragment shaders");
+                                   "Direct3D backend: pipeline requires both vertex and fragment shaders or neither");
         }
-
-        auto* vertexShader = dynamic_cast<Direct3DShader*>(desc.vertexShader);
-        auto* fragmentShader = dynamic_cast<Direct3DShader*>(desc.fragmentShader);
-        if (!vertexShader || !fragmentShader) {
+        auto* vertexShader =
+            desc.vertexShader ? dynamic_cast<Direct3DShader*>(desc.vertexShader) : nullptr;
+        auto* fragmentShader =
+            desc.fragmentShader ? dynamic_cast<Direct3DShader*>(desc.fragmentShader) : nullptr;
+        if ((desc.vertexShader && !vertexShader) ||
+            (desc.fragmentShader && !fragmentShader)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "Direct3D backend: pipeline shaders must be created by Direct3D backend");
         }
+        if ((vertexShader && vertexShader->desc().stage != ShaderStage::vertex) ||
+            (fragmentShader && fragmentShader->desc().stage != ShaderStage::fragment)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Direct3D backend: pipeline shader stages are invalid");
+        }
 
         auto reflection = std::make_unique<Direct3DPipelineReflection>();
-        reflection->add_binding(ResourceBinding{
-            .name = "vertex_buffer_0",
-            .stage = ShaderStage::vertex,
-            .type = ResourceBindingType::Buffer,
-            .bindingIndex = 0,
-            .dataSize = vertexShader->desc().bytecode.size(),
-        });
-        reflection->add_binding(ResourceBinding{
-            .name = "fragment_buffer_1",
-            .stage = ShaderStage::fragment,
-            .type = ResourceBindingType::Buffer,
-            .bindingIndex = 1,
-            .dataSize = fragmentShader->desc().bytecode.size(),
-        });
+        if (vertexShader) {
+            reflection->add_binding(ResourceBinding{
+                .name = "vertex_buffer_0",
+                .stage = ShaderStage::vertex,
+                .type = ResourceBindingType::Buffer,
+                .bindingIndex = 0,
+                .dataSize = vertexShader->desc().bytecode.size(),
+            });
+        }
+        if (fragmentShader) {
+            reflection->add_binding(ResourceBinding{
+                .name = "fragment_buffer_1",
+                .stage = ShaderStage::fragment,
+                .type = ResourceBindingType::Buffer,
+                .bindingIndex = 1,
+                .dataSize = fragmentShader->desc().bytecode.size(),
+            });
+        }
 
         if (diagnostics_) {
             ++diagnostics_->mutable_stats().graphicsPipelinesCreated;
@@ -1051,6 +1137,10 @@ public:
         if (!computeShader) {
             return Status::failure(StatusCode::invalid_argument,
                                    "Direct3D backend: compute shader must be created by Direct3D backend");
+        }
+        if (computeShader->desc().stage != ShaderStage::compute) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Direct3D backend: compute pipeline requires compute shader stage");
         }
 
         auto reflection = std::make_unique<Direct3DPipelineReflection>();

@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -748,35 +749,53 @@ struct RenderPassDesc {
 class IBuffer {
 public:
     virtual ~IBuffer() = default;
+    [[nodiscard]] virtual std::optional<BackendKind> backend_kind() const noexcept {
+        return std::nullopt;
+    }
     [[nodiscard]] virtual const BufferDesc& desc() const noexcept = 0;
 };
 
 class ITexture {
 public:
     virtual ~ITexture() = default;
+    [[nodiscard]] virtual std::optional<BackendKind> backend_kind() const noexcept {
+        return std::nullopt;
+    }
     [[nodiscard]] virtual const TextureDesc& desc() const noexcept = 0;
 };
 
 class ISampler {
 public:
     virtual ~ISampler() = default;
+    [[nodiscard]] virtual std::optional<BackendKind> backend_kind() const noexcept {
+        return std::nullopt;
+    }
 };
 
 class IBindGroupLayout {
 public:
     virtual ~IBindGroupLayout() = default;
+    [[nodiscard]] virtual std::optional<BackendKind> backend_kind() const noexcept {
+        return std::nullopt;
+    }
     [[nodiscard]] virtual const BindGroupLayoutDesc& desc() const noexcept = 0;
 };
 
 class IBindGroup {
 public:
     virtual ~IBindGroup() = default;
+    [[nodiscard]] virtual std::optional<BackendKind> backend_kind() const noexcept {
+        return std::nullopt;
+    }
     [[nodiscard]] virtual const BindGroupDesc& desc() const noexcept = 0;
 };
 
 class IShader {
 public:
     virtual ~IShader() = default;
+    [[nodiscard]] virtual std::optional<BackendKind> backend_kind() const noexcept {
+        return std::nullopt;
+    }
 };
 
 class IPipelineReflection;
@@ -784,6 +803,9 @@ class IPipelineReflection;
 class IPipeline {
 public:
     virtual ~IPipeline() = default;
+    [[nodiscard]] virtual std::optional<BackendKind> backend_kind() const noexcept {
+        return std::nullopt;
+    }
     [[nodiscard]] virtual const PipelineDesc& desc() const noexcept = 0;
     [[nodiscard]] virtual std::uint64_t cache_key() const noexcept {
         return desc().cacheKey;
@@ -796,6 +818,9 @@ public:
 class IComputePipeline {
 public:
     virtual ~IComputePipeline() = default;
+    [[nodiscard]] virtual std::optional<BackendKind> backend_kind() const noexcept {
+        return std::nullopt;
+    }
     [[nodiscard]] virtual const ComputePipelineDesc& desc() const noexcept = 0;
     [[nodiscard]] virtual std::uint64_t cache_key() const noexcept {
         return desc().cacheKey;

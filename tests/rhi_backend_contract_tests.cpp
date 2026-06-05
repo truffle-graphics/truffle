@@ -123,9 +123,9 @@ int verify_capability_contract(const truffle::rhi::IBackend& backend,
                   (truffle::rhi::supports_descriptor_arrays(caps) &&
                    caps.features.dynamicResourceIndexing));
     TRUFFLE_CHECK(truffle::rhi::supports_bindless_resources(caps) ==
-                  (truffle::rhi::supports_dynamic_resource_indexing(caps) &&
-                   caps.features.bindlessResources &&
-                   caps.limits.maxBindlessResources > 0));
+                   (truffle::rhi::supports_dynamic_resource_indexing(caps) &&
+                    caps.features.bindlessResources &&
+                    caps.limits.maxBindlessResources > 1));
     TRUFFLE_CHECK(!caps.formats.empty());
     TRUFFLE_CHECK(!caps.memoryHeaps.empty());
     TRUFFLE_CHECK(truffle::rhi::supports_texture_format(
@@ -149,7 +149,7 @@ int verify_capability_contract(const truffle::rhi::IBackend& backend,
 }
 
 truffle::rhi::ShaderDesc make_shader_desc(truffle::rhi::BackendKind backendKind,
-                                            truffle::rhi::ShaderStage stage) {
+                                             truffle::rhi::ShaderStage stage) {
     if (backendKind == truffle::rhi::BackendKind::metal) {
         if (stage == truffle::rhi::ShaderStage::vertex) {
             static const char kVertexMSL[] = R"msl(
@@ -207,6 +207,61 @@ kernel void comp_main(device uint* data [[buffer(0)]],
         .bytecode = {std::byte{0x1}, std::byte{0x2}},
     };
 }
+
+class ForeignBuffer final : public truffle::rhi::IBuffer {
+public:
+    const truffle::rhi::BufferDesc& desc() const noexcept override { return desc_; }
+
+private:
+    truffle::rhi::BufferDesc desc_{
+        .size = 64,
+        .usageFlags = truffle::rhi::BufferUsageFlags::vertex |
+                      truffle::rhi::BufferUsageFlags::index |
+                      truffle::rhi::BufferUsageFlags::uniform |
+                      truffle::rhi::BufferUsageFlags::storage |
+                      truffle::rhi::BufferUsageFlags::transfer_source |
+                      truffle::rhi::BufferUsageFlags::transfer_destination,
+    };
+};
+
+class ForeignTexture final : public truffle::rhi::ITexture {
+public:
+    const truffle::rhi::TextureDesc& desc() const noexcept override { return desc_; }
+
+private:
+    truffle::rhi::TextureDesc desc_{
+        .extent = {32, 32},
+        .format = truffle::rhi::TextureFormat::rgba8_unorm,
+        .usageFlags = truffle::rhi::TextureUsageFlags::sampled |
+                      truffle::rhi::TextureUsageFlags::color_attachment |
+                      truffle::rhi::TextureUsageFlags::transfer_source |
+                      truffle::rhi::TextureUsageFlags::transfer_destination,
+    };
+};
+
+class ForeignPipeline final : public truffle::rhi::IPipeline {
+public:
+    const truffle::rhi::PipelineDesc& desc() const noexcept override { return desc_; }
+    const truffle::rhi::IPipelineReflection* reflection() const noexcept override {
+        return nullptr;
+    }
+
+private:
+    truffle::rhi::PipelineDesc desc_{};
+};
+
+class ForeignComputePipeline final : public truffle::rhi::IComputePipeline {
+public:
+    const truffle::rhi::ComputePipelineDesc& desc() const noexcept override {
+        return desc_;
+    }
+    const truffle::rhi::IPipelineReflection* reflection() const noexcept override {
+        return nullptr;
+    }
+
+private:
+    truffle::rhi::ComputePipelineDesc desc_{};
+};
 
 std::unique_ptr<truffle::rhi::IDevice> create_foreign_device(
     truffle::rhi::BackendKind currentKind) {
@@ -372,6 +427,10 @@ int verify_common_positive_path_contract(truffle::rhi::IDevice& device,
     TRUFFLE_CHECK(computePipeline.ok());
     TRUFFLE_CHECK(computePipeline.value()->cache_key() == 0x123456u);
     TRUFFLE_CHECK(verify_reflection_invariants(computePipeline.value()->reflection(), true));
+    ForeignBuffer foreignBuffer;
+    ForeignTexture foreignTexture;
+    ForeignPipeline foreignPipeline;
+    ForeignComputePipeline foreignComputePipeline;
 
     TRUFFLE_CHECK(device.queue(truffle::rhi::QueueKind::graphics).kind() ==
                   truffle::rhi::QueueKind::graphics);
@@ -402,6 +461,18 @@ int verify_common_positive_path_contract(truffle::rhi::IDevice& device,
     TRUFFLE_CHECK(barrierBuffer.ok());
     TRUFFLE_CHECK(barrierWrongBuffer.ok());
     TRUFFLE_CHECK(barrierTexture.ok());
+    auto foreignComputeRecoveryCmd = device.create_command_buffer();
+    TRUFFLE_CHECK(foreignComputeRecoveryCmd != nullptr);
+    TRUFFLE_CHECK(foreignComputeRecoveryCmd->begin().ok());
+    TRUFFLE_CHECK(!foreignComputeRecoveryCmd
+                       ->bind_compute_pipeline(foreignComputePipeline)
+                       .ok());
+    truffle::rhi::RenderPassDesc recoveryPassDesc;
+    recoveryPassDesc.extent = {32, 32};
+    recoveryPassDesc.colorAttachment.texture = barrierTexture.value().get();
+    TRUFFLE_CHECK(foreignComputeRecoveryCmd->begin_render_pass(recoveryPassDesc).ok());
+    TRUFFLE_CHECK(foreignComputeRecoveryCmd->end_render_pass().ok());
+    TRUFFLE_CHECK(foreignComputeRecoveryCmd->end().ok());
     const truffle::rhi::BindGroupLayoutDesc graphicsBindGroupLayoutDesc{
         .debugName = "contract_graphics_bind_group_layout",
         .bindings = graphicsLayout.bindings,
@@ -585,6 +656,10 @@ int verify_common_positive_path_contract(truffle::rhi::IDevice& device,
     TRUFFLE_CHECK(computeBindGroup.ok());
     truffle::rhi::RenderPassDesc passDesc;
     passDesc.extent = swapchain.value()->desc().extent;
+    truffle::rhi::RenderPassDesc foreignPassDesc;
+    foreignPassDesc.extent = passDesc.extent;
+    foreignPassDesc.colorAttachment.texture = &foreignTexture;
+    TRUFFLE_CHECK(!stateCmd->begin_render_pass(foreignPassDesc).ok());
     passDesc.colorAttachment.texture = swapchain.value()->acquire_next_texture();
     TRUFFLE_CHECK(stateCmd->begin_render_pass(passDesc).ok());
     TRUFFLE_CHECK(!stateCmd->begin_render_pass(passDesc).ok());
@@ -594,12 +669,16 @@ int verify_common_positive_path_contract(truffle::rhi::IDevice& device,
             .before = truffle::rhi::ResourceState::undefined,
             .after = truffle::rhi::ResourceState::storage_read_write,
         }).ok());
+    TRUFFLE_CHECK(!stateCmd->bind_pipeline(foreignPipeline).ok());
     TRUFFLE_CHECK(stateCmd->bind_pipeline(*pipeline.value()).ok());
     TRUFFLE_CHECK(stateCmd->bind_group(0, *graphicsBindGroup.value()).ok());
+    TRUFFLE_CHECK(!stateCmd->bind_vertex_buffer(0, foreignBuffer).ok());
     TRUFFLE_CHECK(!stateCmd->bind_vertex_buffer(0, *indexBuffer.value()).ok());
     TRUFFLE_CHECK(stateCmd->bind_vertex_buffer(0, *vertexUniformBuffer.value()).ok());
+    TRUFFLE_CHECK(!stateCmd->bind_uniform_buffer(0, foreignBuffer).ok());
     TRUFFLE_CHECK(!stateCmd->bind_uniform_buffer(0, *indexBuffer.value()).ok());
     TRUFFLE_CHECK(stateCmd->bind_uniform_buffer(0, *vertexUniformBuffer.value()).ok());
+    TRUFFLE_CHECK(!stateCmd->bind_index_buffer(foreignBuffer).ok());
     TRUFFLE_CHECK(stateCmd->bind_index_buffer(*indexBuffer.value()).ok());
     TRUFFLE_CHECK(!stateCmd->draw_indirect(*indexBuffer.value(), 0).ok());
     TRUFFLE_CHECK(stateCmd->draw_indirect(*indirectBuffer.value(), 0).ok());
@@ -607,8 +686,22 @@ int verify_common_positive_path_contract(truffle::rhi::IDevice& device,
     TRUFFLE_CHECK(!stateCmd->end().ok());
     TRUFFLE_CHECK(stateCmd->end_render_pass().ok());
     TRUFFLE_CHECK(!stateCmd->end_render_pass().ok());
+    TRUFFLE_CHECK(!stateCmd->resource_barrier(
+        truffle::rhi::BufferBarrierDesc{
+            .buffer = &foreignBuffer,
+            .before = truffle::rhi::ResourceState::undefined,
+            .after = truffle::rhi::ResourceState::copy_destination,
+        }).ok());
+    TRUFFLE_CHECK(!stateCmd->resource_barrier(
+        truffle::rhi::TextureBarrierDesc{
+            .texture = &foreignTexture,
+            .before = truffle::rhi::ResourceState::undefined,
+            .after = truffle::rhi::ResourceState::copy_destination,
+        }).ok());
+    TRUFFLE_CHECK(!stateCmd->bind_compute_pipeline(foreignComputePipeline).ok());
     TRUFFLE_CHECK(stateCmd->bind_compute_pipeline(*computePipeline.value()).ok());
     TRUFFLE_CHECK(stateCmd->bind_group(0, *computeBindGroup.value()).ok());
+    TRUFFLE_CHECK(!stateCmd->bind_storage_buffer(0, foreignBuffer).ok());
     TRUFFLE_CHECK(!stateCmd->bind_storage_buffer(0, *indexBuffer.value()).ok());
     TRUFFLE_CHECK(stateCmd->bind_storage_buffer(0, *storageBuffer.value()).ok());
     TRUFFLE_CHECK(stateCmd->dispatch_compute(1, 1, 1).ok());
@@ -1114,6 +1207,36 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
         TRUFFLE_CHECK(unsupportedShader.status().code ==
                       truffle::core::StatusCode::unsupported);
     }
+
+    auto stageVertexShader =
+        device.create_shader(make_shader_desc(backendKind, truffle::rhi::ShaderStage::vertex));
+    auto stageFragmentShader =
+        device.create_shader(make_shader_desc(backendKind, truffle::rhi::ShaderStage::fragment));
+    auto stageComputeShader =
+        device.create_shader(make_shader_desc(backendKind, truffle::rhi::ShaderStage::compute));
+    TRUFFLE_CHECK(stageVertexShader.ok());
+    TRUFFLE_CHECK(stageFragmentShader.ok());
+    TRUFFLE_CHECK(stageComputeShader.ok());
+    auto wrongVertexStagePipeline = device.create_pipeline({
+        .vertexShader = stageComputeShader.value().get(),
+        .fragmentShader = stageFragmentShader.value().get(),
+    });
+    TRUFFLE_CHECK(!wrongVertexStagePipeline.ok());
+    TRUFFLE_CHECK(wrongVertexStagePipeline.status().code ==
+                  truffle::core::StatusCode::invalid_argument);
+    auto wrongFragmentStagePipeline = device.create_pipeline({
+        .vertexShader = stageVertexShader.value().get(),
+        .fragmentShader = stageVertexShader.value().get(),
+    });
+    TRUFFLE_CHECK(!wrongFragmentStagePipeline.ok());
+    TRUFFLE_CHECK(wrongFragmentStagePipeline.status().code ==
+                  truffle::core::StatusCode::invalid_argument);
+    auto wrongComputeStagePipeline = device.create_compute_pipeline({
+        .computeShader = stageVertexShader.value().get(),
+    });
+    TRUFFLE_CHECK(!wrongComputeStagePipeline.ok());
+    TRUFFLE_CHECK(wrongComputeStagePipeline.status().code ==
+                  truffle::core::StatusCode::invalid_argument);
 
     auto badLayoutPipeline = device.create_pipeline({
         .layout = {
