@@ -9,3 +9,8 @@ The canonical source remains the Doctrine repository.
 ## Refresh
 
 Re-run bootstrap when doctrine updates are needed.
+
+## Export Boundary
+
+This snapshot contains the public doctrine baseline only.
+Identity-specific files and maintainer-local overlays are intentionally not copied by default.

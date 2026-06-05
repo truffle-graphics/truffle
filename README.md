@@ -22,7 +22,7 @@ framework. It is not an application framework and it is not a dedicated game
 engine.
 
 The first implementation line focuses on stable architecture and build contracts
-before production GPU backends:
+with backend-neutral APIs and contract-tested backend modules:
 
 - `truffle_core` owns shared status, configuration, and handle primitives.
 - `truffle_ecs` provides a general-purpose ECS world.
@@ -68,15 +68,20 @@ find_package(Truffle CONFIG REQUIRED)
 target_link_libraries(my_tool PRIVATE Truffle::RHI Truffle::Render)
 ```
 
-The package currently exports `Truffle::Core`, `Truffle::ECS`, `Truffle::RHI`,
-`Truffle::BackendNull`, and `Truffle::Render`. Production backend options are
-reserved in CMake but remain disabled until their backend milestones land.
+The package exports `Truffle::Core`, `Truffle::ECS`, `Truffle::RHI`,
+`Truffle::BackendNull`, and `Truffle::Render`. Additional backend exports
+(`Truffle::BackendMetal`, `Truffle::BackendVulkan`, `Truffle::BackendOpenGL`,
+`Truffle::BackendDirect3D`) are available when their corresponding CMake
+options are enabled.
+
+See `docs/distribution.md` for package generation, install verification, and
+release workflow guidance.
 
 ## Continuity And AI Guidance
 
 Cross-machine working state belongs in [`docs/handoff.md`](docs/handoff.md).
 AI sessions should start with [`AGENTS.md`](AGENTS.md) and
-[`AI_CONTEXT.md`](AI_CONTEXT.md). The local TinMan Doctrine snapshot lives under
+[`AI_CONTEXT.md`](AI_CONTEXT.md). The local doctrine snapshot lives under
 [`docs/doctrine/`](docs/doctrine/README.md).
 
 ## Attribution

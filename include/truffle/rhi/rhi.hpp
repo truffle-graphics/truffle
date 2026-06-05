@@ -14,6 +14,7 @@ namespace truffle::rhi {
 // Forward declarations — descriptor structs reference these before their class definitions
 class IShader;
 class ITexture;
+class ICommandBuffer; // used in ISwapchain::schedule_present
 
 enum class BackendKind {
     null_backend,
@@ -36,6 +37,12 @@ enum class BufferUsage {
     storage,
     transfer_source,
     transfer_destination,
+    indirect,
+};
+
+enum class IndexFormat {
+    uint16,
+    uint32,
 };
 
 enum class TextureFormat {
@@ -119,8 +126,14 @@ struct PipelineDesc {
     IShader*          vertexShader   = nullptr;
     IShader*          fragmentShader = nullptr;
     PrimitiveTopology topology       = PrimitiveTopology::triangle_list;
+    TextureFormat     colorFormat    = TextureFormat::bgra8_unorm;
     bool              depthTest      = true;
     bool              depthWrite     = true;
+};
+
+struct ComputePipelineDesc {
+    std::string debugName;
+    IShader*    computeShader = nullptr;
 };
 
 struct NativeSurface {
@@ -194,10 +207,24 @@ public:
     virtual ~IShader() = default;
 };
 
+class IPipelineReflection;
+
 class IPipeline {
 public:
     virtual ~IPipeline() = default;
     [[nodiscard]] virtual const PipelineDesc& desc() const noexcept = 0;
+    
+    /// Optional: returns reflection metadata, or nullptr if unavailable.
+    [[nodiscard]] virtual const IPipelineReflection* reflection() const noexcept = 0;
+};
+
+class IComputePipeline {
+public:
+    virtual ~IComputePipeline() = default;
+    [[nodiscard]] virtual const ComputePipelineDesc& desc() const noexcept = 0;
+
+    /// Optional: returns reflection metadata, or nullptr if unavailable.
+    [[nodiscard]] virtual const IPipelineReflection* reflection() const noexcept = 0;
 };
 
 class ISurface {
@@ -214,12 +241,17 @@ public:
     // Returns the current frame's color texture. Call once per frame before
     // begin_render_pass. Returns nullptr if no drawable is available.
     [[nodiscard]] virtual ITexture* acquire_next_texture() = 0;
+    // Schedule presentation of the current drawable via the given command buffer.
+    // Must be called after end_render_pass() and before end(). No-op for headless.
+    [[nodiscard]] virtual core::Status schedule_present(ICommandBuffer& cmd) = 0;
 };
 
 class IFence {
 public:
     virtual ~IFence() = default;
     [[nodiscard]] virtual bool signaled() const noexcept = 0;
+    // Block until the fence is signaled. Returns immediately if already signaled.
+    virtual void wait() noexcept = 0;
 };
 
 // ---------------------------------------------------------------------------
@@ -268,11 +300,21 @@ public:
 
     // Resource binding
     [[nodiscard]] virtual core::Status bind_pipeline(IPipeline& pipeline) = 0;
+    [[nodiscard]] virtual core::Status bind_compute_pipeline(IComputePipeline& pipeline) = 0;
     [[nodiscard]] virtual core::Status bind_vertex_buffer(
         std::uint32_t binding, IBuffer& buffer,
         std::size_t offset = 0) = 0;
     [[nodiscard]] virtual core::Status bind_index_buffer(
-        IBuffer& buffer, std::size_t offset = 0) = 0;
+        IBuffer& buffer, std::size_t offset = 0,
+        IndexFormat format = IndexFormat::uint32) = 0;
+    // Bind a uniform/constant buffer to both vertex and fragment stages.
+    [[nodiscard]] virtual core::Status bind_uniform_buffer(
+        std::uint32_t binding, IBuffer& buffer,
+        std::size_t offset = 0) = 0;
+    // Bind a storage buffer for compute reading/writing.
+    [[nodiscard]] virtual core::Status bind_storage_buffer(
+        std::uint32_t binding, IBuffer& buffer,
+        std::size_t offset = 0) = 0;
     [[nodiscard]] virtual core::Status set_viewport(
         float x, float y, float width, float height,
         float minDepth = 0.0f, float maxDepth = 1.0f) = 0;
@@ -286,6 +328,21 @@ public:
     [[nodiscard]] virtual core::Status draw_instanced(
         std::uint32_t vertex_count,
         std::uint32_t instance_count) = 0;
+    [[nodiscard]] virtual core::Status draw_indexed(
+        std::uint32_t index_count) = 0;
+    [[nodiscard]] virtual core::Status draw_indexed_instanced(
+        std::uint32_t index_count,
+        std::uint32_t instance_count) = 0;
+    [[nodiscard]] virtual core::Status draw_indirect(
+        IBuffer& indirect_buffer, std::size_t offset) = 0;
+    [[nodiscard]] virtual core::Status draw_indexed_indirect(
+        IBuffer& indirect_buffer, std::size_t offset) = 0;
+
+    // Compute calls
+    [[nodiscard]] virtual core::Status dispatch_compute(
+        std::uint32_t group_count_x,
+        std::uint32_t group_count_y,
+        std::uint32_t group_count_z) = 0;
 };
 
 class IQueue {
@@ -312,12 +369,21 @@ public:
     create_shader(const ShaderDesc& desc) = 0;
     [[nodiscard]] virtual core::Result<std::unique_ptr<IPipeline>>
     create_pipeline(const PipelineDesc& desc) = 0;
+    [[nodiscard]] virtual core::Result<std::unique_ptr<IComputePipeline>>
+    create_compute_pipeline(const ComputePipelineDesc& desc) = 0;
     [[nodiscard]] virtual core::Result<std::unique_ptr<ISurface>>
     create_surface(const SurfaceDesc& desc) = 0;
     [[nodiscard]] virtual core::Result<std::unique_ptr<ISwapchain>>
     create_swapchain(ISurface& surface, const SwapchainDesc& desc) = 0;
-    [[nodiscard]] virtual std::unique_ptr<ICommandBuffer> create_command_buffer() = 0;
-    [[nodiscard]] virtual std::unique_ptr<IFence> create_fence(const FenceDesc& desc) = 0;
+
+    using CommandBufferDeleter = void (*)(ICommandBuffer*);
+    using CommandBufferPtr = std::unique_ptr<ICommandBuffer, CommandBufferDeleter>;
+    [[nodiscard]] virtual CommandBufferPtr create_command_buffer() = 0;
+
+    using FenceDeleter = void (*)(IFence*);
+    using FencePtr = std::unique_ptr<IFence, FenceDeleter>;
+    [[nodiscard]] virtual FencePtr create_fence(const FenceDesc& desc) = 0;
+
     [[nodiscard]] virtual core::Result<std::unique_ptr<IFrameUploadRing>>
     create_upload_ring(std::uint32_t frames_in_flight,
                        std::size_t   capacity_per_frame) = 0;

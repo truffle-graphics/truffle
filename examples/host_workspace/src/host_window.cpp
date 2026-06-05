@@ -85,6 +85,12 @@ void* HostWindow::native_handle() const noexcept {
     return window_;
 }
 
+#ifndef __APPLE__
+void* HostWindow::native_layer_handle() const noexcept {
+    return nullptr;
+}
+#endif
+
 void HostWindow::poll_events() const noexcept {
     glfwPollEvents();
 }

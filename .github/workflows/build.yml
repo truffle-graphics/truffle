@@ -45,3 +45,52 @@ jobs:
 
       - name: Test
         run: ctest --preset ci
+
+      - name: Generate backend parity report
+        run: |
+          cmake \
+            -DTRUFFLE_BUILD_DIR=${{ github.workspace }}/build/ci \
+            -DTRUFFLE_REPORT_OUT=${{ github.workspace }}/build/ci/parity-matrix.md \
+            -P cmake/GenerateParityReport.cmake
+
+      - name: Upload backend parity report
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-parity-matrix-${{ matrix.os }}
+          path: |
+            build/ci/parity-matrix.md
+            build/ci/*.parity.log
+          if-no-files-found: error
+
+  package:
+    name: package-archive
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure package build
+        run: |
+          cmake -S . -B build/package \
+            -DTRUFFLE_INSTALL=ON \
+            -DTRUFFLE_BUILD_TESTS=OFF \
+            -DTRUFFLE_BUILD_EXAMPLES=OFF
+
+      - name: Build package targets
+        run: cmake --build build/package
+
+      - name: Install package layout
+        run: cmake --install build/package --prefix build/package/install
+
+      - name: Generate archives with CPack
+        working-directory: build/package
+        run: cpack --verbose
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: truffle-package-archives
+          path: |
+            build/package/*.tar.gz
+            build/package/*.zip
+          if-no-files-found: error

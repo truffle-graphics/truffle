@@ -2,15 +2,21 @@ if(TRUFFLE_BUILD_BACKEND_NULL)
     add_subdirectory(null)
 endif()
 
-function(truffle_defer_backend option backend)
-    if(${option})
-        message(FATAL_ERROR
-            "${backend} is reserved by ${option}, but its Truffle backend "
-            "implementation has not landed yet.")
+if(TRUFFLE_BUILD_BACKEND_METAL)
+    if(NOT APPLE)
+        message(FATAL_ERROR "TRUFFLE_BUILD_BACKEND_METAL requires an Apple platform")
     endif()
-endfunction()
+    add_subdirectory(metal)
+endif()
 
-truffle_defer_backend(TRUFFLE_BUILD_BACKEND_VULKAN "Vulkan")
-truffle_defer_backend(TRUFFLE_BUILD_BACKEND_DIRECT3D "Direct3D")
-truffle_defer_backend(TRUFFLE_BUILD_BACKEND_METAL "Metal")
-truffle_defer_backend(TRUFFLE_BUILD_BACKEND_OPENGL "OpenGL")
+if(TRUFFLE_BUILD_BACKEND_VULKAN)
+    add_subdirectory(vulkan)
+endif()
+
+if(TRUFFLE_BUILD_BACKEND_OPENGL)
+    add_subdirectory(opengl)
+endif()
+
+if(TRUFFLE_BUILD_BACKEND_DIRECT3D)
+    add_subdirectory(direct3d)
+endif()

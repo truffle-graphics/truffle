@@ -21,6 +21,9 @@ public:
     [[nodiscard]] bool should_close() const noexcept;
     [[nodiscard]] rhi::Extent2D framebuffer_extent() const noexcept;
     [[nodiscard]] void* native_handle() const noexcept;
+    // On macOS: returns the CAMetalLayer* attached to the window's content view.
+    // On other platforms: returns nullptr.
+    [[nodiscard]] void* native_layer_handle() const noexcept;
     void poll_events() const noexcept;
 
 private:

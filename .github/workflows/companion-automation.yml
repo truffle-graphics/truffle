@@ -1,0 +1,64 @@
+name: Companion Automation
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+
+jobs:
+  route:
+    name: route companion tasks
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (github.event.pull_request.base.ref == 'develop' ||
+      github.event.pull_request.base.ref == 'master')
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+
+      - name: Fetch pull request head
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: git fetch origin "$PR_HEAD_SHA" --depth=1
+
+      - name: Determine source range
+        id: source
+        shell: bash
+        env:
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          set -euo pipefail
+          {
+            printf 'base_ref=%s\n' "$PR_HEAD_REF"
+            printf 'base_sha=%s\n' "$PR_BASE_SHA"
+            printf 'head_sha=%s\n' "$PR_HEAD_SHA"
+            printf 'source_url=%s\n' "$PR_URL"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Route detached companion work
+        env:
+          COPILOT_AGENT_TOKEN: ${{ secrets.COPILOT_AGENT_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          BASE_REF: ${{ steps.source.outputs.base_ref }}
+          BASE_SHA: ${{ steps.source.outputs.base_sha }}
+          HEAD_SHA: ${{ steps.source.outputs.head_sha }}
+          SOURCE_URL: ${{ steps.source.outputs.source_url }}
+        run: |
+          python3 .github/scripts/companion_router.py \
+            --repo "$REPOSITORY" \
+            --base-ref "$BASE_REF" \
+            --base-sha "$BASE_SHA" \
+            --head-sha "$HEAD_SHA" \
+            --source-url "$SOURCE_URL"
