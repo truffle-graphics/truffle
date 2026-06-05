@@ -1875,6 +1875,36 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
     TRUFFLE_CHECK(depthStencilPipeline.ok());
     TRUFFLE_CHECK(depthStencilPipeline.value()->desc().depthFormat ==
                   truffle::rhi::TextureFormat::depth32_float_stencil8);
+    auto stencilPipeline = device.create_pipeline({
+        .vertexShader = stageVertexShader.value().get(),
+        .fragmentShader = stageFragmentShader.value().get(),
+        .colorFormat = truffle::rhi::TextureFormat::rgba8_unorm,
+        .depthFormat = truffle::rhi::TextureFormat::depth32_float_stencil8,
+        .depthTest = true,
+        .depthWrite = true,
+        .depthStencilState = {
+            .depthCompare = truffle::rhi::SamplerCompareOp::greater_equal,
+            .stencilTest = true,
+            .frontFaceStencil = {
+                .compareOp = truffle::rhi::SamplerCompareOp::equal,
+                .failOp = truffle::rhi::StencilOp::keep,
+                .depthFailOp = truffle::rhi::StencilOp::increment_clamp,
+                .passOp = truffle::rhi::StencilOp::replace,
+                .readMask = 0x0fu,
+                .writeMask = 0xf0u,
+            },
+            .backFaceStencil = {
+                .compareOp = truffle::rhi::SamplerCompareOp::not_equal,
+                .failOp = truffle::rhi::StencilOp::zero,
+                .depthFailOp = truffle::rhi::StencilOp::decrement_wrap,
+                .passOp = truffle::rhi::StencilOp::invert,
+                .readMask = 0xffu,
+                .writeMask = 0x3fu,
+            },
+        },
+    });
+    TRUFFLE_CHECK(stencilPipeline.ok());
+    TRUFFLE_CHECK(stencilPipeline.value()->desc().depthStencilState.stencilTest);
     auto depthOnlyPipeline = device.create_pipeline({
         .vertexShader = stageVertexShader.value().get(),
         .fragmentShader = depthOnlyFragmentShader.value().get(),
@@ -1936,6 +1966,18 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
     });
     TRUFFLE_CHECK(!badDepthFormatPipeline.ok());
     TRUFFLE_CHECK(badDepthFormatPipeline.status().code ==
+                  truffle::core::StatusCode::invalid_argument);
+    auto badStencilDepthFormatPipeline = device.create_pipeline({
+        .vertexShader = stageVertexShader.value().get(),
+        .fragmentShader = stageFragmentShader.value().get(),
+        .colorFormat = truffle::rhi::TextureFormat::rgba8_unorm,
+        .depthFormat = truffle::rhi::TextureFormat::depth32_float,
+        .depthStencilState = {
+            .stencilTest = true,
+        },
+    });
+    TRUFFLE_CHECK(!badStencilDepthFormatPipeline.ok());
+    TRUFFLE_CHECK(badStencilDepthFormatPipeline.status().code ==
                   truffle::core::StatusCode::invalid_argument);
     auto badRasterStatePipeline = device.create_pipeline({
         .vertexShader = stageVertexShader.value().get(),
@@ -2054,7 +2096,8 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
     depthStencilPassDesc.depthAttachment.clearStencil = 5;
     TRUFFLE_CHECK(depthStencilCmd->begin_render_pass(depthStencilPassDesc).ok());
     TRUFFLE_CHECK(!depthStencilCmd->bind_pipeline(*depthPipeline.value()).ok());
-    TRUFFLE_CHECK(depthStencilCmd->bind_pipeline(*depthStencilPipeline.value()).ok());
+    TRUFFLE_CHECK(depthStencilCmd->bind_pipeline(*stencilPipeline.value()).ok());
+    TRUFFLE_CHECK(depthStencilCmd->set_stencil_reference(11).ok());
     TRUFFLE_CHECK(depthStencilCmd->end_render_pass().ok());
     TRUFFLE_CHECK(depthStencilCmd->end().ok());
 
@@ -2069,6 +2112,15 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
         truffle::rhi::LoadOp::clear;
     TRUFFLE_CHECK(!badStencilPassCmd->begin_render_pass(badStencilPassDesc).ok());
     TRUFFLE_CHECK(badStencilPassCmd->end().ok());
+
+    auto badStencilRefCmd = device.create_command_buffer();
+    TRUFFLE_CHECK(badStencilRefCmd != nullptr);
+    TRUFFLE_CHECK(badStencilRefCmd->begin().ok());
+    TRUFFLE_CHECK(!badStencilRefCmd->set_stencil_reference(1).ok());
+    TRUFFLE_CHECK(badStencilRefCmd->begin_render_pass(depthPassDesc).ok());
+    TRUFFLE_CHECK(!badStencilRefCmd->set_stencil_reference(2).ok());
+    TRUFFLE_CHECK(badStencilRefCmd->end_render_pass().ok());
+    TRUFFLE_CHECK(badStencilRefCmd->end().ok());
 
     auto cmd = device.create_command_buffer();
     TRUFFLE_CHECK(cmd != nullptr);

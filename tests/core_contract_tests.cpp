@@ -758,6 +758,34 @@ int main() {
             truffle::rhi::TextureFormat::rgba8_unorm},
         std::optional<truffle::rhi::TextureFormat>{
             truffle::rhi::TextureFormat::depth32_float}));
+    const truffle::rhi::PipelineDesc stencilPipelineDesc{
+        .colorFormat = truffle::rhi::TextureFormat::rgba8_unorm,
+        .depthFormat = truffle::rhi::TextureFormat::depth32_float_stencil8,
+        .depthTest = true,
+        .depthWrite = true,
+        .depthStencilState = {
+            .depthCompare = truffle::rhi::SamplerCompareOp::greater_equal,
+            .stencilTest = true,
+            .frontFaceStencil = {
+                .compareOp = truffle::rhi::SamplerCompareOp::equal,
+                .failOp = truffle::rhi::StencilOp::keep,
+                .depthFailOp = truffle::rhi::StencilOp::increment_clamp,
+                .passOp = truffle::rhi::StencilOp::replace,
+                .readMask = 0x0fu,
+                .writeMask = 0xf0u,
+            },
+            .backFaceStencil = {
+                .compareOp = truffle::rhi::SamplerCompareOp::not_equal,
+                .failOp = truffle::rhi::StencilOp::zero,
+                .depthFailOp = truffle::rhi::StencilOp::decrement_wrap,
+                .passOp = truffle::rhi::StencilOp::invert,
+                .readMask = 0xffu,
+                .writeMask = 0x3fu,
+            },
+        },
+    };
+    TRUFFLE_CHECK(truffle::rhi::validation::pipeline_render_state_valid(
+        stencilPipelineDesc, capabilities));
     TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_render_state_valid({
         .colorFormat = truffle::rhi::TextureFormat::depth32_float,
     }, capabilities));
@@ -783,6 +811,23 @@ int main() {
         .depthWrite = false,
         .depthStencilState = {
             .stencilTest = true,
+        },
+    }, capabilities));
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_render_state_valid({
+        .colorFormat = truffle::rhi::TextureFormat::rgba8_unorm,
+        .depthFormat = truffle::rhi::TextureFormat::depth32_float,
+        .depthStencilState = {
+            .stencilTest = true,
+        },
+    }, capabilities));
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_render_state_valid({
+        .colorFormat = truffle::rhi::TextureFormat::rgba8_unorm,
+        .depthFormat = truffle::rhi::TextureFormat::depth32_float_stencil8,
+        .depthStencilState = {
+            .stencilTest = true,
+            .frontFaceStencil = {
+                .passOp = static_cast<truffle::rhi::StencilOp>(99),
+            },
         },
     }, capabilities));
     TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_render_state_valid({

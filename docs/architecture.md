@@ -142,6 +142,10 @@ scope and active extension-backend work continuing in parallel:
   fields on `DepthAttachmentDesc`. Shared RHI validation keeps color, depth, and
   depth-stencil attachment rules aligned across null, Metal, Vulkan, OpenGL, and
   Direct3D backends before native/backend-specific execution.
+- Depth/stencil pipeline state now includes explicit front/back stencil compare,
+  fail/depth-fail/pass operations, read/write masks, and a render-pass-scoped
+  `ICommandBuffer::set_stencil_reference()` hook so higher layers can express
+  stencil behavior without backend-specific side channels.
 - Bind-group layouts can mark uniform/storage buffer bindings as dynamic-offset
   bindings; command binding validates supplied offsets against descriptor arrays,
   buffer ranges, and advertised alignment before work can be recorded. Layouts

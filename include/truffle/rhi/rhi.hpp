@@ -362,6 +362,17 @@ enum class BlendOp {
     max,
 };
 
+enum class StencilOp {
+    keep,
+    zero,
+    replace,
+    increment_clamp,
+    decrement_clamp,
+    invert,
+    increment_wrap,
+    decrement_wrap,
+};
+
 struct RasterStateDesc {
     FillMode fillMode = FillMode::solid;
     CullMode cullMode = CullMode::back;
@@ -369,9 +380,20 @@ struct RasterStateDesc {
     bool depthClip = true;
 };
 
+struct StencilFaceStateDesc {
+    SamplerCompareOp compareOp = SamplerCompareOp::always;
+    StencilOp failOp = StencilOp::keep;
+    StencilOp depthFailOp = StencilOp::keep;
+    StencilOp passOp = StencilOp::keep;
+    std::uint32_t readMask = 0xffffffffu;
+    std::uint32_t writeMask = 0xffffffffu;
+};
+
 struct DepthStencilStateDesc {
     SamplerCompareOp depthCompare = SamplerCompareOp::less_equal;
     bool stencilTest = false;
+    StencilFaceStateDesc frontFaceStencil;
+    StencilFaceStateDesc backFaceStencil;
 };
 
 struct ColorBlendDesc {
@@ -1264,6 +1286,15 @@ public:
     [[nodiscard]] virtual core::Status set_scissor(
         std::uint32_t x, std::uint32_t y,
         std::uint32_t width, std::uint32_t height) = 0;
+    // Optional render-pass-scoped stencil reference. Built-in backends require an
+    // active render pass whose depth attachment format has a stencil aspect.
+    [[nodiscard]] virtual core::Status set_stencil_reference(
+        std::uint32_t reference) {
+        (void)reference;
+        return core::Status::failure(
+            core::StatusCode::unsupported,
+            "dynamic stencil reference is not supported by this command buffer");
+    }
 
     // Draw calls
     [[nodiscard]] virtual core::Status draw(

@@ -289,6 +289,7 @@ public:
         if (desc.depthAttachment.texture) {
             activeDepthFormat_ = desc.depthAttachment.texture->desc().format;
         }
+        stencilReference_ = 0;
         inRenderPass_ = true;
         return Status::success();
     }
@@ -524,6 +525,20 @@ public:
         return Status::success();
     }
 
+    [[nodiscard]] Status set_stencil_reference(
+        std::uint32_t reference) override {
+        if (const auto s = require_render_pass("set_stencil_reference"); !s.ok()) {
+            return s;
+        }
+        if (!activeDepthFormat_ ||
+            !texture_format_has_stencil_aspect(*activeDepthFormat_)) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "OpenGLCommandBuffer: set_stencil_reference requires stencil-capable depth attachment");
+        }
+        stencilReference_ = reference;
+        return Status::success();
+    }
+
     [[nodiscard]] Status draw(std::uint32_t /*vertex_count*/) override {
         if (const auto s = require_render_pass("draw"); !s.ok()) {
             return s;
@@ -704,6 +719,7 @@ private:
     bool inRenderPass_ = false;
     std::optional<TextureFormat> activeColorFormat_;
     std::optional<TextureFormat> activeDepthFormat_;
+    std::uint32_t stencilReference_ = 0;
     std::uint32_t debugLabelDepth_ = 0;
     const PipelineLayoutDesc* graphicsLayout_ = nullptr;
     const PipelineLayoutDesc* computeLayout_ = nullptr;

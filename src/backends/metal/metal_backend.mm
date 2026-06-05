@@ -184,6 +184,29 @@ static MTLStoreAction to_mtl_store(StoreOp op) noexcept {
     return MTLCompareFunctionNever;
 }
 
+[[nodiscard]] MTLStencilOperation to_metal_stencil_operation(
+    StencilOp op) noexcept {
+    switch (op) {
+    case StencilOp::keep:
+        return MTLStencilOperationKeep;
+    case StencilOp::zero:
+        return MTLStencilOperationZero;
+    case StencilOp::replace:
+        return MTLStencilOperationReplace;
+    case StencilOp::increment_clamp:
+        return MTLStencilOperationIncrementClamp;
+    case StencilOp::decrement_clamp:
+        return MTLStencilOperationDecrementClamp;
+    case StencilOp::invert:
+        return MTLStencilOperationInvert;
+    case StencilOp::increment_wrap:
+        return MTLStencilOperationIncrementWrap;
+    case StencilOp::decrement_wrap:
+        return MTLStencilOperationDecrementWrap;
+    }
+    return MTLStencilOperationKeep;
+}
+
 [[nodiscard]] MTLBlendFactor to_metal_blend_factor(
     BlendFactor factor) noexcept {
     switch (factor) {
@@ -685,6 +708,42 @@ public:
                     ? to_metal_compare_function(desc.depthStencilState.depthCompare)
                     : MTLCompareFunctionAlways;
             depthDesc.depthWriteEnabled = desc.depthWrite;
+            if (desc.depthStencilState.stencilTest) {
+                auto* frontFace = [MTLStencilDescriptor new];
+                frontFace.stencilCompareFunction =
+                    to_metal_compare_function(
+                        desc.depthStencilState.frontFaceStencil.compareOp);
+                frontFace.stencilFailureOperation =
+                    to_metal_stencil_operation(
+                        desc.depthStencilState.frontFaceStencil.failOp);
+                frontFace.depthFailureOperation =
+                    to_metal_stencil_operation(
+                        desc.depthStencilState.frontFaceStencil.depthFailOp);
+                frontFace.depthStencilPassOperation =
+                    to_metal_stencil_operation(
+                        desc.depthStencilState.frontFaceStencil.passOp);
+                frontFace.readMask = desc.depthStencilState.frontFaceStencil.readMask;
+                frontFace.writeMask = desc.depthStencilState.frontFaceStencil.writeMask;
+
+                auto* backFace = [MTLStencilDescriptor new];
+                backFace.stencilCompareFunction =
+                    to_metal_compare_function(
+                        desc.depthStencilState.backFaceStencil.compareOp);
+                backFace.stencilFailureOperation =
+                    to_metal_stencil_operation(
+                        desc.depthStencilState.backFaceStencil.failOp);
+                backFace.depthFailureOperation =
+                    to_metal_stencil_operation(
+                        desc.depthStencilState.backFaceStencil.depthFailOp);
+                backFace.depthStencilPassOperation =
+                    to_metal_stencil_operation(
+                        desc.depthStencilState.backFaceStencil.passOp);
+                backFace.readMask = desc.depthStencilState.backFaceStencil.readMask;
+                backFace.writeMask = desc.depthStencilState.backFaceStencil.writeMask;
+
+                depthDesc.frontFaceStencil = frontFace;
+                depthDesc.backFaceStencil = backFace;
+            }
             depthState = [device newDepthStencilStateWithDescriptor:depthDesc];
             if (!depthState) {
                 return Status::failure(StatusCode::unavailable,
@@ -965,6 +1024,7 @@ public:
         if (desc.depthAttachment.texture) {
             activeDepthFormat_ = desc.depthAttachment.texture->desc().format;
         }
+        stencilReference_ = 0;
         auto* rpd = [MTLRenderPassDescriptor new];
 
         if (auto* tex = dynamic_cast<MetalTexture*>(desc.colorAttachment.texture)) {
@@ -1046,6 +1106,10 @@ public:
         }
         [encoder_ setRenderPipelineState:mp->native()];
         [encoder_ setDepthStencilState:mp->depth_state()];
+        if (activeDepthFormat_ &&
+            texture_format_has_stencil_aspect(*activeDepthFormat_)) {
+            [encoder_ setStencilReferenceValue:stencilReference_];
+        }
         [encoder_ setCullMode:to_metal_cull_mode(mp->desc().rasterState.cullMode)];
         [encoder_ setFrontFacingWinding:to_metal_winding(mp->desc().rasterState.frontFace)];
         [encoder_ setTriangleFillMode:to_metal_fill_mode(mp->desc().rasterState.fillMode)];
@@ -1284,7 +1348,7 @@ public:
     }
 
     Status set_scissor(std::uint32_t x, std::uint32_t y,
-                        std::uint32_t width, std::uint32_t height) override {
+                         std::uint32_t width, std::uint32_t height) override {
         if (!encoder_) {
             return Status::failure(StatusCode::invalid_state,
                                    "set_scissor requires an active render pass");
@@ -1294,6 +1358,21 @@ public:
                                    "scissor rectangle is invalid");
         }
         [encoder_ setScissorRect:MTLScissorRect{x, y, width, height}];
+        return Status::success();
+    }
+
+    Status set_stencil_reference(std::uint32_t reference) override {
+        if (!encoder_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "set_stencil_reference requires an active render pass");
+        }
+        if (!activeDepthFormat_ ||
+            !texture_format_has_stencil_aspect(*activeDepthFormat_)) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "set_stencil_reference requires stencil-capable depth attachment");
+        }
+        stencilReference_ = reference;
+        [encoder_ setStencilReferenceValue:reference];
         return Status::success();
     }
 
@@ -1774,6 +1853,7 @@ private:
     bool                        computePipelineBound_ = false;
     std::optional<TextureFormat> activeColorFormat_;
     std::optional<TextureFormat> activeDepthFormat_;
+    std::uint32_t               stencilReference_ = 0;
     std::uint32_t               debugLabelDepth_ = 0;
     const PipelineLayoutDesc*    graphicsLayout_ = nullptr;
     const PipelineLayoutDesc*    computeLayout_ = nullptr;

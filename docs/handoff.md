@@ -494,6 +494,20 @@ validation, diagnostics, and backend parity.
   - Expanded core and shared backend contract tests for depth-stencil format
     support, valid depth-stencil render passes, invalid stencil-on-depth-only
     descriptors, invalid clear ranges, and attachment extent mismatches.
+- **Low-Level Graphics Foundation Slice 9P** — Complete.
+  - Expanded `DepthStencilStateDesc` with explicit front/back stencil compare,
+    fail/depth-fail/pass operations, and read/write masks while preserving the
+    existing depth compare contract.
+  - Added shared stencil-state validation plus pipeline rejection when stencil
+    testing is enabled without a stencil-capable depth format.
+  - Added render-pass-scoped `ICommandBuffer::set_stencil_reference()` and
+    aligned null, Metal, Vulkan, OpenGL, and Direct3D command buffers to reject
+    it outside an active stencil-capable render pass.
+  - Mapped stencil face state and dynamic stencil reference through Metal native
+    depth-stencil state and render command encoding.
+  - Expanded core and shared backend contract tests for valid stencil pipelines,
+    invalid stencil ops/formats, valid stencil reference binding, and negative
+    no-pass/depth-only reference rejection.
 
 ## Relevant Decisions And Constraints
 
@@ -569,8 +583,11 @@ validation, diagnostics, and backend parity.
 - Render-pass validation is now shared across built-in backends for color,
   depth-only, and depth-stencil attachments. `DepthAttachmentDesc` may carry
   stencil load/store/clear state only when the selected depth format has a
-  stencil aspect; full stencil test/reference pipeline state remains a later
-  low-level slice.
+  stencil aspect.
+- Depth/stencil pipeline state now includes explicit stencil front/back faces
+  plus a command-buffer stencil reference hook. Built-in backends reject stencil
+  reference changes outside an active render pass with a stencil-capable depth
+  attachment.
 - The repository commits only the public doctrine snapshot. The maintainer's
   private Copilot overlay lives in `~/.copilot/copilot-instructions.md` on the
   local machine and must not be copied into repository history.
@@ -602,12 +619,12 @@ compute tests.
 
 ## Next Resume Steps
 
-1. Continue low-level depth/stencil work with explicit stencil pipeline state,
-   compare/op masks, and command-buffer stencil reference contracts now that
-   render-pass depth-stencil attachments are explicit and validated.
-2. Return to deeper backend-native descriptor allocation/mapping policy once the
-   depth/stencil contract surface is complete enough for higher-level renderer
-   work.
+1. Return to deeper backend-native descriptor allocation/mapping policy now that
+   bind-group lifetime, native slots, depth-stencil attachments, and stencil
+   pipeline/reference state are all explicit at the public RHI layer.
+2. Continue expanding shared contract tests around descriptor caching/allocation
+   policy so higher-level renderer work can reuse descriptors without inventing
+   backend-specific policy.
 
 ## Open Questions Or Risks
 
@@ -618,9 +635,6 @@ compute tests.
   integration remain open.
 - Native descriptor allocation/mapping depth remains backend-specific future
   work; the current bind group model is a validated contract layer.
-- Full stencil pipeline/reference state is still deferred even though
-  depth-stencil attachment formats and stencil attachment load/store/clear
-  semantics are now explicit.
 - Bindless and dynamic-resource-indexing are feature-gated and descriptor arrays
   can now be populated, but backend-native bindless heap/argument-buffer mapping
   remains future work before higher layers can use bindless descriptors

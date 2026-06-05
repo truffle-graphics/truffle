@@ -366,6 +366,21 @@ namespace truffle::rhi::validation {
     return false;
 }
 
+[[nodiscard]] constexpr bool stencil_op_valid(StencilOp op) noexcept {
+    switch (op) {
+    case StencilOp::keep:
+    case StencilOp::zero:
+    case StencilOp::replace:
+    case StencilOp::increment_clamp:
+    case StencilOp::decrement_clamp:
+    case StencilOp::invert:
+    case StencilOp::increment_wrap:
+    case StencilOp::decrement_wrap:
+        return true;
+    }
+    return false;
+}
+
 [[nodiscard]] constexpr bool blend_factor_valid(BlendFactor factor) noexcept {
     switch (factor) {
     case BlendFactor::zero:
@@ -411,7 +426,15 @@ namespace truffle::rhi::validation {
 
 [[nodiscard]] constexpr bool depth_stencil_state_valid(
     const DepthStencilStateDesc& desc) noexcept {
-    return depth_compare_op_valid(desc.depthCompare) && !desc.stencilTest;
+    return depth_compare_op_valid(desc.depthCompare) &&
+           depth_compare_op_valid(desc.frontFaceStencil.compareOp) &&
+           depth_compare_op_valid(desc.backFaceStencil.compareOp) &&
+           stencil_op_valid(desc.frontFaceStencil.failOp) &&
+           stencil_op_valid(desc.frontFaceStencil.depthFailOp) &&
+           stencil_op_valid(desc.frontFaceStencil.passOp) &&
+           stencil_op_valid(desc.backFaceStencil.failOp) &&
+           stencil_op_valid(desc.backFaceStencil.depthFailOp) &&
+           stencil_op_valid(desc.backFaceStencil.passOp);
 }
 
 [[nodiscard]] inline bool clear_color_valid(const ClearColor& color) noexcept {
@@ -621,6 +644,10 @@ namespace truffle::rhi::validation {
             return false;
         }
     } else if (desc.depthTest || desc.depthWrite) {
+        return false;
+    }
+    if (desc.depthStencilState.stencilTest &&
+        !texture_format_has_stencil_aspect(desc.depthFormat)) {
         return false;
     }
 

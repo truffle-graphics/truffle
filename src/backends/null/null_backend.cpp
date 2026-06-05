@@ -441,6 +441,7 @@ public:
         if (desc.depthAttachment.texture) {
             activeDepthFormat_ = desc.depthAttachment.texture->desc().format;
         }
+        stencilReference_ = 0;
         inRenderPass_ = true;
         return Status::success();
     }
@@ -699,8 +700,8 @@ public:
     }
 
     [[nodiscard]] Status set_scissor(std::uint32_t x, std::uint32_t y,
-                                      std::uint32_t width,
-                                      std::uint32_t height) override {
+                                       std::uint32_t width,
+                                       std::uint32_t height) override {
         if (state_ != State::recording) {
             return Status::failure(StatusCode::invalid_state,
                                     "set_scissor requires recording");
@@ -713,6 +714,25 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "scissor rectangle is invalid");
         }
+        return Status::success();
+    }
+
+    [[nodiscard]] Status set_stencil_reference(
+        std::uint32_t reference) override {
+        if (state_ != State::recording) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "set_stencil_reference requires recording");
+        }
+        if (!inRenderPass_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "set_stencil_reference requires active render pass");
+        }
+        if (!activeDepthFormat_ ||
+            !texture_format_has_stencil_aspect(*activeDepthFormat_)) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "set_stencil_reference requires stencil-capable depth attachment");
+        }
+        stencilReference_ = reference;
         return Status::success();
     }
 
@@ -944,6 +964,7 @@ private:
     bool inRenderPass_ = false;
     std::optional<TextureFormat> activeColorFormat_;
     std::optional<TextureFormat> activeDepthFormat_;
+    std::uint32_t stencilReference_ = 0;
     std::uint32_t debugLabelDepth_ = 0;
     const PipelineLayoutDesc* graphicsLayout_ = nullptr;
     const PipelineLayoutDesc* computeLayout_ = nullptr;
