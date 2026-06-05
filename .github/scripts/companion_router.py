@@ -72,7 +72,7 @@ def run_git(args: list[str]) -> str:
 
 
 def changed_files(base_sha: str, head_sha: str) -> list[str]:
-    output = run_git(["diff", "--name-only", f"{base_sha}...{head_sha}"])
+    output = run_git(["diff", "--name-only", base_sha, head_sha])
     return [line.strip() for line in output.splitlines() if line.strip()]
 
 
