@@ -1634,7 +1634,8 @@ private:
             const auto arrayCount =
                 static_cast<std::uint32_t>(layoutBinding->arrayCount);
             for (std::uint32_t element = 0; element < arrayCount; ++element) {
-                const auto slot = entry.bindingIndex + element;
+                const auto slot =
+                    validation::effective_native_binding_slot(*layoutBinding) + element;
                 switch (entry.type) {
                 case BindingResourceType::uniform_buffer:
                 case BindingResourceType::storage_buffer: {

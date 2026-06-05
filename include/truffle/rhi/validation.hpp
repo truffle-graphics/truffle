@@ -121,12 +121,14 @@ namespace truffle::rhi::validation {
 [[nodiscard]] constexpr bool pipeline_layout_binding_valid(
     const BindingLayoutDesc& binding,
     const Capabilities& capabilities) noexcept {
+    const auto nativeSlot = binding.nativeSlot.value_or(binding.bindingIndex);
     if (binding.groupIndex >= capabilities.limits.maxBindGroups ||
         binding.bindingIndex >= capabilities.limits.maxResourceBindings ||
+        nativeSlot >= capabilities.limits.maxResourceBindings ||
         binding.arrayCount == 0 ||
         binding.arrayCount > capabilities.limits.maxDescriptorArrayElements ||
         binding.arrayCount >
-            capabilities.limits.maxResourceBindings - binding.bindingIndex ||
+            capabilities.limits.maxResourceBindings - nativeSlot ||
         !shader_stage_visibility_valid(binding.visibility)) {
         return false;
     }
@@ -163,6 +165,11 @@ namespace truffle::rhi::validation {
     return true;
 }
 
+[[nodiscard]] constexpr std::uint32_t effective_native_binding_slot(
+    const BindingLayoutDesc& binding) noexcept {
+    return binding.nativeSlot.value_or(binding.bindingIndex);
+}
+
 [[nodiscard]] constexpr bool shader_stage_visibility_intersects(
     ShaderStageFlags lhs,
     ShaderStageFlags rhs) noexcept {
@@ -194,9 +201,11 @@ namespace truffle::rhi::validation {
 [[nodiscard]] constexpr bool binding_native_slot_ranges_overlap(
     const BindingLayoutDesc& lhs,
     const BindingLayoutDesc& rhs) noexcept {
-    const auto lhsEnd = lhs.bindingIndex + lhs.arrayCount;
-    const auto rhsEnd = rhs.bindingIndex + rhs.arrayCount;
-    return lhs.bindingIndex < rhsEnd && rhs.bindingIndex < lhsEnd;
+    const auto lhsSlot = effective_native_binding_slot(lhs);
+    const auto rhsSlot = effective_native_binding_slot(rhs);
+    const auto lhsEnd = lhsSlot + lhs.arrayCount;
+    const auto rhsEnd = rhsSlot + rhs.arrayCount;
+    return lhsSlot < rhsEnd && rhsSlot < lhsEnd;
 }
 
 [[nodiscard]] constexpr bool binding_native_slots_overlap(
@@ -239,7 +248,8 @@ namespace truffle::rhi::validation {
             expected.minBindingSize == actual.minBindingSize &&
             expected.dynamicIndexing == actual.dynamicIndexing &&
             expected.bindless == actual.bindless &&
-            expected.dynamicOffset == actual.dynamicOffset;
+            expected.dynamicOffset == actual.dynamicOffset &&
+            expected.nativeSlot == actual.nativeSlot;
 }
 
 [[nodiscard]] inline bool pipeline_layout_bind_group_compatible(

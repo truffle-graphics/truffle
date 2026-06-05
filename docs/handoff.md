@@ -448,6 +448,20 @@ validation, diagnostics, and backend parity.
   - Expanded core and shared backend contract tests for mappability, mapped-at-
     creation pointer access, remap/unmap lifecycle, and invalid mapped
     device-local buffers.
+- **Low-Level Graphics Foundation Slice 9M** — Complete.
+  - Added optional `BindingLayoutDesc::nativeSlot` so logical group/binding
+    identities can map to explicit flattened backend-native descriptor slots.
+  - Added shared effective-native-slot validation for slot ranges, descriptor
+    arrays, native slot overlap checks, and pipeline-layout/bind-group
+    compatibility.
+  - Preserved source compatibility by defaulting the effective native slot to
+    `bindingIndex` when `nativeSlot` is omitted.
+  - Mapped Metal bind-group buffer/texture/sampler calls through the effective
+    native slot while keeping descriptor-array element offsets intact.
+  - Expanded core and shared backend contract tests for explicit native slot
+    disambiguation, default native-slot alias rejection, range overflow
+    rejection, compatibility checks, pipeline creation, bind-group creation, and
+    command binding/draw coverage.
 
 ## Relevant Decisions And Constraints
 
@@ -511,6 +525,11 @@ validation, diagnostics, and backend parity.
 - Buffers now expose explicit CPU mapping hooks. Built-in backends support
   mapping for automatic/upload/readback memory, reject device-local mapping, and
   track mapped-at-creation lifecycle state.
+- Bind-group and pipeline-layout entries can now specify `nativeSlot` when a
+  backend needs a flattened native binding index distinct from the logical
+  `bindingIndex`. Omitting `nativeSlot` preserves the legacy `bindingIndex`
+  mapping, so same-namespace cross-group aliases still fail unless callers
+  disambiguate them explicitly.
 - The repository commits only the public doctrine snapshot. The maintainer's
   private Copilot overlay lives in `~/.copilot/copilot-instructions.md` on the
   local machine and must not be copied into repository history.

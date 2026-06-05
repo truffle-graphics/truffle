@@ -821,6 +821,7 @@ struct BindingLayoutDesc {
     bool bindless = false;
     std::uint32_t groupIndex = 0;
     bool dynamicOffset = false;
+    std::optional<std::uint32_t> nativeSlot;
 };
 
 struct PipelineLayoutDesc {

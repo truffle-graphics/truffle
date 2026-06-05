@@ -419,6 +419,59 @@ int main() {
             },
         },
     }, capabilities));
+    TRUFFLE_CHECK(truffle::rhi::validation::pipeline_layout_valid({
+        .bindings = {
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::uniform_buffer,
+                .visibility = truffle::rhi::ShaderStageFlags::vertex,
+                .groupIndex = 0,
+                .nativeSlot = 0,
+            },
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::storage_buffer,
+                .visibility = truffle::rhi::ShaderStageFlags::vertex,
+                .groupIndex = 1,
+                .nativeSlot = 2,
+            },
+        },
+    }, capabilities));
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_layout_valid({
+        .bindings = {
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::uniform_buffer,
+                .visibility = truffle::rhi::ShaderStageFlags::vertex,
+                .groupIndex = 0,
+                .nativeSlot = 0,
+            },
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::storage_buffer,
+                .visibility = truffle::rhi::ShaderStageFlags::vertex,
+                .groupIndex = 1,
+                .nativeSlot = 0,
+            },
+        },
+    }, capabilities));
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_layout_valid({
+        .bindings = {{
+            .bindingIndex = 0,
+            .visibility = truffle::rhi::ShaderStageFlags::vertex,
+            .arrayCount = 2,
+            .nativeSlot = capabilities.limits.maxResourceBindings - 1,
+        }},
+    }, capabilities));
+    TRUFFLE_CHECK(
+        truffle::rhi::validation::effective_native_binding_slot({
+            .bindingIndex = 3,
+            .nativeSlot = 7,
+        }) == 7);
+    TRUFFLE_CHECK(
+        truffle::rhi::validation::effective_native_binding_slot({
+            .bindingIndex = 3,
+        }) == 3);
     TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_layout_valid({
         .bindings = {
             {
@@ -458,6 +511,29 @@ int main() {
         groupedPipelineLayout, 2, group0Layout));
     TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_layout_bind_group_compatible(
         groupedPipelineLayout, 1, group0Layout));
+    const truffle::rhi::PipelineLayoutDesc explicitNativeSlotLayout{
+        .bindings = {{
+            .bindingIndex = 0,
+            .type = truffle::rhi::BindingResourceType::uniform_buffer,
+            .visibility = truffle::rhi::ShaderStageFlags::vertex,
+            .minBindingSize = 64,
+            .nativeSlot = 4,
+        }},
+    };
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_layout_bind_group_compatible(
+        explicitNativeSlotLayout, 0, group0Layout));
+    TRUFFLE_CHECK(truffle::rhi::validation::pipeline_layout_bind_group_compatible(
+        explicitNativeSlotLayout,
+        0,
+        {
+            .bindings = {{
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::uniform_buffer,
+                .visibility = truffle::rhi::ShaderStageFlags::vertex,
+                .minBindingSize = 64,
+                .nativeSlot = 4,
+            }},
+        }));
     TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_layout_required_groups_bound(
         groupedPipelineLayout, {}));
     TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_layout_required_groups_bound(

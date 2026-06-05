@@ -456,6 +456,59 @@ int verify_common_positive_path_contract(truffle::rhi::IDevice& device,
         .layout = dynamicGraphicsLayout,
     });
     TRUFFLE_CHECK(dynamicPipeline.ok());
+    const truffle::rhi::PipelineLayoutDesc explicitNativeSlotLayout{
+        .debugName = "contract_explicit_native_slot_layout",
+        .bindings = {
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::uniform_buffer,
+                .visibility = truffle::rhi::ShaderStageFlags::vertex,
+                .minBindingSize = 16,
+                .groupIndex = 0,
+                .nativeSlot = 0,
+            },
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::uniform_buffer,
+                .visibility = truffle::rhi::ShaderStageFlags::vertex,
+                .minBindingSize = 16,
+                .groupIndex = 1,
+                .nativeSlot = 3,
+            },
+        },
+    };
+    auto explicitNativePipeline = device.create_pipeline({
+        .cacheKey = 0x51A07u,
+        .vertexShader = vertexShader.value().get(),
+        .fragmentShader = fragmentShader.value().get(),
+        .layout = explicitNativeSlotLayout,
+    });
+    TRUFFLE_CHECK(explicitNativePipeline.ok());
+    auto aliasedNativeSlotPipeline = device.create_pipeline({
+        .vertexShader = vertexShader.value().get(),
+        .fragmentShader = fragmentShader.value().get(),
+        .layout = {
+            .bindings = {
+                {
+                    .bindingIndex = 0,
+                    .type = truffle::rhi::BindingResourceType::uniform_buffer,
+                    .visibility = truffle::rhi::ShaderStageFlags::vertex,
+                    .minBindingSize = 16,
+                    .groupIndex = 0,
+                },
+                {
+                    .bindingIndex = 0,
+                    .type = truffle::rhi::BindingResourceType::uniform_buffer,
+                    .visibility = truffle::rhi::ShaderStageFlags::vertex,
+                    .minBindingSize = 16,
+                    .groupIndex = 1,
+                },
+            },
+        },
+    });
+    TRUFFLE_CHECK(!aliasedNativeSlotPipeline.ok());
+    TRUFFLE_CHECK(aliasedNativeSlotPipeline.status().code ==
+                  truffle::core::StatusCode::invalid_argument);
 
     const truffle::rhi::PipelineLayoutDesc computeLayout{
         .debugName = "contract_compute_layout",
@@ -562,6 +615,36 @@ int verify_common_positive_path_contract(truffle::rhi::IDevice& device,
         }},
     });
     TRUFFLE_CHECK(dynamicGraphicsBindGroup.ok());
+    auto explicitNativeBindGroup0Layout = device.create_bind_group_layout({
+        .debugName = "contract_explicit_native_slot_group0_layout",
+        .bindings = {explicitNativeSlotLayout.bindings[0]},
+    });
+    auto explicitNativeBindGroup1Layout = device.create_bind_group_layout({
+        .debugName = "contract_explicit_native_slot_group1_layout",
+        .bindings = {explicitNativeSlotLayout.bindings[1]},
+    });
+    TRUFFLE_CHECK(explicitNativeBindGroup0Layout.ok());
+    TRUFFLE_CHECK(explicitNativeBindGroup1Layout.ok());
+    auto explicitNativeBindGroup0 = device.create_bind_group({
+        .debugName = "contract_explicit_native_slot_group0",
+        .layout = explicitNativeBindGroup0Layout.value().get(),
+        .entries = {{
+            .bindingIndex = 0,
+            .type = truffle::rhi::BindingResourceType::uniform_buffer,
+            .buffer = {.buffer = barrierBuffer.value().get(), .size = 16},
+        }},
+    });
+    auto explicitNativeBindGroup1 = device.create_bind_group({
+        .debugName = "contract_explicit_native_slot_group1",
+        .layout = explicitNativeBindGroup1Layout.value().get(),
+        .entries = {{
+            .bindingIndex = 0,
+            .type = truffle::rhi::BindingResourceType::uniform_buffer,
+            .buffer = {.buffer = dynamicUniformBuffer.value().get(), .size = 16},
+        }},
+    });
+    TRUFFLE_CHECK(explicitNativeBindGroup0.ok());
+    TRUFFLE_CHECK(explicitNativeBindGroup1.ok());
     const truffle::rhi::BindGroupLayoutDesc graphicsTextureBindGroupLayoutDesc{
         .debugName = "contract_graphics_texture_bind_group_layout",
         .bindings = {graphicsLayout.bindings[1]},
@@ -773,6 +856,10 @@ int verify_common_positive_path_contract(truffle::rhi::IDevice& device,
         0,
         *dynamicGraphicsBindGroup.value(),
         {{.bindingIndex = 0, .offset = uniformDynamicAlignment}}).ok());
+    TRUFFLE_CHECK(stateCmd->draw(3).ok());
+    TRUFFLE_CHECK(stateCmd->bind_pipeline(*explicitNativePipeline.value()).ok());
+    TRUFFLE_CHECK(stateCmd->bind_group(0, *explicitNativeBindGroup0.value()).ok());
+    TRUFFLE_CHECK(stateCmd->bind_group(1, *explicitNativeBindGroup1.value()).ok());
     TRUFFLE_CHECK(stateCmd->draw(3).ok());
     TRUFFLE_CHECK(stateCmd->bind_pipeline(*pipeline.value()).ok());
     TRUFFLE_CHECK(!stateCmd->draw(3).ok());
@@ -1117,6 +1204,36 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
     });
     TRUFFLE_CHECK(!overlappingBindGroupLayout.ok());
     TRUFFLE_CHECK(overlappingBindGroupLayout.status().code ==
+                  truffle::core::StatusCode::invalid_argument);
+    auto aliasedNativeSlotLayout = device.create_bind_group_layout({
+        .bindings = {
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::uniform_buffer,
+                .visibility = truffle::rhi::ShaderStageFlags::vertex,
+            },
+            {
+                .bindingIndex = 1,
+                .type = truffle::rhi::BindingResourceType::storage_buffer,
+                .visibility = truffle::rhi::ShaderStageFlags::vertex,
+                .nativeSlot = 0,
+            },
+        },
+    });
+    TRUFFLE_CHECK(!aliasedNativeSlotLayout.ok());
+    TRUFFLE_CHECK(aliasedNativeSlotLayout.status().code ==
+                  truffle::core::StatusCode::invalid_argument);
+    auto overflowingNativeSlotLayout = device.create_bind_group_layout({
+        .bindings = {{
+            .bindingIndex = 0,
+            .type = truffle::rhi::BindingResourceType::uniform_buffer,
+            .visibility = truffle::rhi::ShaderStageFlags::vertex,
+            .arrayCount = 2,
+            .nativeSlot = caps.limits.maxResourceBindings - 1,
+        }},
+    });
+    TRUFFLE_CHECK(!overflowingNativeSlotLayout.ok());
+    TRUFFLE_CHECK(overflowingNativeSlotLayout.status().code ==
                   truffle::core::StatusCode::invalid_argument);
     if (!truffle::rhi::supports_descriptor_arrays(caps)) {
         auto descriptorArrayLayout = device.create_bind_group_layout({
