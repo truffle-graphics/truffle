@@ -213,6 +213,18 @@ int main() {
         capabilities, truffle::rhi::TextureFormat::depth32_float));
     TRUFFLE_CHECK(truffle::rhi::validation::memory_domain_supported(
         truffle::rhi::MemoryDomain::upload, capabilities));
+    TRUFFLE_CHECK(truffle::rhi::validation::buffer_memory_mappable({
+        .size = 16,
+        .memory = truffle::rhi::MemoryDomain::automatic,
+    }));
+    TRUFFLE_CHECK(truffle::rhi::validation::buffer_memory_mappable({
+        .size = 16,
+        .memory = truffle::rhi::MemoryDomain::upload,
+    }));
+    TRUFFLE_CHECK(!truffle::rhi::validation::buffer_memory_mappable({
+        .size = 16,
+        .memory = truffle::rhi::MemoryDomain::device_local,
+    }));
     TRUFFLE_CHECK(truffle::rhi::validation::texture_usage_supported_by_format(
         capabilities, colorTexture));
     TRUFFLE_CHECK(truffle::rhi::validation::texture_usage_supported_by_format(

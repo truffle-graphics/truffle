@@ -376,6 +376,12 @@ int verify_common_positive_path_contract(truffle::rhi::IDevice& device,
     TRUFFLE_CHECK(alloc.buffer != nullptr);
     TRUFFLE_CHECK(alloc.mappedPtr != nullptr);
     TRUFFLE_CHECK(alloc.size == 32);
+    auto uploadBackingMap = alloc.buffer->map();
+    TRUFFLE_CHECK(uploadBackingMap.ok());
+    TRUFFLE_CHECK(static_cast<void*>(
+                      static_cast<std::byte*>(uploadBackingMap.value()) +
+                      alloc.offset) == alloc.mappedPtr);
+    TRUFFLE_CHECK(alloc.buffer->unmap().ok());
     TRUFFLE_CHECK(!uploadRing.value()->allocate(1, 0).valid());
     TRUFFLE_CHECK(!uploadRing.value()->allocate(1, 3).valid());
     auto alignedAlloc = uploadRing.value()->allocate(1, 64);
@@ -972,6 +978,57 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
         .size = 16,
         .requiredUsage = truffle::rhi::BufferUsageFlags::storage,
     }));
+    if (truffle::rhi::validation::memory_domain_supported(
+            truffle::rhi::MemoryDomain::upload, caps)) {
+        auto mappedBuffer = device.create_buffer({
+            .size = 64,
+            .usageFlags = truffle::rhi::BufferUsageFlags::uniform,
+            .memory = truffle::rhi::MemoryDomain::upload,
+            .mappedAtCreation = true,
+        });
+        TRUFFLE_CHECK(mappedBuffer.ok());
+        TRUFFLE_CHECK(mappedBuffer.value()->mapped());
+        TRUFFLE_CHECK(mappedBuffer.value()->mapped_data() != nullptr);
+        auto doubleMap = mappedBuffer.value()->map();
+        TRUFFLE_CHECK(!doubleMap.ok());
+        TRUFFLE_CHECK(doubleMap.status().code ==
+                      truffle::core::StatusCode::invalid_state);
+        TRUFFLE_CHECK(mappedBuffer.value()->unmap().ok());
+        TRUFFLE_CHECK(!mappedBuffer.value()->mapped());
+        TRUFFLE_CHECK(mappedBuffer.value()->mapped_data() == nullptr);
+        auto remap = mappedBuffer.value()->map();
+        TRUFFLE_CHECK(remap.ok());
+        TRUFFLE_CHECK(remap.value() != nullptr);
+        TRUFFLE_CHECK(mappedBuffer.value()->mapped_data() == remap.value());
+        auto repeatedMap = mappedBuffer.value()->map();
+        TRUFFLE_CHECK(!repeatedMap.ok());
+        TRUFFLE_CHECK(repeatedMap.status().code ==
+                      truffle::core::StatusCode::invalid_state);
+        TRUFFLE_CHECK(mappedBuffer.value()->unmap().ok());
+        TRUFFLE_CHECK(!mappedBuffer.value()->unmap().ok());
+    }
+    if (truffle::rhi::validation::memory_domain_supported(
+            truffle::rhi::MemoryDomain::device_local, caps)) {
+        auto mappedDeviceLocalBuffer = device.create_buffer({
+            .size = 64,
+            .usageFlags = truffle::rhi::BufferUsageFlags::uniform,
+            .memory = truffle::rhi::MemoryDomain::device_local,
+            .mappedAtCreation = true,
+        });
+        TRUFFLE_CHECK(!mappedDeviceLocalBuffer.ok());
+        TRUFFLE_CHECK(mappedDeviceLocalBuffer.status().code ==
+                      truffle::core::StatusCode::invalid_argument);
+        auto deviceLocalBuffer = device.create_buffer({
+            .size = 64,
+            .usageFlags = truffle::rhi::BufferUsageFlags::uniform,
+            .memory = truffle::rhi::MemoryDomain::device_local,
+        });
+        TRUFFLE_CHECK(deviceLocalBuffer.ok());
+        auto deviceLocalMap = deviceLocalBuffer.value()->map();
+        TRUFFLE_CHECK(!deviceLocalMap.ok());
+        TRUFFLE_CHECK(deviceLocalMap.status().code ==
+                      truffle::core::StatusCode::unsupported);
+    }
 
     auto badTexture = device.create_texture({
         .extent = {0, 0},

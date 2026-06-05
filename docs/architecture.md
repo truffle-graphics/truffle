@@ -142,6 +142,10 @@ scope and active extension-backend work continuing in parallel:
   buffer ranges, and advertised alignment before work can be recorded. Metal maps
   bind-group buffers, textures, and samplers to native stage-visible slots after
   shared validation rejects flat native slot aliases.
+- Buffers expose explicit CPU mapping hooks, including `mapped_data()` access for
+  mapped-at-creation buffers. The low-level contract treats
+  automatic/upload/readback buffer memory as CPU-mappable and rejects
+  `device_local` mapping, with mapped state tracked by built-in backends.
 - CI emits backend parity matrix Markdown/JSON artifacts for tracked backend
   contract/reflection tests, plus a live `rhi-parity-report.json` generated
   from `BackendParityReport` capability summaries.

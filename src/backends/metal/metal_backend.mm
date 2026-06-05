@@ -327,7 +327,8 @@ class MetalDevice;
 class MetalBuffer final : public IBuffer {
 public:
     // Allocate a new MTLBuffer.
-    MetalBuffer(id<MTLDevice> device, const BufferDesc& desc) : desc_(desc) {
+    MetalBuffer(id<MTLDevice> device, const BufferDesc& desc)
+        : desc_(desc), mapped_(desc.mappedAtCreation) {
         buf_ = [device newBufferWithLength:std::max(desc.size, std::size_t{1})
                                    options:MTLResourceStorageModeShared];
         if (buf_ && desc.size != 0) {
@@ -335,7 +336,8 @@ public:
         }
     }
     // Wrap an existing MTLBuffer (used by upload ring frames).
-    MetalBuffer(id<MTLBuffer> buf, const BufferDesc& desc) : desc_(desc), buf_(buf) {}
+    MetalBuffer(id<MTLBuffer> buf, const BufferDesc& desc)
+        : desc_(desc), buf_(buf), mapped_(desc.mappedAtCreation) {}
 
     std::optional<BackendKind> backend_kind() const noexcept override {
         return BackendKind::metal;
@@ -343,10 +345,39 @@ public:
     const BufferDesc& desc() const noexcept override { return desc_; }
     bool              valid() const noexcept { return buf_ != nil; }
     id<MTLBuffer>     native() const noexcept { return buf_; }
+    Result<void*> map() override {
+        if (!validation::buffer_memory_mappable(desc_)) {
+            return Status::failure(StatusCode::unsupported,
+                                   "Metal buffer memory is not CPU-mappable");
+        }
+        if (mapped_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "Metal buffer is already mapped");
+        }
+        if (!buf_) {
+            return Status::failure(StatusCode::backend_error,
+                                   "Metal buffer has no native storage");
+        }
+        mapped_ = true;
+        return [buf_ contents];
+    }
+    Status unmap() override {
+        if (!mapped_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "Metal buffer is not mapped");
+        }
+        mapped_ = false;
+        return Status::success();
+    }
+    bool mapped() const noexcept override { return mapped_; }
+    void* mapped_data() noexcept override {
+        return mapped_ && buf_ ? [buf_ contents] : nullptr;
+    }
 
 private:
     BufferDesc    desc_;
     id<MTLBuffer> buf_ = nil;
+    bool mapped_ = false;
 };
 
 class MetalTexture final : public ITexture {
@@ -2036,6 +2067,11 @@ public:
         if (!validation::memory_domain_supported(desc.memory, caps_)) {
             return Status::failure(StatusCode::unsupported,
                                    "buffer memory domain is not supported");
+        }
+        if (desc.mappedAtCreation &&
+            !validation::buffer_memory_mappable(desc)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "mapped buffer memory must be CPU-mappable");
         }
         auto buffer = std::make_unique<MetalBuffer>(device_, desc);
         if (!buffer->valid()) {

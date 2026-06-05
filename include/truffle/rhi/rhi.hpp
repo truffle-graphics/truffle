@@ -974,6 +974,18 @@ public:
         return std::nullopt;
     }
     [[nodiscard]] virtual const BufferDesc& desc() const noexcept = 0;
+    [[nodiscard]] virtual core::Result<void*> map() {
+        return core::Status::failure(
+            core::StatusCode::unsupported,
+            "buffer mapping is not supported by this buffer");
+    }
+    [[nodiscard]] virtual core::Status unmap() {
+        return core::Status::failure(
+            core::StatusCode::unsupported,
+            "buffer unmapping is not supported by this buffer");
+    }
+    [[nodiscard]] virtual bool mapped() const noexcept { return false; }
+    [[nodiscard]] virtual void* mapped_data() noexcept { return nullptr; }
 };
 
 class ITexture {

@@ -761,14 +761,52 @@ private:
 
 class OpenGLBuffer final : public IBuffer {
 public:
-    explicit OpenGLBuffer(BufferDesc desc) : desc_(std::move(desc)) {}
+    explicit OpenGLBuffer(BufferDesc desc)
+        : desc_(std::move(desc)),
+          storage_(desc_.size),
+          mapped_(desc_.mappedAtCreation) {}
+    OpenGLBuffer(BufferDesc desc, std::byte* externalData)
+        : desc_(std::move(desc)),
+          externalData_(externalData),
+          mapped_(desc_.mappedAtCreation) {}
     [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
         return BackendKind::opengl;
     }
     [[nodiscard]] const BufferDesc& desc() const noexcept override { return desc_; }
+    [[nodiscard]] Result<void*> map() override {
+        if (!validation::buffer_memory_mappable(desc_)) {
+            return Status::failure(StatusCode::unsupported,
+                                   "OpenGL buffer memory is not CPU-mappable");
+        }
+        if (mapped_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "OpenGL buffer is already mapped");
+        }
+        mapped_ = true;
+        return data();
+    }
+    [[nodiscard]] Status unmap() override {
+        if (!mapped_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "OpenGL buffer is not mapped");
+        }
+        mapped_ = false;
+        return Status::success();
+    }
+    [[nodiscard]] bool mapped() const noexcept override { return mapped_; }
+    [[nodiscard]] void* mapped_data() noexcept override {
+        return mapped_ ? data() : nullptr;
+    }
 
 private:
+    [[nodiscard]] std::byte* data() noexcept {
+        return externalData_ ? externalData_ : storage_.data();
+    }
+
     BufferDesc desc_;
+    std::vector<std::byte> storage_;
+    std::byte* externalData_ = nullptr;
+    bool mapped_ = false;
 };
 
 class OpenGLTexture final : public ITexture {
@@ -980,11 +1018,11 @@ public:
         : framesInFlight_(framesInFlight)
         , capacityPerFrame_(capacityPerFrame)
         , storage_(static_cast<std::size_t>(framesInFlight) * capacityPerFrame)
-        , backingBuffer_(BufferDesc{
-              .size = static_cast<std::size_t>(framesInFlight) * capacityPerFrame,
-              .usage = BufferUsage::storage,
-              .debugName = "opengl_upload_ring",
-          }) {}
+           , backingBuffer_(BufferDesc{
+               .size = static_cast<std::size_t>(framesInFlight) * capacityPerFrame,
+               .usage = BufferUsage::storage,
+               .debugName = "opengl_upload_ring",
+           }, storage_.data()) {}
 
     [[nodiscard]] FrameAllocation allocate(std::size_t size,
                                            std::size_t alignment = 16) override {
@@ -1079,6 +1117,12 @@ public:
         if (!validation::memory_domain_supported(desc.memory, caps_)) {
             return Status::failure(StatusCode::unsupported,
                                    "OpenGL backend: buffer memory domain is not supported");
+        }
+        if (desc.mappedAtCreation &&
+            !validation::buffer_memory_mappable(desc)) {
+            return Status::failure(
+                StatusCode::invalid_argument,
+                "OpenGL backend: mapped buffer memory must be CPU-mappable");
         }
         if (diagnostics_) {
             ++diagnostics_->mutable_stats().buffersCreated;

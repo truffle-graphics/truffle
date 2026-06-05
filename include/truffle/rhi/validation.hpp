@@ -584,6 +584,13 @@ namespace truffle::rhi::validation {
     return false;
 }
 
+[[nodiscard]] constexpr bool buffer_memory_mappable(
+    const BufferDesc& desc) noexcept {
+    return desc.memory == MemoryDomain::automatic ||
+           desc.memory == MemoryDomain::upload ||
+           desc.memory == MemoryDomain::readback;
+}
+
 [[nodiscard]] constexpr bool is_power_of_two(std::size_t value) noexcept {
     return value != 0 && (value & (value - 1u)) == 0;
 }

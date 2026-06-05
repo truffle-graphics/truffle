@@ -432,6 +432,22 @@ validation, diagnostics, and backend parity.
   - Expanded core and shared backend contract tests for valid dynamic offsets,
     missing offsets, out-of-range offsets, misaligned offsets, native-slot
     overflows, and native-slot aliasing.
+- **Low-Level Graphics Foundation Slice 9L** — Complete.
+  - Added source-compatible `IBuffer::map`, `IBuffer::unmap`,
+    `IBuffer::mapped`, and `IBuffer::mapped_data` defaults so backends can
+    expose explicit CPU buffer mapping without breaking external buffer
+    implementations.
+  - Added shared mappability validation: `automatic`, `upload`, and `readback`
+    buffers are CPU-mappable; `device_local` buffers are not.
+  - Wired null, Metal, Vulkan, OpenGL, and Direct3D buffers with mapped-at-
+    creation state, double-map/double-unmap lifecycle checks, and explicit
+    `device_local` map rejection.
+  - Kept upload-ring `FrameAllocation::mappedPtr` coherent with
+    `FrameAllocation::buffer->map()` by sharing the same backing storage in
+    contract backends and validating the aliasing contract in shared tests.
+  - Expanded core and shared backend contract tests for mappability, mapped-at-
+    creation pointer access, remap/unmap lifecycle, and invalid mapped
+    device-local buffers.
 
 ## Relevant Decisions And Constraints
 
@@ -492,6 +508,9 @@ validation, diagnostics, and backend parity.
   Built-in backends validate counts, ranges, array elements, and advertised
   uniform/storage alignment; layouts also reject flat native slot aliases before
   Metal maps bind-group entries into native slots.
+- Buffers now expose explicit CPU mapping hooks. Built-in backends support
+  mapping for automatic/upload/readback memory, reject device-local mapping, and
+  track mapped-at-creation lifecycle state.
 - The repository commits only the public doctrine snapshot. The maintainer's
   private Copilot overlay lives in `~/.copilot/copilot-instructions.md` on the
   local machine and must not be copied into repository history.
