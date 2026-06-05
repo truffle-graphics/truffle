@@ -41,7 +41,8 @@ ecosystem defaults.
    - `.github/workflows/companion-automation.yml` classifies same-repository PR
      diffs targeting protected integration branches, then starts lane-specific
      Copilot cloud-agent tasks when configured with a `COPILOT_AGENT_TOKEN` user
-     token.
+     token. The default-branch workflow runs trusted automation code from
+     `master`, preferring the protected `develop` router once present.
    - Companion tasks must target the source branch as their base branch and open
      separate pull requests; they must not push directly to `develop` or `master`.
    - Keep lane instructions in `.github/scripts/companion_router.py` so detached

@@ -22,13 +22,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
 
-      - name: Fetch pull request head
+      - name: Fetch trusted router and pull request refs
         env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: git fetch origin "$PR_HEAD_SHA" --depth=1
+        run: |
+          set -euo pipefail
+          git fetch origin "$PR_BASE_SHA" --depth=1
+          git fetch origin "$PR_HEAD_SHA" --depth=1
+          git fetch origin develop --depth=1
+          if git cat-file -e "origin/develop:.github/scripts/companion_router.py" 2>/dev/null; then
+            git checkout origin/develop -- .github/scripts/companion_router.py
+          fi
 
       - name: Determine source range
         id: source
