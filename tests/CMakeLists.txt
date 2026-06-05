@@ -92,6 +92,9 @@ if(TRUFFLE_INSTALL)
             "-DTRUFFLE_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
             "-DTRUFFLE_INSTALL_PREFIX=${PROJECT_BINARY_DIR}/package-test/install"
             "-DTRUFFLE_CONSUMER_BUILD_DIR=${PROJECT_BINARY_DIR}/package-test/consumer"
+            "-DTRUFFLE_CMAKE_GENERATOR=${CMAKE_GENERATOR}"
+            "-DTRUFFLE_CMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}"
+            "-DTRUFFLE_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
             -P "${PROJECT_SOURCE_DIR}/cmake/VerifyInstall.cmake")
 endif()
 
