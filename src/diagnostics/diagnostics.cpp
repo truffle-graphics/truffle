@@ -72,6 +72,55 @@ const char* severity_name(DiagnosticSeverity severity) noexcept {
     return "Unknown";
 }
 
+const char* asset_validation_issue_kind_name(
+    assets::AssetValidationIssueKind kind) noexcept {
+    switch (kind) {
+    case assets::AssetValidationIssueKind::MissingMesh:
+        return "MissingMesh";
+    case assets::AssetValidationIssueKind::InvalidMaterialReference:
+        return "InvalidMaterialReference";
+    case assets::AssetValidationIssueKind::MissingMaterial:
+        return "MissingMaterial";
+    case assets::AssetValidationIssueKind::MissingAttribute:
+        return "MissingAttribute";
+    }
+    return "Unknown";
+}
+
+const char* asset_attribute_name(assets::AttributeSemantic semantic) noexcept {
+    switch (semantic) {
+    case assets::AttributeSemantic::Position:
+        return "Position";
+    case assets::AttributeSemantic::Transform:
+        return "Transform";
+    case assets::AttributeSemantic::LocalTransform:
+        return "LocalTransform";
+    case assets::AttributeSemantic::Color:
+        return "Color";
+    case assets::AttributeSemantic::Normal:
+        return "Normal";
+    case assets::AttributeSemantic::TexCoord:
+        return "TexCoord";
+    case assets::AttributeSemantic::ParentIndex:
+        return "ParentIndex";
+    case assets::AttributeSemantic::Scale:
+        return "Scale";
+    case assets::AttributeSemantic::Radius:
+        return "Radius";
+    case assets::AttributeSemantic::Velocity:
+        return "Velocity";
+    case assets::AttributeSemantic::Intensity:
+        return "Intensity";
+    case assets::AttributeSemantic::Confidence:
+        return "Confidence";
+    case assets::AttributeSemantic::Classification:
+        return "Classification";
+    case assets::AttributeSemantic::Custom:
+        return "Custom";
+    }
+    return "Unknown";
+}
+
 std::string find_node_label(const FrameGraphInspectionOptions& options,
                             render::FrameGraph::NodeId nodeId) {
     for (const auto& label : options.nodeLabels) {
@@ -110,6 +159,23 @@ void append_budget_finding(std::vector<DiagnosticFinding>& findings,
 }
 
 } // namespace
+
+AssetCatalogSummary summarize_asset_catalog(
+    const assets::AssetCatalog& catalog) {
+    return summarize_asset_catalog(catalog, {});
+}
+
+AssetCatalogSummary summarize_asset_catalog(
+    const assets::AssetCatalog& catalog,
+    const AssetCatalogInspectionOptions& options) {
+    AssetCatalogSummary summary;
+    summary.name = options.name;
+    summary.stats = catalog.stats();
+    if (options.validateMeshMaterials) {
+        summary.validation = catalog.validate_all_mesh_materials();
+    }
+    return summary;
+}
 
 RenderBatchSummary summarize_render_batch(const render::RenderBatch& batch) {
     return summarize_render_batch(batch, {});
@@ -322,6 +388,82 @@ std::vector<DiagnosticFinding> evaluate_frame_graph_budget(
     return findings;
 }
 
+core::Result<DiagnosticsBundle> collect_diagnostics_bundle(
+    const DiagnosticsBundleOptions& options) {
+    DiagnosticsBundle bundle;
+
+    if (options.assetCatalog != nullptr) {
+        bundle.hasAssetCatalog = true;
+        bundle.assetCatalog = summarize_asset_catalog(
+            *options.assetCatalog, options.assetCatalogOptions);
+    }
+
+    bundle.renderBatches.reserve(options.renderBatches.size());
+    for (const auto& target : options.renderBatches) {
+        if (target.batch == nullptr) {
+            return core::Status::failure(
+                core::StatusCode::invalid_argument,
+                "Diagnostics: render batch inspection target is null");
+        }
+        auto summary = summarize_render_batch(*target.batch, target.options);
+        const auto findings =
+            evaluate_render_batch_budget(summary, options.renderBatchBudget);
+        bundle.findings.insert(bundle.findings.end(),
+                               findings.begin(),
+                               findings.end());
+        bundle.renderBatches.push_back(std::move(summary));
+    }
+
+    if (options.frameGraph != nullptr) {
+        auto graphSummary = summarize_frame_graph(
+            *options.frameGraph, options.frameGraphOptions);
+        if (!graphSummary.ok()) {
+            return graphSummary.status();
+        }
+        bundle.hasFrameGraph = true;
+        bundle.frameGraph = graphSummary.value();
+        const auto findings = evaluate_frame_graph_budget(
+            bundle.frameGraph, options.frameGraphBudget);
+        bundle.findings.insert(bundle.findings.end(),
+                               findings.begin(),
+                               findings.end());
+    }
+
+    if (options.rendererStats != nullptr) {
+        bundle.hasRendererStats = true;
+        bundle.rendererStats = summarize_renderer_stats(*options.rendererStats);
+    }
+
+    return bundle;
+}
+
+std::string format_asset_catalog_summary(const AssetCatalogSummary& summary) {
+    std::ostringstream out;
+    out << "AssetCatalog"
+        << " name=" << summary.name
+        << " geometryStreams=" << summary.stats.geometryStreamCount
+        << " textures=" << summary.stats.textureCount
+        << " materials=" << summary.stats.materialCount
+        << " meshes=" << summary.stats.meshCount
+        << " cpuStreams=" << summary.stats.cpuGeometryStreamCount
+        << " gpuStreams=" << summary.stats.gpuResidentGeometryStreamCount
+        << " externalStreams=" << summary.stats.externalGeometryStreamCount
+        << " elements=" << summary.stats.totalGeometryElements
+        << " bytes=" << summary.stats.totalGeometryBytes
+        << " largestStream=" << summary.stats.largestGeometryStream.value
+        << " largestStreamBytes=" << summary.stats.largestGeometryStreamBytes
+        << " validationIssues=" << summary.validation.issues.size();
+    for (const auto& issue : summary.validation.issues) {
+        out << "\n  asset_issue kind="
+            << asset_validation_issue_kind_name(issue.kind)
+            << " mesh=" << issue.mesh.value
+            << " material=" << issue.material.value
+            << " attribute=" << asset_attribute_name(issue.attribute)
+            << " message=" << issue.message;
+    }
+    return out.str();
+}
+
 std::string format_render_batch_summary(const RenderBatchSummary& summary) {
     std::ostringstream out;
     out << "RenderBatch"
@@ -396,6 +538,34 @@ std::string format_diagnostic_findings(
             << " limit=" << finding.limit
             << " message=" << finding.message;
     }
+    return out.str();
+}
+
+std::string format_diagnostics_bundle(const DiagnosticsBundle& bundle) {
+    std::ostringstream out;
+    out << "DiagnosticsBundle"
+        << " assetCatalog=" << (bundle.hasAssetCatalog ? "true" : "false")
+        << " renderBatches=" << bundle.renderBatches.size()
+        << " frameGraph=" << (bundle.hasFrameGraph ? "true" : "false")
+        << " rendererStats=" << (bundle.hasRendererStats ? "true" : "false")
+        << " findings=" << bundle.findings.size();
+
+    if (bundle.hasAssetCatalog) {
+        out << "\n" << format_asset_catalog_summary(bundle.assetCatalog);
+    }
+    for (const auto& batch : bundle.renderBatches) {
+        out << "\n" << format_render_batch_summary(batch);
+    }
+    if (bundle.hasFrameGraph) {
+        out << "\n" << format_frame_graph_summary(bundle.frameGraph);
+    }
+    if (bundle.hasRendererStats) {
+        out << "\n" << format_renderer_stats_summary(bundle.rendererStats);
+    }
+    if (!bundle.findings.empty()) {
+        out << "\n" << format_diagnostic_findings(bundle.findings);
+    }
+
     return out.str();
 }
 

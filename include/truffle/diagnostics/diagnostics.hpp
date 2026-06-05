@@ -1,5 +1,6 @@
 #pragma once
 
+#include "truffle/assets/assets.hpp"
 #include "truffle/core/status.hpp"
 #include "truffle/render/frame_graph.hpp"
 #include "truffle/render/render_batch.hpp"
@@ -139,6 +140,49 @@ struct FrameGraphBudget {
     std::uint32_t maxResourceUsages = 0;
 };
 
+struct AssetCatalogInspectionOptions {
+    std::string name;
+    bool validateMeshMaterials = true;
+};
+
+struct AssetCatalogSummary {
+    std::string name;
+    assets::AssetCatalogStats stats;
+    assets::AssetValidationReport validation;
+};
+
+struct RenderBatchInspectionTarget {
+    const render::RenderBatch* batch = nullptr;
+    RenderBatchInspectionOptions options;
+};
+
+struct DiagnosticsBundleOptions {
+    const assets::AssetCatalog* assetCatalog = nullptr;
+    AssetCatalogInspectionOptions assetCatalogOptions;
+    std::vector<RenderBatchInspectionTarget> renderBatches;
+    const render::FrameGraph* frameGraph = nullptr;
+    FrameGraphInspectionOptions frameGraphOptions;
+    const render::RendererFrameStats* rendererStats = nullptr;
+    RenderBatchBudget renderBatchBudget;
+    FrameGraphBudget frameGraphBudget;
+};
+
+struct DiagnosticsBundle {
+    bool hasAssetCatalog = false;
+    AssetCatalogSummary assetCatalog;
+    std::vector<RenderBatchSummary> renderBatches;
+    bool hasFrameGraph = false;
+    FrameGraphSummary frameGraph;
+    bool hasRendererStats = false;
+    RendererStatsSummary rendererStats;
+    std::vector<DiagnosticFinding> findings;
+};
+
+[[nodiscard]] AssetCatalogSummary summarize_asset_catalog(
+    const assets::AssetCatalog& catalog);
+[[nodiscard]] AssetCatalogSummary summarize_asset_catalog(
+    const assets::AssetCatalog& catalog,
+    const AssetCatalogInspectionOptions& options);
 [[nodiscard]] RenderBatchSummary summarize_render_batch(
     const render::RenderBatch& batch);
 [[nodiscard]] RenderBatchSummary summarize_render_batch(
@@ -157,7 +201,11 @@ struct FrameGraphBudget {
 [[nodiscard]] std::vector<DiagnosticFinding> evaluate_frame_graph_budget(
     const FrameGraphSummary& summary,
     const FrameGraphBudget& budget);
+[[nodiscard]] core::Result<DiagnosticsBundle> collect_diagnostics_bundle(
+    const DiagnosticsBundleOptions& options);
 
+[[nodiscard]] std::string format_asset_catalog_summary(
+    const AssetCatalogSummary& summary);
 [[nodiscard]] std::string format_render_batch_summary(
     const RenderBatchSummary& summary);
 [[nodiscard]] std::string format_frame_graph_summary(
@@ -166,5 +214,7 @@ struct FrameGraphBudget {
     const RendererStatsSummary& summary);
 [[nodiscard]] std::string format_diagnostic_findings(
     const std::vector<DiagnosticFinding>& findings);
+[[nodiscard]] std::string format_diagnostics_bundle(
+    const DiagnosticsBundle& bundle);
 
 } // namespace truffle::diagnostics

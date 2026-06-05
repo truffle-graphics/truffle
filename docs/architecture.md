@@ -105,10 +105,11 @@ higher-level framework modules.
 ## Diagnostics Boundary
 
 Diagnostics and profiling helpers stay opt-in. `truffle_diagnostics` reads
-public render contracts and produces snapshots or text reports when a consumer
-asks for them. It does not install global hooks, run background tracing, or
-become a dependency of `truffle_render` or `truffle_scene`. Dense workloads should
-be inspected at group level: batch counts, instance counts, binding byte ranges,
+public asset and render contracts and produces snapshots, text reports, or
+combined diagnostics bundles when a consumer asks for them. It does not install
+global hooks, run background tracing, or become a dependency of `truffle_render`
+or `truffle_scene`. Dense workloads should be inspected at group level: catalog
+counts, stream byte ranges, batch counts, instance counts, binding byte ranges,
 layout channels, and frame-graph nodes rather than per-instance CPU scans.
 Names for batches, graph nodes, and resources are supplied through diagnostics
 inspection options so render objects do not need permanent debug fields.
@@ -146,7 +147,8 @@ scope and active extension-backend work continuing in parallel:
   stats snapshots.
 - `truffle_diagnostics` provides opt-in render-batch, frame-graph, and renderer
   stats summaries with external labels, dependency edges, and resource usage
-  declarations for tool-facing reports, plus pull-based budget findings.
+  declarations for tool-facing reports, plus pull-based budget findings and
+  combined diagnostics bundles.
 - `truffle/core/version.hpp` defines public API version, compatibility policy,
   and deprecation-window semantics.
 - CI emits backend parity matrix artifacts for tracked backend contract and

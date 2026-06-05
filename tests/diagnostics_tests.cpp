@@ -26,6 +26,63 @@ private:
 int main() {
     using namespace truffle;
 
+    assets::GeometryStreamDesc assetStream;
+    assetStream.id = assets::AssetId{7};
+    assetStream.name = "dense_detections";
+    assetStream.role = assets::GeometryStreamRole::Instance;
+    assetStream.residency = assets::DataResidency::External;
+    assetStream.elementCount = 1'000'000;
+    assetStream.byteSize = 32'000'000;
+    assetStream.attributes.push_back({
+        .semantic = assets::AttributeSemantic::Position,
+        .format = assets::AttributeFormat::Float32x3,
+        .stream = 0,
+        .offset = 0,
+        .stride = 32,
+        .name = "position",
+    });
+
+    assets::MaterialAssetDesc assetMaterial;
+    assetMaterial.id = assets::AssetId{9};
+    assetMaterial.name = "detection_material";
+    assetMaterial.requiredAttributes.push_back(
+        assets::AttributeSemantic::Position);
+
+    assets::MeshAssetDesc assetMesh;
+    assetMesh.id = assets::AssetId{11};
+    assetMesh.name = "detection_points";
+    assetMesh.material = assetMaterial.id;
+    assetMesh.vertexCount = 1;
+    assetMesh.streams.push_back(assetStream);
+
+    assets::AssetCatalog assetCatalog;
+    TRUFFLE_CHECK(assetCatalog.add_geometry_stream(assetStream).ok());
+    TRUFFLE_CHECK(assetCatalog.add_material(assetMaterial).ok());
+    TRUFFLE_CHECK(assetCatalog.add_mesh(assetMesh).ok());
+
+    auto missingMaterialMesh = assetMesh;
+    missingMaterialMesh.id = assets::AssetId{13};
+    missingMaterialMesh.material = assets::AssetId{99};
+    TRUFFLE_CHECK(assetCatalog.add_mesh(missingMaterialMesh).ok());
+
+    const auto assetSummary = diagnostics::summarize_asset_catalog(
+        assetCatalog, {
+            .name = "dense-asset-catalog",
+        });
+    TRUFFLE_CHECK(assetSummary.name == "dense-asset-catalog");
+    TRUFFLE_CHECK(assetSummary.stats.geometryStreamCount == 1);
+    TRUFFLE_CHECK(assetSummary.stats.externalGeometryStreamCount == 1);
+    TRUFFLE_CHECK(assetSummary.stats.totalGeometryBytes == 32'000'000);
+    TRUFFLE_CHECK(assetSummary.validation.issues.size() == 1);
+    const auto assetReport =
+        diagnostics::format_asset_catalog_summary(assetSummary);
+    TRUFFLE_CHECK(assetReport.find("name=dense-asset-catalog") !=
+                  std::string::npos);
+    TRUFFLE_CHECK(assetReport.find("bytes=32000000") != std::string::npos);
+    TRUFFLE_CHECK(assetReport.find("kind=MissingMaterial") !=
+                  std::string::npos);
+    TRUFFLE_CHECK(assetReport.find("attribute=Custom") != std::string::npos);
+
     TestBuffer instanceBuffer{{
         .size = 32'000'000,
         .usage = rhi::BufferUsage::vertex,
@@ -179,6 +236,59 @@ int main() {
     const auto statsReport =
         diagnostics::format_renderer_stats_summary(statsSummary);
     TRUFFLE_CHECK(statsReport.find("presented=true") != std::string::npos);
+
+    render::RendererFrameStats frameStats;
+    frameStats.computeNodesExecuted = 1;
+    frameStats.renderNodesExecuted = 2;
+    frameStats.renderBatchesExecuted = 1;
+    frameStats.presented = true;
+
+    diagnostics::DiagnosticsBundleOptions bundleOptions;
+    bundleOptions.assetCatalog = &assetCatalog;
+    bundleOptions.assetCatalogOptions.name = "dense-asset-catalog";
+    bundleOptions.renderBatches.push_back({
+        .batch = &batch,
+        .options = {
+            .name = "dense-detection-batch",
+        },
+    });
+    bundleOptions.frameGraph = &graph;
+    bundleOptions.frameGraphOptions = options;
+    bundleOptions.rendererStats = &frameStats;
+    bundleOptions.renderBatchBudget.maxInstances = 999'999;
+    bundleOptions.frameGraphBudget.maxRenderNodes = 1;
+
+    auto bundleResult =
+        diagnostics::collect_diagnostics_bundle(bundleOptions);
+    TRUFFLE_CHECK(bundleResult.ok());
+    const auto& bundle = bundleResult.value();
+    TRUFFLE_CHECK(bundle.hasAssetCatalog);
+    TRUFFLE_CHECK(bundle.assetCatalog.validation.issues.size() == 1);
+    TRUFFLE_CHECK(bundle.renderBatches.size() == 1);
+    TRUFFLE_CHECK(bundle.hasFrameGraph);
+    TRUFFLE_CHECK(bundle.hasRendererStats);
+    TRUFFLE_CHECK(bundle.findings.size() == 2);
+
+    const auto bundleReport = diagnostics::format_diagnostics_bundle(bundle);
+    TRUFFLE_CHECK(bundleReport.find("DiagnosticsBundle assetCatalog=true") !=
+                  std::string::npos);
+    TRUFFLE_CHECK(bundleReport.find("AssetCatalog name=dense-asset-catalog") !=
+                  std::string::npos);
+    TRUFFLE_CHECK(bundleReport.find("RenderBatch name=dense-detection-batch") !=
+                  std::string::npos);
+    TRUFFLE_CHECK(bundleReport.find("FrameGraph nodes=2") != std::string::npos);
+    TRUFFLE_CHECK(bundleReport.find("RendererStats computeNodes=1") !=
+                  std::string::npos);
+    TRUFFLE_CHECK(bundleReport.find("DiagnosticFindings count=2") !=
+                  std::string::npos);
+
+    diagnostics::DiagnosticsBundleOptions invalidBundleOptions;
+    invalidBundleOptions.renderBatches.push_back({});
+    const auto invalidBundleResult =
+        diagnostics::collect_diagnostics_bundle(invalidBundleOptions);
+    TRUFFLE_CHECK(!invalidBundleResult.ok());
+    TRUFFLE_CHECK(invalidBundleResult.status().code ==
+                  core::StatusCode::invalid_argument);
 
     return 0;
 }
