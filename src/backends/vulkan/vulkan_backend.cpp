@@ -63,6 +63,11 @@ using core::StatusCode;
              .depthStencilAttachment = true,
              .transferSource = true,
              .transferDestination = true},
+            {.format = TextureFormat::depth32_float_stencil8,
+             .sampled = true,
+             .depthStencilAttachment = true,
+             .transferSource = true,
+             .transferDestination = true},
         },
         .memoryHeaps = {
             {.kind = MemoryHeapKind::device_local,
@@ -265,33 +270,19 @@ public:
             return Status::failure(StatusCode::invalid_state,
                                    "VulkanCommandBuffer: render pass already active");
         }
-        if (!validation::is_non_zero(desc.extent)) {
+        if (!validation::render_pass_desc_valid(desc)) {
             return Status::failure(StatusCode::invalid_argument,
-                                   "VulkanCommandBuffer: render pass extent must be non-zero");
+                                   "VulkanCommandBuffer: render pass descriptor is invalid");
         }
         if (desc.colorAttachment.texture &&
             desc.colorAttachment.texture->backend_kind() != BackendKind::vulkan) {
             return Status::failure(StatusCode::invalid_argument,
                                    "VulkanCommandBuffer: color attachment texture must be created by Vulkan backend");
         }
-        if (desc.colorAttachment.texture &&
-            !validation::texture_supports_usage(
-                desc.colorAttachment.texture->desc(),
-                TextureUsageFlags::color_attachment)) {
-            return Status::failure(StatusCode::invalid_argument,
-                                   "VulkanCommandBuffer: color attachment texture lacks color attachment usage");
-        }
         if (desc.depthAttachment.texture &&
             desc.depthAttachment.texture->backend_kind() != BackendKind::vulkan) {
             return Status::failure(StatusCode::invalid_argument,
                                    "VulkanCommandBuffer: depth attachment texture must be created by Vulkan backend");
-        }
-        if (desc.depthAttachment.texture &&
-            !validation::texture_supports_usage(
-                desc.depthAttachment.texture->desc(),
-                TextureUsageFlags::depth_stencil)) {
-            return Status::failure(StatusCode::invalid_argument,
-                                   "VulkanCommandBuffer: depth attachment texture lacks depth usage");
         }
         activeColorFormat_.reset();
         activeDepthFormat_.reset();

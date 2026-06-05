@@ -137,6 +137,11 @@ scope and active extension-backend work continuing in parallel:
   testing/writes are opt-in and command buffers validate active render-pass
   color/depth compatibility before pipeline binding. Depth-only pipelines use
   `TextureFormat::unknown` as the color format.
+- Render-pass descriptors now support stencil-capable depth attachments through
+  `TextureFormat::depth32_float_stencil8` plus explicit stencil load/store/clear
+  fields on `DepthAttachmentDesc`. Shared RHI validation keeps color, depth, and
+  depth-stencil attachment rules aligned across null, Metal, Vulkan, OpenGL, and
+  Direct3D backends before native/backend-specific execution.
 - Bind-group layouts can mark uniform/storage buffer bindings as dynamic-offset
   bindings; command binding validates supplied offsets against descriptor arrays,
   buffer ranges, and advertised alignment before work can be recorded. Layouts

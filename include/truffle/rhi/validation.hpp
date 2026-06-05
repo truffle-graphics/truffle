@@ -331,6 +331,25 @@ namespace truffle::rhi::validation {
     return false;
 }
 
+[[nodiscard]] constexpr bool load_op_valid(LoadOp op) noexcept {
+    switch (op) {
+    case LoadOp::load:
+    case LoadOp::clear:
+    case LoadOp::dont_care:
+        return true;
+    }
+    return false;
+}
+
+[[nodiscard]] constexpr bool store_op_valid(StoreOp op) noexcept {
+    switch (op) {
+    case StoreOp::store:
+    case StoreOp::dont_care:
+        return true;
+    }
+    return false;
+}
+
 [[nodiscard]] constexpr bool depth_compare_op_valid(
     SamplerCompareOp op) noexcept {
     switch (op) {
@@ -393,6 +412,72 @@ namespace truffle::rhi::validation {
 [[nodiscard]] constexpr bool depth_stencil_state_valid(
     const DepthStencilStateDesc& desc) noexcept {
     return depth_compare_op_valid(desc.depthCompare) && !desc.stencilTest;
+}
+
+[[nodiscard]] inline bool clear_color_valid(const ClearColor& color) noexcept {
+    return std::isfinite(color.r) &&
+           std::isfinite(color.g) &&
+           std::isfinite(color.b) &&
+           std::isfinite(color.a);
+}
+
+[[nodiscard]] constexpr bool attachment_extent_compatible(
+    Extent2D extent,
+    const TextureDesc& texture) noexcept {
+    return extent.width <= texture.extent.width &&
+           extent.height <= texture.extent.height;
+}
+
+[[nodiscard]] inline bool color_attachment_valid(
+    const ColorAttachmentDesc& attachment,
+    Extent2D extent) noexcept {
+    if (!load_op_valid(attachment.loadOp) ||
+        !store_op_valid(attachment.storeOp) ||
+        !clear_color_valid(attachment.clearValue)) {
+        return false;
+    }
+    if (!attachment.texture) {
+        return true;
+    }
+
+    const auto& desc = attachment.texture->desc();
+    return attachment_extent_compatible(extent, desc) &&
+           !texture_format_has_depth_aspect(desc.format) &&
+           has_flag(effective_texture_usage(desc),
+                    TextureUsageFlags::color_attachment);
+}
+
+[[nodiscard]] inline bool depth_attachment_valid(
+    const DepthAttachmentDesc& attachment,
+    Extent2D extent) noexcept {
+    if (!load_op_valid(attachment.loadOp) ||
+        !store_op_valid(attachment.storeOp) ||
+        !load_op_valid(attachment.stencilLoadOp) ||
+        !store_op_valid(attachment.stencilStoreOp) ||
+        !std::isfinite(attachment.clearDepth) ||
+        attachment.clearDepth < 0.0f ||
+        attachment.clearDepth > 1.0f) {
+        return false;
+    }
+    if (!attachment.texture) {
+        return true;
+    }
+
+    const auto& desc = attachment.texture->desc();
+    if (!attachment_extent_compatible(extent, desc) ||
+        !has_flag(effective_texture_usage(desc),
+                  TextureUsageFlags::depth_stencil) ||
+        !texture_format_has_depth_aspect(desc.format)) {
+        return false;
+    }
+    if (!texture_format_has_stencil_aspect(desc.format) &&
+        (attachment.stencilLoadOp != LoadOp::dont_care ||
+         attachment.stencilStoreOp != StoreOp::dont_care ||
+         attachment.clearStencil != 0)) {
+        return false;
+    }
+
+    return true;
 }
 
 [[nodiscard]] constexpr bool color_blend_valid(
@@ -530,7 +615,9 @@ namespace truffle::rhi::validation {
     if (desc.depthFormat != TextureFormat::unknown) {
         const auto* depthSupport =
             find_format_support(capabilities, desc.depthFormat);
-        if (!depthSupport || !depthSupport->depthStencilAttachment) {
+        if (!depthSupport ||
+            !depthSupport->depthStencilAttachment ||
+            !texture_format_has_depth_aspect(desc.depthFormat)) {
             return false;
         }
     } else if (desc.depthTest || desc.depthWrite) {
@@ -558,6 +645,13 @@ namespace truffle::rhi::validation {
 
     return desc.depthFormat == TextureFormat::unknown &&
            !desc.depthTest && !desc.depthWrite;
+}
+
+[[nodiscard]] inline bool render_pass_desc_valid(
+    const RenderPassDesc& desc) noexcept {
+    return is_non_zero(desc.extent) &&
+           color_attachment_valid(desc.colorAttachment, desc.extent) &&
+           depth_attachment_valid(desc.depthAttachment, desc.extent);
 }
 
 [[nodiscard]] inline bool swapchain_supported(

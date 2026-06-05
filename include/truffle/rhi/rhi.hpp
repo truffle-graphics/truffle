@@ -87,6 +87,7 @@ enum class TextureFormat {
     rgba8_unorm,
     bgra8_unorm,
     depth32_float,
+    depth32_float_stencil8,
 };
 
 enum class TextureUsageFlags : std::uint32_t {
@@ -587,6 +588,25 @@ struct AdapterInfo {
     return nullptr;
 }
 
+[[nodiscard]] constexpr bool texture_format_has_depth_aspect(
+    TextureFormat format) noexcept {
+    switch (format) {
+    case TextureFormat::depth32_float:
+    case TextureFormat::depth32_float_stencil8:
+        return true;
+    case TextureFormat::unknown:
+    case TextureFormat::rgba8_unorm:
+    case TextureFormat::bgra8_unorm:
+        return false;
+    }
+    return false;
+}
+
+[[nodiscard]] constexpr bool texture_format_has_stencil_aspect(
+    TextureFormat format) noexcept {
+    return format == TextureFormat::depth32_float_stencil8;
+}
+
 [[nodiscard]] inline bool supports_texture_format(
     const Capabilities& capabilities,
     TextureFormat format) noexcept {
@@ -719,7 +739,7 @@ struct TextureDesc {
 
 [[nodiscard]] constexpr TextureUsageFlags default_texture_usage(
     TextureFormat format) noexcept {
-    if (format == TextureFormat::depth32_float) {
+    if (texture_format_has_depth_aspect(format)) {
         return TextureUsageFlags::sampled | TextureUsageFlags::depth_stencil;
     }
     return TextureUsageFlags::sampled | TextureUsageFlags::color_attachment;
@@ -966,10 +986,13 @@ struct ColorAttachmentDesc {
 };
 
 struct DepthAttachmentDesc {
-    ITexture* texture    = nullptr;          // nullptr = no depth attachment
-    LoadOp    loadOp     = LoadOp::clear;
-    StoreOp   storeOp    = StoreOp::dont_care;
-    float     clearDepth = 1.0f;
+    ITexture* texture        = nullptr;          // nullptr = no depth/stencil attachment
+    LoadOp    loadOp         = LoadOp::clear;
+    StoreOp   storeOp        = StoreOp::dont_care;
+    float     clearDepth     = 1.0f;
+    LoadOp    stencilLoadOp  = LoadOp::dont_care;
+    StoreOp   stencilStoreOp = StoreOp::dont_care;
+    std::uint32_t clearStencil = 0;
 };
 
 struct RenderPassDesc {

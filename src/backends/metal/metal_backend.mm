@@ -78,6 +78,11 @@ using core::StatusCode;
          .depthStencilAttachment = true,
          .transferSource = true,
          .transferDestination = true},
+        {.format = TextureFormat::depth32_float_stencil8,
+         .sampled = true,
+         .depthStencilAttachment = true,
+         .transferSource = true,
+         .transferDestination = true},
     };
     caps.memoryHeaps = {
         {.kind = unifiedMemory ? MemoryHeapKind::unified : MemoryHeapKind::device_local,
@@ -109,6 +114,8 @@ static MTLPixelFormat to_mtl_format(TextureFormat fmt) noexcept {
         case TextureFormat::rgba8_unorm:   return MTLPixelFormatRGBA8Unorm;
         case TextureFormat::bgra8_unorm:   return MTLPixelFormatBGRA8Unorm;
         case TextureFormat::depth32_float: return MTLPixelFormatDepth32Float;
+        case TextureFormat::depth32_float_stencil8:
+            return MTLPixelFormatDepth32Float_Stencil8;
     }
     return MTLPixelFormatInvalid;
 }
@@ -626,6 +633,9 @@ public:
         }
         if (desc.depthFormat != TextureFormat::unknown) {
             rpd.depthAttachmentPixelFormat = to_mtl_format(desc.depthFormat);
+            if (texture_format_has_stencil_aspect(desc.depthFormat)) {
+                rpd.stencilAttachmentPixelFormat = to_mtl_format(desc.depthFormat);
+            }
         }
         if (desc.colorFormat != TextureFormat::unknown && desc.colorBlend.enabled) {
             colorAttachment.sourceRGBBlendFactor =
@@ -925,9 +935,9 @@ public:
             return Status::failure(StatusCode::invalid_state,
                                    "begin_render_pass requires recording state");
         }
-        if (!validation::is_non_zero(desc.extent)) {
+        if (!validation::render_pass_desc_valid(desc)) {
             return Status::failure(StatusCode::invalid_argument,
-                                   "render pass extent must be non-zero");
+                                   "render pass descriptor is invalid");
         }
         if (encoder_) {
             return Status::failure(StatusCode::invalid_state,
@@ -942,24 +952,10 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "color attachment texture must be created by the Metal backend");
         }
-        if (desc.colorAttachment.texture &&
-            !validation::texture_supports_usage(
-                desc.colorAttachment.texture->desc(),
-                TextureUsageFlags::color_attachment)) {
-            return Status::failure(StatusCode::invalid_argument,
-                                   "color attachment texture lacks color attachment usage");
-        }
         if (desc.depthAttachment.texture &&
             desc.depthAttachment.texture->backend_kind() != BackendKind::metal) {
             return Status::failure(StatusCode::invalid_argument,
                                    "depth attachment texture must be created by the Metal backend");
-        }
-        if (desc.depthAttachment.texture &&
-            !validation::texture_supports_usage(
-                desc.depthAttachment.texture->desc(),
-                TextureUsageFlags::depth_stencil)) {
-            return Status::failure(StatusCode::invalid_argument,
-                                   "depth attachment texture lacks depth usage");
         }
         activeColorFormat_.reset();
         activeDepthFormat_.reset();
@@ -984,6 +980,15 @@ public:
             rpd.depthAttachment.loadAction  = to_mtl_load(desc.depthAttachment.loadOp);
             rpd.depthAttachment.storeAction = to_mtl_store(desc.depthAttachment.storeOp);
             rpd.depthAttachment.clearDepth  = desc.depthAttachment.clearDepth;
+            if (texture_format_has_stencil_aspect(dtex->desc().format)) {
+                rpd.stencilAttachment.texture = dtex->native();
+                rpd.stencilAttachment.loadAction =
+                    to_mtl_load(desc.depthAttachment.stencilLoadOp);
+                rpd.stencilAttachment.storeAction =
+                    to_mtl_store(desc.depthAttachment.stencilStoreOp);
+                rpd.stencilAttachment.clearStencil =
+                    desc.depthAttachment.clearStencil;
+            }
         }
 
         encoder_ = [cmdBuf_ renderCommandEncoderWithDescriptor:rpd];

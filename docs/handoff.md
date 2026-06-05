@@ -478,6 +478,22 @@ validation, diagnostics, and backend parity.
   - Expanded core and shared backend contract tests for cache-key retention,
     persistent/transient allocation metadata, valid transient frame descriptors,
     and invalid frame-index rejection.
+- **Low-Level Graphics Foundation Slice 9O** — Complete.
+  - Added `TextureFormat::depth32_float_stencil8` plus depth/stencil aspect
+    helper queries so low-level code can distinguish depth-only from combined
+    depth-stencil attachment formats explicitly.
+  - Extended `DepthAttachmentDesc` with stencil load/store/clear fields and added
+    shared render-pass attachment validation for load/store ops, clear values,
+    attachment extents, usage flags, and stencil-only operations on
+    stencil-capable formats.
+  - Aligned null, Metal, Vulkan, OpenGL, and Direct3D render-pass begin paths to
+    use the shared attachment validation contract before backend/native
+    execution.
+  - Mapped `depth32_float_stencil8` and stencil attachment load/store/clear
+    behavior into Metal render-pass and pipeline descriptors.
+  - Expanded core and shared backend contract tests for depth-stencil format
+    support, valid depth-stencil render passes, invalid stencil-on-depth-only
+    descriptors, invalid clear ranges, and attachment extent mismatches.
 
 ## Relevant Decisions And Constraints
 
@@ -550,6 +566,11 @@ validation, diagnostics, and backend parity.
   bind groups must use frame index 0; transient-frame bind groups must name a
   frame slot within the backend's advertised `maxFramesInFlight`. Layout/group
   cache keys are caller-provided metadata for higher-level descriptor reuse.
+- Render-pass validation is now shared across built-in backends for color,
+  depth-only, and depth-stencil attachments. `DepthAttachmentDesc` may carry
+  stencil load/store/clear state only when the selected depth format has a
+  stencil aspect; full stencil test/reference pipeline state remains a later
+  low-level slice.
 - The repository commits only the public doctrine snapshot. The maintainer's
   private Copilot overlay lives in `~/.copilot/copilot-instructions.md` on the
   local machine and must not be copied into repository history.
@@ -581,8 +602,12 @@ compute tests.
 
 ## Next Resume Steps
 
-1. Continue backend-native depth work; likely next low-level gaps are native
-   depth/stencil attachment state and descriptor allocation/mapping depth.
+1. Continue low-level depth/stencil work with explicit stencil pipeline state,
+   compare/op masks, and command-buffer stencil reference contracts now that
+   render-pass depth-stencil attachments are explicit and validated.
+2. Return to deeper backend-native descriptor allocation/mapping policy once the
+   depth/stencil contract surface is complete enough for higher-level renderer
+   work.
 
 ## Open Questions Or Risks
 
@@ -593,6 +618,9 @@ compute tests.
   integration remain open.
 - Native descriptor allocation/mapping depth remains backend-specific future
   work; the current bind group model is a validated contract layer.
+- Full stencil pipeline/reference state is still deferred even though
+  depth-stencil attachment formats and stencil attachment load/store/clear
+  semantics are now explicit.
 - Bindless and dynamic-resource-indexing are feature-gated and descriptor arrays
   can now be populated, but backend-native bindless heap/argument-buffer mapping
   remains future work before higher layers can use bindless descriptors

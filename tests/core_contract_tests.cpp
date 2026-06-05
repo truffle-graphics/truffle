@@ -165,6 +165,20 @@ int main() {
     TRUFFLE_CHECK(truffle::rhi::has_flag(
         truffle::rhi::effective_texture_usage(depthTexture),
         truffle::rhi::TextureUsageFlags::depth_stencil));
+    TRUFFLE_CHECK(
+        truffle::rhi::texture_format_has_depth_aspect(depthTexture.format));
+    TRUFFLE_CHECK(
+        !truffle::rhi::texture_format_has_stencil_aspect(depthTexture.format));
+    truffle::rhi::TextureDesc depthStencilTextureDesc;
+    depthStencilTextureDesc.format =
+        truffle::rhi::TextureFormat::depth32_float_stencil8;
+    TRUFFLE_CHECK(truffle::rhi::has_flag(
+        truffle::rhi::effective_texture_usage(depthStencilTextureDesc),
+        truffle::rhi::TextureUsageFlags::depth_stencil));
+    TRUFFLE_CHECK(truffle::rhi::texture_format_has_depth_aspect(
+        depthStencilTextureDesc.format));
+    TRUFFLE_CHECK(truffle::rhi::texture_format_has_stencil_aspect(
+        depthStencilTextureDesc.format));
     TRUFFLE_CHECK(truffle::rhi::validation::texture_shape_valid(depthTexture, 4096));
     depthTexture.mipLevels = 0;
     TRUFFLE_CHECK(!truffle::rhi::validation::texture_shape_valid(depthTexture, 4096));
@@ -194,6 +208,11 @@ int main() {
             .sampled = true,
             .depthStencilAttachment = true,
         },
+        {
+            .format = truffle::rhi::TextureFormat::depth32_float_stencil8,
+            .sampled = true,
+            .depthStencilAttachment = true,
+        },
     };
     capabilities.surfaceKinds = {truffle::rhi::NativeSurfaceKind::headless};
     capabilities.shaderFormats = {
@@ -211,6 +230,8 @@ int main() {
         capabilities, truffle::rhi::TextureFormat::rgba8_unorm));
     TRUFFLE_CHECK(truffle::rhi::supports_texture_format(
         capabilities, truffle::rhi::TextureFormat::depth32_float));
+    TRUFFLE_CHECK(truffle::rhi::supports_texture_format(
+        capabilities, truffle::rhi::TextureFormat::depth32_float_stencil8));
     TRUFFLE_CHECK(truffle::rhi::validation::memory_domain_supported(
         truffle::rhi::MemoryDomain::upload, capabilities));
     TRUFFLE_CHECK(truffle::rhi::validation::buffer_memory_mappable({
@@ -717,6 +738,26 @@ int main() {
         std::nullopt,
         std::optional<truffle::rhi::TextureFormat>{
             truffle::rhi::TextureFormat::depth32_float}));
+    const truffle::rhi::PipelineDesc depthStencilPipelineDesc{
+        .colorFormat = truffle::rhi::TextureFormat::rgba8_unorm,
+        .depthFormat = truffle::rhi::TextureFormat::depth32_float_stencil8,
+        .depthTest = true,
+        .depthWrite = true,
+    };
+    TRUFFLE_CHECK(truffle::rhi::validation::pipeline_render_state_valid(
+        depthStencilPipelineDesc, capabilities));
+    TRUFFLE_CHECK(truffle::rhi::validation::pipeline_render_pass_compatible(
+        depthStencilPipelineDesc,
+        std::optional<truffle::rhi::TextureFormat>{
+            truffle::rhi::TextureFormat::rgba8_unorm},
+        std::optional<truffle::rhi::TextureFormat>{
+            truffle::rhi::TextureFormat::depth32_float_stencil8}));
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_render_pass_compatible(
+        depthStencilPipelineDesc,
+        std::optional<truffle::rhi::TextureFormat>{
+            truffle::rhi::TextureFormat::rgba8_unorm},
+        std::optional<truffle::rhi::TextureFormat>{
+            truffle::rhi::TextureFormat::depth32_float}));
     TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_render_state_valid({
         .colorFormat = truffle::rhi::TextureFormat::depth32_float,
     }, capabilities));
@@ -895,6 +936,16 @@ int main() {
         .format = truffle::rhi::TextureFormat::rgba8_unorm,
         .usageFlags = truffle::rhi::TextureUsageFlags::color_attachment,
     }};
+    TestTexture depthOnlyAttachment{{
+        .extent = {16, 16},
+        .format = truffle::rhi::TextureFormat::depth32_float,
+        .usageFlags = truffle::rhi::TextureUsageFlags::depth_stencil,
+    }};
+    TestTexture depthStencilAttachment{{
+        .extent = {16, 16},
+        .format = truffle::rhi::TextureFormat::depth32_float_stencil8,
+        .usageFlags = truffle::rhi::TextureUsageFlags::depth_stencil,
+    }};
     TestSampler sampler;
     TestSampler secondSampler;
     TestBindGroupLayout bindGroupLayout{bindGroupLayoutDesc};
@@ -1011,6 +1062,50 @@ int main() {
                 .type = truffle::rhi::BindingResourceType::uniform_buffer,
                 .buffer = {.buffer = &uniformBuffer, .size = 16},
             },
+        },
+    }));
+    TRUFFLE_CHECK(truffle::rhi::validation::render_pass_desc_valid({
+        .extent = {16, 16},
+        .colorAttachment = {
+            .texture = &colorOnlyTexture,
+            .loadOp = truffle::rhi::LoadOp::clear,
+            .storeOp = truffle::rhi::StoreOp::store,
+            .clearValue = {.r = 0.1f, .g = 0.2f, .b = 0.3f, .a = 1.0f},
+        },
+        .depthAttachment = {
+            .texture = &depthStencilAttachment,
+            .loadOp = truffle::rhi::LoadOp::clear,
+            .storeOp = truffle::rhi::StoreOp::store,
+            .clearDepth = 1.0f,
+            .stencilLoadOp = truffle::rhi::LoadOp::clear,
+            .stencilStoreOp = truffle::rhi::StoreOp::store,
+            .clearStencil = 7,
+        },
+    }));
+    TRUFFLE_CHECK(!truffle::rhi::validation::render_pass_desc_valid({
+        .extent = {16, 16},
+        .depthAttachment = {
+            .texture = &depthOnlyAttachment,
+            .stencilLoadOp = truffle::rhi::LoadOp::clear,
+        },
+    }));
+    TRUFFLE_CHECK(!truffle::rhi::validation::render_pass_desc_valid({
+        .extent = {16, 16},
+        .depthAttachment = {
+            .texture = &depthStencilAttachment,
+            .clearDepth = 2.0f,
+        },
+    }));
+    TRUFFLE_CHECK(!truffle::rhi::validation::render_pass_desc_valid({
+        .extent = {17, 16},
+        .depthAttachment = {
+            .texture = &depthStencilAttachment,
+        },
+    }));
+    TRUFFLE_CHECK(!truffle::rhi::validation::render_pass_desc_valid({
+        .extent = {16, 16},
+        .colorAttachment = {
+            .texture = &depthOnlyAttachment,
         },
     }));
     TRUFFLE_CHECK(!truffle::rhi::validation::bind_group_entry_valid({
