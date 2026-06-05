@@ -107,6 +107,7 @@ int main() {
     TRUFFLE_CHECK(validate_material_requirements(material, mesh).ok());
 
     auto velocityMaterial = material;
+    velocityMaterial.requiredAttributes.push_back(AttributeSemantic::Intensity);
     velocityMaterial.operations.push_back({
         .name = "velocity_color",
         .kind = MaterialOperationKind::Normalize,
@@ -155,6 +156,7 @@ int main() {
     TRUFFLE_CHECK(catalog.texture(texture.id) != nullptr);
     TRUFFLE_CHECK(catalog.mesh(mesh.id) != nullptr);
     TRUFFLE_CHECK(catalog.validate_mesh_material(mesh.id).ok());
+    TRUFFLE_CHECK(catalog.validate_mesh_material_report(mesh.id).ok());
 
     const auto duplicateStatus = catalog.add_mesh(mesh);
     TRUFFLE_CHECK(!duplicateStatus.ok());
@@ -177,6 +179,12 @@ int main() {
     TRUFFLE_CHECK(!missingMaterialStatus.ok());
     TRUFFLE_CHECK(missingMaterialStatus.code ==
                   truffle::core::StatusCode::unavailable);
+    const auto missingMaterialReport =
+        catalog.validate_mesh_material_report(missingMaterialMesh.id);
+    TRUFFLE_CHECK(!missingMaterialReport.ok());
+    TRUFFLE_CHECK(missingMaterialReport.issues.size() == 1);
+    TRUFFLE_CHECK(missingMaterialReport.issues.front().kind ==
+                  AssetValidationIssueKind::MissingMaterial);
 
     auto missingAttributeMesh = mesh;
     missingAttributeMesh.id = AssetId{21};
@@ -190,6 +198,49 @@ int main() {
     TRUFFLE_CHECK(!missingCatalogAttributeStatus.ok());
     TRUFFLE_CHECK(missingCatalogAttributeStatus.code ==
                   truffle::core::StatusCode::invalid_argument);
+    const auto missingAttributeReport =
+        catalog.validate_mesh_material_report(missingAttributeMesh.id);
+    TRUFFLE_CHECK(!missingAttributeReport.ok());
+    TRUFFLE_CHECK(missingAttributeReport.issues.size() == 2);
+    bool foundMissingIntensity = false;
+    bool foundMissingVelocity = false;
+    for (const auto& issue : missingAttributeReport.issues) {
+        TRUFFLE_CHECK(issue.kind == AssetValidationIssueKind::MissingAttribute);
+        foundMissingIntensity =
+            foundMissingIntensity ||
+            issue.attribute == AttributeSemantic::Intensity;
+        foundMissingVelocity =
+            foundMissingVelocity ||
+            issue.attribute == AttributeSemantic::Velocity;
+    }
+    TRUFFLE_CHECK(foundMissingIntensity);
+    TRUFFLE_CHECK(foundMissingVelocity);
+
+    auto invalidMaterialReferenceMesh = mesh;
+    invalidMaterialReferenceMesh.id = AssetId{25};
+    invalidMaterialReferenceMesh.material = AssetId{};
+    TRUFFLE_CHECK(catalog.add_mesh(invalidMaterialReferenceMesh).ok());
+    const auto invalidMaterialReferenceReport =
+        catalog.validate_mesh_material_report(invalidMaterialReferenceMesh.id);
+    TRUFFLE_CHECK(!invalidMaterialReferenceReport.ok());
+    TRUFFLE_CHECK(invalidMaterialReferenceReport.issues.size() == 1);
+    TRUFFLE_CHECK(invalidMaterialReferenceReport.issues.front().kind ==
+                  AssetValidationIssueKind::InvalidMaterialReference);
+
+    const auto missingMeshReport =
+        catalog.validate_mesh_material_report(AssetId{99});
+    TRUFFLE_CHECK(!missingMeshReport.ok());
+    TRUFFLE_CHECK(missingMeshReport.issues.front().kind ==
+                  AssetValidationIssueKind::MissingMesh);
+
+    const auto allReport = catalog.validate_all_mesh_materials();
+    TRUFFLE_CHECK(!allReport.ok());
+    TRUFFLE_CHECK(allReport.issues.size() == 4);
+
+    AssetCatalog cleanCatalog;
+    TRUFFLE_CHECK(cleanCatalog.add_material(material).ok());
+    TRUFFLE_CHECK(cleanCatalog.add_mesh(mesh).ok());
+    TRUFFLE_CHECK(cleanCatalog.validate_all_mesh_materials().ok());
 
     return 0;
 }

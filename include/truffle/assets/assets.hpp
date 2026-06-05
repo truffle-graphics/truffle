@@ -198,6 +198,29 @@ struct MeshAssetDesc {
     std::vector<GeometryStreamDesc> streams;
 };
 
+enum class AssetValidationIssueKind {
+    MissingMesh,
+    InvalidMaterialReference,
+    MissingMaterial,
+    MissingAttribute,
+};
+
+struct AssetValidationIssue {
+    AssetValidationIssueKind kind = AssetValidationIssueKind::MissingAttribute;
+    AssetId mesh;
+    AssetId material;
+    AttributeSemantic attribute = AttributeSemantic::Custom;
+    std::string message;
+};
+
+struct AssetValidationReport {
+    std::vector<AssetValidationIssue> issues;
+
+    [[nodiscard]] bool ok() const noexcept {
+        return issues.empty();
+    }
+};
+
 class AssetCatalog {
 public:
     [[nodiscard]] core::Status add_geometry_stream(GeometryStreamDesc stream);
@@ -213,6 +236,9 @@ public:
 
     [[nodiscard]] core::Status validate_mesh_material(
         AssetId meshId) const;
+    [[nodiscard]] AssetValidationReport validate_mesh_material_report(
+        AssetId meshId) const;
+    [[nodiscard]] AssetValidationReport validate_all_mesh_materials() const;
 
     [[nodiscard]] std::size_t geometry_stream_count() const noexcept {
         return geometryStreams_.size();

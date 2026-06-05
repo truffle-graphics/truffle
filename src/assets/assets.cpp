@@ -81,6 +81,68 @@ const MeshAssetDesc* AssetCatalog::mesh(AssetId id) const noexcept {
     return find_asset(meshes_, id);
 }
 
+AssetValidationReport AssetCatalog::validate_mesh_material_report(
+    AssetId meshId) const {
+    AssetValidationReport report;
+
+    const auto* foundMesh = mesh(meshId);
+    if (foundMesh == nullptr) {
+        report.issues.push_back({
+            .kind = AssetValidationIssueKind::MissingMesh,
+            .mesh = meshId,
+            .message = "Assets: mesh asset is not registered",
+        });
+        return report;
+    }
+
+    if (!foundMesh->material.valid()) {
+        report.issues.push_back({
+            .kind = AssetValidationIssueKind::InvalidMaterialReference,
+            .mesh = foundMesh->id,
+            .material = foundMesh->material,
+            .message = "Assets: mesh does not reference a valid material",
+        });
+        return report;
+    }
+
+    const auto* foundMaterial = material(foundMesh->material);
+    if (foundMaterial == nullptr) {
+        report.issues.push_back({
+            .kind = AssetValidationIssueKind::MissingMaterial,
+            .mesh = foundMesh->id,
+            .material = foundMesh->material,
+            .message = "Assets: material asset is not registered",
+        });
+        return report;
+    }
+
+    for (const auto semantic : collect_required_attributes(*foundMaterial)) {
+        if (!provides_attribute(*foundMesh, semantic)) {
+            report.issues.push_back({
+                .kind = AssetValidationIssueKind::MissingAttribute,
+                .mesh = foundMesh->id,
+                .material = foundMaterial->id,
+                .attribute = semantic,
+                .message =
+                    "Assets: mesh is missing an attribute required by material",
+            });
+        }
+    }
+
+    return report;
+}
+
+AssetValidationReport AssetCatalog::validate_all_mesh_materials() const {
+    AssetValidationReport report;
+    for (const auto& [meshId, _] : meshes_) {
+        auto meshReport = validate_mesh_material_report(meshId);
+        report.issues.insert(report.issues.end(),
+                             meshReport.issues.begin(),
+                             meshReport.issues.end());
+    }
+    return report;
+}
+
 core::Status AssetCatalog::validate_mesh_material(AssetId meshId) const {
     const auto* foundMesh = mesh(meshId);
     if (foundMesh == nullptr) {

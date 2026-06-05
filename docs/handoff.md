@@ -118,6 +118,8 @@ contract-backend extension work.
     tools can catch missing dynamic attributes before render/backend execution.
   - Added `AssetCatalog` registration and lookup for declarative mesh, material,
     texture, and geometry-stream descriptors.
+  - Added catalog validation reports so tools can collect all mesh/material
+    metadata issues without running loaders, uploads, or backend code.
   - Added `truffle_diagnostics` / `Truffle::Diagnostics` for opt-in,
     pull-based render-batch, frame-graph, and renderer-stats summaries.
   - Added external diagnostics labels for batches, frame-graph nodes, and
@@ -147,7 +149,7 @@ contract-backend extension work.
 - `truffle_assets` is declarative metadata only for now; file import, backend
   upload, shader compilation, and material-operation execution are explicitly
   deferred. Catalog lookup and requirement validation check declared metadata
-  only.
+  only; validation reports collect metadata issues without side effects.
 - `truffle_diagnostics` is strict opt-in tooling: no global tracing, no
   background logger, and no dependency from `truffle_render` or `truffle_scene`
   back into diagnostics. Tool-facing labels are passed as diagnostics options
