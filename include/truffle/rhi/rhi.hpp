@@ -83,6 +83,7 @@ enum class IndexFormat {
 };
 
 enum class TextureFormat {
+    unknown,
     rgba8_unorm,
     bgra8_unorm,
     depth32_float,
@@ -862,8 +863,9 @@ struct PipelineDesc {
     PipelineLayoutDesc layout;
     PrimitiveTopology topology       = PrimitiveTopology::triangle_list;
     TextureFormat     colorFormat    = TextureFormat::bgra8_unorm;
-    bool              depthTest      = true;
-    bool              depthWrite     = true;
+    TextureFormat     depthFormat    = TextureFormat::unknown;
+    bool              depthTest      = false;
+    bool              depthWrite     = false;
     RasterStateDesc   rasterState;
     DepthStencilStateDesc depthStencilState;
     ColorBlendDesc    colorBlend;
@@ -937,7 +939,9 @@ struct ClearColor {
 };
 
 struct ColorAttachmentDesc {
-    ITexture*  texture    = nullptr;         // nullptr = swapchain drawable
+    // nullptr means no concrete color attachment, primarily for headless/null paths.
+    // Swapchain rendering should pass the texture returned by acquire_next_texture().
+    ITexture*  texture    = nullptr;
     LoadOp     loadOp     = LoadOp::clear;
     StoreOp    storeOp    = StoreOp::store;
     ClearColor clearValue = {};

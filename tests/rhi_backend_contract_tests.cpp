@@ -152,7 +152,7 @@ int verify_capability_contract(const truffle::rhi::IBackend& backend,
 }
 
 truffle::rhi::ShaderDesc make_shader_desc(truffle::rhi::BackendKind backendKind,
-                                             truffle::rhi::ShaderStage stage) {
+                                              truffle::rhi::ShaderStage stage) {
     if (backendKind == truffle::rhi::BackendKind::metal) {
         if (stage == truffle::rhi::ShaderStage::vertex) {
             static const char kVertexMSL[] = R"msl(
@@ -209,6 +209,25 @@ kernel void comp_main(device uint* data [[buffer(0)]],
         .entryPoint = "main",
         .bytecode = {std::byte{0x1}, std::byte{0x2}},
     };
+}
+
+truffle::rhi::ShaderDesc make_depth_only_fragment_shader_desc(
+    truffle::rhi::BackendKind backendKind) {
+    if (backendKind == truffle::rhi::BackendKind::metal) {
+        static const char kFragmentMSL[] = R"msl(
+#include <metal_stdlib>
+using namespace metal;
+fragment void frag_main() {}
+)msl";
+        return truffle::rhi::ShaderDesc{
+            .stage = truffle::rhi::ShaderStage::fragment,
+            .byteFormat = truffle::rhi::ShaderByteFormat::msl_source,
+            .entryPoint = "frag_main",
+            .bytecode = to_bytes(kFragmentMSL),
+        };
+    }
+
+    return make_shader_desc(backendKind, truffle::rhi::ShaderStage::fragment);
 }
 
 class ForeignBuffer final : public truffle::rhi::IBuffer {
@@ -942,6 +961,12 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
                       truffle::rhi::TextureUsageFlags::color_attachment,
     });
     TRUFFLE_CHECK(goodTexture.ok());
+    auto depthTexture = device.create_texture({
+        .extent = {32, 32},
+        .format = truffle::rhi::TextureFormat::depth32_float,
+        .usageFlags = truffle::rhi::TextureUsageFlags::depth_stencil,
+    });
+    TRUFFLE_CHECK(depthTexture.ok());
     TRUFFLE_CHECK(truffle::rhi::validation::texture_view_valid({
         .texture = goodTexture.value().get(),
         .format = truffle::rhi::TextureFormat::rgba8_unorm,
@@ -1410,10 +1435,13 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
         device.create_shader(make_shader_desc(backendKind, truffle::rhi::ShaderStage::vertex));
     auto stageFragmentShader =
         device.create_shader(make_shader_desc(backendKind, truffle::rhi::ShaderStage::fragment));
+    auto depthOnlyFragmentShader =
+        device.create_shader(make_depth_only_fragment_shader_desc(backendKind));
     auto stageComputeShader =
         device.create_shader(make_shader_desc(backendKind, truffle::rhi::ShaderStage::compute));
     TRUFFLE_CHECK(stageVertexShader.ok());
     TRUFFLE_CHECK(stageFragmentShader.ok());
+    TRUFFLE_CHECK(depthOnlyFragmentShader.ok());
     TRUFFLE_CHECK(stageComputeShader.ok());
     auto wrongVertexStagePipeline = device.create_pipeline({
         .vertexShader = stageComputeShader.value().get(),
@@ -1439,6 +1467,7 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
     auto richRenderStatePipeline = device.create_pipeline({
         .vertexShader = stageVertexShader.value().get(),
         .fragmentShader = stageFragmentShader.value().get(),
+        .colorFormat = truffle::rhi::TextureFormat::rgba8_unorm,
         .depthTest = false,
         .depthWrite = false,
         .rasterState = {
@@ -1472,6 +1501,30 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
     TRUFFLE_CHECK(!richRenderStatePipeline.value()->desc().rasterState.depthClip);
     TRUFFLE_CHECK(richRenderStatePipeline.value()->desc().colorBlend.enabled);
     TRUFFLE_CHECK(richRenderStatePipeline.value()->desc().vertexAttributes.size() == 1);
+
+    auto depthPipeline = device.create_pipeline({
+        .vertexShader = stageVertexShader.value().get(),
+        .fragmentShader = stageFragmentShader.value().get(),
+        .colorFormat = truffle::rhi::TextureFormat::rgba8_unorm,
+        .depthFormat = truffle::rhi::TextureFormat::depth32_float,
+        .depthTest = true,
+        .depthWrite = true,
+        .depthStencilState = {
+            .depthCompare = truffle::rhi::SamplerCompareOp::greater_equal,
+        },
+    });
+    TRUFFLE_CHECK(depthPipeline.ok());
+    TRUFFLE_CHECK(depthPipeline.value()->desc().depthFormat ==
+                  truffle::rhi::TextureFormat::depth32_float);
+    auto depthOnlyPipeline = device.create_pipeline({
+        .vertexShader = stageVertexShader.value().get(),
+        .fragmentShader = depthOnlyFragmentShader.value().get(),
+        .colorFormat = truffle::rhi::TextureFormat::unknown,
+        .depthFormat = truffle::rhi::TextureFormat::depth32_float,
+        .depthTest = true,
+        .depthWrite = true,
+    });
+    TRUFFLE_CHECK(depthOnlyPipeline.ok());
 
     auto badLayoutPipeline = device.create_pipeline({
         .layout = {
@@ -1508,6 +1561,22 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
     });
     TRUFFLE_CHECK(!badRenderStatePipeline.ok());
     TRUFFLE_CHECK(badRenderStatePipeline.status().code ==
+                  truffle::core::StatusCode::invalid_argument);
+    auto badDepthPipeline = device.create_pipeline({
+        .vertexShader = stageVertexShader.value().get(),
+        .fragmentShader = stageFragmentShader.value().get(),
+        .depthTest = true,
+    });
+    TRUFFLE_CHECK(!badDepthPipeline.ok());
+    TRUFFLE_CHECK(badDepthPipeline.status().code ==
+                  truffle::core::StatusCode::invalid_argument);
+    auto badDepthFormatPipeline = device.create_pipeline({
+        .vertexShader = stageVertexShader.value().get(),
+        .fragmentShader = stageFragmentShader.value().get(),
+        .depthFormat = truffle::rhi::TextureFormat::rgba8_unorm,
+    });
+    TRUFFLE_CHECK(!badDepthFormatPipeline.ok());
+    TRUFFLE_CHECK(badDepthFormatPipeline.status().code ==
                   truffle::core::StatusCode::invalid_argument);
     auto badRasterStatePipeline = device.create_pipeline({
         .vertexShader = stageVertexShader.value().get(),
@@ -1565,6 +1634,50 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
     TRUFFLE_CHECK(!badVertexStridePipeline.ok());
     TRUFFLE_CHECK(badVertexStridePipeline.status().code ==
                   truffle::core::StatusCode::invalid_argument);
+
+    auto depthCmd = device.create_command_buffer();
+    TRUFFLE_CHECK(depthCmd != nullptr);
+    TRUFFLE_CHECK(depthCmd->begin().ok());
+    truffle::rhi::RenderPassDesc depthPassDesc{
+        .extent = {32, 32},
+    };
+    depthPassDesc.colorAttachment.texture = goodTexture.value().get();
+    depthPassDesc.depthAttachment.texture = depthTexture.value().get();
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_render_pass_compatible(
+        richRenderStatePipeline.value()->desc(),
+        goodTexture.value()->desc().format,
+        depthTexture.value()->desc().format));
+    TRUFFLE_CHECK(depthCmd->begin_render_pass(depthPassDesc).ok());
+    TRUFFLE_CHECK(!depthCmd->bind_pipeline(*richRenderStatePipeline.value()).ok());
+    TRUFFLE_CHECK(depthCmd->bind_pipeline(*depthPipeline.value()).ok());
+    TRUFFLE_CHECK(depthCmd->end_render_pass().ok());
+    TRUFFLE_CHECK(depthCmd->end().ok());
+
+    auto noDepthCmd = device.create_command_buffer();
+    TRUFFLE_CHECK(noDepthCmd != nullptr);
+    TRUFFLE_CHECK(noDepthCmd->begin().ok());
+    truffle::rhi::RenderPassDesc noDepthPassDesc{
+        .extent = {32, 32},
+    };
+    noDepthPassDesc.colorAttachment.texture = goodTexture.value().get();
+    TRUFFLE_CHECK(noDepthCmd->begin_render_pass(noDepthPassDesc).ok());
+    TRUFFLE_CHECK(!noDepthCmd->bind_pipeline(*depthPipeline.value()).ok());
+    TRUFFLE_CHECK(noDepthCmd->bind_pipeline(*richRenderStatePipeline.value()).ok());
+    TRUFFLE_CHECK(noDepthCmd->end_render_pass().ok());
+    TRUFFLE_CHECK(noDepthCmd->end().ok());
+
+    auto depthOnlyCmd = device.create_command_buffer();
+    TRUFFLE_CHECK(depthOnlyCmd != nullptr);
+    TRUFFLE_CHECK(depthOnlyCmd->begin().ok());
+    truffle::rhi::RenderPassDesc depthOnlyPassDesc{
+        .extent = {32, 32},
+    };
+    depthOnlyPassDesc.depthAttachment.texture = depthTexture.value().get();
+    TRUFFLE_CHECK(depthOnlyCmd->begin_render_pass(depthOnlyPassDesc).ok());
+    TRUFFLE_CHECK(!depthOnlyCmd->bind_pipeline(*depthPipeline.value()).ok());
+    TRUFFLE_CHECK(depthOnlyCmd->bind_pipeline(*depthOnlyPipeline.value()).ok());
+    TRUFFLE_CHECK(depthOnlyCmd->end_render_pass().ok());
+    TRUFFLE_CHECK(depthOnlyCmd->end().ok());
 
     auto cmd = device.create_command_buffer();
     TRUFFLE_CHECK(cmd != nullptr);

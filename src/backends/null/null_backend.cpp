@@ -348,6 +348,8 @@ public:
         computeLayout_ = nullptr;
         boundGraphicsGroups_.clear();
         boundComputeGroups_.clear();
+        activeColorFormat_.reset();
+        activeDepthFormat_.reset();
     }
 
     NullDevice* device_ = nullptr;
@@ -402,6 +404,14 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "depth attachment texture lacks depth usage");
         }
+        activeColorFormat_.reset();
+        activeDepthFormat_.reset();
+        if (desc.colorAttachment.texture) {
+            activeColorFormat_ = desc.colorAttachment.texture->desc().format;
+        }
+        if (desc.depthAttachment.texture) {
+            activeDepthFormat_ = desc.depthAttachment.texture->desc().format;
+        }
         inRenderPass_ = true;
         return Status::success();
     }
@@ -418,6 +428,8 @@ public:
         inRenderPass_ = false;
         graphicsLayout_ = nullptr;
         boundGraphicsGroups_.clear();
+        activeColorFormat_.reset();
+        activeDepthFormat_.reset();
         return Status::success();
     }
 
@@ -433,6 +445,11 @@ public:
         if (pipeline.backend_kind() != BackendKind::null_backend) {
             return Status::failure(StatusCode::invalid_argument,
                                    "pipeline must be created by null backend");
+        }
+        if (!validation::pipeline_render_pass_compatible(
+                pipeline.desc(), activeColorFormat_, activeDepthFormat_)) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "pipeline is incompatible with the active render pass");
         }
         graphicsLayout_ = &pipeline.desc().layout;
         boundGraphicsGroups_.clear();
@@ -883,6 +900,8 @@ private:
     std::shared_ptr<SharedStats> stats_;
     State state_ = State::initial;
     bool inRenderPass_ = false;
+    std::optional<TextureFormat> activeColorFormat_;
+    std::optional<TextureFormat> activeDepthFormat_;
     std::uint32_t debugLabelDepth_ = 0;
     const PipelineLayoutDesc* graphicsLayout_ = nullptr;
     const PipelineLayoutDesc* computeLayout_ = nullptr;

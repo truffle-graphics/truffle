@@ -444,9 +444,13 @@ namespace truffle::rhi::validation {
 [[nodiscard]] inline bool pipeline_render_state_valid(
     const PipelineDesc& desc,
     const Capabilities& capabilities) noexcept {
-    const auto* colorSupport =
-        find_format_support(capabilities, desc.colorFormat);
-    if (!colorSupport || !colorSupport->colorAttachment) {
+    if (desc.colorFormat != TextureFormat::unknown) {
+        const auto* colorSupport =
+            find_format_support(capabilities, desc.colorFormat);
+        if (!colorSupport || !colorSupport->colorAttachment) {
+            return false;
+        }
+    } else if (desc.colorBlend.enabled) {
         return false;
     }
 
@@ -457,15 +461,37 @@ namespace truffle::rhi::validation {
         return false;
     }
 
-    if (desc.depthTest || desc.depthWrite) {
+    if (desc.depthFormat != TextureFormat::unknown) {
         const auto* depthSupport =
-            find_format_support(capabilities, TextureFormat::depth32_float);
+            find_format_support(capabilities, desc.depthFormat);
         if (!depthSupport || !depthSupport->depthStencilAttachment) {
             return false;
         }
+    } else if (desc.depthTest || desc.depthWrite) {
+        return false;
     }
 
     return true;
+}
+
+[[nodiscard]] inline bool pipeline_render_pass_compatible(
+    const PipelineDesc& desc,
+    std::optional<TextureFormat> colorFormat,
+    std::optional<TextureFormat> depthFormat) noexcept {
+    if (colorFormat && desc.colorFormat != *colorFormat) {
+        return false;
+    }
+    if (!colorFormat && depthFormat &&
+        desc.colorFormat != TextureFormat::unknown) {
+        return false;
+    }
+
+    if (depthFormat) {
+        return desc.depthFormat == *depthFormat;
+    }
+
+    return desc.depthFormat == TextureFormat::unknown &&
+           !desc.depthTest && !desc.depthWrite;
 }
 
 [[nodiscard]] inline bool swapchain_supported(

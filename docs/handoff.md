@@ -392,6 +392,26 @@ validation, diagnostics, and backend parity.
   - Expanded core and shared backend contract tests for valid vertex input and
     invalid zero-stride, missing-buffer, stride-overflow, duplicate-location, and
     limit-overflow descriptors.
+- **Low-Level Graphics Foundation Slice 9J** — Complete.
+  - Added `TextureFormat::unknown` as an explicit no-format sentinel and
+    `PipelineDesc::depthFormat` so graphics pipelines declare whether they target
+    a depth attachment.
+  - Made pipeline depth testing/writes opt-in by default; validation now rejects
+    depth test/write state without an explicit supported depth format.
+  - Added shared render-pass/pipeline compatibility validation for explicit color
+    and depth attachment format matching before pipeline binding.
+  - Added colorless depth-pipeline support by treating
+    `PipelineDesc::colorFormat = TextureFormat::unknown` as no color target when
+    a render pass contains only a depth attachment.
+  - Aligned null, Metal, Vulkan, OpenGL, and Direct3D command buffers so graphics
+    pipeline binding fails when the active render pass has incompatible color or
+    depth attachments.
+  - Mapped Metal depth attachment pixel format and depth-stencil compare/write
+    state to native `MTLRenderPipelineDescriptor` and
+    `MTLDepthStencilState`.
+  - Expanded core and shared backend contract tests for valid depth pipelines,
+    invalid implicit-depth descriptors, invalid depth formats, and depth/no-depth
+    render-pass compatibility failures.
 
 ## Relevant Decisions And Constraints
 
@@ -444,6 +464,10 @@ validation, diagnostics, and backend parity.
   layers should describe buffer strides, step rates, attribute locations/formats,
   and offsets directly instead of relying on renderer-owned implicit layout
   policy.
+- Graphics pipeline descriptors now carry explicit depth attachment formats.
+  Depth testing and writes are opt-in; a pipeline must match the active render
+  pass color/depth attachment formats before it can be bound.
+  Depth-only pipelines use `TextureFormat::unknown` as the color format.
 - The repository commits only the public doctrine snapshot. The maintainer's
   private Copilot overlay lives in `~/.copilot/copilot-instructions.md` on the
   local machine and must not be copied into repository history.

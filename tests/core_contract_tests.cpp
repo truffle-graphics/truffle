@@ -183,11 +183,18 @@ int main() {
     capabilities.memoryHeaps = {{
         .kind = truffle::rhi::MemoryHeapKind::unified,
     }};
-    capabilities.formats = {{
-        .format = truffle::rhi::TextureFormat::rgba8_unorm,
-        .sampled = true,
-        .colorAttachment = true,
-    }};
+    capabilities.formats = {
+        {
+            .format = truffle::rhi::TextureFormat::rgba8_unorm,
+            .sampled = true,
+            .colorAttachment = true,
+        },
+        {
+            .format = truffle::rhi::TextureFormat::depth32_float,
+            .sampled = true,
+            .depthStencilAttachment = true,
+        },
+    };
     capabilities.surfaceKinds = {truffle::rhi::NativeSurfaceKind::headless};
     capabilities.shaderFormats = {
         truffle::rhi::ShaderByteFormat::contract,
@@ -202,14 +209,18 @@ int main() {
         capabilities, truffle::rhi::QueueKind::transfer));
     TRUFFLE_CHECK(truffle::rhi::supports_texture_format(
         capabilities, truffle::rhi::TextureFormat::rgba8_unorm));
-    TRUFFLE_CHECK(!truffle::rhi::supports_texture_format(
+    TRUFFLE_CHECK(truffle::rhi::supports_texture_format(
         capabilities, truffle::rhi::TextureFormat::depth32_float));
     TRUFFLE_CHECK(truffle::rhi::validation::memory_domain_supported(
         truffle::rhi::MemoryDomain::upload, capabilities));
     TRUFFLE_CHECK(truffle::rhi::validation::texture_usage_supported_by_format(
         capabilities, colorTexture));
-    TRUFFLE_CHECK(!truffle::rhi::validation::texture_usage_supported_by_format(
+    TRUFFLE_CHECK(truffle::rhi::validation::texture_usage_supported_by_format(
         capabilities, depthTexture));
+    auto unsupportedDepthUsage = depthTexture;
+    unsupportedDepthUsage.usageFlags = truffle::rhi::TextureUsageFlags::color_attachment;
+    TRUFFLE_CHECK(!truffle::rhi::validation::texture_usage_supported_by_format(
+        capabilities, unsupportedDepthUsage));
 
     TRUFFLE_CHECK(truffle::rhi::supports_native_surface_kind(
         capabilities, truffle::rhi::NativeSurfaceKind::headless));
@@ -526,8 +537,70 @@ int main() {
             .offset = 0,
         }},
     }, capabilities));
+    const truffle::rhi::PipelineDesc depthPipelineDesc{
+        .colorFormat = truffle::rhi::TextureFormat::rgba8_unorm,
+        .depthFormat = truffle::rhi::TextureFormat::depth32_float,
+        .depthTest = true,
+        .depthWrite = true,
+        .depthStencilState = {
+            .depthCompare = truffle::rhi::SamplerCompareOp::greater_equal,
+        },
+    };
+    TRUFFLE_CHECK(truffle::rhi::validation::pipeline_render_state_valid(
+        depthPipelineDesc, capabilities));
+    TRUFFLE_CHECK(truffle::rhi::validation::pipeline_render_pass_compatible(
+        depthPipelineDesc,
+        std::optional<truffle::rhi::TextureFormat>{
+            truffle::rhi::TextureFormat::rgba8_unorm},
+        std::optional<truffle::rhi::TextureFormat>{
+            truffle::rhi::TextureFormat::depth32_float}));
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_render_pass_compatible(
+        depthPipelineDesc,
+        std::optional<truffle::rhi::TextureFormat>{
+            truffle::rhi::TextureFormat::rgba8_unorm},
+        std::nullopt));
+    const truffle::rhi::PipelineDesc noDepthPipelineDesc{
+        .colorFormat = truffle::rhi::TextureFormat::rgba8_unorm,
+    };
+    TRUFFLE_CHECK(truffle::rhi::validation::pipeline_render_pass_compatible(
+        noDepthPipelineDesc,
+        std::optional<truffle::rhi::TextureFormat>{
+            truffle::rhi::TextureFormat::rgba8_unorm},
+        std::nullopt));
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_render_pass_compatible(
+        noDepthPipelineDesc,
+        std::optional<truffle::rhi::TextureFormat>{
+            truffle::rhi::TextureFormat::rgba8_unorm},
+        std::optional<truffle::rhi::TextureFormat>{
+            truffle::rhi::TextureFormat::depth32_float}));
+    const truffle::rhi::PipelineDesc colorlessDepthPipelineDesc{
+        .colorFormat = truffle::rhi::TextureFormat::unknown,
+        .depthFormat = truffle::rhi::TextureFormat::depth32_float,
+        .depthTest = true,
+        .depthWrite = true,
+    };
+    TRUFFLE_CHECK(truffle::rhi::validation::pipeline_render_state_valid(
+        colorlessDepthPipelineDesc, capabilities));
+    TRUFFLE_CHECK(truffle::rhi::validation::pipeline_render_pass_compatible(
+        colorlessDepthPipelineDesc,
+        std::nullopt,
+        std::optional<truffle::rhi::TextureFormat>{
+            truffle::rhi::TextureFormat::depth32_float}));
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_render_pass_compatible(
+        depthPipelineDesc,
+        std::nullopt,
+        std::optional<truffle::rhi::TextureFormat>{
+            truffle::rhi::TextureFormat::depth32_float}));
     TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_render_state_valid({
         .colorFormat = truffle::rhi::TextureFormat::depth32_float,
+    }, capabilities));
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_render_state_valid({
+        .colorFormat = truffle::rhi::TextureFormat::rgba8_unorm,
+        .depthTest = true,
+    }, capabilities));
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_render_state_valid({
+        .colorFormat = truffle::rhi::TextureFormat::rgba8_unorm,
+        .depthFormat = truffle::rhi::TextureFormat::rgba8_unorm,
     }, capabilities));
     TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_render_state_valid({
         .colorFormat = truffle::rhi::TextureFormat::rgba8_unorm,

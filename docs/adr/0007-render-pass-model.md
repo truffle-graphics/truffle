@@ -48,9 +48,11 @@ Status end_render_pass();
 ```
 
 `RenderPassDesc` carries:
-- `Extent2D extent` — output size for viewport/scissor setup  
-- `ColorAttachmentDesc` — texture pointer (swapchain drawable or off-screen),
-  `LoadOp`, `StoreOp`, `ClearColor`  
+- `Extent2D extent` — output size for viewport/scissor setup
+- `ColorAttachmentDesc` — texture pointer, `LoadOp`, `StoreOp`, and
+  `ClearColor`; swapchain rendering passes the acquired drawable texture
+  explicitly, while `texture == nullptr` means no concrete color attachment for
+  headless/null paths
 - `DepthAttachmentDesc` — optional; `texture == nullptr` disables depth
 
 `Renderer::render()` acquires the swapchain drawable once per frame via

@@ -1,6 +1,6 @@
 // Metal backend — Phase 3B/3C/3D implementation
 // Phase 3C/3D notes:
-//   - Pipeline colour attachment pixel format driven by PipelineDesc::colorFormat.
+//   - Pipeline colour/depth attachment pixel formats driven by PipelineDesc.
 //   - Queue::submit() uses async MTLCommandBuffer completion handler + dispatch_semaphore.
 //   - All buffers use MTLResourceStorageModeShared (CPU+GPU visible).
 //   - No multi-threading safety beyond what Metal's own APIs guarantee.
@@ -105,10 +105,12 @@ using core::StatusCode;
 
 static MTLPixelFormat to_mtl_format(TextureFormat fmt) noexcept {
     switch (fmt) {
+        case TextureFormat::unknown:       return MTLPixelFormatInvalid;
         case TextureFormat::rgba8_unorm:   return MTLPixelFormatRGBA8Unorm;
         case TextureFormat::bgra8_unorm:   return MTLPixelFormatBGRA8Unorm;
         case TextureFormat::depth32_float: return MTLPixelFormatDepth32Float;
     }
+    return MTLPixelFormatInvalid;
 }
 
 static MTLLoadAction to_mtl_load(LoadOp op) noexcept {
@@ -585,11 +587,16 @@ public:
         rpd.vertexFunction  = vertexShader->function();
         rpd.fragmentFunction = fragmentShader->function();
         auto* colorAttachment = rpd.colorAttachments[0];
-        colorAttachment.pixelFormat = to_mtl_format(desc.colorFormat);
-        colorAttachment.writeMask =
-            to_metal_color_write_mask(desc.colorBlend.writeMask);
-        colorAttachment.blendingEnabled = desc.colorBlend.enabled;
-        if (desc.colorBlend.enabled) {
+        if (desc.colorFormat != TextureFormat::unknown) {
+            colorAttachment.pixelFormat = to_mtl_format(desc.colorFormat);
+            colorAttachment.writeMask =
+                to_metal_color_write_mask(desc.colorBlend.writeMask);
+            colorAttachment.blendingEnabled = desc.colorBlend.enabled;
+        }
+        if (desc.depthFormat != TextureFormat::unknown) {
+            rpd.depthAttachmentPixelFormat = to_mtl_format(desc.depthFormat);
+        }
+        if (desc.colorFormat != TextureFormat::unknown && desc.colorBlend.enabled) {
             colorAttachment.sourceRGBBlendFactor =
                 to_metal_blend_factor(desc.colorBlend.srcColor);
             colorAttachment.destinationRGBBlendFactor =
@@ -629,9 +636,24 @@ public:
                                   : "pipeline state creation failed";
             return Status::failure(StatusCode::invalid_argument, msg);
         }
+        id<MTLDepthStencilState> depthState = nil;
+        if (desc.depthFormat != TextureFormat::unknown) {
+            auto* depthDesc = [MTLDepthStencilDescriptor new];
+            depthDesc.depthCompareFunction =
+                desc.depthTest
+                    ? to_metal_compare_function(desc.depthStencilState.depthCompare)
+                    : MTLCompareFunctionAlways;
+            depthDesc.depthWriteEnabled = desc.depthWrite;
+            depthState = [device newDepthStencilStateWithDescriptor:depthDesc];
+            if (!depthState) {
+                return Status::failure(StatusCode::unavailable,
+                                       "depth-stencil state creation failed");
+            }
+        }
         auto pipeline      = std::make_unique<MetalPipeline>();
         pipeline->desc_    = desc;
         pipeline->pso_     = pso;
+        pipeline->depthState_ = depthState;
         
         auto refl = std::make_unique<MetalPipelineReflection>();
         if (reflectionInfo) {
@@ -652,10 +674,12 @@ public:
     }
     const IPipelineReflection* reflection() const noexcept override { return reflection_.get(); }
     id<MTLRenderPipelineState> native() const noexcept { return pso_; }
+    id<MTLDepthStencilState> depth_state() const noexcept { return depthState_; }
 
 private:
     PipelineDesc               desc_;
     id<MTLRenderPipelineState> pso_ = nil;
+    id<MTLDepthStencilState>    depthState_ = nil;
     std::unique_ptr<MetalPipelineReflection> reflection_;
 };
 
@@ -843,6 +867,8 @@ public:
         computeLayout_ = nullptr;
         boundGraphicsGroups_.clear();
         boundComputeGroups_.clear();
+        activeColorFormat_.reset();
+        activeDepthFormat_.reset();
     }
 
     MetalDevice* device_ = nullptr;
@@ -902,6 +928,14 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "depth attachment texture lacks depth usage");
         }
+        activeColorFormat_.reset();
+        activeDepthFormat_.reset();
+        if (desc.colorAttachment.texture) {
+            activeColorFormat_ = desc.colorAttachment.texture->desc().format;
+        }
+        if (desc.depthAttachment.texture) {
+            activeDepthFormat_ = desc.depthAttachment.texture->desc().format;
+        }
         auto* rpd = [MTLRenderPassDescriptor new];
 
         if (auto* tex = dynamic_cast<MetalTexture*>(desc.colorAttachment.texture)) {
@@ -952,6 +986,8 @@ public:
         graphicsPipelineBound_ = false;
         graphicsLayout_ = nullptr;
         boundGraphicsGroups_.clear();
+        activeColorFormat_.reset();
+        activeDepthFormat_.reset();
         return Status::success();
     }
 
@@ -963,9 +999,15 @@ public:
         auto* mp = dynamic_cast<MetalPipeline*>(&pipeline);
         if (!mp) {
             return Status::failure(StatusCode::invalid_argument,
-                                   "pipeline must be created by the Metal backend");
+                                    "pipeline must be created by the Metal backend");
+        }
+        if (!validation::pipeline_render_pass_compatible(
+                mp->desc(), activeColorFormat_, activeDepthFormat_)) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "pipeline is incompatible with the active render pass");
         }
         [encoder_ setRenderPipelineState:mp->native()];
+        [encoder_ setDepthStencilState:mp->depth_state()];
         [encoder_ setCullMode:to_metal_cull_mode(mp->desc().rasterState.cullMode)];
         [encoder_ setFrontFacingWinding:to_metal_winding(mp->desc().rasterState.frontFace)];
         [encoder_ setTriangleFillMode:to_metal_fill_mode(mp->desc().rasterState.fillMode)];
@@ -1539,6 +1581,8 @@ private:
     MTLIndexType                indexBufType_   = MTLIndexTypeUInt32;
     bool                        graphicsPipelineBound_ = false;
     bool                        computePipelineBound_ = false;
+    std::optional<TextureFormat> activeColorFormat_;
+    std::optional<TextureFormat> activeDepthFormat_;
     std::uint32_t               debugLabelDepth_ = 0;
     const PipelineLayoutDesc*    graphicsLayout_ = nullptr;
     const PipelineLayoutDesc*    computeLayout_ = nullptr;
