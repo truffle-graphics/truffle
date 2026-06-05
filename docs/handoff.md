@@ -462,6 +462,22 @@ validation, diagnostics, and backend parity.
     disambiguation, default native-slot alias rejection, range overflow
     rejection, compatibility checks, pipeline creation, bind-group creation, and
     command binding/draw coverage.
+- **Low-Level Graphics Foundation Slice 9N** — Complete.
+  - Added source-compatible bind-group allocation metadata with
+    `BindGroupAllocationPolicy::persistent` and `transient_frame`.
+  - Added `cacheKey` fields plus `cache_key()` queries for bind group layouts and
+    bind groups so higher layers can provide stable descriptor reuse keys.
+  - Added `IBindGroup::allocation_policy()` and
+    `allocation_frame_index()` queries for backend-neutral descriptor lifetime
+    inspection.
+  - Added shared validation for invalid allocation policies, persistent bind
+    groups carrying frame indices, and transient bind groups whose frame index
+    exceeds advertised `maxFramesInFlight`.
+  - Wired null, Metal, Vulkan, OpenGL, and Direct3D bind-group creation to use
+    the capability-aware allocation validation path.
+  - Expanded core and shared backend contract tests for cache-key retention,
+    persistent/transient allocation metadata, valid transient frame descriptors,
+    and invalid frame-index rejection.
 
 ## Relevant Decisions And Constraints
 
@@ -530,6 +546,10 @@ validation, diagnostics, and backend parity.
   `bindingIndex`. Omitting `nativeSlot` preserves the legacy `bindingIndex`
   mapping, so same-namespace cross-group aliases still fail unless callers
   disambiguate them explicitly.
+- Bind groups now carry backend-neutral descriptor allocation metadata. Persistent
+  bind groups must use frame index 0; transient-frame bind groups must name a
+  frame slot within the backend's advertised `maxFramesInFlight`. Layout/group
+  cache keys are caller-provided metadata for higher-level descriptor reuse.
 - The repository commits only the public doctrine snapshot. The maintainer's
   private Copilot overlay lives in `~/.copilot/copilot-instructions.md` on the
   local machine and must not be copied into repository history.

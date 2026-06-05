@@ -1048,9 +1048,23 @@ namespace truffle::rhi::validation {
     return false;
 }
 
+[[nodiscard]] constexpr bool bind_group_allocation_policy_valid(
+    BindGroupAllocationPolicy policy) noexcept {
+    switch (policy) {
+    case BindGroupAllocationPolicy::persistent:
+    case BindGroupAllocationPolicy::transient_frame:
+        return true;
+    }
+
+    return false;
+}
+
 [[nodiscard]] inline bool bind_group_desc_valid(
     const BindGroupDesc& desc) noexcept {
-    if (!desc.layout) {
+    if (!desc.layout ||
+        !bind_group_allocation_policy_valid(desc.allocationPolicy) ||
+        (desc.allocationPolicy == BindGroupAllocationPolicy::persistent &&
+         desc.allocationFrameIndex != 0)) {
         return false;
     }
 
@@ -1076,6 +1090,21 @@ namespace truffle::rhi::validation {
                 return false;
             }
         }
+    }
+
+    return true;
+}
+
+[[nodiscard]] inline bool bind_group_desc_valid(
+    const BindGroupDesc& desc,
+    const Capabilities& capabilities) noexcept {
+    if (!bind_group_desc_valid(desc)) {
+        return false;
+    }
+
+    if (desc.allocationPolicy == BindGroupAllocationPolicy::transient_frame &&
+        desc.allocationFrameIndex >= capabilities.maxFramesInFlight) {
+        return false;
     }
 
     return true;

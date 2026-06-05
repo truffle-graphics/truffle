@@ -139,9 +139,11 @@ scope and active extension-backend work continuing in parallel:
   `TextureFormat::unknown` as the color format.
 - Bind-group layouts can mark uniform/storage buffer bindings as dynamic-offset
   bindings; command binding validates supplied offsets against descriptor arrays,
-  buffer ranges, and advertised alignment before work can be recorded. Metal maps
-  bind-group buffers, textures, and samplers to native stage-visible slots after
-  shared validation rejects flat native slot aliases.
+  buffer ranges, and advertised alignment before work can be recorded. Layouts
+  can also specify explicit native descriptor slots for flattened backend binding
+  models. Bind groups expose persistent/transient-frame allocation policy and
+  layout/group cache keys so higher layers can choose descriptor reuse strategy
+  without inventing backend-specific side channels.
 - Buffers expose explicit CPU mapping hooks, including `mapped_data()` access for
   mapped-at-creation buffers. The low-level contract treats
   automatic/upload/readback buffer memory as CPU-mappable and rejects

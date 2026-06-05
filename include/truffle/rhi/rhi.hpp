@@ -852,14 +852,24 @@ struct BindGroupDynamicOffset {
     std::size_t offset = 0;
 };
 
+enum class BindGroupAllocationPolicy {
+    persistent,
+    transient_frame,
+};
+
 struct BindGroupLayoutDesc {
     std::string debugName;
+    std::uint64_t cacheKey = 0;
     std::vector<BindingLayoutDesc> bindings;
 };
 
 struct BindGroupDesc {
     std::string debugName;
+    std::uint64_t cacheKey = 0;
     IBindGroupLayout* layout = nullptr;
+    BindGroupAllocationPolicy allocationPolicy =
+        BindGroupAllocationPolicy::persistent;
+    std::uint32_t allocationFrameIndex = 0;
     std::vector<BindGroupEntry> entries;
 };
 
@@ -1017,6 +1027,9 @@ public:
         return std::nullopt;
     }
     [[nodiscard]] virtual const BindGroupLayoutDesc& desc() const noexcept = 0;
+    [[nodiscard]] virtual std::uint64_t cache_key() const noexcept {
+        return desc().cacheKey;
+    }
 };
 
 class IBindGroup {
@@ -1026,6 +1039,16 @@ public:
         return std::nullopt;
     }
     [[nodiscard]] virtual const BindGroupDesc& desc() const noexcept = 0;
+    [[nodiscard]] virtual std::uint64_t cache_key() const noexcept {
+        return desc().cacheKey;
+    }
+    [[nodiscard]] virtual BindGroupAllocationPolicy allocation_policy()
+        const noexcept {
+        return desc().allocationPolicy;
+    }
+    [[nodiscard]] virtual std::uint32_t allocation_frame_index() const noexcept {
+        return desc().allocationFrameIndex;
+    }
 };
 
 class IShader {

@@ -1226,7 +1226,7 @@ public:
 
     [[nodiscard]] Result<std::unique_ptr<IBindGroup>>
     create_bind_group(const BindGroupDesc& desc) override {
-        if (!validation::bind_group_desc_valid(desc)) {
+        if (!validation::bind_group_desc_valid(desc, capabilities_)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "bind group descriptor is invalid");
         }

@@ -1266,7 +1266,7 @@ public:
 
     [[nodiscard]] core::Result<std::unique_ptr<IBindGroup>>
     create_bind_group(const BindGroupDesc& desc) override {
-        if (!validation::bind_group_desc_valid(desc)) {
+        if (!validation::bind_group_desc_valid(desc, caps_)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "Direct3D backend: bind group descriptor is invalid");
         }

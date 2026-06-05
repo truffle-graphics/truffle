@@ -816,6 +816,7 @@ int main() {
 
     const truffle::rhi::BindGroupLayoutDesc bindGroupLayoutDesc{
         .debugName = "core_bind_group_layout",
+        .cacheKey = 0xB100u,
         .bindings = {
             {
                 .bindingIndex = 0,
@@ -897,9 +898,86 @@ int main() {
     TestSampler sampler;
     TestSampler secondSampler;
     TestBindGroupLayout bindGroupLayout{bindGroupLayoutDesc};
+    TRUFFLE_CHECK(bindGroupLayout.cache_key() == 0xB100u);
+    TRUFFLE_CHECK(truffle::rhi::validation::bind_group_allocation_policy_valid(
+        truffle::rhi::BindGroupAllocationPolicy::persistent));
+    TRUFFLE_CHECK(truffle::rhi::validation::bind_group_allocation_policy_valid(
+        truffle::rhi::BindGroupAllocationPolicy::transient_frame));
+    TRUFFLE_CHECK(!truffle::rhi::validation::bind_group_allocation_policy_valid(
+        static_cast<truffle::rhi::BindGroupAllocationPolicy>(99)));
 
     TRUFFLE_CHECK(truffle::rhi::validation::bind_group_desc_valid({
+        .cacheKey = 0xB101u,
         .layout = &bindGroupLayout,
+        .entries = {
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::uniform_buffer,
+                .buffer = {.buffer = &uniformBuffer, .size = 16},
+            },
+            {
+                .bindingIndex = 1,
+                .type = truffle::rhi::BindingResourceType::sampled_texture,
+                .texture = &sampledTexture,
+            },
+            {
+                .bindingIndex = 2,
+                .type = truffle::rhi::BindingResourceType::sampler,
+                .sampler = &sampler,
+            },
+        },
+    }));
+    TRUFFLE_CHECK(truffle::rhi::validation::bind_group_desc_valid({
+        .layout = &bindGroupLayout,
+        .allocationPolicy =
+            truffle::rhi::BindGroupAllocationPolicy::transient_frame,
+        .allocationFrameIndex = 1,
+        .entries = {
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::uniform_buffer,
+                .buffer = {.buffer = &uniformBuffer, .size = 16},
+            },
+            {
+                .bindingIndex = 1,
+                .type = truffle::rhi::BindingResourceType::sampled_texture,
+                .texture = &sampledTexture,
+            },
+            {
+                .bindingIndex = 2,
+                .type = truffle::rhi::BindingResourceType::sampler,
+                .sampler = &sampler,
+            },
+        },
+    }, capabilities));
+    auto singleFrameCaps = capabilities;
+    singleFrameCaps.maxFramesInFlight = 1;
+    TRUFFLE_CHECK(!truffle::rhi::validation::bind_group_desc_valid({
+        .layout = &bindGroupLayout,
+        .allocationPolicy =
+            truffle::rhi::BindGroupAllocationPolicy::transient_frame,
+        .allocationFrameIndex = 1,
+        .entries = {
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::uniform_buffer,
+                .buffer = {.buffer = &uniformBuffer, .size = 16},
+            },
+            {
+                .bindingIndex = 1,
+                .type = truffle::rhi::BindingResourceType::sampled_texture,
+                .texture = &sampledTexture,
+            },
+            {
+                .bindingIndex = 2,
+                .type = truffle::rhi::BindingResourceType::sampler,
+                .sampler = &sampler,
+            },
+        },
+    }, singleFrameCaps));
+    TRUFFLE_CHECK(!truffle::rhi::validation::bind_group_desc_valid({
+        .layout = &bindGroupLayout,
+        .allocationFrameIndex = 1,
         .entries = {
             {
                 .bindingIndex = 0,

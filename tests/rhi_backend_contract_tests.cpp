@@ -1335,6 +1335,7 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
                   truffle::core::StatusCode::invalid_argument);
     auto bindGroupLayout = device.create_bind_group_layout({
         .debugName = "contract_negative_bind_group_layout",
+        .cacheKey = 0xB100u,
         .bindings = {
             {
                 .bindingIndex = 0,
@@ -1355,7 +1356,9 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
         },
     });
     TRUFFLE_CHECK(bindGroupLayout.ok());
+    TRUFFLE_CHECK(bindGroupLayout.value()->cache_key() == 0xB100u);
     auto validBindGroup = device.create_bind_group({
+        .cacheKey = 0xB101u,
         .layout = bindGroupLayout.value().get(),
         .entries = {
             {
@@ -1376,6 +1379,92 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
         },
     });
     TRUFFLE_CHECK(validBindGroup.ok());
+    TRUFFLE_CHECK(validBindGroup.value()->cache_key() == 0xB101u);
+    TRUFFLE_CHECK(validBindGroup.value()->allocation_policy() ==
+                  truffle::rhi::BindGroupAllocationPolicy::persistent);
+    TRUFFLE_CHECK(validBindGroup.value()->allocation_frame_index() == 0);
+    const auto transientFrameIndex =
+        caps.maxFramesInFlight > 1 ? 1u : 0u;
+    auto transientBindGroup = device.create_bind_group({
+        .cacheKey = 0xB102u,
+        .layout = bindGroupLayout.value().get(),
+        .allocationPolicy =
+            truffle::rhi::BindGroupAllocationPolicy::transient_frame,
+        .allocationFrameIndex = transientFrameIndex,
+        .entries = {
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::uniform_buffer,
+                .buffer = {.buffer = bindGroupUniformBuffer.value().get(), .size = 16},
+            },
+            {
+                .bindingIndex = 1,
+                .type = truffle::rhi::BindingResourceType::sampled_texture,
+                .texture = goodTexture.value().get(),
+            },
+            {
+                .bindingIndex = 2,
+                .type = truffle::rhi::BindingResourceType::sampler,
+                .sampler = bindGroupSampler.value().get(),
+            },
+        },
+    });
+    TRUFFLE_CHECK(transientBindGroup.ok());
+    TRUFFLE_CHECK(transientBindGroup.value()->cache_key() == 0xB102u);
+    TRUFFLE_CHECK(transientBindGroup.value()->allocation_policy() ==
+                  truffle::rhi::BindGroupAllocationPolicy::transient_frame);
+    TRUFFLE_CHECK(transientBindGroup.value()->allocation_frame_index() ==
+                  transientFrameIndex);
+    auto invalidTransientBindGroup = device.create_bind_group({
+        .layout = bindGroupLayout.value().get(),
+        .allocationPolicy =
+            truffle::rhi::BindGroupAllocationPolicy::transient_frame,
+        .allocationFrameIndex = caps.maxFramesInFlight,
+        .entries = {
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::uniform_buffer,
+                .buffer = {.buffer = bindGroupUniformBuffer.value().get(), .size = 16},
+            },
+            {
+                .bindingIndex = 1,
+                .type = truffle::rhi::BindingResourceType::sampled_texture,
+                .texture = goodTexture.value().get(),
+            },
+            {
+                .bindingIndex = 2,
+                .type = truffle::rhi::BindingResourceType::sampler,
+                .sampler = bindGroupSampler.value().get(),
+            },
+        },
+    });
+    TRUFFLE_CHECK(!invalidTransientBindGroup.ok());
+    TRUFFLE_CHECK(invalidTransientBindGroup.status().code ==
+                  truffle::core::StatusCode::invalid_argument);
+    auto invalidPersistentFrameBindGroup = device.create_bind_group({
+        .layout = bindGroupLayout.value().get(),
+        .allocationFrameIndex = 1,
+        .entries = {
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::uniform_buffer,
+                .buffer = {.buffer = bindGroupUniformBuffer.value().get(), .size = 16},
+            },
+            {
+                .bindingIndex = 1,
+                .type = truffle::rhi::BindingResourceType::sampled_texture,
+                .texture = goodTexture.value().get(),
+            },
+            {
+                .bindingIndex = 2,
+                .type = truffle::rhi::BindingResourceType::sampler,
+                .sampler = bindGroupSampler.value().get(),
+            },
+        },
+    });
+    TRUFFLE_CHECK(!invalidPersistentFrameBindGroup.ok());
+    TRUFFLE_CHECK(invalidPersistentFrameBindGroup.status().code ==
+                  truffle::core::StatusCode::invalid_argument);
     if (truffle::rhi::supports_descriptor_arrays(caps)) {
         auto arrayBindGroupLayout = device.create_bind_group_layout({
             .debugName = "contract_array_bind_group_layout",
