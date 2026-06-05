@@ -121,8 +121,8 @@ scope and active extension-backend work continuing in parallel:
   batch execution, plus presentation tracking.
 - `truffle/core/version.hpp` defines public API version, compatibility policy,
   and deprecation-window semantics.
-- CI emits backend parity matrix artifacts for tracked backend contract and
-  reflection tests.
+- CI emits backend parity matrix Markdown and JSON artifacts for tracked backend
+  contract and reflection tests.
 
 ADRs 0004-0008 lock the current design direction; ADR 0009 governs phase
 completion policy and execution gating; ADR 0010 defines API compatibility

@@ -59,6 +59,7 @@ jobs:
           name: backend-parity-matrix-${{ matrix.os }}
           path: |
             build/ci/parity-matrix.md
+            build/ci/parity-matrix.json
             build/ci/*.parity.log
           if-no-files-found: error
 

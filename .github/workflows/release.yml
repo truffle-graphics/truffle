@@ -46,6 +46,7 @@ jobs:
           name: backend-parity-matrix-release
           path: |
             build/release-package/parity-matrix.md
+            build/release-package/parity-matrix.json
             build/release-package/*.parity.log
           if-no-files-found: error
 

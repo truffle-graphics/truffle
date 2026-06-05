@@ -42,7 +42,8 @@ This verifies:
 - builds and installs Truffle
 - runs CPack
 - uploads generated package artifacts
-- emits backend parity report artifacts
+- emits backend parity report artifacts (`parity-matrix.md` and
+  `parity-matrix.json`)
 
 ## Tagged Release Flow
 
@@ -51,7 +52,7 @@ This verifies:
 - builds and tests release artifacts
 - runs package generation
 - attaches package archives to GitHub Releases
-- publishes parity matrix artifacts with release outputs
+- publishes parity matrix Markdown and JSON artifacts with release outputs
 
 ## Backend Packaging Notes
 

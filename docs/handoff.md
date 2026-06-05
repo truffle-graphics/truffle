@@ -283,6 +283,12 @@ validation, diagnostics, and backend parity.
     within limits.
   - Expanded core and shared backend contract tests for descriptor feature-gate
     helpers, invalid layout rejection, and parity report consistency.
+- **Low-Level Graphics Foundation Slice 8D** — Complete.
+  - Extended the existing backend parity report generator to emit a
+    machine-readable `parity-matrix.json` sidecar beside `parity-matrix.md`.
+  - Updated CI and release workflows to upload the JSON parity artifact.
+  - Updated distribution and architecture docs to describe Markdown + JSON parity
+    artifacts.
 
 ## Relevant Decisions And Constraints
 
@@ -332,11 +338,12 @@ core contract tests, package consumer, and transform compute tests.
 
 ## Next Resume Steps
 
-1. Add machine-readable parity report output alongside markdown/API summaries.
-2. Begin backend-by-backend native depth work while preserving the shared
+1. Begin backend-by-backend native depth work while preserving the shared
    diagnostics/parity contract.
-3. Expand descriptor array bind-group resource population if a higher layer
+2. Expand descriptor array bind-group resource population if a higher layer
    needs actual array resources rather than only feature-gated layout contracts.
+3. Consider adding a dedicated RHI parity-report executable if JSON needs to
+   include live capability counters rather than CI test status rows.
 
 ## Open Questions Or Risks
 

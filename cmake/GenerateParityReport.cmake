@@ -6,6 +6,17 @@ if(NOT DEFINED TRUFFLE_REPORT_OUT)
     message(FATAL_ERROR "TRUFFLE_REPORT_OUT is required")
 endif()
 
+if(NOT DEFINED TRUFFLE_REPORT_JSON_OUT)
+    string(REGEX REPLACE "\\.[^.]*$" ".json" TRUFFLE_REPORT_JSON_OUT "${TRUFFLE_REPORT_OUT}")
+endif()
+
+function(_truffle_json_escape out input)
+    string(REPLACE "\\" "\\\\" _escaped "${input}")
+    string(REPLACE "\"" "\\\"" _escaped "${_escaped}")
+    string(REPLACE "\n" "\\n" _escaped "${_escaped}")
+    set(${out} "${_escaped}" PARENT_SCOPE)
+endfunction()
+
 set(_tracked_tests
     truffle_rhi_contract_tests
     truffle_vulkan_tests
@@ -13,6 +24,15 @@ set(_tracked_tests
     truffle_direct3d_tests
     truffle_metal_tests
 )
+
+get_filename_component(_report_dir "${TRUFFLE_REPORT_OUT}" DIRECTORY)
+get_filename_component(_json_report_dir "${TRUFFLE_REPORT_JSON_OUT}" DIRECTORY)
+if(_report_dir)
+    file(MAKE_DIRECTORY "${_report_dir}")
+endif()
+if(_json_report_dir)
+    file(MAKE_DIRECTORY "${_json_report_dir}")
+endif()
 
 execute_process(
     COMMAND ctest --test-dir "${TRUFFLE_BUILD_DIR}" -N
@@ -33,10 +53,34 @@ string(APPEND _report "- Generated (UTC): ${_ts}\n\n")
 string(APPEND _report "| Test | Status | Notes |\n")
 string(APPEND _report "|---|---|---|\n")
 
+_truffle_json_escape(_json_build_dir "${TRUFFLE_BUILD_DIR}")
+_truffle_json_escape(_json_generated "${_ts}")
+set(_json "{\n")
+string(APPEND _json "  \"buildDirectory\": \"${_json_build_dir}\",\n")
+string(APPEND _json "  \"generatedUtc\": \"${_json_generated}\",\n")
+string(APPEND _json "  \"tests\": [\n")
+set(_json_first_test TRUE)
+
+function(_truffle_append_json_test name status notes)
+    _truffle_json_escape(_json_name "${name}")
+    _truffle_json_escape(_json_status "${status}")
+    _truffle_json_escape(_json_notes "${notes}")
+    if(_json_first_test)
+        set(_entry_prefix "    ")
+        set(_json_first_test FALSE PARENT_SCOPE)
+    else()
+        set(_entry_prefix ",\n    ")
+    endif()
+    string(APPEND _json
+        "${_entry_prefix}{\"test\": \"${_json_name}\", \"status\": \"${_json_status}\", \"notes\": \"${_json_notes}\"}")
+    set(_json "${_json}" PARENT_SCOPE)
+endfunction()
+
 foreach(_test IN LISTS _tracked_tests)
     string(FIND "${_list_output}" "${_test}" _test_found)
     if(_test_found EQUAL -1)
         string(APPEND _report "| ${_test} | not-built | test not present in current preset/build |\n")
+        _truffle_append_json_test("${_test}" "not-built" "test not present in current preset/build")
         continue()
     endif()
 
@@ -50,18 +94,23 @@ foreach(_test IN LISTS _tracked_tests)
 
     if(_run_result EQUAL 0)
         string(APPEND _report "| ${_test} | pass | executed successfully |\n")
+        _truffle_append_json_test("${_test}" "pass" "executed successfully")
     else()
         string(APPEND _report "| ${_test} | fail | see CI logs for output |\n")
+        _truffle_append_json_test("${_test}" "fail" "see CI logs for output")
         file(MAKE_DIRECTORY "${TRUFFLE_BUILD_DIR}")
         file(WRITE "${TRUFFLE_BUILD_DIR}/${_test}.parity.log"
             "--- ctest stdout ---\n${_run_output}\n\n--- ctest stderr ---\n${_run_error}\n")
         file(WRITE "${TRUFFLE_REPORT_OUT}" "${_report}")
+        string(APPEND _json "\n  ]\n}\n")
+        file(WRITE "${TRUFFLE_REPORT_JSON_OUT}" "${_json}")
         message(FATAL_ERROR "Parity test ${_test} failed")
     endif()
 endforeach()
 
-get_filename_component(_report_dir "${TRUFFLE_REPORT_OUT}" DIRECTORY)
-file(MAKE_DIRECTORY "${_report_dir}")
 file(WRITE "${TRUFFLE_REPORT_OUT}" "${_report}")
+string(APPEND _json "\n  ]\n}\n")
+file(WRITE "${TRUFFLE_REPORT_JSON_OUT}" "${_json}")
 
 message(STATUS "Wrote backend parity report to ${TRUFFLE_REPORT_OUT}")
+message(STATUS "Wrote backend parity JSON to ${TRUFFLE_REPORT_JSON_OUT}")
