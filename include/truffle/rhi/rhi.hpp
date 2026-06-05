@@ -640,6 +640,9 @@ struct BindGroupEntry {
     BufferBindingDesc buffer;
     ITexture* texture = nullptr;
     ISampler* sampler = nullptr;
+    std::vector<BufferBindingDesc> buffers;
+    std::vector<ITexture*> textures;
+    std::vector<ISampler*> samplers;
 };
 
 struct BindGroupLayoutDesc {

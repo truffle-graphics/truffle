@@ -2,6 +2,7 @@
 #include "truffle/rhi/shader_reflection.hpp"
 #include "truffle/rhi/validation.hpp"
 
+#include <algorithm>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -29,6 +30,9 @@ using core::StatusCode;
             .debugLabels = true,
             .validation = true,
             .unifiedMemory = true,
+            .descriptorArrays = true,
+            .dynamicResourceIndexing = true,
+            .bindlessResources = true,
         },
         .limits = {
             .maxTextureDimension2D = 16384,
@@ -37,6 +41,8 @@ using core::StatusCode;
             .minStorageBufferOffsetAlignment = 16,
             .maxColorAttachments = 8,
             .maxVertexBuffers = 16,
+            .maxDescriptorArrayElements = 16,
+            .maxBindlessResources = 64,
         },
         .formats = {
             {.format = TextureFormat::rgba8_unorm,
@@ -1056,22 +1062,37 @@ public:
             switch (entry.type) {
                 case BindingResourceType::uniform_buffer:
                 case BindingResourceType::storage_buffer:
-                    if (!dynamic_cast<NullBuffer*>(entry.buffer.buffer)) {
+                    if ((entry.buffer.buffer &&
+                         !dynamic_cast<NullBuffer*>(entry.buffer.buffer)) ||
+                        std::any_of(entry.buffers.begin(), entry.buffers.end(),
+                                    [](const BufferBindingDesc& binding) {
+                                        return !dynamic_cast<NullBuffer*>(binding.buffer);
+                                    })) {
                         return Status::failure(StatusCode::invalid_argument,
-                                               "bind group buffer must be created by null backend");
+                                                "bind group buffer must be created by null backend");
                     }
                     break;
                 case BindingResourceType::sampled_texture:
                 case BindingResourceType::storage_texture:
-                    if (!dynamic_cast<NullTexture*>(entry.texture)) {
+                    if ((entry.texture &&
+                         !dynamic_cast<NullTexture*>(entry.texture)) ||
+                        std::any_of(entry.textures.begin(), entry.textures.end(),
+                                    [](const ITexture* texture) {
+                                        return !dynamic_cast<const NullTexture*>(texture);
+                                    })) {
                         return Status::failure(StatusCode::invalid_argument,
-                                               "bind group texture must be created by null backend");
+                                                "bind group texture must be created by null backend");
                     }
                     break;
                 case BindingResourceType::sampler:
-                    if (!dynamic_cast<NullSampler*>(entry.sampler)) {
+                    if ((entry.sampler &&
+                         !dynamic_cast<NullSampler*>(entry.sampler)) ||
+                        std::any_of(entry.samplers.begin(), entry.samplers.end(),
+                                    [](const ISampler* sampler) {
+                                        return !dynamic_cast<const NullSampler*>(sampler);
+                                    })) {
                         return Status::failure(StatusCode::invalid_argument,
-                                               "bind group sampler must be created by null backend");
+                                                "bind group sampler must be created by null backend");
                     }
                     break;
             }

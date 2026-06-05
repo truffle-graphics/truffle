@@ -4,6 +4,8 @@
 
 #include "../backend_diagnostics.hpp"
 
+#include <algorithm>
+#include <algorithm>
 #include <memory>
 #include <vector>
 #include <utility>
@@ -1093,22 +1095,37 @@ public:
             switch (entry.type) {
                 case BindingResourceType::uniform_buffer:
                 case BindingResourceType::storage_buffer:
-                    if (!dynamic_cast<VulkanBuffer*>(entry.buffer.buffer)) {
+                    if ((entry.buffer.buffer &&
+                         !dynamic_cast<VulkanBuffer*>(entry.buffer.buffer)) ||
+                        std::any_of(entry.buffers.begin(), entry.buffers.end(),
+                                    [](const BufferBindingDesc& binding) {
+                                        return !dynamic_cast<VulkanBuffer*>(binding.buffer);
+                                    })) {
                         return Status::failure(StatusCode::invalid_argument,
-                                               "Vulkan backend: bind group buffer must be created by Vulkan backend");
+                                                "Vulkan backend: bind group buffer must be created by Vulkan backend");
                     }
                     break;
                 case BindingResourceType::sampled_texture:
                 case BindingResourceType::storage_texture:
-                    if (!dynamic_cast<VulkanTexture*>(entry.texture)) {
+                    if ((entry.texture &&
+                         !dynamic_cast<VulkanTexture*>(entry.texture)) ||
+                        std::any_of(entry.textures.begin(), entry.textures.end(),
+                                    [](const ITexture* texture) {
+                                        return !dynamic_cast<const VulkanTexture*>(texture);
+                                    })) {
                         return Status::failure(StatusCode::invalid_argument,
-                                               "Vulkan backend: bind group texture must be created by Vulkan backend");
+                                                "Vulkan backend: bind group texture must be created by Vulkan backend");
                     }
                     break;
                 case BindingResourceType::sampler:
-                    if (!dynamic_cast<VulkanSampler*>(entry.sampler)) {
+                    if ((entry.sampler &&
+                         !dynamic_cast<VulkanSampler*>(entry.sampler)) ||
+                        std::any_of(entry.samplers.begin(), entry.samplers.end(),
+                                    [](const ISampler* sampler) {
+                                        return !dynamic_cast<const VulkanSampler*>(sampler);
+                                    })) {
                         return Status::failure(StatusCode::invalid_argument,
-                                               "Vulkan backend: bind group sampler must be created by Vulkan backend");
+                                                "Vulkan backend: bind group sampler must be created by Vulkan backend");
                     }
                     break;
             }

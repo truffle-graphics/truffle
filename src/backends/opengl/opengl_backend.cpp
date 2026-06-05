@@ -4,6 +4,8 @@
 
 #include "../backend_diagnostics.hpp"
 
+#include <algorithm>
+#include <algorithm>
 #include <memory>
 #include <vector>
 #include <utility>
@@ -1090,22 +1092,37 @@ public:
             switch (entry.type) {
                 case BindingResourceType::uniform_buffer:
                 case BindingResourceType::storage_buffer:
-                    if (!dynamic_cast<OpenGLBuffer*>(entry.buffer.buffer)) {
+                    if ((entry.buffer.buffer &&
+                         !dynamic_cast<OpenGLBuffer*>(entry.buffer.buffer)) ||
+                        std::any_of(entry.buffers.begin(), entry.buffers.end(),
+                                    [](const BufferBindingDesc& binding) {
+                                        return !dynamic_cast<OpenGLBuffer*>(binding.buffer);
+                                    })) {
                         return Status::failure(StatusCode::invalid_argument,
-                                               "OpenGL backend: bind group buffer must be created by OpenGL backend");
+                                                "OpenGL backend: bind group buffer must be created by OpenGL backend");
                     }
                     break;
                 case BindingResourceType::sampled_texture:
                 case BindingResourceType::storage_texture:
-                    if (!dynamic_cast<OpenGLTexture*>(entry.texture)) {
+                    if ((entry.texture &&
+                         !dynamic_cast<OpenGLTexture*>(entry.texture)) ||
+                        std::any_of(entry.textures.begin(), entry.textures.end(),
+                                    [](const ITexture* texture) {
+                                        return !dynamic_cast<const OpenGLTexture*>(texture);
+                                    })) {
                         return Status::failure(StatusCode::invalid_argument,
-                                               "OpenGL backend: bind group texture must be created by OpenGL backend");
+                                                "OpenGL backend: bind group texture must be created by OpenGL backend");
                     }
                     break;
                 case BindingResourceType::sampler:
-                    if (!dynamic_cast<OpenGLSampler*>(entry.sampler)) {
+                    if ((entry.sampler &&
+                         !dynamic_cast<OpenGLSampler*>(entry.sampler)) ||
+                        std::any_of(entry.samplers.begin(), entry.samplers.end(),
+                                    [](const ISampler* sampler) {
+                                        return !dynamic_cast<const OpenGLSampler*>(sampler);
+                                    })) {
                         return Status::failure(StatusCode::invalid_argument,
-                                               "OpenGL backend: bind group sampler must be created by OpenGL backend");
+                                                "OpenGL backend: bind group sampler must be created by OpenGL backend");
                     }
                     break;
             }

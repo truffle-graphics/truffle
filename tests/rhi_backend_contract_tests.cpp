@@ -1020,6 +1020,63 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
         },
     });
     TRUFFLE_CHECK(validBindGroup.ok());
+    if (truffle::rhi::supports_descriptor_arrays(caps)) {
+        auto arrayBindGroupLayout = device.create_bind_group_layout({
+            .debugName = "contract_array_bind_group_layout",
+            .bindings = {
+                {
+                    .bindingIndex = 0,
+                    .type = truffle::rhi::BindingResourceType::sampled_texture,
+                    .visibility = truffle::rhi::ShaderStageFlags::fragment,
+                    .arrayCount = 2,
+                },
+                {
+                    .bindingIndex = 1,
+                    .type = truffle::rhi::BindingResourceType::sampler,
+                    .visibility = truffle::rhi::ShaderStageFlags::fragment,
+                    .arrayCount = 2,
+                },
+            },
+        });
+        TRUFFLE_CHECK(arrayBindGroupLayout.ok());
+        auto arrayBindGroup = device.create_bind_group({
+            .debugName = "contract_array_bind_group",
+            .layout = arrayBindGroupLayout.value().get(),
+            .entries = {
+                {
+                    .bindingIndex = 0,
+                    .type = truffle::rhi::BindingResourceType::sampled_texture,
+                    .textures = {goodTexture.value().get(), goodTexture.value().get()},
+                },
+                {
+                    .bindingIndex = 1,
+                    .type = truffle::rhi::BindingResourceType::sampler,
+                    .samplers = {bindGroupSampler.value().get(),
+                                 bindGroupSampler.value().get()},
+                },
+            },
+        });
+        TRUFFLE_CHECK(arrayBindGroup.ok());
+        auto shortArrayBindGroup = device.create_bind_group({
+            .layout = arrayBindGroupLayout.value().get(),
+            .entries = {
+                {
+                    .bindingIndex = 0,
+                    .type = truffle::rhi::BindingResourceType::sampled_texture,
+                    .textures = {goodTexture.value().get()},
+                },
+                {
+                    .bindingIndex = 1,
+                    .type = truffle::rhi::BindingResourceType::sampler,
+                    .samplers = {bindGroupSampler.value().get(),
+                                 bindGroupSampler.value().get()},
+                },
+            },
+        });
+        TRUFFLE_CHECK(!shortArrayBindGroup.ok());
+        TRUFFLE_CHECK(shortArrayBindGroup.status().code ==
+                      truffle::core::StatusCode::invalid_argument);
+    }
     if (auto foreignDevice = create_foreign_device(backendKind)) {
         auto foreignBuffer = foreignDevice->create_buffer({
             .size = 64,
@@ -1049,6 +1106,35 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
         TRUFFLE_CHECK(!mixedBackendBindGroup.ok());
         TRUFFLE_CHECK(mixedBackendBindGroup.status().code ==
                       truffle::core::StatusCode::invalid_argument);
+        if (truffle::rhi::supports_descriptor_arrays(caps)) {
+            auto arrayBindGroupLayout = device.create_bind_group_layout({
+                .bindings = {{
+                    .bindingIndex = 0,
+                    .type = truffle::rhi::BindingResourceType::sampled_texture,
+                    .visibility = truffle::rhi::ShaderStageFlags::fragment,
+                    .arrayCount = 2,
+                }},
+            });
+            auto foreignTexture = foreignDevice->create_texture({
+                .extent = {32, 32},
+                .format = truffle::rhi::TextureFormat::rgba8_unorm,
+                .usageFlags = truffle::rhi::TextureUsageFlags::sampled,
+            });
+            TRUFFLE_CHECK(arrayBindGroupLayout.ok());
+            TRUFFLE_CHECK(foreignTexture.ok());
+            auto mixedBackendArrayBindGroup = device.create_bind_group({
+                .layout = arrayBindGroupLayout.value().get(),
+                .entries = {{
+                    .bindingIndex = 0,
+                    .type = truffle::rhi::BindingResourceType::sampled_texture,
+                    .textures = {goodTexture.value().get(),
+                                 foreignTexture.value().get()},
+                }},
+            });
+            TRUFFLE_CHECK(!mixedBackendArrayBindGroup.ok());
+            TRUFFLE_CHECK(mixedBackendArrayBindGroup.status().code ==
+                          truffle::core::StatusCode::invalid_argument);
+        }
     }
     auto missingLayoutBindGroup = device.create_bind_group({
         .entries = {{

@@ -310,6 +310,20 @@ validation, diagnostics, and backend parity.
     first adapter capabilities.
   - Expanded shared backend contract tests to lock parity report memory fields
     against backend capability reports.
+- **Low-Level Graphics Foundation Slice 9C** — Complete.
+  - Added array resource population fields to `BindGroupEntry` for buffer,
+    texture, and sampler descriptor arrays while preserving scalar binding
+    fields for one-element bindings.
+  - Extended shared bind-group validation so array bindings require exactly the
+    advertised element count, reject scalar/array mixing, and validate every
+    element's usage and nullness.
+  - Enabled descriptor arrays/dynamic indexing/bindless capability reporting on
+    the null validation backend with bounded limits.
+  - Extended backend ownership checks so all array elements must belong to the
+    backend creating the bind group.
+  - Expanded core and shared backend contract tests for valid descriptor arrays,
+    short arrays, mixed scalar/array entries, wrong usage, and mixed-backend
+    array rejection.
 
 ## Relevant Decisions And Constraints
 
@@ -342,6 +356,9 @@ validation, diagnostics, and backend parity.
 - Backend parity reports now include memory topology summaries; higher layers
   should use those fields or the underlying capabilities rather than assuming
   UMA/discrete behavior from backend names.
+- Bind groups now support explicit array resource population through
+  `BindGroupEntry::buffers`, `textures`, and `samplers`; scalar fields remain
+  the compatibility path for single-resource bindings.
 - The repository commits only the public doctrine snapshot. The maintainer's
   private Copilot overlay lives in `~/.copilot/copilot-instructions.md` on the
   local machine and must not be copied into repository history.
@@ -369,9 +386,7 @@ core contract tests, package consumer, and transform compute tests.
 
 ## Next Resume Steps
 
-1. Expand descriptor array bind-group resource population if a higher layer
-   needs actual array resources rather than only feature-gated layout contracts.
-2. Consider adding a dedicated RHI parity-report executable if JSON needs to
+1. Consider adding a dedicated RHI parity-report executable if JSON needs to
    include live capability counters rather than CI test status rows.
 
 ## Open Questions Or Risks

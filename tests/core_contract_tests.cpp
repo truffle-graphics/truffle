@@ -438,11 +438,20 @@ int main() {
         .size = 64,
         .usageFlags = truffle::rhi::BufferUsageFlags::uniform,
     }};
+    TestBuffer secondUniformBuffer{{
+        .size = 64,
+        .usageFlags = truffle::rhi::BufferUsageFlags::uniform,
+    }};
     TestBuffer smallUniformBuffer{{
         .size = 8,
         .usageFlags = truffle::rhi::BufferUsageFlags::uniform,
     }};
     TestTexture sampledTexture{{
+        .extent = {16, 16},
+        .format = truffle::rhi::TextureFormat::rgba8_unorm,
+        .usageFlags = truffle::rhi::TextureUsageFlags::sampled,
+    }};
+    TestTexture secondSampledTexture{{
         .extent = {16, 16},
         .format = truffle::rhi::TextureFormat::rgba8_unorm,
         .usageFlags = truffle::rhi::TextureUsageFlags::sampled,
@@ -453,6 +462,7 @@ int main() {
         .usageFlags = truffle::rhi::TextureUsageFlags::color_attachment,
     }};
     TestSampler sampler;
+    TestSampler secondSampler;
     TestBindGroupLayout bindGroupLayout{bindGroupLayoutDesc};
 
     TRUFFLE_CHECK(truffle::rhi::validation::bind_group_desc_valid({
@@ -507,6 +517,76 @@ int main() {
         .type = truffle::rhi::BindingResourceType::sampled_texture,
         .texture = &colorOnlyTexture,
     }, bindGroupLayoutDesc.bindings[1]));
+
+    const truffle::rhi::BindGroupLayoutDesc arrayBindGroupLayoutDesc{
+        .debugName = "core_array_bind_group_layout",
+        .bindings = {
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::uniform_buffer,
+                .visibility = truffle::rhi::ShaderStageFlags::vertex,
+                .arrayCount = 2,
+                .minBindingSize = 16,
+            },
+            {
+                .bindingIndex = 1,
+                .type = truffle::rhi::BindingResourceType::sampled_texture,
+                .visibility = truffle::rhi::ShaderStageFlags::fragment,
+                .arrayCount = 2,
+            },
+            {
+                .bindingIndex = 2,
+                .type = truffle::rhi::BindingResourceType::sampler,
+                .visibility = truffle::rhi::ShaderStageFlags::fragment,
+                .arrayCount = 2,
+            },
+        },
+    };
+    TestBindGroupLayout arrayBindGroupLayout{arrayBindGroupLayoutDesc};
+    TRUFFLE_CHECK(truffle::rhi::validation::bind_group_desc_valid({
+        .layout = &arrayBindGroupLayout,
+        .entries = {
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::uniform_buffer,
+                .buffers = {
+                    {.buffer = &uniformBuffer, .size = 16},
+                    {.buffer = &secondUniformBuffer, .size = 16},
+                },
+            },
+            {
+                .bindingIndex = 1,
+                .type = truffle::rhi::BindingResourceType::sampled_texture,
+                .textures = {&sampledTexture, &secondSampledTexture},
+            },
+            {
+                .bindingIndex = 2,
+                .type = truffle::rhi::BindingResourceType::sampler,
+                .samplers = {&sampler, &secondSampler},
+            },
+        },
+    }));
+    TRUFFLE_CHECK(!truffle::rhi::validation::bind_group_entry_valid({
+        .bindingIndex = 0,
+        .type = truffle::rhi::BindingResourceType::uniform_buffer,
+        .buffer = {.buffer = &uniformBuffer, .size = 16},
+    }, arrayBindGroupLayoutDesc.bindings[0]));
+    TRUFFLE_CHECK(!truffle::rhi::validation::bind_group_entry_valid({
+        .bindingIndex = 1,
+        .type = truffle::rhi::BindingResourceType::sampled_texture,
+        .textures = {&sampledTexture},
+    }, arrayBindGroupLayoutDesc.bindings[1]));
+    TRUFFLE_CHECK(!truffle::rhi::validation::bind_group_entry_valid({
+        .bindingIndex = 1,
+        .type = truffle::rhi::BindingResourceType::sampled_texture,
+        .texture = &sampledTexture,
+        .textures = {&secondSampledTexture},
+    }, arrayBindGroupLayoutDesc.bindings[1]));
+    TRUFFLE_CHECK(!truffle::rhi::validation::bind_group_entry_valid({
+        .bindingIndex = 1,
+        .type = truffle::rhi::BindingResourceType::sampled_texture,
+        .textures = {&sampledTexture, &colorOnlyTexture},
+    }, arrayBindGroupLayoutDesc.bindings[1]));
 
     return 0;
 }
