@@ -993,6 +993,10 @@ public:
             return Status::failure(StatusCode::invalid_state,
                                    "set_viewport requires an active render pass");
         }
+        if (!validation::viewport_valid(x, y, width, height, minDepth, maxDepth)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "viewport descriptor is invalid");
+        }
         [encoder_ setViewport:MTLViewport{x, y, width, height, minDepth, maxDepth}];
         return Status::success();
     }
@@ -1002,6 +1006,10 @@ public:
         if (!encoder_) {
             return Status::failure(StatusCode::invalid_state,
                                    "set_scissor requires an active render pass");
+        }
+        if (!validation::scissor_valid(x, y, width, height)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "scissor rectangle is invalid");
         }
         [encoder_ setScissorRect:MTLScissorRect{x, y, width, height}];
         return Status::success();

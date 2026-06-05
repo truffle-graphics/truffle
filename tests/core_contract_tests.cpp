@@ -6,6 +6,8 @@
 #include "truffle/rhi/validation.hpp"
 
 #include <cstddef>
+#include <cstdint>
+#include <limits>
 
 namespace {
 
@@ -115,6 +117,18 @@ int main() {
         .hasColor = true,
         .red = 1.1f,
     }));
+    TRUFFLE_CHECK(truffle::rhi::validation::viewport_valid(
+        0.0f, 0.0f, 640.0f, 480.0f, 0.0f, 1.0f));
+    TRUFFLE_CHECK(!truffle::rhi::validation::viewport_valid(
+        0.0f, 0.0f, 0.0f, 480.0f, 0.0f, 1.0f));
+    TRUFFLE_CHECK(!truffle::rhi::validation::viewport_valid(
+        0.0f, 0.0f, 640.0f, 480.0f, 0.75f, 0.25f));
+    TRUFFLE_CHECK(!truffle::rhi::validation::viewport_valid(
+        0.0f, 0.0f, 640.0f, 480.0f, -0.1f, 1.0f));
+    TRUFFLE_CHECK(truffle::rhi::validation::scissor_valid(0, 0, 640, 480));
+    TRUFFLE_CHECK(!truffle::rhi::validation::scissor_valid(0, 0, 0, 480));
+    TRUFFLE_CHECK(!truffle::rhi::validation::scissor_valid(
+        std::numeric_limits<std::uint32_t>::max(), 0, 1, 1));
 
     truffle::rhi::BufferDesc legacyStorage;
     legacyStorage.usage = truffle::rhi::BufferUsage::storage;

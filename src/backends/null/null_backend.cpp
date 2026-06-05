@@ -592,31 +592,39 @@ public:
         return Status::success();
     }
 
-    [[nodiscard]] Status set_viewport(float /*x*/, float /*y*/,
-                                       float /*width*/, float /*height*/,
-                                       float /*minDepth*/,
-                                       float /*maxDepth*/) override {
+    [[nodiscard]] Status set_viewport(float x, float y,
+                                       float width, float height,
+                                       float minDepth,
+                                       float maxDepth) override {
         if (state_ != State::recording) {
             return Status::failure(StatusCode::invalid_state,
-                                   "set_viewport requires recording");
+                                    "set_viewport requires recording");
         }
         if (!inRenderPass_) {
             return Status::failure(StatusCode::invalid_state,
-                                   "set_viewport requires active render pass");
+                                    "set_viewport requires active render pass");
+        }
+        if (!validation::viewport_valid(x, y, width, height, minDepth, maxDepth)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "viewport descriptor is invalid");
         }
         return Status::success();
     }
 
-    [[nodiscard]] Status set_scissor(std::uint32_t /*x*/, std::uint32_t /*y*/,
-                                      std::uint32_t /*width*/,
-                                      std::uint32_t /*height*/) override {
+    [[nodiscard]] Status set_scissor(std::uint32_t x, std::uint32_t y,
+                                      std::uint32_t width,
+                                      std::uint32_t height) override {
         if (state_ != State::recording) {
             return Status::failure(StatusCode::invalid_state,
-                                   "set_scissor requires recording");
+                                    "set_scissor requires recording");
         }
         if (!inRenderPass_) {
             return Status::failure(StatusCode::invalid_state,
-                                   "set_scissor requires active render pass");
+                                    "set_scissor requires active render pass");
+        }
+        if (!validation::scissor_valid(x, y, width, height)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "scissor rectangle is invalid");
         }
         return Status::success();
     }

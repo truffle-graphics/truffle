@@ -346,6 +346,15 @@ validation, diagnostics, and backend parity.
   - Expanded core and shared backend contract tests for valid rich samplers,
     legacy nearest filtering, descriptor retention, invalid LODs, and
     anisotropy-limit rejection.
+- **Low-Level Graphics Foundation Slice 9F** — Complete.
+  - Added shared viewport/scissor validation for finite positive viewport
+    extents, ordered normalized depth ranges, non-zero scissors, and rectangle
+    overflow.
+  - Aligned null, Metal, Vulkan, OpenGL, and Direct3D command buffers so
+    viewport/scissor calls require an active render pass and reject invalid
+    descriptors.
+  - Expanded core and shared backend contract tests for invalid viewport/scissor
+    descriptors and active-pass enforcement.
 
 ## Relevant Decisions And Constraints
 
@@ -386,6 +395,8 @@ validation, diagnostics, and backend parity.
 - Sampler descriptors are now explicit RHI state. Higher layers should set
   filter/address/LOD/compare fields directly and use `linear_filtering` only for
   legacy compatibility.
+- Viewport and scissor state is render-pass scoped across all built-in backends;
+  invalid dimensions/depth ranges are rejected before native calls.
 - The repository commits only the public doctrine snapshot. The maintainer's
   private Copilot overlay lives in `~/.copilot/copilot-instructions.md` on the
   local machine and must not be copied into repository history.

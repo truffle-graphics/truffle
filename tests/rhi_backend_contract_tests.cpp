@@ -638,6 +638,8 @@ int verify_common_positive_path_contract(truffle::rhi::IDevice& device,
     TRUFFLE_CHECK(indexBuffer.ok());
     TRUFFLE_CHECK(storageBuffer.ok());
     TRUFFLE_CHECK(indirectBuffer.ok());
+    TRUFFLE_CHECK(!stateCmd->set_viewport(0.0f, 0.0f, 16.0f, 16.0f).ok());
+    TRUFFLE_CHECK(!stateCmd->set_scissor(0, 0, 16, 16).ok());
     const truffle::rhi::BindGroupLayoutDesc computeBindGroupLayoutDesc{
         .debugName = "contract_compute_bind_group_layout",
         .bindings = computeLayout.bindings,
@@ -664,6 +666,14 @@ int verify_common_positive_path_contract(truffle::rhi::IDevice& device,
     passDesc.colorAttachment.texture = swapchain.value()->acquire_next_texture();
     TRUFFLE_CHECK(stateCmd->begin_render_pass(passDesc).ok());
     TRUFFLE_CHECK(!stateCmd->begin_render_pass(passDesc).ok());
+    TRUFFLE_CHECK(!stateCmd->set_viewport(
+        0.0f, 0.0f, 0.0f, 16.0f).ok());
+    TRUFFLE_CHECK(!stateCmd->set_viewport(
+        0.0f, 0.0f, 16.0f, 16.0f, 0.75f, 0.25f).ok());
+    TRUFFLE_CHECK(stateCmd->set_viewport(
+        0.0f, 0.0f, 16.0f, 16.0f, 0.0f, 1.0f).ok());
+    TRUFFLE_CHECK(!stateCmd->set_scissor(0, 0, 0, 16).ok());
+    TRUFFLE_CHECK(stateCmd->set_scissor(0, 0, 16, 16).ok());
     TRUFFLE_CHECK(!stateCmd->resource_barrier(
         truffle::rhi::BufferBarrierDesc{
             .buffer = storageBuffer.value().get(),

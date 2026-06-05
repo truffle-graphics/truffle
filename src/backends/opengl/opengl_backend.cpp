@@ -455,15 +455,29 @@ public:
     }
 
     [[nodiscard]] Status set_viewport(
-        float /*x*/, float /*y*/, float /*width*/, float /*height*/,
-        float /*minDepth*/, float /*maxDepth*/) override {
-        return require_recording("set_viewport");
+        float x, float y, float width, float height,
+        float minDepth, float maxDepth) override {
+        if (const auto s = require_render_pass("set_viewport"); !s.ok()) {
+            return s;
+        }
+        if (!validation::viewport_valid(x, y, width, height, minDepth, maxDepth)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "OpenGLCommandBuffer: viewport descriptor is invalid");
+        }
+        return Status::success();
     }
 
     [[nodiscard]] Status set_scissor(
-        std::uint32_t /*x*/, std::uint32_t /*y*/,
-        std::uint32_t /*width*/, std::uint32_t /*height*/) override {
-        return require_recording("set_scissor");
+        std::uint32_t x, std::uint32_t y,
+        std::uint32_t width, std::uint32_t height) override {
+        if (const auto s = require_render_pass("set_scissor"); !s.ok()) {
+            return s;
+        }
+        if (!validation::scissor_valid(x, y, width, height)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "OpenGLCommandBuffer: scissor rectangle is invalid");
+        }
+        return Status::success();
     }
 
     [[nodiscard]] Status draw(std::uint32_t /*vertex_count*/) override {

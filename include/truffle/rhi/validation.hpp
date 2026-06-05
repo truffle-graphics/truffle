@@ -407,6 +407,35 @@ namespace truffle::rhi::validation {
            label.alpha >= 0.0f && label.alpha <= 1.0f;
 }
 
+[[nodiscard]] inline bool viewport_valid(float x,
+                                         float y,
+                                         float width,
+                                         float height,
+                                         float minDepth,
+                                         float maxDepth) noexcept {
+    return std::isfinite(x) &&
+           std::isfinite(y) &&
+           std::isfinite(width) &&
+           std::isfinite(height) &&
+           std::isfinite(minDepth) &&
+           std::isfinite(maxDepth) &&
+           width > 0.0f &&
+           height > 0.0f &&
+           minDepth >= 0.0f &&
+           maxDepth <= 1.0f &&
+           minDepth <= maxDepth;
+}
+
+[[nodiscard]] constexpr bool scissor_valid(std::uint32_t x,
+                                           std::uint32_t y,
+                                           std::uint32_t width,
+                                           std::uint32_t height) noexcept {
+    return width != 0 &&
+           height != 0 &&
+           x <= std::numeric_limits<std::uint32_t>::max() - width &&
+           y <= std::numeric_limits<std::uint32_t>::max() - height;
+}
+
 [[nodiscard]] constexpr bool sampler_filter_valid(SamplerFilter filter) noexcept {
     switch (filter) {
     case SamplerFilter::nearest:
