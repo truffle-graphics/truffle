@@ -9,11 +9,27 @@ execute_process(
     COMMAND "${CMAKE_COMMAND}" --install "${TRUFFLE_BINARY_DIR}"
         --prefix "${TRUFFLE_INSTALL_PREFIX}"
     COMMAND_ERROR_IS_FATAL ANY)
+
+set(_truffle_consumer_configure
+    "${CMAKE_COMMAND}"
+    -S "${TRUFFLE_SOURCE_DIR}/tests/package_consumer"
+    -B "${TRUFFLE_CONSUMER_BUILD_DIR}"
+    "-DCMAKE_PREFIX_PATH=${TRUFFLE_INSTALL_PREFIX}")
+
+if(DEFINED TRUFFLE_CMAKE_GENERATOR AND NOT TRUFFLE_CMAKE_GENERATOR STREQUAL "")
+    list(APPEND _truffle_consumer_configure -G "${TRUFFLE_CMAKE_GENERATOR}")
+endif()
+
+if(DEFINED TRUFFLE_CMAKE_MAKE_PROGRAM AND NOT TRUFFLE_CMAKE_MAKE_PROGRAM STREQUAL "")
+    list(APPEND _truffle_consumer_configure "-DCMAKE_MAKE_PROGRAM=${TRUFFLE_CMAKE_MAKE_PROGRAM}")
+endif()
+
+if(DEFINED TRUFFLE_CXX_COMPILER AND NOT TRUFFLE_CXX_COMPILER STREQUAL "")
+    list(APPEND _truffle_consumer_configure "-DCMAKE_CXX_COMPILER=${TRUFFLE_CXX_COMPILER}")
+endif()
+
 execute_process(
-    COMMAND "${CMAKE_COMMAND}"
-        -S "${TRUFFLE_SOURCE_DIR}/tests/package_consumer"
-        -B "${TRUFFLE_CONSUMER_BUILD_DIR}"
-        "-DCMAKE_PREFIX_PATH=${TRUFFLE_INSTALL_PREFIX}"
+    COMMAND ${_truffle_consumer_configure}
     COMMAND_ERROR_IS_FATAL ANY)
 execute_process(
     COMMAND "${CMAKE_COMMAND}" --build "${TRUFFLE_CONSUMER_BUILD_DIR}"
