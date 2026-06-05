@@ -118,6 +118,35 @@ constexpr TextureUsageFlags& operator|=(TextureUsageFlags& lhs,
     return lhs;
 }
 
+enum class ColorWriteFlags : std::uint32_t {
+    none  = 0,
+    red   = 1u << 0u,
+    green = 1u << 1u,
+    blue  = 1u << 2u,
+    alpha = 1u << 3u,
+    all   = (1u << 0u) | (1u << 1u) | (1u << 2u) | (1u << 3u),
+};
+
+[[nodiscard]] constexpr ColorWriteFlags operator|(
+    ColorWriteFlags lhs,
+    ColorWriteFlags rhs) noexcept {
+    return static_cast<ColorWriteFlags>(
+        static_cast<std::uint32_t>(lhs) | static_cast<std::uint32_t>(rhs));
+}
+
+[[nodiscard]] constexpr ColorWriteFlags operator&(
+    ColorWriteFlags lhs,
+    ColorWriteFlags rhs) noexcept {
+    return static_cast<ColorWriteFlags>(
+        static_cast<std::uint32_t>(lhs) & static_cast<std::uint32_t>(rhs));
+}
+
+constexpr ColorWriteFlags& operator|=(ColorWriteFlags& lhs,
+                                      ColorWriteFlags rhs) noexcept {
+    lhs = lhs | rhs;
+    return lhs;
+}
+
 enum class NativeSurfaceKind {
     headless,
     win32,
@@ -292,6 +321,66 @@ enum class SamplerBorderColor {
     transparent_black,
     opaque_black,
     opaque_white,
+};
+
+enum class FillMode {
+    solid,
+    wireframe,
+};
+
+enum class CullMode {
+    none,
+    front,
+    back,
+};
+
+enum class FrontFace {
+    counter_clockwise,
+    clockwise,
+};
+
+enum class BlendFactor {
+    zero,
+    one,
+    source_color,
+    one_minus_source_color,
+    destination_color,
+    one_minus_destination_color,
+    source_alpha,
+    one_minus_source_alpha,
+    destination_alpha,
+    one_minus_destination_alpha,
+};
+
+enum class BlendOp {
+    add,
+    subtract,
+    reverse_subtract,
+    min,
+    max,
+};
+
+struct RasterStateDesc {
+    FillMode fillMode = FillMode::solid;
+    CullMode cullMode = CullMode::back;
+    FrontFace frontFace = FrontFace::counter_clockwise;
+    bool depthClip = true;
+};
+
+struct DepthStencilStateDesc {
+    SamplerCompareOp depthCompare = SamplerCompareOp::less_equal;
+    bool stencilTest = false;
+};
+
+struct ColorBlendDesc {
+    bool enabled = false;
+    BlendFactor srcColor = BlendFactor::one;
+    BlendFactor dstColor = BlendFactor::zero;
+    BlendOp colorOp = BlendOp::add;
+    BlendFactor srcAlpha = BlendFactor::one;
+    BlendFactor dstAlpha = BlendFactor::zero;
+    BlendOp alphaOp = BlendOp::add;
+    ColorWriteFlags writeMask = ColorWriteFlags::all;
 };
 
 struct QueueCapabilities {
@@ -535,6 +624,11 @@ struct AdapterInfo {
     return (flags & flag) != TextureUsageFlags::none;
 }
 
+[[nodiscard]] constexpr bool has_flag(ColorWriteFlags flags,
+                                      ColorWriteFlags flag) noexcept {
+    return (flags & flag) != ColorWriteFlags::none;
+}
+
 [[nodiscard]] constexpr BufferUsageFlags to_buffer_usage_flags(
     BufferUsage usage) noexcept {
     switch (usage) {
@@ -737,6 +831,9 @@ struct PipelineDesc {
     TextureFormat     colorFormat    = TextureFormat::bgra8_unorm;
     bool              depthTest      = true;
     bool              depthWrite     = true;
+    RasterStateDesc   rasterState;
+    DepthStencilStateDesc depthStencilState;
+    ColorBlendDesc    colorBlend;
 };
 
 struct ComputePipelineDesc {

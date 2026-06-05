@@ -495,9 +495,52 @@ int main() {
         .colorFormat = truffle::rhi::TextureFormat::rgba8_unorm,
         .depthTest = false,
         .depthWrite = false,
+        .rasterState = {
+            .fillMode = truffle::rhi::FillMode::wireframe,
+            .cullMode = truffle::rhi::CullMode::front,
+            .frontFace = truffle::rhi::FrontFace::clockwise,
+            .depthClip = false,
+        },
+        .depthStencilState = {
+            .depthCompare = truffle::rhi::SamplerCompareOp::greater_equal,
+        },
+        .colorBlend = {
+            .enabled = true,
+            .srcColor = truffle::rhi::BlendFactor::source_alpha,
+            .dstColor = truffle::rhi::BlendFactor::one_minus_source_alpha,
+            .srcAlpha = truffle::rhi::BlendFactor::one,
+            .dstAlpha = truffle::rhi::BlendFactor::one_minus_source_alpha,
+            .writeMask = truffle::rhi::ColorWriteFlags::red |
+                         truffle::rhi::ColorWriteFlags::green |
+                         truffle::rhi::ColorWriteFlags::blue,
+        },
     }, capabilities));
     TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_render_state_valid({
         .colorFormat = truffle::rhi::TextureFormat::depth32_float,
+    }, capabilities));
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_render_state_valid({
+        .colorFormat = truffle::rhi::TextureFormat::rgba8_unorm,
+        .depthTest = false,
+        .depthWrite = false,
+        .rasterState = {
+            .fillMode = static_cast<truffle::rhi::FillMode>(99),
+        },
+    }, capabilities));
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_render_state_valid({
+        .colorFormat = truffle::rhi::TextureFormat::rgba8_unorm,
+        .depthTest = false,
+        .depthWrite = false,
+        .depthStencilState = {
+            .stencilTest = true,
+        },
+    }, capabilities));
+    TRUFFLE_CHECK(!truffle::rhi::validation::pipeline_render_state_valid({
+        .colorFormat = truffle::rhi::TextureFormat::rgba8_unorm,
+        .depthTest = false,
+        .depthWrite = false,
+        .colorBlend = {
+            .writeMask = static_cast<truffle::rhi::ColorWriteFlags>(1u << 8u),
+        },
     }, capabilities));
 
     const truffle::rhi::BindGroupLayoutDesc bindGroupLayoutDesc{

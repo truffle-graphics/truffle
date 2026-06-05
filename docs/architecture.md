@@ -127,6 +127,9 @@ scope and active extension-backend work continuing in parallel:
 - RHI command buffers require an explicit graphics/compute pipeline before
   draw/dispatch, and pipeline layouts define required bind-group indices that
   must be bound with compatible group layouts before recording work.
+- Graphics pipeline descriptors include explicit raster, depth/stencil, and
+  color-blend state so higher layers can express render-state policy without
+  inventing backend-specific side channels.
 - CI emits backend parity matrix Markdown/JSON artifacts for tracked backend
   contract/reflection tests, plus a live `rhi-parity-report.json` generated
   from `BackendParityReport` capability summaries.

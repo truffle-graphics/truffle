@@ -237,12 +237,121 @@ namespace truffle::rhi::validation {
     return true;
 }
 
+[[nodiscard]] constexpr bool fill_mode_valid(FillMode mode) noexcept {
+    switch (mode) {
+    case FillMode::solid:
+    case FillMode::wireframe:
+        return true;
+    }
+    return false;
+}
+
+[[nodiscard]] constexpr bool cull_mode_valid(CullMode mode) noexcept {
+    switch (mode) {
+    case CullMode::none:
+    case CullMode::front:
+    case CullMode::back:
+        return true;
+    }
+    return false;
+}
+
+[[nodiscard]] constexpr bool front_face_valid(FrontFace face) noexcept {
+    switch (face) {
+    case FrontFace::counter_clockwise:
+    case FrontFace::clockwise:
+        return true;
+    }
+    return false;
+}
+
+[[nodiscard]] constexpr bool depth_compare_op_valid(
+    SamplerCompareOp op) noexcept {
+    switch (op) {
+    case SamplerCompareOp::never:
+    case SamplerCompareOp::less:
+    case SamplerCompareOp::equal:
+    case SamplerCompareOp::less_equal:
+    case SamplerCompareOp::greater:
+    case SamplerCompareOp::not_equal:
+    case SamplerCompareOp::greater_equal:
+    case SamplerCompareOp::always:
+        return true;
+    }
+    return false;
+}
+
+[[nodiscard]] constexpr bool blend_factor_valid(BlendFactor factor) noexcept {
+    switch (factor) {
+    case BlendFactor::zero:
+    case BlendFactor::one:
+    case BlendFactor::source_color:
+    case BlendFactor::one_minus_source_color:
+    case BlendFactor::destination_color:
+    case BlendFactor::one_minus_destination_color:
+    case BlendFactor::source_alpha:
+    case BlendFactor::one_minus_source_alpha:
+    case BlendFactor::destination_alpha:
+    case BlendFactor::one_minus_destination_alpha:
+        return true;
+    }
+    return false;
+}
+
+[[nodiscard]] constexpr bool blend_op_valid(BlendOp op) noexcept {
+    switch (op) {
+    case BlendOp::add:
+    case BlendOp::subtract:
+    case BlendOp::reverse_subtract:
+    case BlendOp::min:
+    case BlendOp::max:
+        return true;
+    }
+    return false;
+}
+
+[[nodiscard]] constexpr bool color_write_mask_valid(
+    ColorWriteFlags mask) noexcept {
+    const auto raw = static_cast<std::uint32_t>(mask);
+    const auto allowed = static_cast<std::uint32_t>(ColorWriteFlags::all);
+    return (raw & ~allowed) == 0;
+}
+
+[[nodiscard]] constexpr bool raster_state_valid(
+    const RasterStateDesc& desc) noexcept {
+    return fill_mode_valid(desc.fillMode) &&
+           cull_mode_valid(desc.cullMode) &&
+           front_face_valid(desc.frontFace);
+}
+
+[[nodiscard]] constexpr bool depth_stencil_state_valid(
+    const DepthStencilStateDesc& desc) noexcept {
+    return depth_compare_op_valid(desc.depthCompare) && !desc.stencilTest;
+}
+
+[[nodiscard]] constexpr bool color_blend_valid(
+    const ColorBlendDesc& desc) noexcept {
+    return blend_factor_valid(desc.srcColor) &&
+           blend_factor_valid(desc.dstColor) &&
+           blend_op_valid(desc.colorOp) &&
+           blend_factor_valid(desc.srcAlpha) &&
+           blend_factor_valid(desc.dstAlpha) &&
+           blend_op_valid(desc.alphaOp) &&
+           color_write_mask_valid(desc.writeMask);
+}
+
 [[nodiscard]] inline bool pipeline_render_state_valid(
     const PipelineDesc& desc,
     const Capabilities& capabilities) noexcept {
     const auto* colorSupport =
         find_format_support(capabilities, desc.colorFormat);
     if (!colorSupport || !colorSupport->colorAttachment) {
+        return false;
+    }
+
+    if (!raster_state_valid(desc.rasterState) ||
+        !depth_stencil_state_valid(desc.depthStencilState) ||
+        !color_blend_valid(desc.colorBlend)) {
         return false;
     }
 

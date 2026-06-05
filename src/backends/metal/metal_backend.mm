@@ -173,6 +173,89 @@ static MTLStoreAction to_mtl_store(StoreOp op) noexcept {
     return MTLCompareFunctionNever;
 }
 
+[[nodiscard]] MTLBlendFactor to_metal_blend_factor(
+    BlendFactor factor) noexcept {
+    switch (factor) {
+    case BlendFactor::zero:
+        return MTLBlendFactorZero;
+    case BlendFactor::one:
+        return MTLBlendFactorOne;
+    case BlendFactor::source_color:
+        return MTLBlendFactorSourceColor;
+    case BlendFactor::one_minus_source_color:
+        return MTLBlendFactorOneMinusSourceColor;
+    case BlendFactor::destination_color:
+        return MTLBlendFactorDestinationColor;
+    case BlendFactor::one_minus_destination_color:
+        return MTLBlendFactorOneMinusDestinationColor;
+    case BlendFactor::source_alpha:
+        return MTLBlendFactorSourceAlpha;
+    case BlendFactor::one_minus_source_alpha:
+        return MTLBlendFactorOneMinusSourceAlpha;
+    case BlendFactor::destination_alpha:
+        return MTLBlendFactorDestinationAlpha;
+    case BlendFactor::one_minus_destination_alpha:
+        return MTLBlendFactorOneMinusDestinationAlpha;
+    }
+    return MTLBlendFactorOne;
+}
+
+[[nodiscard]] MTLBlendOperation to_metal_blend_op(BlendOp op) noexcept {
+    switch (op) {
+    case BlendOp::add:
+        return MTLBlendOperationAdd;
+    case BlendOp::subtract:
+        return MTLBlendOperationSubtract;
+    case BlendOp::reverse_subtract:
+        return MTLBlendOperationReverseSubtract;
+    case BlendOp::min:
+        return MTLBlendOperationMin;
+    case BlendOp::max:
+        return MTLBlendOperationMax;
+    }
+    return MTLBlendOperationAdd;
+}
+
+[[nodiscard]] MTLColorWriteMask to_metal_color_write_mask(
+    ColorWriteFlags mask) noexcept {
+    MTLColorWriteMask result = 0;
+    if (has_flag(mask, ColorWriteFlags::red)) {
+        result |= MTLColorWriteMaskRed;
+    }
+    if (has_flag(mask, ColorWriteFlags::green)) {
+        result |= MTLColorWriteMaskGreen;
+    }
+    if (has_flag(mask, ColorWriteFlags::blue)) {
+        result |= MTLColorWriteMaskBlue;
+    }
+    if (has_flag(mask, ColorWriteFlags::alpha)) {
+        result |= MTLColorWriteMaskAlpha;
+    }
+    return result;
+}
+
+[[nodiscard]] MTLCullMode to_metal_cull_mode(CullMode mode) noexcept {
+    switch (mode) {
+    case CullMode::none:
+        return MTLCullModeNone;
+    case CullMode::front:
+        return MTLCullModeFront;
+    case CullMode::back:
+        return MTLCullModeBack;
+    }
+    return MTLCullModeNone;
+}
+
+[[nodiscard]] MTLWinding to_metal_winding(FrontFace face) noexcept {
+    return face == FrontFace::clockwise ? MTLWindingClockwise
+                                        : MTLWindingCounterClockwise;
+}
+
+[[nodiscard]] MTLTriangleFillMode to_metal_fill_mode(FillMode mode) noexcept {
+    return mode == FillMode::wireframe ? MTLTriangleFillModeLines
+                                       : MTLTriangleFillModeFill;
+}
+
 [[nodiscard]] MTLSamplerBorderColor to_metal_border_color(
     SamplerBorderColor color) noexcept {
     switch (color) {
@@ -470,7 +553,25 @@ public:
         rpd.label           = [NSString stringWithUTF8String:desc.debugName.c_str()];
         rpd.vertexFunction  = vertexShader->function();
         rpd.fragmentFunction = fragmentShader->function();
-        rpd.colorAttachments[0].pixelFormat = to_mtl_format(desc.colorFormat);
+        auto* colorAttachment = rpd.colorAttachments[0];
+        colorAttachment.pixelFormat = to_mtl_format(desc.colorFormat);
+        colorAttachment.writeMask =
+            to_metal_color_write_mask(desc.colorBlend.writeMask);
+        colorAttachment.blendingEnabled = desc.colorBlend.enabled;
+        if (desc.colorBlend.enabled) {
+            colorAttachment.sourceRGBBlendFactor =
+                to_metal_blend_factor(desc.colorBlend.srcColor);
+            colorAttachment.destinationRGBBlendFactor =
+                to_metal_blend_factor(desc.colorBlend.dstColor);
+            colorAttachment.rgbBlendOperation =
+                to_metal_blend_op(desc.colorBlend.colorOp);
+            colorAttachment.sourceAlphaBlendFactor =
+                to_metal_blend_factor(desc.colorBlend.srcAlpha);
+            colorAttachment.destinationAlphaBlendFactor =
+                to_metal_blend_factor(desc.colorBlend.dstAlpha);
+            colorAttachment.alphaBlendOperation =
+                to_metal_blend_op(desc.colorBlend.alphaOp);
+        }
 
         NSError* err = nil;
         MTLRenderPipelineReflection* reflectionInfo = nil;
@@ -818,6 +919,12 @@ public:
                                    "pipeline must be created by the Metal backend");
         }
         [encoder_ setRenderPipelineState:mp->native()];
+        [encoder_ setCullMode:to_metal_cull_mode(mp->desc().rasterState.cullMode)];
+        [encoder_ setFrontFacingWinding:to_metal_winding(mp->desc().rasterState.frontFace)];
+        [encoder_ setTriangleFillMode:to_metal_fill_mode(mp->desc().rasterState.fillMode)];
+        [encoder_ setDepthClipMode:mp->desc().rasterState.depthClip
+                                    ? MTLDepthClipModeClip
+                                    : MTLDepthClipModeClamp];
         topology_ = mp->desc().topology;
         graphicsPipelineBound_ = true;
         graphicsLayout_ = &mp->desc().layout;

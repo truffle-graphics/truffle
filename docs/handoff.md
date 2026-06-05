@@ -369,6 +369,16 @@ validation, diagnostics, and backend parity.
   - Expanded core, backend-specific, null, and shared RHI contract tests for
     multi-group layouts, missing bind groups, wrong group indices, and
     pipeline-required draw/dispatch behavior.
+- **Low-Level Graphics Foundation Slice 9H** — Complete.
+  - Added source-compatible raster, depth/stencil, and color-blend descriptors to
+    `PipelineDesc`.
+  - Added shared validation for fill/cull/front-face state, depth compare/stencil
+    state, blend factors/ops, and color write masks.
+  - Mapped Metal raster state and color blending into native pipeline/encoder
+    state while leaving deeper native depth-state attachment policy for a later
+    backend-specific slice.
+  - Expanded core and shared backend contract tests for valid rich render state
+    and invalid raster/blend/stencil descriptors.
 
 ## Relevant Decisions And Constraints
 
@@ -414,6 +424,9 @@ validation, diagnostics, and backend parity.
 - Draw and dispatch commands require an explicitly bound graphics/compute
   pipeline, and every bind-group index referenced by that pipeline layout must
   be bound with a compatible bind-group layout before the command records.
+- Graphics pipeline descriptors now carry explicit raster, depth/stencil, and
+  blend state; validation rejects unsupported stencil state and invalid enum/mask
+  values before backend pipeline creation.
 - The repository commits only the public doctrine snapshot. The maintainer's
   private Copilot overlay lives in `~/.copilot/copilot-instructions.md` on the
   local machine and must not be copied into repository history.

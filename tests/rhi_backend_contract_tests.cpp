@@ -1430,6 +1430,31 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
     TRUFFLE_CHECK(wrongComputeStagePipeline.status().code ==
                   truffle::core::StatusCode::invalid_argument);
 
+    auto richRenderStatePipeline = device.create_pipeline({
+        .vertexShader = stageVertexShader.value().get(),
+        .fragmentShader = stageFragmentShader.value().get(),
+        .depthTest = false,
+        .depthWrite = false,
+        .rasterState = {
+            .fillMode = truffle::rhi::FillMode::wireframe,
+            .cullMode = truffle::rhi::CullMode::front,
+            .frontFace = truffle::rhi::FrontFace::clockwise,
+            .depthClip = false,
+        },
+        .colorBlend = {
+            .enabled = true,
+            .srcColor = truffle::rhi::BlendFactor::source_alpha,
+            .dstColor = truffle::rhi::BlendFactor::one_minus_source_alpha,
+            .srcAlpha = truffle::rhi::BlendFactor::one,
+            .dstAlpha = truffle::rhi::BlendFactor::one_minus_source_alpha,
+        },
+    });
+    TRUFFLE_CHECK(richRenderStatePipeline.ok());
+    TRUFFLE_CHECK(richRenderStatePipeline.value()->desc().rasterState.fillMode ==
+                  truffle::rhi::FillMode::wireframe);
+    TRUFFLE_CHECK(!richRenderStatePipeline.value()->desc().rasterState.depthClip);
+    TRUFFLE_CHECK(richRenderStatePipeline.value()->desc().colorBlend.enabled);
+
     auto badLayoutPipeline = device.create_pipeline({
         .layout = {
             .bindings = {{
@@ -1465,6 +1490,30 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
     });
     TRUFFLE_CHECK(!badRenderStatePipeline.ok());
     TRUFFLE_CHECK(badRenderStatePipeline.status().code ==
+                  truffle::core::StatusCode::invalid_argument);
+    auto badRasterStatePipeline = device.create_pipeline({
+        .vertexShader = stageVertexShader.value().get(),
+        .fragmentShader = stageFragmentShader.value().get(),
+        .depthTest = false,
+        .depthWrite = false,
+        .rasterState = {
+            .cullMode = static_cast<truffle::rhi::CullMode>(99),
+        },
+    });
+    TRUFFLE_CHECK(!badRasterStatePipeline.ok());
+    TRUFFLE_CHECK(badRasterStatePipeline.status().code ==
+                  truffle::core::StatusCode::invalid_argument);
+    auto badBlendStatePipeline = device.create_pipeline({
+        .vertexShader = stageVertexShader.value().get(),
+        .fragmentShader = stageFragmentShader.value().get(),
+        .depthTest = false,
+        .depthWrite = false,
+        .colorBlend = {
+            .srcColor = static_cast<truffle::rhi::BlendFactor>(99),
+        },
+    });
+    TRUFFLE_CHECK(!badBlendStatePipeline.ok());
+    TRUFFLE_CHECK(badBlendStatePipeline.status().code ==
                   truffle::core::StatusCode::invalid_argument);
 
     auto cmd = device.create_command_buffer();
