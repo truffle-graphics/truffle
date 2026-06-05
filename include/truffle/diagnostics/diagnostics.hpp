@@ -143,12 +143,24 @@ struct FrameGraphBudget {
 struct AssetCatalogInspectionOptions {
     std::string name;
     bool validateMeshMaterials = true;
+    bool includeGroups = false;
+    std::vector<assets::AssetId> groupIds;
+    std::vector<std::string> groupTags;
+};
+
+struct AssetGroupSummary {
+    assets::AssetId group;
+    std::string name;
+    std::vector<std::string> tags;
+    assets::AssetCatalogStats stats;
+    assets::AssetValidationReport validation;
 };
 
 struct AssetCatalogSummary {
     std::string name;
     assets::AssetCatalogStats stats;
     assets::AssetValidationReport validation;
+    std::vector<AssetGroupSummary> groups;
 };
 
 struct RenderBatchInspectionTarget {

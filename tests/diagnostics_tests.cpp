@@ -65,15 +65,29 @@ int main() {
     missingMaterialMesh.material = assets::AssetId{99};
     TRUFFLE_CHECK(assetCatalog.add_mesh(missingMaterialMesh).ok());
 
+    assets::AssetGroupDesc assetGroup;
+    assetGroup.id = assets::AssetId{15};
+    assetGroup.name = "lidar-detections";
+    assetGroup.tags = {"dense", "lidar"};
+    assetGroup.geometryStreams.push_back(assetStream.id);
+    assetGroup.materials.push_back(assetMaterial.id);
+    assetGroup.meshes.push_back(assetMesh.id);
+    assetGroup.meshes.push_back(missingMaterialMesh.id);
+    TRUFFLE_CHECK(assetCatalog.add_group(assetGroup).ok());
+
     const auto assetSummary = diagnostics::summarize_asset_catalog(
         assetCatalog, {
             .name = "dense-asset-catalog",
+            .includeGroups = true,
         });
     TRUFFLE_CHECK(assetSummary.name == "dense-asset-catalog");
     TRUFFLE_CHECK(assetSummary.stats.geometryStreamCount == 1);
     TRUFFLE_CHECK(assetSummary.stats.externalGeometryStreamCount == 1);
     TRUFFLE_CHECK(assetSummary.stats.totalGeometryBytes == 32'000'000);
     TRUFFLE_CHECK(assetSummary.validation.issues.size() == 1);
+    TRUFFLE_CHECK(assetSummary.groups.size() == 1);
+    TRUFFLE_CHECK(assetSummary.groups.front().group == assetGroup.id);
+    TRUFFLE_CHECK(assetSummary.groups.front().validation.issues.size() == 1);
     const auto assetReport =
         diagnostics::format_asset_catalog_summary(assetSummary);
     TRUFFLE_CHECK(assetReport.find("name=dense-asset-catalog") !=
@@ -82,6 +96,9 @@ int main() {
     TRUFFLE_CHECK(assetReport.find("kind=MissingMaterial") !=
                   std::string::npos);
     TRUFFLE_CHECK(assetReport.find("attribute=Custom") != std::string::npos);
+    TRUFFLE_CHECK(assetReport.find("asset_group id=15 name=lidar-detections") !=
+                  std::string::npos);
+    TRUFFLE_CHECK(assetReport.find("tag lidar") != std::string::npos);
 
     TestBuffer instanceBuffer{{
         .size = 32'000'000,
@@ -246,6 +263,7 @@ int main() {
     diagnostics::DiagnosticsBundleOptions bundleOptions;
     bundleOptions.assetCatalog = &assetCatalog;
     bundleOptions.assetCatalogOptions.name = "dense-asset-catalog";
+    bundleOptions.assetCatalogOptions.groupTags.push_back("lidar");
     bundleOptions.renderBatches.push_back({
         .batch = &batch,
         .options = {
@@ -264,6 +282,9 @@ int main() {
     const auto& bundle = bundleResult.value();
     TRUFFLE_CHECK(bundle.hasAssetCatalog);
     TRUFFLE_CHECK(bundle.assetCatalog.validation.issues.size() == 1);
+    TRUFFLE_CHECK(bundle.assetCatalog.groups.size() == 1);
+    TRUFFLE_CHECK(bundle.assetCatalog.groups.front().name ==
+                  "lidar-detections");
     TRUFFLE_CHECK(bundle.renderBatches.size() == 1);
     TRUFFLE_CHECK(bundle.hasFrameGraph);
     TRUFFLE_CHECK(bundle.hasRendererStats);

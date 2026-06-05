@@ -75,6 +75,12 @@ const char* severity_name(DiagnosticSeverity severity) noexcept {
 const char* asset_validation_issue_kind_name(
     assets::AssetValidationIssueKind kind) noexcept {
     switch (kind) {
+    case assets::AssetValidationIssueKind::MissingGroup:
+        return "MissingGroup";
+    case assets::AssetValidationIssueKind::MissingGeometryStream:
+        return "MissingGeometryStream";
+    case assets::AssetValidationIssueKind::MissingTexture:
+        return "MissingTexture";
     case assets::AssetValidationIssueKind::MissingMesh:
         return "MissingMesh";
     case assets::AssetValidationIssueKind::InvalidMaterialReference:
@@ -119,6 +125,41 @@ const char* asset_attribute_name(assets::AttributeSemantic semantic) noexcept {
         return "Custom";
     }
     return "Unknown";
+}
+
+bool contains_asset_id(const std::vector<assets::AssetId>& ids,
+                       assets::AssetId id) noexcept {
+    return std::any_of(
+        ids.begin(), ids.end(),
+        [id](assets::AssetId candidate) {
+            return candidate == id;
+        });
+}
+
+void append_unique_asset_id(std::vector<assets::AssetId>& ids,
+                            assets::AssetId id) {
+    if (!contains_asset_id(ids, id)) {
+        ids.push_back(id);
+    }
+}
+
+std::vector<assets::AssetId> resolve_asset_group_ids(
+    const assets::AssetCatalog& catalog,
+    const AssetCatalogInspectionOptions& options) {
+    std::vector<assets::AssetId> ids;
+    ids.reserve(options.groupIds.size());
+    for (const auto groupId : options.groupIds) {
+        append_unique_asset_id(ids, groupId);
+    }
+    for (const auto& tag : options.groupTags) {
+        for (const auto groupId : catalog.group_ids_with_tag(tag)) {
+            append_unique_asset_id(ids, groupId);
+        }
+    }
+    if (options.includeGroups && ids.empty() && options.groupTags.empty()) {
+        ids = catalog.group_ids();
+    }
+    return ids;
 }
 
 std::string find_node_label(const FrameGraphInspectionOptions& options,
@@ -173,6 +214,21 @@ AssetCatalogSummary summarize_asset_catalog(
     summary.stats = catalog.stats();
     if (options.validateMeshMaterials) {
         summary.validation = catalog.validate_all_mesh_materials();
+    }
+    const auto groupIds = resolve_asset_group_ids(catalog, options);
+    summary.groups.reserve(groupIds.size());
+    for (const auto groupId : groupIds) {
+        AssetGroupSummary groupSummary;
+        groupSummary.group = groupId;
+        if (auto stats = catalog.group_stats(groupId); stats.ok()) {
+            groupSummary.name = stats.value().name;
+            groupSummary.tags = stats.value().tags;
+            groupSummary.stats = stats.value().stats;
+        }
+        if (options.validateMeshMaterials) {
+            groupSummary.validation = catalog.validate_group(groupId);
+        }
+        summary.groups.push_back(std::move(groupSummary));
     }
     return summary;
 }
@@ -456,10 +512,36 @@ std::string format_asset_catalog_summary(const AssetCatalogSummary& summary) {
     for (const auto& issue : summary.validation.issues) {
         out << "\n  asset_issue kind="
             << asset_validation_issue_kind_name(issue.kind)
+            << " asset=" << issue.asset.value
+            << " group=" << issue.group.value
             << " mesh=" << issue.mesh.value
             << " material=" << issue.material.value
             << " attribute=" << asset_attribute_name(issue.attribute)
             << " message=" << issue.message;
+    }
+    for (const auto& group : summary.groups) {
+        out << "\n  asset_group id=" << group.group.value
+            << " name=" << group.name
+            << " geometryStreams=" << group.stats.geometryStreamCount
+            << " textures=" << group.stats.textureCount
+            << " materials=" << group.stats.materialCount
+            << " meshes=" << group.stats.meshCount
+            << " elements=" << group.stats.totalGeometryElements
+            << " bytes=" << group.stats.totalGeometryBytes
+            << " validationIssues=" << group.validation.issues.size();
+        for (const auto& tag : group.tags) {
+            out << "\n    tag " << tag;
+        }
+        for (const auto& issue : group.validation.issues) {
+            out << "\n    asset_issue kind="
+                << asset_validation_issue_kind_name(issue.kind)
+                << " asset=" << issue.asset.value
+                << " group=" << issue.group.value
+                << " mesh=" << issue.mesh.value
+                << " material=" << issue.material.value
+                << " attribute=" << asset_attribute_name(issue.attribute)
+                << " message=" << issue.message;
+        }
     }
     return out.str();
 }

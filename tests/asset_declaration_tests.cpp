@@ -178,6 +178,44 @@ int main() {
     TRUFFLE_CHECK(initialStats.largestGeometryStreamBytes ==
                   detections.byteSize);
 
+    AssetGroupDesc denseGroup;
+    denseGroup.id = AssetId{31};
+    denseGroup.name = "dense-detections";
+    denseGroup.tags = {"dense", "lidar"};
+    denseGroup.geometryStreams.push_back(detections.id);
+    denseGroup.textures.push_back(texture.id);
+    denseGroup.materials.push_back(material.id);
+    denseGroup.meshes.push_back(mesh.id);
+    TRUFFLE_CHECK(catalog.add_group(denseGroup).ok());
+    TRUFFLE_CHECK(catalog.group_count() == 1);
+    TRUFFLE_CHECK(catalog.group(denseGroup.id) != nullptr);
+    TRUFFLE_CHECK(catalog.validate_group(denseGroup.id).ok());
+    const auto groupStats = catalog.group_stats(denseGroup.id);
+    TRUFFLE_CHECK(groupStats.ok());
+    TRUFFLE_CHECK(groupStats.value().group == denseGroup.id);
+    TRUFFLE_CHECK(groupStats.value().name == "dense-detections");
+    TRUFFLE_CHECK(groupStats.value().tags.size() == 2);
+    TRUFFLE_CHECK(groupStats.value().stats.geometryStreamCount == 1);
+    TRUFFLE_CHECK(groupStats.value().stats.textureCount == 1);
+    TRUFFLE_CHECK(groupStats.value().stats.materialCount == 1);
+    TRUFFLE_CHECK(groupStats.value().stats.meshCount == 1);
+    TRUFFLE_CHECK(groupStats.value().stats.externalGeometryStreamCount == 1);
+    TRUFFLE_CHECK(groupStats.value().stats.totalGeometryBytes ==
+                  detections.byteSize);
+    const auto allGroupIds = catalog.group_ids();
+    TRUFFLE_CHECK(allGroupIds.size() == 1);
+    const auto denseGroupIds = catalog.group_ids_with_tag("dense");
+    TRUFFLE_CHECK(denseGroupIds.size() == 1);
+    TRUFFLE_CHECK(denseGroupIds.front() == denseGroup.id);
+    TRUFFLE_CHECK(catalog.group_ids_with_tag("radar").empty());
+
+    AssetGroupDesc invalidGroup;
+    invalidGroup.name = "invalid";
+    const auto invalidGroupStatus = catalog.add_group(invalidGroup);
+    TRUFFLE_CHECK(!invalidGroupStatus.ok());
+    TRUFFLE_CHECK(invalidGroupStatus.code ==
+                  truffle::core::StatusCode::invalid_argument);
+
     const auto duplicateStatus = catalog.add_mesh(mesh);
     TRUFFLE_CHECK(!duplicateStatus.ok());
     TRUFFLE_CHECK(duplicateStatus.code ==
@@ -256,6 +294,65 @@ int main() {
     const auto allReport = catalog.validate_all_mesh_materials();
     TRUFFLE_CHECK(!allReport.ok());
     TRUFFLE_CHECK(allReport.issues.size() == 4);
+
+    AssetGroupDesc brokenGroup;
+    brokenGroup.id = AssetId{33};
+    brokenGroup.name = "broken-detections";
+    brokenGroup.tags = {"dense", "broken"};
+    brokenGroup.geometryStreams.push_back(AssetId{101});
+    brokenGroup.textures.push_back(AssetId{102});
+    brokenGroup.materials.push_back(AssetId{103});
+    brokenGroup.meshes.push_back(missingAttributeMesh.id);
+    brokenGroup.meshes.push_back(AssetId{104});
+    TRUFFLE_CHECK(catalog.add_group(brokenGroup).ok());
+    const auto brokenGroupStats = catalog.group_stats(brokenGroup.id);
+    TRUFFLE_CHECK(brokenGroupStats.ok());
+    TRUFFLE_CHECK(brokenGroupStats.value().stats.geometryStreamCount == 0);
+    TRUFFLE_CHECK(brokenGroupStats.value().stats.textureCount == 0);
+    TRUFFLE_CHECK(brokenGroupStats.value().stats.materialCount == 0);
+    TRUFFLE_CHECK(brokenGroupStats.value().stats.meshCount == 1);
+
+    const auto brokenGroupReport = catalog.validate_group(brokenGroup.id);
+    TRUFFLE_CHECK(!brokenGroupReport.ok());
+    TRUFFLE_CHECK(brokenGroupReport.issues.size() == 6);
+    bool foundMissingStream = false;
+    bool foundMissingTexture = false;
+    bool foundMissingGroupMaterial = false;
+    bool foundGroupMissingMesh = false;
+    std::size_t groupedMissingAttributes = 0;
+    for (const auto& issue : brokenGroupReport.issues) {
+        TRUFFLE_CHECK(issue.group == brokenGroup.id);
+        foundMissingStream =
+            foundMissingStream ||
+            issue.kind == AssetValidationIssueKind::MissingGeometryStream;
+        foundMissingTexture =
+            foundMissingTexture ||
+            issue.kind == AssetValidationIssueKind::MissingTexture;
+        foundMissingGroupMaterial =
+            foundMissingGroupMaterial ||
+            (issue.kind == AssetValidationIssueKind::MissingMaterial &&
+             issue.asset == AssetId{103});
+        foundGroupMissingMesh =
+            foundGroupMissingMesh ||
+            issue.kind == AssetValidationIssueKind::MissingMesh;
+        if (issue.kind == AssetValidationIssueKind::MissingAttribute) {
+            ++groupedMissingAttributes;
+        }
+    }
+    TRUFFLE_CHECK(foundMissingStream);
+    TRUFFLE_CHECK(foundMissingTexture);
+    TRUFFLE_CHECK(foundMissingGroupMaterial);
+    TRUFFLE_CHECK(foundGroupMissingMesh);
+    TRUFFLE_CHECK(groupedMissingAttributes == 2);
+
+    const auto missingGroupReport = catalog.validate_group(AssetId{199});
+    TRUFFLE_CHECK(!missingGroupReport.ok());
+    TRUFFLE_CHECK(missingGroupReport.issues.front().kind ==
+                  AssetValidationIssueKind::MissingGroup);
+    const auto missingGroupStats = catalog.group_stats(AssetId{199});
+    TRUFFLE_CHECK(!missingGroupStats.ok());
+    TRUFFLE_CHECK(missingGroupStats.status().code ==
+                  truffle::core::StatusCode::unavailable);
 
     AssetCatalog cleanCatalog;
     TRUFFLE_CHECK(cleanCatalog.add_material(material).ok());

@@ -34,6 +34,7 @@ enum class AssetKind {
     GeometryStream,
     Material,
     Texture,
+    Group,
 };
 
 enum class DataResidency {
@@ -198,7 +199,20 @@ struct MeshAssetDesc {
     std::vector<GeometryStreamDesc> streams;
 };
 
+struct AssetGroupDesc {
+    AssetId id;
+    std::string name;
+    std::vector<std::string> tags;
+    std::vector<AssetId> geometryStreams;
+    std::vector<AssetId> textures;
+    std::vector<AssetId> materials;
+    std::vector<AssetId> meshes;
+};
+
 enum class AssetValidationIssueKind {
+    MissingGroup,
+    MissingGeometryStream,
+    MissingTexture,
     MissingMesh,
     InvalidMaterialReference,
     MissingMaterial,
@@ -207,6 +221,8 @@ enum class AssetValidationIssueKind {
 
 struct AssetValidationIssue {
     AssetValidationIssueKind kind = AssetValidationIssueKind::MissingAttribute;
+    AssetId asset;
+    AssetId group;
     AssetId mesh;
     AssetId material;
     AttributeSemantic attribute = AttributeSemantic::Custom;
@@ -235,25 +251,40 @@ struct AssetCatalogStats {
     std::size_t largestGeometryStreamBytes = 0;
 };
 
+struct AssetGroupStats {
+    AssetId group;
+    std::string name;
+    std::vector<std::string> tags;
+    AssetCatalogStats stats;
+};
+
 class AssetCatalog {
 public:
     [[nodiscard]] core::Status add_geometry_stream(GeometryStreamDesc stream);
     [[nodiscard]] core::Status add_texture(TextureAssetDesc texture);
     [[nodiscard]] core::Status add_material(MaterialAssetDesc material);
     [[nodiscard]] core::Status add_mesh(MeshAssetDesc mesh);
+    [[nodiscard]] core::Status add_group(AssetGroupDesc group);
 
     [[nodiscard]] const GeometryStreamDesc* geometry_stream(
         AssetId id) const noexcept;
     [[nodiscard]] const TextureAssetDesc* texture(AssetId id) const noexcept;
     [[nodiscard]] const MaterialAssetDesc* material(AssetId id) const noexcept;
     [[nodiscard]] const MeshAssetDesc* mesh(AssetId id) const noexcept;
+    [[nodiscard]] const AssetGroupDesc* group(AssetId id) const noexcept;
+    [[nodiscard]] std::vector<AssetId> group_ids() const;
+    [[nodiscard]] std::vector<AssetId> group_ids_with_tag(
+        std::string_view tag) const;
 
     [[nodiscard]] core::Status validate_mesh_material(
         AssetId meshId) const;
     [[nodiscard]] AssetValidationReport validate_mesh_material_report(
         AssetId meshId) const;
     [[nodiscard]] AssetValidationReport validate_all_mesh_materials() const;
+    [[nodiscard]] AssetValidationReport validate_group(AssetId groupId) const;
     [[nodiscard]] AssetCatalogStats stats() const noexcept;
+    [[nodiscard]] core::Result<AssetGroupStats> group_stats(
+        AssetId groupId) const;
 
     [[nodiscard]] std::size_t geometry_stream_count() const noexcept {
         return geometryStreams_.size();
@@ -267,6 +298,9 @@ public:
     [[nodiscard]] std::size_t mesh_count() const noexcept {
         return meshes_.size();
     }
+    [[nodiscard]] std::size_t group_count() const noexcept {
+        return groups_.size();
+    }
 
 private:
     std::unordered_map<AssetId, GeometryStreamDesc, AssetIdHash>
@@ -274,6 +308,7 @@ private:
     std::unordered_map<AssetId, TextureAssetDesc, AssetIdHash> textures_;
     std::unordered_map<AssetId, MaterialAssetDesc, AssetIdHash> materials_;
     std::unordered_map<AssetId, MeshAssetDesc, AssetIdHash> meshes_;
+    std::unordered_map<AssetId, AssetGroupDesc, AssetIdHash> groups_;
 };
 
 [[nodiscard]] std::size_t attribute_format_size(AttributeFormat format) noexcept;

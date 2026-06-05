@@ -122,6 +122,9 @@ contract-backend extension work.
     metadata issues without running loaders, uploads, or backend code.
   - Added catalog stats snapshots for grouped stream volume and residency counts
     without scanning individual detections or instances.
+  - Added asset catalog groups and tags so tools can partition dense domains like
+    lidar, radar, static meshes, or overlays and request group-level
+    stats/validation without backend work.
   - Added `truffle_diagnostics` / `Truffle::Diagnostics` for opt-in,
     pull-based render-batch, frame-graph, and renderer-stats summaries.
   - Added external diagnostics labels for batches, frame-graph nodes, and
@@ -133,6 +136,8 @@ contract-backend extension work.
   - Added combined diagnostics bundles so tools can pull one report spanning
     asset catalog metadata, render batches, frame graphs, renderer stats, and
     budget findings.
+  - Added group-filtered asset diagnostics so bundle reports can include all
+    groups or selected groups by id/tag.
   - Kept diagnostics separate from render and scene runtime dependencies; normal
     consumers only link the diagnostics target when they want inspection helpers.
   - Added `truffle_assets_tests` and `truffle_diagnostics_tests`, and extended
@@ -155,14 +160,15 @@ contract-backend extension work.
   upload, shader compilation, and material-operation execution are explicitly
   deferred. Catalog lookup and requirement validation check declared metadata
   only; validation reports and stats snapshots collect metadata issues and
-  grouped counts without side effects.
+  grouped counts without side effects. Groups/tags are catalog metadata only:
+  they do not imply loading, upload, or per-element iteration.
 - `truffle_diagnostics` is strict opt-in tooling: no global tracing, no
   background logger, and no dependency from `truffle_render` or `truffle_scene`
   back into diagnostics. Tool-facing labels are passed as diagnostics options
   instead of stored in render objects. Graph dependency/resource usage summaries
   read existing `FrameGraph` declarations only; they do not record runtime
-  events. Budget findings and bundle reports are pull-based checks, not logs or
-  background profiling.
+  events. Budget findings, group-filtered asset summaries, and bundle reports
+  are pull-based checks, not logs or background profiling.
 - Keep active handoff state curated and public-safe. Lasting decisions belong in stable docs or ADRs.
 - Normal feature and fix work targets protected `develop`; stable promotion goes through `master`.
 

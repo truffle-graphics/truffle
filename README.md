@@ -25,8 +25,9 @@ The first implementation line focuses on stable architecture and build contracts
 with backend-neutral APIs and contract-tested backend modules:
 
 - `truffle_core` owns shared status, configuration, and handle primitives.
-- `truffle_assets` defines declarative asset, material-operation, texture, and
-  geometry stream metadata without owning file loading or GPU upload.
+- `truffle_assets` defines declarative asset, material-operation, texture,
+  geometry stream, and group/tag metadata without owning file loading or GPU
+  upload.
 - `truffle_ecs` provides a general-purpose ECS world.
 - `truffle_rhi` defines backend-neutral GPU and presentation contracts.
 - `truffle_backend_null` validates RHI flow without a GPU dependency.
