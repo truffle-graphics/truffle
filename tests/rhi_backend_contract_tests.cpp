@@ -720,6 +720,25 @@ bool has_event_kind(const std::vector<truffle::rhi::BackendEvent>& events,
     return false;
 }
 
+std::uint64_t total_memory_budget(
+    const std::vector<truffle::rhi::MemoryHeapInfo>& heaps) {
+    std::uint64_t total = 0;
+    for (const auto& heap : heaps) {
+        total += heap.budgetBytes;
+    }
+    return total;
+}
+
+bool has_dedicated_memory_heap(
+    const std::vector<truffle::rhi::MemoryHeapInfo>& heaps) {
+    for (const auto& heap : heaps) {
+        if (heap.dedicated) {
+            return true;
+        }
+    }
+    return false;
+}
+
 int verify_backend_diagnostics_contract(truffle::rhi::IBackend& backend) {
     const auto stats = backend.backend_stats();
     TRUFFLE_CHECK(stats.devicesCreated == 1);
@@ -777,6 +796,12 @@ int verify_backend_diagnostics_contract(truffle::rhi::IBackend& backend) {
                   reportedCaps.limits.maxDescriptorArrayElements);
     TRUFFLE_CHECK(report.maxBindlessResources ==
                   reportedCaps.limits.maxBindlessResources);
+    TRUFFLE_CHECK(report.unifiedMemory == reportedCaps.features.unifiedMemory);
+    TRUFFLE_CHECK(report.memoryHeapCount == reportedCaps.memoryHeaps.size());
+    TRUFFLE_CHECK(report.memoryBudgetBytes ==
+                  total_memory_budget(reportedCaps.memoryHeaps));
+    TRUFFLE_CHECK(report.dedicatedMemoryHeap ==
+                  has_dedicated_memory_heap(reportedCaps.memoryHeaps));
     TRUFFLE_CHECK(report.formatCount > 0);
     TRUFFLE_CHECK(report.shaderFormatCount > 0);
     TRUFFLE_CHECK(report.stats.devicesCreated == stats.devicesCreated);

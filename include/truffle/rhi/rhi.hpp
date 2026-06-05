@@ -389,6 +389,10 @@ struct BackendParityReport {
     bool bindlessResources = false;
     std::uint32_t maxDescriptorArrayElements = 0;
     std::uint32_t maxBindlessResources = 0;
+    bool unifiedMemory = false;
+    std::size_t memoryHeapCount = 0;
+    std::uint64_t memoryBudgetBytes = 0;
+    bool dedicatedMemoryHeap = false;
 };
 
 struct AdapterInfo {
@@ -1079,12 +1083,18 @@ public:
     report.descriptorArrays = supports_descriptor_arrays(caps);
     report.dynamicResourceIndexing = supports_dynamic_resource_indexing(caps);
     report.bindlessResources = supports_bindless_resources(caps);
+    report.unifiedMemory = caps.features.unifiedMemory;
     report.maxFramesInFlight = caps.maxFramesInFlight;
     report.maxResourceBindings = caps.limits.maxResourceBindings;
     report.maxDescriptorArrayElements = caps.limits.maxDescriptorArrayElements;
     report.maxBindlessResources = caps.limits.maxBindlessResources;
     report.formatCount = caps.formats.size();
     report.shaderFormatCount = caps.shaderFormats.size();
+    report.memoryHeapCount = caps.memoryHeaps.size();
+    for (const auto& heap : caps.memoryHeaps) {
+        report.memoryBudgetBytes += heap.budgetBytes;
+        report.dedicatedMemoryHeap = report.dedicatedMemoryHeap || heap.dedicated;
+    }
     return report;
 }
 

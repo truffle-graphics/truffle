@@ -302,6 +302,14 @@ validation, diagnostics, and backend parity.
     descriptors where existing tests rely on them.
   - Expanded shared backend contract tests for foreign resource misuse and
     wrong-stage shader rejection.
+- **Low-Level Graphics Foundation Slice 9B** — Complete.
+  - Extended `BackendParityReport` with memory-topology fields for unified
+    memory support, memory heap count, total advertised budget, and dedicated
+    heap presence.
+  - Wired `collect_backend_parity_report()` to derive those fields from the
+    first adapter capabilities.
+  - Expanded shared backend contract tests to lock parity report memory fields
+    against backend capability reports.
 
 ## Relevant Decisions And Constraints
 
@@ -331,6 +339,9 @@ validation, diagnostics, and backend parity.
   pair. If shaders are supplied, they must belong to the creating backend and
   match the required stages. Contract compute backends require a compute shader;
   null preserves its shaderless compute-pipeline compatibility path.
+- Backend parity reports now include memory topology summaries; higher layers
+  should use those fields or the underlying capabilities rather than assuming
+  UMA/discrete behavior from backend names.
 - The repository commits only the public doctrine snapshot. The maintainer's
   private Copilot overlay lives in `~/.copilot/copilot-instructions.md` on the
   local machine and must not be copied into repository history.
@@ -358,11 +369,9 @@ core contract tests, package consumer, and transform compute tests.
 
 ## Next Resume Steps
 
-1. Continue backend parity hardening by exposing memory-topology parity details
-   such as unified/discrete memory in `BackendParityReport`.
-2. Expand descriptor array bind-group resource population if a higher layer
+1. Expand descriptor array bind-group resource population if a higher layer
    needs actual array resources rather than only feature-gated layout contracts.
-3. Consider adding a dedicated RHI parity-report executable if JSON needs to
+2. Consider adding a dedicated RHI parity-report executable if JSON needs to
    include live capability counters rather than CI test status rows.
 
 ## Open Questions Or Risks
