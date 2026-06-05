@@ -61,6 +61,11 @@ using core::StatusCode;
         .maxVertexBufferStride = 2048,
         .maxSamplerAnisotropy = 16,
     };
+    caps.descriptorPolicy = {
+        .mappingModel = NativeDescriptorMappingModel::direct_slots,
+        .allocationModel = NativeDescriptorAllocationModel::inline_direct,
+        .flattenedNativeBindings = true,
+    };
     caps.formats = {
         {.format = TextureFormat::rgba8_unorm,
          .sampled = true,

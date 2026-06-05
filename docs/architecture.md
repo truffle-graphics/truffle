@@ -156,6 +156,10 @@ scope and active extension-backend work continuing in parallel:
   expose descriptor footprint summaries (binding count, descriptor counts,
   dynamic-offset count, and native buffer/texture/sampler slot spans) so higher
   layers can size descriptor allocation/caching policies from the public RHI.
+  Capabilities and parity reports now also expose each backend's native
+  descriptor mapping model, allocation model, and whether logical bind groups
+  flatten into one native slot space, so higher layers can align descriptor
+  caching strategy with the backend's actual low-level binding direction.
 - Buffers expose explicit CPU mapping hooks, including `mapped_data()` access for
   mapped-at-creation buffers. The low-level contract treats
   automatic/upload/readback buffer memory as CPU-mappable and rejects

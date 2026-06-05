@@ -47,6 +47,11 @@ using core::StatusCode;
             .maxBindlessResources = 64,
             .maxSamplerAnisotropy = 16,
         },
+        .descriptorPolicy = {
+            .mappingModel = NativeDescriptorMappingModel::direct_slots,
+            .allocationModel = NativeDescriptorAllocationModel::inline_direct,
+            .flattenedNativeBindings = true,
+        },
         .formats = {
             {.format = TextureFormat::rgba8_unorm,
              .sampled = true,

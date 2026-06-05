@@ -519,6 +519,15 @@ validation, diagnostics, and backend parity.
     queries derived from retained layout/group descriptors.
   - Expanded core and shared backend contract tests for footprint counts, array
     sizing, dynamic-offset cardinality, and namespace slot-span reporting.
+- **Low-Level Graphics Foundation Slice 9R** — Complete.
+  - Added explicit backend-neutral descriptor policy reporting to capabilities
+    and parity output: native descriptor mapping model, allocation model, and
+    whether native bindings are flattened across bind-group boundaries.
+  - Wired null, Metal, Vulkan, OpenGL, and Direct3D capability tables with
+    truthful contract-era descriptor policy models.
+  - Added helper queries for flattened vs group-preserving descriptor models.
+  - Extended shared backend contract and live parity reporter coverage so the
+    reported descriptor policy matches backend capability data.
 
 ## Relevant Decisions And Constraints
 
@@ -603,6 +612,10 @@ validation, diagnostics, and backend parity.
   derived from the public descriptor model. Higher layers can use these counts
   and native slot spans to plan descriptor caches/arenas without backend-private
   introspection.
+- Backend capabilities and parity reports now expose the native descriptor
+  mapping/allocation model and whether bind groups flatten into one native slot
+  space. Higher layers should combine that policy with descriptor footprints
+  before choosing cache or arena behavior.
 - The repository commits only the public doctrine snapshot. The maintainer's
   private Copilot overlay lives in `~/.copilot/copilot-instructions.md` on the
   local machine and must not be copied into repository history.
@@ -637,7 +650,7 @@ compute tests.
 1. Return to deeper backend-native descriptor allocation/mapping policy now that
    bind-group lifetime, native slots, depth-stencil attachments, and stencil
    pipeline/reference state are all explicit at the public RHI layer and
-   descriptor footprints are queryable.
+   descriptor footprints plus descriptor policy are queryable.
 2. Continue expanding shared contract tests around descriptor caching/allocation
    policy so higher-level renderer work can reuse descriptors without inventing
    backend-specific policy.

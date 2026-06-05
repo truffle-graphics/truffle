@@ -194,6 +194,13 @@ int main() {
     capabilities.limits.maxDescriptorArrayElements = 4;
     capabilities.limits.maxSamplerAnisotropy = 8;
     capabilities.features.descriptorArrays = true;
+    capabilities.descriptorPolicy = {
+        .mappingModel =
+            truffle::rhi::NativeDescriptorMappingModel::direct_slots,
+        .allocationModel =
+            truffle::rhi::NativeDescriptorAllocationModel::inline_direct,
+        .flattenedNativeBindings = true,
+    };
     capabilities.memoryHeaps = {{
         .kind = truffle::rhi::MemoryHeapKind::unified,
     }};
@@ -676,6 +683,24 @@ int main() {
     bindlessCaps.features.bindlessResources = true;
     bindlessCaps.limits.maxBindlessResources = 3;
     TRUFFLE_CHECK(truffle::rhi::supports_bindless_resources(bindlessCaps));
+    TRUFFLE_CHECK(
+        truffle::rhi::descriptor_policy_flattens_native_bindings(capabilities));
+    TRUFFLE_CHECK(
+        !truffle::rhi::descriptor_policy_preserves_group_bindings(capabilities));
+    auto groupedDescriptorCaps = capabilities;
+    groupedDescriptorCaps.descriptorPolicy = {
+        .mappingModel =
+            truffle::rhi::NativeDescriptorMappingModel::descriptor_sets,
+        .allocationModel =
+            truffle::rhi::NativeDescriptorAllocationModel::bind_group_owned,
+        .flattenedNativeBindings = false,
+    };
+    TRUFFLE_CHECK(
+        !truffle::rhi::descriptor_policy_flattens_native_bindings(
+            groupedDescriptorCaps));
+    TRUFFLE_CHECK(
+        truffle::rhi::descriptor_policy_preserves_group_bindings(
+            groupedDescriptorCaps));
     TRUFFLE_CHECK(truffle::rhi::validation::pipeline_layout_valid({
         .bindings = {{
             .bindingIndex = 0,

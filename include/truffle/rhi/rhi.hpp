@@ -291,6 +291,19 @@ enum class BindingResourceType {
     sampler,
 };
 
+enum class NativeDescriptorMappingModel {
+    direct_slots,
+    descriptor_sets,
+    descriptor_tables,
+    argument_buffer,
+};
+
+enum class NativeDescriptorAllocationModel {
+    inline_direct,
+    bind_group_owned,
+    pooled,
+};
+
 enum class SamplerFilter {
     nearest,
     linear,
@@ -473,6 +486,14 @@ struct DeviceLimits {
     std::uint32_t maxBindGroups = 4;
 };
 
+struct DescriptorPolicyInfo {
+    NativeDescriptorMappingModel mappingModel =
+        NativeDescriptorMappingModel::direct_slots;
+    NativeDescriptorAllocationModel allocationModel =
+        NativeDescriptorAllocationModel::inline_direct;
+    bool flattenedNativeBindings = false;
+};
+
 struct FormatSupport {
     TextureFormat format = TextureFormat::rgba8_unorm;
     bool sampled = false;
@@ -496,6 +517,7 @@ struct Capabilities {
     QueueCapabilities queues;
     FeatureSupport features;
     DeviceLimits limits;
+    DescriptorPolicyInfo descriptorPolicy;
     std::vector<FormatSupport> formats;
     std::vector<MemoryHeapInfo> memoryHeaps;
     std::vector<PresentMode> presentModes;
@@ -576,6 +598,11 @@ struct BackendParityReport {
     std::size_t memoryHeapCount = 0;
     std::uint64_t memoryBudgetBytes = 0;
     bool dedicatedMemoryHeap = false;
+    NativeDescriptorMappingModel descriptorMappingModel =
+        NativeDescriptorMappingModel::direct_slots;
+    NativeDescriptorAllocationModel descriptorAllocationModel =
+        NativeDescriptorAllocationModel::inline_direct;
+    bool flattenedNativeBindings = false;
 };
 
 struct AdapterInfo {
@@ -688,6 +715,16 @@ struct AdapterInfo {
     return supports_dynamic_resource_indexing(capabilities) &&
            capabilities.features.bindlessResources &&
            capabilities.limits.maxBindlessResources > 1;
+}
+
+[[nodiscard]] constexpr bool descriptor_policy_flattens_native_bindings(
+    const Capabilities& capabilities) noexcept {
+    return capabilities.descriptorPolicy.flattenedNativeBindings;
+}
+
+[[nodiscard]] constexpr bool descriptor_policy_preserves_group_bindings(
+    const Capabilities& capabilities) noexcept {
+    return !descriptor_policy_flattens_native_bindings(capabilities);
 }
 
 [[nodiscard]] constexpr bool has_flag(BufferUsageFlags flags,
@@ -1516,6 +1553,10 @@ public:
     report.formatCount = caps.formats.size();
     report.shaderFormatCount = caps.shaderFormats.size();
     report.memoryHeapCount = caps.memoryHeaps.size();
+    report.descriptorMappingModel = caps.descriptorPolicy.mappingModel;
+    report.descriptorAllocationModel = caps.descriptorPolicy.allocationModel;
+    report.flattenedNativeBindings =
+        caps.descriptorPolicy.flattenedNativeBindings;
     for (const auto& heap : caps.memoryHeaps) {
         report.memoryBudgetBytes += heap.budgetBytes;
         report.dedicatedMemoryHeap = report.dedicatedMemoryHeap || heap.dedicated;

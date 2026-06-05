@@ -46,6 +46,11 @@ using core::StatusCode;
             .maxVertexBufferStride = 2048,
             .maxSamplerAnisotropy = 16,
         },
+        .descriptorPolicy = {
+            .mappingModel = NativeDescriptorMappingModel::descriptor_tables,
+            .allocationModel = NativeDescriptorAllocationModel::bind_group_owned,
+            .flattenedNativeBindings = false,
+        },
         .formats = {
             {.format = TextureFormat::rgba8_unorm,
              .sampled = true,

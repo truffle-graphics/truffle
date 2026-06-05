@@ -91,6 +91,12 @@ int verify_capability_contract(const truffle::rhi::IBackend& backend,
 
     const auto& caps = device.capabilities();
     TRUFFLE_CHECK(adapter.capabilities.maxFramesInFlight == caps.maxFramesInFlight);
+    TRUFFLE_CHECK(adapter.capabilities.descriptorPolicy.mappingModel ==
+                  caps.descriptorPolicy.mappingModel);
+    TRUFFLE_CHECK(adapter.capabilities.descriptorPolicy.allocationModel ==
+                  caps.descriptorPolicy.allocationModel);
+    TRUFFLE_CHECK(adapter.capabilities.descriptorPolicy.flattenedNativeBindings ==
+                  caps.descriptorPolicy.flattenedNativeBindings);
     TRUFFLE_CHECK(caps.maxFramesInFlight >= 1);
     TRUFFLE_CHECK(truffle::rhi::supports_queue(caps, truffle::rhi::QueueKind::graphics));
     TRUFFLE_CHECK(truffle::rhi::supports_queue(caps, truffle::rhi::QueueKind::compute));
@@ -153,6 +159,32 @@ int verify_capability_contract(const truffle::rhi::IBackend& backend,
 
     const bool expectsReflection = backend.kind() != truffle::rhi::BackendKind::null_backend;
     TRUFFLE_CHECK(caps.features.shaderReflection == expectsReflection);
+
+    switch (backend.kind()) {
+    case truffle::rhi::BackendKind::null_backend:
+    case truffle::rhi::BackendKind::metal:
+    case truffle::rhi::BackendKind::opengl:
+        TRUFFLE_CHECK(caps.descriptorPolicy.mappingModel ==
+                      truffle::rhi::NativeDescriptorMappingModel::direct_slots);
+        TRUFFLE_CHECK(caps.descriptorPolicy.allocationModel ==
+                      truffle::rhi::NativeDescriptorAllocationModel::inline_direct);
+        TRUFFLE_CHECK(caps.descriptorPolicy.flattenedNativeBindings);
+        break;
+    case truffle::rhi::BackendKind::vulkan:
+        TRUFFLE_CHECK(caps.descriptorPolicy.mappingModel ==
+                      truffle::rhi::NativeDescriptorMappingModel::descriptor_sets);
+        TRUFFLE_CHECK(caps.descriptorPolicy.allocationModel ==
+                      truffle::rhi::NativeDescriptorAllocationModel::bind_group_owned);
+        TRUFFLE_CHECK(!caps.descriptorPolicy.flattenedNativeBindings);
+        break;
+    case truffle::rhi::BackendKind::direct3d:
+        TRUFFLE_CHECK(caps.descriptorPolicy.mappingModel ==
+                      truffle::rhi::NativeDescriptorMappingModel::descriptor_tables);
+        TRUFFLE_CHECK(caps.descriptorPolicy.allocationModel ==
+                      truffle::rhi::NativeDescriptorAllocationModel::bind_group_owned);
+        TRUFFLE_CHECK(!caps.descriptorPolicy.flattenedNativeBindings);
+        break;
+    }
 
     return 0;
 }
@@ -1006,6 +1038,12 @@ int verify_backend_diagnostics_contract(truffle::rhi::IBackend& backend) {
     TRUFFLE_CHECK(report.maxSamplerAnisotropy ==
                   reportedCaps.limits.maxSamplerAnisotropy);
     TRUFFLE_CHECK(report.unifiedMemory == reportedCaps.features.unifiedMemory);
+    TRUFFLE_CHECK(report.descriptorMappingModel ==
+                  reportedCaps.descriptorPolicy.mappingModel);
+    TRUFFLE_CHECK(report.descriptorAllocationModel ==
+                  reportedCaps.descriptorPolicy.allocationModel);
+    TRUFFLE_CHECK(report.flattenedNativeBindings ==
+                  reportedCaps.descriptorPolicy.flattenedNativeBindings);
     TRUFFLE_CHECK(report.memoryHeapCount == reportedCaps.memoryHeaps.size());
     TRUFFLE_CHECK(report.memoryBudgetBytes ==
                   total_memory_budget(reportedCaps.memoryHeaps));

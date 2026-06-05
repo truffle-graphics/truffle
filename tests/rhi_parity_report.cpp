@@ -23,6 +23,34 @@
 
 namespace {
 
+const char* descriptor_mapping_model_name(
+    truffle::rhi::NativeDescriptorMappingModel model) noexcept {
+    switch (model) {
+    case truffle::rhi::NativeDescriptorMappingModel::direct_slots:
+        return "direct_slots";
+    case truffle::rhi::NativeDescriptorMappingModel::descriptor_sets:
+        return "descriptor_sets";
+    case truffle::rhi::NativeDescriptorMappingModel::descriptor_tables:
+        return "descriptor_tables";
+    case truffle::rhi::NativeDescriptorMappingModel::argument_buffer:
+        return "argument_buffer";
+    }
+    return "unknown";
+}
+
+const char* descriptor_allocation_model_name(
+    truffle::rhi::NativeDescriptorAllocationModel model) noexcept {
+    switch (model) {
+    case truffle::rhi::NativeDescriptorAllocationModel::inline_direct:
+        return "inline_direct";
+    case truffle::rhi::NativeDescriptorAllocationModel::bind_group_owned:
+        return "bind_group_owned";
+    case truffle::rhi::NativeDescriptorAllocationModel::pooled:
+        return "pooled";
+    }
+    return "unknown";
+}
+
 const char* backend_name(truffle::rhi::BackendKind kind) noexcept {
     switch (kind) {
     case truffle::rhi::BackendKind::null_backend:
@@ -41,6 +69,17 @@ const char* backend_name(truffle::rhi::BackendKind kind) noexcept {
 
 void append_bool(std::ostream& out, const char* name, bool value, bool comma = true) {
     out << "      \"" << name << "\": " << (value ? "true" : "false");
+    if (comma) {
+        out << ',';
+    }
+    out << '\n';
+}
+
+void append_string(std::ostream& out,
+                   const char* name,
+                   const char* value,
+                   bool comma = true) {
+    out << "      \"" << name << "\": \"" << value << "\"";
     if (comma) {
         out << ',';
     }
@@ -107,6 +146,12 @@ void append_report(std::ostream& out, const truffle::rhi::BackendParityReport& r
     append_bool(out, "dynamicResourceIndexing", report.dynamicResourceIndexing);
     append_bool(out, "bindlessResources", report.bindlessResources);
     append_bool(out, "unifiedMemory", report.unifiedMemory);
+    append_string(out, "descriptorMappingModel",
+                  descriptor_mapping_model_name(report.descriptorMappingModel));
+    append_string(out, "descriptorAllocationModel",
+                  descriptor_allocation_model_name(
+                      report.descriptorAllocationModel));
+    append_bool(out, "flattenedNativeBindings", report.flattenedNativeBindings);
     append_uint(out, "maxFramesInFlight", report.maxFramesInFlight);
     append_uint(out, "maxResourceBindings", report.maxResourceBindings);
     append_uint(out, "maxVertexAttributes", report.maxVertexAttributes);
