@@ -816,6 +816,42 @@ validation, diagnostics, and backend parity.
     placement and cross-pool quota consumption stay aligned across retained
     helpers and all built-in backends.
 
+- **Low-Level Graphics Foundation Slice 9AS** — Complete.
+  - Added backend-neutral batch execution helpers on top of quota planning so
+    accepted simulated placements can be committed against live runtime
+    coordinators through one low-level path.
+  - Execution now sequences reconcile, reclaim, reserve, and rollback-aware
+    release of newly committed reservations when a later batch step fails, while
+    surfacing detailed per-request execution results.
+  - Expanded core and shared backend contract coverage so successful
+    cross-pool batch commits and incompatible-coordinator rollback behavior stay
+    aligned across retained helpers and all built-in backends.
+
+- **Low-Level Graphics Foundation Slice 9AT** — Complete.
+  - Added backend-neutral batch plan revalidation helpers so saved quota and
+    execution plans can be checked against live coordinator state before commit.
+  - Revalidation now simulates selected placements against current coordinator
+    headroom/drift state, reports stale or invalid entries, and prevents batch
+    execution from proceeding when a saved plan no longer safely covers live
+    low-level requirements.
+  - Expanded core and shared backend contract coverage so valid batch plans
+    revalidate cleanly, drifted out-of-band mutations invalidate stale plans,
+    and execution now fails early on stale plans across retained helpers and all
+    built-in backends.
+
+- **Low-Level Graphics Foundation Slice 9AU** — Complete.
+  - Added backend-neutral batch plan repair/rewrite helpers so saved batch quota
+    or execution plans can be adapted to current live coordinator state instead
+    of only being rejected after revalidation.
+  - Repair now replays the original reservation intents against current
+    low-level coordinator state, returns a replacement batch admission plan, and
+    reports per-request rewrite metadata for changed coordinator selection,
+    admission action, or slot placement.
+  - Expanded core and shared backend contract coverage so drifted saved plans
+    report repairable rewrites and incompatible saved placements can be repaired
+    into executable replacement plans across retained helpers and all built-in
+    backends.
+
 ## Relevant Decisions And Constraints
 
 - Truffle is embeddable graphics infrastructure, not an application host or a dedicated game engine.
@@ -970,6 +1006,17 @@ validation, diagnostics, and backend parity.
   layers should use the batch planner when they need to order several
   descriptor requests against shared coordinator capacity instead of consuming
   one-request admission plans independently.
+- Runtime batch quota plans can now also be executed through a rollback-aware
+  low-level helper. Higher layers should use that execution path when they want
+  simulated batch placements committed against live coordinators instead of
+  sequencing reconcile/reclaim/reserve calls manually.
+- Saved batch quota/execution plans can now also be revalidated against live
+  coordinator state. Higher layers should revalidate saved plans before
+  execution when coordinator state may have drifted since planning time.
+- Saved batch quota/execution plans can now also be repaired into replacement
+  batch admission plans. Higher layers should prefer the public repair helper
+  over ad hoc re-planning so stale-plan detection and rewrite metadata stay
+  aligned with the same low-level batch admission rules.
 - The repository commits only the public doctrine snapshot. The maintainer's
   private Copilot overlay lives in `~/.copilot/copilot-instructions.md` on the
   local machine and must not be copied into repository history.
@@ -1001,12 +1048,11 @@ compute tests.
 
 ## Next Resume Steps
 
-1. Decide whether the next descriptor-runtime slice should add explicit batch
-   execution/rollback helpers on top of quota planning so accepted simulated
-   placements can be committed to live coordinators through one low-level path.
-2. If descriptor runtime work continues, focus that next slice on low-level
-   batch reservation execution and rollback semantics rather than broadening
-   higher layers.
+1. Decide whether the next descriptor-runtime slice should add divergence-local
+   repair metadata or an atomic repair-and-execute helper on top of the new
+   replacement-plan primitive.
+2. If descriptor runtime work continues, keep the focus on batch repair/execution
+   depth rather than broadening into higher renderer layers.
 
 ## Open Questions Or Risks
 
@@ -1032,9 +1078,11 @@ compute tests.
   concrete reclamation planning are now also available from those synchronized
   runtime snapshots, coordinators can now be arbitrated as a group, and
   prospective reservations can be evaluated through explicit admission-control
-  planning, and several requests can now be quota-planned as a batch; the
-  remaining gap is executing those accepted batch plans through one rollback-
-  aware low-level commit path.
+  planning, several requests can now be quota-planned as a batch, accepted
+  batch plans can now be executed through one rollback-aware low-level commit
+  path, revalidated before execution, and repaired into replacement plans when
+  live coordinator state changes; the remaining gap is whether repair should
+  grow divergence-local deltas or an atomic repair-and-execute bridge.
 - Bindless and dynamic-resource-indexing are feature-gated and descriptor arrays
   can now be populated, but backend-native bindless heap/argument-buffer mapping
   remains future work before higher layers can use bindless descriptors

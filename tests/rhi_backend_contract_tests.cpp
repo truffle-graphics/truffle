@@ -2659,12 +2659,143 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
                       reclaim_then_admit);
     TRUFFLE_CHECK(batchAdmissionPlan.decisions[2].admission.coordinatorIndex == 1);
     TRUFFLE_CHECK(batchAdmissionPlan.remainingRecoverableBindGroupRelief >= 9);
+    const auto batchRevalidationPlan =
+        truffle::rhi::bind_group_descriptor_runtime_revalidate_batch_admission_plan(
+            arbitrationCoordinators, batchAdmissionPlan);
+    TRUFFLE_CHECK(batchRevalidationPlan.valid);
+    TRUFFLE_CHECK(batchRevalidationPlan.validSelectedCount == 3);
+    TRUFFLE_CHECK(batchRevalidationPlan.invalidSelectedCount == 0);
+    TRUFFLE_CHECK(batchRevalidationPlan.staleSelectedCount == 0);
+    std::array<truffle::rhi::BindGroupDescriptorRuntimeCoordinator*, 2>
+        mutableArbitrationCoordinators = {&persistentCoordinator,
+                                          &perFrameCoordinator};
+    const auto batchExecutionResult =
+        truffle::rhi::bind_group_descriptor_runtime_execute_batch_admission_plan(
+            mutableArbitrationCoordinators, batchAdmissionPlan);
+    TRUFFLE_CHECK(batchExecutionResult.status.ok());
+    TRUFFLE_CHECK(batchExecutionResult.committedCount == 3);
+    TRUFFLE_CHECK(batchExecutionResult.reclaimedEntryCount == 2);
+    TRUFFLE_CHECK(batchExecutionResult.entries[1].releasedBindGroupCount == 4);
+    TRUFFLE_CHECK(batchExecutionResult.entries[2].releasedBindGroupCount == 10);
+    TRUFFLE_CHECK(persistentCoordinator.state().trackedReservationCount == 2);
+    TRUFFLE_CHECK(perFrameCoordinator.state().trackedReservationCount == 2);
+    auto staleBatchRequest =
+        descriptorReuseMaterializer.value()->make_reservation_request(1);
+    TRUFFLE_CHECK(staleBatchRequest.ok());
+    auto staleBatchReservation =
+        descriptorArena.value()->reserve(staleBatchRequest.value());
+    TRUFFLE_CHECK(staleBatchReservation.ok());
+    TRUFFLE_CHECK(
+        descriptorReuseMaterializer.value()->observe_reservation(
+            staleBatchReservation.value())
+            .ok());
+    const auto staleBatchRevalidationPlan =
+        truffle::rhi::bind_group_descriptor_runtime_revalidate_batch_admission_plan(
+            arbitrationCoordinators, batchAdmissionPlan);
+    TRUFFLE_CHECK(!staleBatchRevalidationPlan.valid);
+    TRUFFLE_CHECK(staleBatchRevalidationPlan.invalidSelectedCount >= 1);
+    TRUFFLE_CHECK(staleBatchRevalidationPlan.firstInvalidRequestIndex.has_value());
+    TRUFFLE_CHECK(*staleBatchRevalidationPlan.firstInvalidRequestIndex == 0);
+    const auto staleBatchRepairPlan =
+        truffle::rhi::bind_group_descriptor_runtime_repair_batch_admission_plan(
+            arbitrationCoordinators, batchAdmissionPlan);
+    TRUFFLE_CHECK(staleBatchRepairPlan.repairable);
+    TRUFFLE_CHECK(staleBatchRepairPlan.changed);
+    TRUFFLE_CHECK(staleBatchRepairPlan.shouldReplaceSavedPlan);
+    TRUFFLE_CHECK(!staleBatchRepairPlan.revalidation.valid);
+    TRUFFLE_CHECK(staleBatchRepairPlan.rewrittenSelectedCount >= 1);
+    TRUFFLE_CHECK(staleBatchRepairPlan.entries.size() == 3);
+    TRUFFLE_CHECK(staleBatchRepairPlan.entries[0].changed);
+    TRUFFLE_CHECK(staleBatchRepairPlan.entries[0].savedSelected);
+    TRUFFLE_CHECK(staleBatchRepairPlan.entries[0].repairedSelected);
+    const auto staleBatchExecutionResult =
+        truffle::rhi::bind_group_descriptor_runtime_execute_batch_admission_plan(
+            mutableArbitrationCoordinators, batchAdmissionPlan);
+    TRUFFLE_CHECK(!staleBatchExecutionResult.status.ok());
+    TRUFFLE_CHECK(staleBatchExecutionResult.status.code ==
+                  truffle::core::StatusCode::invalid_state);
+    TRUFFLE_CHECK(staleBatchExecutionResult.committedCount == 0);
+    TRUFFLE_CHECK(staleBatchExecutionResult.failedRequestIndex.has_value());
+    TRUFFLE_CHECK(*staleBatchExecutionResult.failedRequestIndex == 0);
+    TRUFFLE_CHECK(persistentCoordinator.reconcile().ok());
+    TRUFFLE_CHECK(
+        persistentCoordinator.release(staleBatchReservation.value()).ok());
     auto coordinatedRetiredSlot = perFrameCoordinator.retire_slot(1);
     TRUFFLE_CHECK(coordinatedRetiredSlot.ok());
     TRUFFLE_CHECK(coordinatedRetiredSlot.value().releasedReservationCount == 1);
     TRUFFLE_CHECK(perFrameCoordinator.state().trackedReservationCount == 1);
     TRUFFLE_CHECK(perFrameCoordinator.clear().ok());
     TRUFFLE_CHECK(perFrameCoordinator.empty());
+    TRUFFLE_CHECK(persistentCoordinator.clear().ok());
+    auto rollbackExecutionRequest = persistentCoordinator.make_reservation_request(1);
+    TRUFFLE_CHECK(rollbackExecutionRequest.ok());
+    truffle::rhi::BindGroupDescriptorRuntimeBatchAdmissionPlan rollbackBatchPlan;
+    rollbackBatchPlan.decisions.push_back({
+        .requestIndex = 0,
+        .request = {
+            .bindGroupCount = 1,
+            .frameIndex = 0,
+        },
+        .admitted = true,
+        .admission =
+            {
+                .coordinatorIndex = 0,
+                .action = truffle::rhi::BindGroupDescriptorRuntimeAdmissionAction::
+                    admit_now,
+                .request = rollbackExecutionRequest.value(),
+                .targetSlotIndex = 0,
+            },
+    });
+    rollbackBatchPlan.decisions.push_back({
+        .requestIndex = 1,
+        .request = {
+            .bindGroupCount = 1,
+            .frameIndex = 0,
+        },
+        .admitted = true,
+        .admission =
+            {
+                .coordinatorIndex = 1,
+                .action = truffle::rhi::BindGroupDescriptorRuntimeAdmissionAction::
+                    admit_now,
+                .request = rollbackExecutionRequest.value(),
+                .targetSlotIndex = 0,
+            },
+    });
+    std::array<truffle::rhi::BindGroupDescriptorRuntimeCoordinator*, 2>
+        rollbackCoordinators = {&persistentCoordinator, &incompatibleCoordinator};
+    const auto rollbackExecutionResult =
+        truffle::rhi::bind_group_descriptor_runtime_execute_batch_admission_plan(
+            rollbackCoordinators, rollbackBatchPlan);
+    TRUFFLE_CHECK(!rollbackExecutionResult.status.ok());
+    TRUFFLE_CHECK(rollbackExecutionResult.status.code ==
+                  truffle::core::StatusCode::invalid_state);
+    TRUFFLE_CHECK(rollbackExecutionResult.committedCount == 0);
+    TRUFFLE_CHECK(rollbackExecutionResult.rolledBackCount == 0);
+    TRUFFLE_CHECK(rollbackExecutionResult.failedRequestIndex.has_value());
+    TRUFFLE_CHECK(*rollbackExecutionResult.failedRequestIndex == 1);
+    TRUFFLE_CHECK(!rollbackExecutionResult.entries[1].status.ok());
+    TRUFFLE_CHECK(!rollbackExecutionResult.entries[0].rolledBack);
+    TRUFFLE_CHECK(persistentCoordinator.state().trackedReservationCount == 0);
+    std::array<const truffle::rhi::BindGroupDescriptorRuntimeCoordinator*, 2>
+        rollbackRepairCoordinators = {&persistentCoordinator,
+                                      &incompatibleCoordinator};
+    const auto rollbackRepairPlan =
+        truffle::rhi::bind_group_descriptor_runtime_repair_batch_admission_plan(
+            rollbackRepairCoordinators, rollbackBatchPlan);
+    TRUFFLE_CHECK(rollbackRepairPlan.repairable);
+    TRUFFLE_CHECK(rollbackRepairPlan.changed);
+    TRUFFLE_CHECK(rollbackRepairPlan.shouldReplaceSavedPlan);
+    TRUFFLE_CHECK(rollbackRepairPlan.repairedPlan.admittedCount == 2);
+    TRUFFLE_CHECK(rollbackRepairPlan.rewrittenSelectedCount >= 1);
+    TRUFFLE_CHECK(
+        rollbackRepairPlan.repairedPlan.decisions[1].admission.coordinatorIndex == 0);
+    const auto repairedRollbackExecutionResult =
+        truffle::rhi::bind_group_descriptor_runtime_execute_batch_admission_plan(
+            rollbackCoordinators, rollbackRepairPlan.repairedPlan);
+    TRUFFLE_CHECK(repairedRollbackExecutionResult.status.ok());
+    TRUFFLE_CHECK(repairedRollbackExecutionResult.committedCount == 2);
+    TRUFFLE_CHECK(persistentCoordinator.state().trackedReservationCount == 2);
     TRUFFLE_CHECK(persistentCoordinator.clear().ok());
     auto invalidTransientBindGroup = device.create_bind_group({
         .layout = bindGroupLayout.value().get(),

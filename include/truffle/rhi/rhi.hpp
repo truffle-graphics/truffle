@@ -4214,6 +4214,119 @@ struct BindGroupDescriptorRuntimeBatchAdmissionPlan {
     std::vector<BindGroupDescriptorRuntimeBatchAdmissionDecision> decisions;
 };
 
+struct BindGroupDescriptorRuntimeBatchExecutionEntry {
+    std::size_t requestIndex = 0;
+    std::size_t coordinatorIndex = 0;
+    BindGroupDescriptorRuntimeAdmissionAction admissionAction =
+        BindGroupDescriptorRuntimeAdmissionAction::none;
+    bool selected = false;
+    bool attempted = false;
+    bool committed = false;
+    bool rolledBack = false;
+    bool reconciled = false;
+    bool reclaimed = false;
+    std::optional<std::uint32_t> slotIndex;
+    std::uint32_t releasedReservationCount = 0;
+    std::uint32_t releasedBindGroupCount = 0;
+    std::uint32_t releasedEntryCount = 0;
+    core::Status status;
+    std::optional<BindGroupDescriptorArenaReservation> reservation;
+};
+
+struct BindGroupDescriptorRuntimeBatchExecutionResult {
+    core::Status status;
+    std::uint32_t selectedCount = 0;
+    std::uint32_t attemptedCount = 0;
+    std::uint32_t committedCount = 0;
+    std::uint32_t rolledBackCount = 0;
+    std::uint32_t reconciledEntryCount = 0;
+    std::uint32_t reclaimedEntryCount = 0;
+    std::optional<std::size_t> failedRequestIndex;
+    std::optional<std::size_t> failedCoordinatorIndex;
+    bool rollbackSucceeded = true;
+    std::vector<BindGroupDescriptorRuntimeBatchExecutionEntry> entries;
+};
+
+struct BindGroupDescriptorRuntimeBatchRevalidationEntry {
+    std::size_t requestIndex = 0;
+    std::size_t coordinatorIndex = 0;
+    bool selected = false;
+    bool valid = false;
+    bool stale = false;
+    bool compatible = false;
+    bool requestValid = false;
+    bool drifted = false;
+    bool underlyingReservationsConsistent = false;
+    std::optional<std::uint32_t> slotIndex;
+    BindGroupDescriptorRuntimeAdmissionAction savedAction =
+        BindGroupDescriptorRuntimeAdmissionAction::none;
+    BindGroupDescriptorRuntimeAdmissionAction currentAction =
+        BindGroupDescriptorRuntimeAdmissionAction::none;
+    std::uint32_t availableBindGroupCount = 0;
+    std::uint32_t availableEntryCount = 0;
+    std::uint32_t reclaimableBindGroupRelief = 0;
+    std::uint32_t reclaimableEntryRelief = 0;
+    std::uint32_t requiredBindGroupRelief = 0;
+    std::uint32_t requiredEntryRelief = 0;
+    core::Status status;
+};
+
+struct BindGroupDescriptorRuntimeBatchRevalidationPlan {
+    std::uint32_t requestCount = 0;
+    std::uint32_t selectedCount = 0;
+    std::uint32_t validSelectedCount = 0;
+    std::uint32_t invalidSelectedCount = 0;
+    std::uint32_t staleSelectedCount = 0;
+    std::uint32_t reconcileRequiredCount = 0;
+    std::uint32_t reclaimRequiredCount = 0;
+    bool valid = true;
+    bool shouldReconcileBeforeExecution = false;
+    bool shouldReclaimBeforeExecution = false;
+    bool shouldReplan = false;
+    std::optional<std::size_t> firstInvalidRequestIndex;
+    std::optional<std::size_t> firstInvalidCoordinatorIndex;
+    std::vector<BindGroupDescriptorRuntimeBatchRevalidationEntry> entries;
+};
+
+struct BindGroupDescriptorRuntimeBatchRepairEntry {
+    std::size_t requestIndex = 0;
+    BindGroupDescriptorRuntimeBatchAdmissionIntent request;
+    bool repairable = false;
+    bool savedSelected = false;
+    bool repairedSelected = false;
+    bool changed = false;
+    bool coordinatorChanged = false;
+    bool actionChanged = false;
+    bool slotChanged = false;
+    std::optional<std::size_t> savedCoordinatorIndex;
+    std::optional<std::size_t> repairedCoordinatorIndex;
+    std::optional<std::uint32_t> savedSlotIndex;
+    std::optional<std::uint32_t> repairedSlotIndex;
+    BindGroupDescriptorRuntimeAdmissionAction savedAction =
+        BindGroupDescriptorRuntimeAdmissionAction::none;
+    BindGroupDescriptorRuntimeAdmissionAction repairedAction =
+        BindGroupDescriptorRuntimeAdmissionAction::none;
+    core::Status status;
+};
+
+struct BindGroupDescriptorRuntimeBatchRepairPlan {
+    std::uint32_t requestCount = 0;
+    std::uint32_t repairableRequestCount = 0;
+    std::uint32_t unrecoverableRequestCount = 0;
+    std::uint32_t preservedSelectedCount = 0;
+    std::uint32_t rewrittenSelectedCount = 0;
+    std::uint32_t droppedSelectedCount = 0;
+    std::uint32_t promotedSelectedCount = 0;
+    std::uint32_t changedRequestCount = 0;
+    bool repairable = true;
+    bool changed = false;
+    bool shouldReplaceSavedPlan = false;
+    std::optional<std::size_t> firstUnrepairableRequestIndex;
+    BindGroupDescriptorRuntimeBatchRevalidationPlan revalidation;
+    BindGroupDescriptorRuntimeBatchAdmissionPlan repairedPlan;
+    std::vector<BindGroupDescriptorRuntimeBatchRepairEntry> entries;
+};
+
 [[nodiscard]] constexpr std::uint32_t bind_group_descriptor_utilization_permille(
     std::uint32_t used,
     std::uint32_t capacity) noexcept {
@@ -4931,6 +5044,24 @@ bind_group_descriptor_runtime_arbitration_plan(
                    reconcile_then_reclaim_then_admit;
 }
 
+[[nodiscard]] constexpr bool bind_group_descriptor_runtime_admission_action_covers(
+    BindGroupDescriptorRuntimeAdmissionAction saved,
+    BindGroupDescriptorRuntimeAdmissionAction current) noexcept {
+    if (!bind_group_descriptor_runtime_admission_accepts(saved) ||
+        !bind_group_descriptor_runtime_admission_accepts(current)) {
+        return saved == current;
+    }
+    if (bind_group_descriptor_runtime_admission_requires_reconcile(current) &&
+        !bind_group_descriptor_runtime_admission_requires_reconcile(saved)) {
+        return false;
+    }
+    if (bind_group_descriptor_runtime_admission_requires_reclaim(current) &&
+        !bind_group_descriptor_runtime_admission_requires_reclaim(saved)) {
+        return false;
+    }
+    return true;
+}
+
 [[nodiscard]] inline const BindGroupDescriptorArenaSlotUsage*
 bind_group_descriptor_find_arena_slot_usage(
     const BindGroupDescriptorArenaUsage& usage,
@@ -5051,6 +5182,48 @@ inline void bind_group_descriptor_runtime_batch_budget_refresh(
             budget.remainingRecoverableEntryRelief,
             slot.reclaimableEntryRelief);
     }
+}
+
+[[nodiscard]] inline BindGroupDescriptorRuntimeAdmissionAction
+bind_group_descriptor_runtime_batch_current_action(
+    const BindGroupDescriptorRuntimeBatchCoordinatorBudget& budget,
+    const BindGroupDescriptorRuntimeAdmissionEntry&         entry,
+    const BindGroupDescriptorArenaReservationRequest&       request) noexcept {
+    if (!budget.compatible || !entry.requestValid) {
+        return BindGroupDescriptorRuntimeAdmissionAction::reject;
+    }
+    if (entry.drifted && !entry.underlyingReservationsConsistent) {
+        return BindGroupDescriptorRuntimeAdmissionAction::audit_before_admit;
+    }
+    if (!entry.drifted && entry.availableBindGroupCount >= request.bindGroupCount &&
+        entry.availableEntryCount >= request.entryCount) {
+        return BindGroupDescriptorRuntimeAdmissionAction::admit_now;
+    }
+    if (entry.drifted && entry.underlyingReservationsConsistent &&
+        entry.availableBindGroupCount >= request.bindGroupCount &&
+        entry.availableEntryCount >= request.entryCount) {
+        return BindGroupDescriptorRuntimeAdmissionAction::reconcile_then_admit;
+    }
+
+    const bool needsRelief = entry.requiredBindGroupRelief != 0 ||
+                             entry.requiredEntryRelief != 0;
+    const bool hasRelief =
+        needsRelief &&
+        entry.reclaimableBindGroupRelief >= entry.requiredBindGroupRelief &&
+        entry.reclaimableEntryRelief >= entry.requiredEntryRelief;
+    if (entry.drifted && entry.underlyingReservationsConsistent && hasRelief) {
+        return BindGroupDescriptorRuntimeAdmissionAction::
+            reconcile_then_reclaim_then_admit;
+    }
+    if (hasRelief) {
+        return BindGroupDescriptorRuntimeAdmissionAction::reclaim_then_admit;
+    }
+    if (entry.arbitration.shouldThrottleReservations ||
+        entry.arbitration.shouldReclaimBeforeGrowing ||
+        budget.drifted) {
+        return BindGroupDescriptorRuntimeAdmissionAction::throttle;
+    }
+    return BindGroupDescriptorRuntimeAdmissionAction::reject;
 }
 
 [[nodiscard]] inline BindGroupDescriptorRuntimeAdmissionPlan
@@ -5528,6 +5701,630 @@ bind_group_descriptor_runtime_batch_admission_plan(
     }
 
     return plan;
+}
+
+[[nodiscard]] inline BindGroupDescriptorRuntimeBatchRevalidationPlan
+bind_group_descriptor_runtime_revalidate_batch_admission_plan(
+    std::span<const BindGroupDescriptorRuntimeCoordinator* const> coordinators,
+    const BindGroupDescriptorRuntimeBatchAdmissionPlan&           batchPlan) noexcept {
+    BindGroupDescriptorRuntimeBatchRevalidationPlan plan;
+    plan.requestCount = static_cast<std::uint32_t>(batchPlan.decisions.size());
+    plan.entries.reserve(batchPlan.decisions.size());
+
+    std::vector<BindGroupDescriptorRuntimeBatchCoordinatorBudget> budgets;
+    budgets.reserve(coordinators.size());
+    for (std::size_t coordinatorIndex = 0; coordinatorIndex < coordinators.size();
+         ++coordinatorIndex) {
+        const auto* coordinator = coordinators[coordinatorIndex];
+        BindGroupDescriptorRuntimeBatchCoordinatorBudget budget;
+        budget.coordinatorIndex = coordinatorIndex;
+        if (coordinator == nullptr) {
+            budgets.push_back(std::move(budget));
+            continue;
+        }
+
+        budget.partitionIndex = coordinator->arena().partition_index();
+        budget.poolClass = coordinator->arena().pool_class();
+        budget.lifetimeClass = coordinator->arena().lifetime_class();
+        const auto state = coordinator->state();
+        budget.compatible = state.compatible;
+        budget.drifted = state.drifted;
+        budget.underlyingReservationsConsistent =
+            state.underlyingReservationsConsistent;
+
+        const auto reclamation =
+            bind_group_descriptor_runtime_reclamation_plan(*coordinator);
+        budget.slots.reserve(state.arenaUsage.slots.size());
+        for (const auto& slotUsage : state.arenaUsage.slots) {
+            BindGroupDescriptorRuntimeBatchSlotBudget slot;
+            slot.slotIndex = slotUsage.slotIndex;
+            slot.availableBindGroupCount = slotUsage.availableBindGroupCount;
+            slot.availableEntryCount = slotUsage.availableEntryCount;
+            if (const auto* slotPlan = bind_group_descriptor_find_slot_reclamation_plan(
+                    reclamation,
+                    slotUsage.slotIndex)) {
+                slot.reclaimableBindGroupRelief =
+                    slotPlan->reclaimableBindGroupCount;
+                slot.reclaimableEntryRelief =
+                    slotPlan->reclaimableEntryCount;
+            }
+            budget.slots.push_back(std::move(slot));
+        }
+        bind_group_descriptor_runtime_batch_budget_refresh(budget);
+        budgets.push_back(std::move(budget));
+    }
+
+    auto consume_capacity = [](std::uint32_t& available,
+                               std::uint32_t& reclaimable,
+                               std::uint32_t  requested) noexcept {
+        if (available >= requested) {
+            available -= requested;
+            return;
+        }
+        const auto deficit = requested - available;
+        available = 0;
+        reclaimable = reclaimable > deficit ? reclaimable - deficit : 0u;
+    };
+
+    for (const auto& decision : batchPlan.decisions) {
+        BindGroupDescriptorRuntimeBatchRevalidationEntry entry;
+        entry.requestIndex = decision.requestIndex;
+        entry.coordinatorIndex = decision.admission.coordinatorIndex;
+        entry.selected = decision.admitted;
+        entry.savedAction = decision.admission.action;
+        entry.slotIndex = decision.admission.targetSlotIndex;
+
+        if (!decision.admitted) {
+            entry.valid = true;
+            entry.status = core::Status::success();
+            plan.entries.push_back(std::move(entry));
+            continue;
+        }
+
+        plan.selectedCount = saturating_add_u32(plan.selectedCount, 1);
+
+        if (entry.coordinatorIndex >= coordinators.size() ||
+            coordinators[entry.coordinatorIndex] == nullptr) {
+            entry.status = core::Status::failure(
+                core::StatusCode::invalid_argument,
+                "batch revalidation coordinator index is invalid");
+            plan.valid = false;
+        } else if (!decision.admission.request.has_value()) {
+            entry.status = core::Status::failure(
+                core::StatusCode::invalid_argument,
+                "batch revalidation entry is missing a reservation request");
+            plan.valid = false;
+        } else {
+            auto* budget = bind_group_descriptor_find_batch_coordinator_budget(
+                budgets,
+                entry.coordinatorIndex);
+            if (budget == nullptr) {
+                entry.status = core::Status::failure(
+                    core::StatusCode::invalid_argument,
+                    "batch revalidation coordinator budget is unavailable");
+                plan.valid = false;
+            } else {
+                entry.compatible = budget->compatible;
+                entry.drifted = budget->drifted;
+                entry.underlyingReservationsConsistent =
+                    budget->underlyingReservationsConsistent;
+                entry.requestValid = decision.admission.request.has_value();
+
+                const auto targetSlotIndex = entry.slotIndex.value_or(
+                    coordinators[entry.coordinatorIndex]->arena().desc().requiresFrameIndex
+                        ? decision.admission.request->frameIndex
+                        : 0u);
+                entry.slotIndex = targetSlotIndex;
+
+                auto* slotBudget = bind_group_descriptor_find_batch_slot_budget(
+                    *budget,
+                    targetSlotIndex);
+                if (slotBudget == nullptr) {
+                    entry.status = core::Status::failure(
+                        core::StatusCode::invalid_argument,
+                        "batch revalidation target slot is invalid");
+                    plan.valid = false;
+                } else {
+                    const auto& request = *decision.admission.request;
+                    entry.availableBindGroupCount =
+                        slotBudget->availableBindGroupCount;
+                    entry.availableEntryCount = slotBudget->availableEntryCount;
+                    entry.reclaimableBindGroupRelief =
+                        slotBudget->reclaimableBindGroupRelief;
+                    entry.reclaimableEntryRelief =
+                        slotBudget->reclaimableEntryRelief;
+                    entry.requiredBindGroupRelief =
+                        entry.availableBindGroupCount >= request.bindGroupCount
+                            ? 0u
+                            : request.bindGroupCount -
+                                  entry.availableBindGroupCount;
+                    entry.requiredEntryRelief =
+                        entry.availableEntryCount >= request.entryCount
+                            ? 0u
+                            : request.entryCount - entry.availableEntryCount;
+                    entry.currentAction =
+                        bind_group_descriptor_runtime_batch_current_action(
+                            *budget,
+                            BindGroupDescriptorRuntimeAdmissionEntry{
+                                .request = request,
+                                .targetSlotIndex = entry.slotIndex,
+                                .availableBindGroupCount =
+                                    entry.availableBindGroupCount,
+                                .availableEntryCount = entry.availableEntryCount,
+                                .requiredBindGroupRelief =
+                                    entry.requiredBindGroupRelief,
+                                .requiredEntryRelief = entry.requiredEntryRelief,
+                                .reclaimableBindGroupRelief =
+                                    entry.reclaimableBindGroupRelief,
+                                .reclaimableEntryRelief =
+                                    entry.reclaimableEntryRelief,
+                                .compatible = entry.compatible,
+                                .requestValid = entry.requestValid,
+                                .drifted = entry.drifted,
+                                .underlyingReservationsConsistent =
+                                    entry.underlyingReservationsConsistent,
+                                .arbitration = decision.admission.arbitration,
+                            },
+                            request);
+                    entry.valid =
+                        bind_group_descriptor_runtime_admission_action_covers(
+                            entry.savedAction,
+                            entry.currentAction);
+                    entry.stale = entry.savedAction != entry.currentAction;
+                    entry.status = entry.valid
+                                       ? core::Status::success()
+                                       : core::Status::failure(
+                                             core::StatusCode::invalid_state,
+                                             "batch admission plan is stale for the "
+                                             "selected coordinator");
+
+                    if (entry.valid) {
+                        if (entry.stale) {
+                            plan.staleSelectedCount =
+                                saturating_add_u32(plan.staleSelectedCount, 1);
+                        }
+                        if (bind_group_descriptor_runtime_admission_requires_reconcile(
+                                entry.currentAction)) {
+                            plan.reconcileRequiredCount =
+                                saturating_add_u32(plan.reconcileRequiredCount, 1);
+                            plan.shouldReconcileBeforeExecution = true;
+                        }
+                        if (bind_group_descriptor_runtime_admission_requires_reclaim(
+                                entry.currentAction)) {
+                            plan.reclaimRequiredCount =
+                                saturating_add_u32(plan.reclaimRequiredCount, 1);
+                            plan.shouldReclaimBeforeExecution = true;
+                        }
+
+                        if (bind_group_descriptor_runtime_admission_requires_reconcile(
+                                entry.savedAction)) {
+                            budget->drifted = false;
+                        }
+
+                        consume_capacity(slotBudget->availableBindGroupCount,
+                                         slotBudget->reclaimableBindGroupRelief,
+                                         request.bindGroupCount);
+                        consume_capacity(slotBudget->availableEntryCount,
+                                         slotBudget->reclaimableEntryRelief,
+                                         request.entryCount);
+                        bind_group_descriptor_runtime_batch_budget_refresh(*budget);
+                    } else {
+                        plan.valid = false;
+                    }
+                }
+            }
+        }
+
+        if (entry.valid) {
+            plan.validSelectedCount =
+                saturating_add_u32(plan.validSelectedCount, 1);
+        } else {
+            plan.invalidSelectedCount =
+                saturating_add_u32(plan.invalidSelectedCount, 1);
+            plan.shouldReplan = true;
+            if (!plan.firstInvalidRequestIndex.has_value()) {
+                plan.firstInvalidRequestIndex = entry.requestIndex;
+                plan.firstInvalidCoordinatorIndex = entry.coordinatorIndex;
+            }
+        }
+
+        plan.entries.push_back(std::move(entry));
+    }
+
+    return plan;
+}
+
+[[nodiscard]] inline BindGroupDescriptorRuntimeBatchRepairPlan
+bind_group_descriptor_runtime_repair_batch_admission_plan(
+    std::span<const BindGroupDescriptorRuntimeCoordinator* const> coordinators,
+    const BindGroupDescriptorRuntimeBatchAdmissionPlan&           batchPlan) noexcept {
+    BindGroupDescriptorRuntimeBatchRepairPlan plan;
+    plan.requestCount = static_cast<std::uint32_t>(batchPlan.decisions.size());
+    plan.entries.reserve(batchPlan.decisions.size());
+    plan.revalidation =
+        bind_group_descriptor_runtime_revalidate_batch_admission_plan(coordinators,
+                                                                      batchPlan);
+
+    std::vector<BindGroupDescriptorRuntimeBatchAdmissionIntent> intents;
+    intents.reserve(batchPlan.decisions.size());
+    for (const auto& decision : batchPlan.decisions) {
+        BindGroupDescriptorRuntimeBatchRepairEntry entry;
+        entry.requestIndex = decision.requestIndex;
+        entry.request = decision.request;
+        entry.savedSelected = decision.admitted;
+        entry.savedAction = decision.admission.action;
+        if (decision.admitted) {
+            entry.savedCoordinatorIndex = decision.admission.coordinatorIndex;
+            entry.savedSlotIndex = decision.admission.targetSlotIndex;
+        }
+
+        if (decision.request.bindGroupCount == 0) {
+            entry.status = core::Status::failure(
+                core::StatusCode::invalid_argument,
+                "batch repair entry has an empty reservation request");
+            plan.repairable = false;
+            plan.unrecoverableRequestCount =
+                saturating_add_u32(plan.unrecoverableRequestCount, 1);
+            if (!plan.firstUnrepairableRequestIndex.has_value()) {
+                plan.firstUnrepairableRequestIndex = decision.requestIndex;
+            }
+        } else {
+            entry.repairable = true;
+            entry.status = core::Status::success();
+            plan.repairableRequestCount =
+                saturating_add_u32(plan.repairableRequestCount, 1);
+            intents.push_back(decision.request);
+        }
+
+        plan.entries.push_back(std::move(entry));
+    }
+
+    if (!plan.repairable) {
+        return plan;
+    }
+
+    plan.repairedPlan =
+        bind_group_descriptor_runtime_batch_admission_plan(coordinators, intents);
+
+    for (std::size_t index = 0; index < plan.entries.size(); ++index) {
+        auto& entry = plan.entries[index];
+        if (!entry.repairable) {
+            continue;
+        }
+
+        const auto& repairedDecision = plan.repairedPlan.decisions[index];
+        entry.repairedSelected = repairedDecision.admitted;
+        entry.repairedAction = repairedDecision.admission.action;
+        if (repairedDecision.admitted) {
+            entry.repairedCoordinatorIndex =
+                repairedDecision.admission.coordinatorIndex;
+            entry.repairedSlotIndex = repairedDecision.admission.targetSlotIndex;
+        }
+
+        entry.coordinatorChanged =
+            entry.savedCoordinatorIndex != entry.repairedCoordinatorIndex;
+        entry.actionChanged = entry.savedAction != entry.repairedAction;
+        entry.slotChanged = entry.savedSlotIndex != entry.repairedSlotIndex;
+        entry.changed = entry.savedSelected != entry.repairedSelected ||
+                        entry.coordinatorChanged || entry.actionChanged ||
+                        entry.slotChanged;
+        if (entry.changed) {
+            plan.changed = true;
+            plan.changedRequestCount =
+                saturating_add_u32(plan.changedRequestCount, 1);
+        }
+
+        if (entry.savedSelected && entry.repairedSelected) {
+            if (entry.changed) {
+                plan.rewrittenSelectedCount =
+                    saturating_add_u32(plan.rewrittenSelectedCount, 1);
+            } else {
+                plan.preservedSelectedCount =
+                    saturating_add_u32(plan.preservedSelectedCount, 1);
+            }
+        } else if (entry.savedSelected) {
+            plan.droppedSelectedCount =
+                saturating_add_u32(plan.droppedSelectedCount, 1);
+        } else if (entry.repairedSelected) {
+            plan.promotedSelectedCount =
+                saturating_add_u32(plan.promotedSelectedCount, 1);
+        }
+    }
+
+    plan.shouldReplaceSavedPlan = plan.changed || !plan.revalidation.valid;
+    return plan;
+}
+
+[[nodiscard]] inline BindGroupDescriptorRuntimeBatchExecutionResult
+bind_group_descriptor_runtime_execute_batch_admission_plan(
+    std::span<BindGroupDescriptorRuntimeCoordinator* const>       coordinators,
+    const BindGroupDescriptorRuntimeBatchAdmissionPlan& batchPlan) noexcept {
+    BindGroupDescriptorRuntimeBatchExecutionResult result;
+    result.entries.reserve(batchPlan.decisions.size());
+
+    const auto revalidation =
+        bind_group_descriptor_runtime_revalidate_batch_admission_plan(
+            std::span<const BindGroupDescriptorRuntimeCoordinator* const>(
+                coordinators.data(), coordinators.size()),
+            batchPlan);
+    if (!revalidation.valid) {
+        result.status = core::Status::failure(
+            core::StatusCode::invalid_state,
+            "batch execution plan is stale; revalidate before execution");
+        result.failedRequestIndex = revalidation.firstInvalidRequestIndex;
+        result.failedCoordinatorIndex = revalidation.firstInvalidCoordinatorIndex;
+        for (const auto& revalidationEntry : revalidation.entries) {
+            BindGroupDescriptorRuntimeBatchExecutionEntry entry;
+            entry.requestIndex = revalidationEntry.requestIndex;
+            entry.coordinatorIndex = revalidationEntry.coordinatorIndex;
+            entry.admissionAction = revalidationEntry.savedAction;
+            entry.selected = revalidationEntry.selected;
+            entry.slotIndex = revalidationEntry.slotIndex;
+            entry.status = revalidationEntry.status;
+            result.entries.push_back(std::move(entry));
+        }
+        return result;
+    }
+
+    struct CommittedReservation {
+        std::size_t                      entryIndex = 0;
+        std::size_t                      coordinatorIndex = 0;
+        BindGroupDescriptorArenaReservation reservation;
+    };
+    std::vector<CommittedReservation> committedReservations;
+
+    auto rollback_committed = [&]() {
+        for (auto it = committedReservations.rbegin(); it != committedReservations.rend();
+             ++it) {
+            if (it->coordinatorIndex >= coordinators.size() ||
+                coordinators[it->coordinatorIndex] == nullptr) {
+                result.rollbackSucceeded = false;
+                continue;
+            }
+            auto rollbackStatus =
+                coordinators[it->coordinatorIndex]->release(it->reservation);
+            if (!rollbackStatus.ok()) {
+                result.rollbackSucceeded = false;
+                continue;
+            }
+            result.rolledBackCount =
+                saturating_add_u32(result.rolledBackCount, 1);
+            result.entries[it->entryIndex].rolledBack = true;
+            result.entries[it->entryIndex].status = rollbackStatus;
+        }
+    };
+
+    for (const auto& decision : batchPlan.decisions) {
+        BindGroupDescriptorRuntimeBatchExecutionEntry entry;
+        entry.requestIndex = decision.requestIndex;
+        entry.coordinatorIndex = decision.admission.coordinatorIndex;
+        entry.admissionAction = decision.admission.action;
+        entry.selected = decision.admitted;
+        entry.slotIndex = decision.admission.targetSlotIndex;
+
+        if (!decision.admitted) {
+            result.entries.push_back(std::move(entry));
+            continue;
+        }
+
+        result.selectedCount = saturating_add_u32(result.selectedCount, 1);
+
+        if (entry.coordinatorIndex >= coordinators.size() ||
+            coordinators[entry.coordinatorIndex] == nullptr) {
+            entry.status = core::Status::failure(
+                core::StatusCode::invalid_argument,
+                "batch execution coordinator index is invalid");
+            result.failedRequestIndex = entry.requestIndex;
+            result.failedCoordinatorIndex = entry.coordinatorIndex;
+            result.status = entry.status;
+            result.entries.push_back(std::move(entry));
+            rollback_committed();
+            return result;
+        }
+
+        if (!decision.admission.request.has_value()) {
+            entry.status = core::Status::failure(
+                core::StatusCode::invalid_argument,
+                "batch execution entry is missing a reservation request");
+            result.failedRequestIndex = entry.requestIndex;
+            result.failedCoordinatorIndex = entry.coordinatorIndex;
+            result.status = entry.status;
+            result.entries.push_back(std::move(entry));
+            rollback_committed();
+            return result;
+        }
+
+        if (!bind_group_descriptor_runtime_admission_accepts(entry.admissionAction)) {
+            result.entries.push_back(std::move(entry));
+            continue;
+        }
+
+        auto* coordinator = coordinators[entry.coordinatorIndex];
+        const auto& request = *decision.admission.request;
+
+        if (bind_group_descriptor_runtime_admission_requires_reconcile(
+                entry.admissionAction)) {
+            auto reconcileStatus = coordinator->reconcile();
+            if (!reconcileStatus.ok()) {
+                entry.status = reconcileStatus;
+                result.failedRequestIndex = entry.requestIndex;
+                result.failedCoordinatorIndex = entry.coordinatorIndex;
+                result.status = entry.status;
+                result.entries.push_back(std::move(entry));
+                rollback_committed();
+                return result;
+            }
+            entry.reconciled = true;
+            result.reconciledEntryCount =
+                saturating_add_u32(result.reconciledEntryCount, 1);
+        }
+
+        if (bind_group_descriptor_runtime_admission_requires_reclaim(
+                entry.admissionAction)) {
+            const auto targetSlotIndex = entry.slotIndex.value_or(
+                coordinator->arena().desc().requiresFrameIndex ? request.frameIndex : 0u);
+
+            auto currentState = coordinator->state();
+            const auto* slotUsage =
+                bind_group_descriptor_find_arena_slot_usage(currentState.arenaUsage,
+                                                            targetSlotIndex);
+            auto remainingBindGroups =
+                slotUsage != nullptr ? slotUsage->availableBindGroupCount
+                                     : currentState.arenaUsage.availableBindGroupCount;
+            auto remainingEntries =
+                slotUsage != nullptr ? slotUsage->availableEntryCount
+                                     : currentState.arenaUsage.availableEntryCount;
+
+            auto needs_reclaim = [&]() noexcept {
+                return remainingBindGroups < request.bindGroupCount ||
+                       remainingEntries < request.entryCount;
+            };
+
+            if (needs_reclaim()) {
+                const auto liveReclamationPlan =
+                    bind_group_descriptor_runtime_reclamation_plan(*coordinator);
+                if (liveReclamationPlan.action ==
+                        BindGroupDescriptorRuntimeReclamationAction::retire_slot &&
+                    liveReclamationPlan.recommendedSlotIndex.has_value() &&
+                    *liveReclamationPlan.recommendedSlotIndex == targetSlotIndex) {
+                    auto retiredSlot = coordinator->retire_slot(targetSlotIndex);
+                    if (!retiredSlot.ok()) {
+                        entry.status = retiredSlot.status();
+                        result.failedRequestIndex = entry.requestIndex;
+                        result.failedCoordinatorIndex = entry.coordinatorIndex;
+                        result.status = entry.status;
+                        result.entries.push_back(std::move(entry));
+                        rollback_committed();
+                        return result;
+                    }
+                    entry.reclaimed = true;
+                    entry.releasedReservationCount = saturating_add_u32(
+                        entry.releasedReservationCount,
+                        retiredSlot.value().releasedReservationCount);
+                    entry.releasedBindGroupCount = saturating_add_u32(
+                        entry.releasedBindGroupCount,
+                        retiredSlot.value().releasedBindGroupCount);
+                    entry.releasedEntryCount = saturating_add_u32(
+                        entry.releasedEntryCount,
+                        retiredSlot.value().releasedEntryCount);
+                } else {
+                    const auto* slotPlan =
+                        bind_group_descriptor_find_slot_reclamation_plan(
+                            liveReclamationPlan,
+                            targetSlotIndex);
+                    if (slotPlan == nullptr) {
+                        entry.status = core::Status::failure(
+                            core::StatusCode::unavailable,
+                            "batch execution could not find reclaim candidates for the "
+                            "target slot");
+                        result.failedRequestIndex = entry.requestIndex;
+                        result.failedCoordinatorIndex = entry.coordinatorIndex;
+                        result.status = entry.status;
+                        result.entries.push_back(std::move(entry));
+                        rollback_committed();
+                        return result;
+                    }
+
+                    for (const auto& candidate : slotPlan->candidates) {
+                        auto releaseStatus = coordinator->release(candidate.reservation);
+                        if (!releaseStatus.ok()) {
+                            entry.status = releaseStatus;
+                            result.failedRequestIndex = entry.requestIndex;
+                            result.failedCoordinatorIndex = entry.coordinatorIndex;
+                            result.status = entry.status;
+                            result.entries.push_back(std::move(entry));
+                            rollback_committed();
+                            return result;
+                        }
+                        entry.reclaimed = true;
+                        entry.releasedReservationCount = saturating_add_u32(
+                            entry.releasedReservationCount, 1);
+                        entry.releasedBindGroupCount = saturating_add_u32(
+                            entry.releasedBindGroupCount,
+                            candidate.reservation.bindGroupCount);
+                        entry.releasedEntryCount = saturating_add_u32(
+                            entry.releasedEntryCount,
+                            candidate.reservation.entryCount);
+
+                        currentState = coordinator->state();
+                        slotUsage = bind_group_descriptor_find_arena_slot_usage(
+                            currentState.arenaUsage,
+                            targetSlotIndex);
+                        remainingBindGroups =
+                            slotUsage != nullptr
+                                ? slotUsage->availableBindGroupCount
+                                : currentState.arenaUsage.availableBindGroupCount;
+                        remainingEntries =
+                            slotUsage != nullptr ? slotUsage->availableEntryCount
+                                                 : currentState.arenaUsage
+                                                       .availableEntryCount;
+                        if (!needs_reclaim()) {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            currentState = coordinator->state();
+            slotUsage = bind_group_descriptor_find_arena_slot_usage(
+                currentState.arenaUsage,
+                targetSlotIndex);
+            remainingBindGroups =
+                slotUsage != nullptr ? slotUsage->availableBindGroupCount
+                                     : currentState.arenaUsage.availableBindGroupCount;
+            remainingEntries =
+                slotUsage != nullptr ? slotUsage->availableEntryCount
+                                     : currentState.arenaUsage.availableEntryCount;
+            if (remainingBindGroups < request.bindGroupCount ||
+                remainingEntries < request.entryCount) {
+                entry.status = core::Status::failure(
+                    core::StatusCode::unavailable,
+                    "batch execution reclaim did not free enough descriptor capacity");
+                result.failedRequestIndex = entry.requestIndex;
+                result.failedCoordinatorIndex = entry.coordinatorIndex;
+                result.status = entry.status;
+                result.entries.push_back(std::move(entry));
+                rollback_committed();
+                return result;
+            }
+
+            if (entry.reclaimed) {
+                result.reclaimedEntryCount =
+                    saturating_add_u32(result.reclaimedEntryCount, 1);
+            }
+        }
+
+        entry.attempted = true;
+        result.attemptedCount =
+            saturating_add_u32(result.attemptedCount, 1);
+        auto reservation = coordinator->reserve(request.bindGroupCount,
+                                                request.frameIndex,
+                                                request.liveObjectReuse);
+        if (!reservation.ok()) {
+            entry.status = reservation.status();
+            result.failedRequestIndex = entry.requestIndex;
+            result.failedCoordinatorIndex = entry.coordinatorIndex;
+            result.status = entry.status;
+            result.entries.push_back(std::move(entry));
+            rollback_committed();
+            return result;
+        }
+
+        entry.committed = true;
+        entry.reservation = reservation.value();
+        entry.status = core::Status::success();
+        result.committedCount =
+            saturating_add_u32(result.committedCount, 1);
+        result.entries.push_back(std::move(entry));
+        committedReservations.push_back({
+            .entryIndex = result.entries.size() - 1u,
+            .coordinatorIndex = decision.admission.coordinatorIndex,
+            .reservation = reservation.value(),
+        });
+    }
+
+    result.status = core::Status::success();
+    return result;
 }
 
 class IShader {

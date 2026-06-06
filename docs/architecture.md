@@ -252,7 +252,17 @@ scope and active extension-backend work continuing in parallel:
   low-level decision surface. It now also supports batched quota carving across
   several reservation intents, so callers can simulate how shared low-level
   descriptor headroom and reclaimable relief would be consumed before they
-  commit those requests against live coordinators.
+  commit those requests against live coordinators. That batch layer now also has
+  an execution path that can reconcile, reclaim, reserve, and roll back
+  committed reservations in order, so accepted quota plans can move through one
+  rollback-aware low-level commit surface instead of ad hoc caller sequencing.
+  Saved batch plans can now also be revalidated against live coordinator state
+  before execution, so higher layers can detect when drift, incompatibility, or
+  changed slot headroom has made a previously accepted low-level plan unsafe.
+  Those saved plans can now also be repaired by replaying the original request
+  intents through current low-level coordinator state, which yields an explicit
+  replacement plan plus per-request rewrite metadata when placements or
+  admission actions must change.
 - Buffers expose explicit CPU mapping hooks, including `mapped_data()` access for
   mapped-at-creation buffers. The low-level contract treats
   automatic/upload/readback buffer memory as CPU-mappable and rejects
