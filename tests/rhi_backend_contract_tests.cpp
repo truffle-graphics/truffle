@@ -168,6 +168,10 @@ int verify_capability_contract(const truffle::rhi::IBackend& backend,
                       truffle::rhi::NativeDescriptorMappingModel::direct_slots);
         TRUFFLE_CHECK(caps.descriptorPolicy.allocationModel ==
                       truffle::rhi::NativeDescriptorAllocationModel::inline_direct);
+        TRUFFLE_CHECK(caps.descriptorPolicy.updateModel ==
+                      truffle::rhi::NativeDescriptorUpdateModel::direct_write);
+        TRUFFLE_CHECK(caps.descriptorPolicy.budgetModel ==
+                      truffle::rhi::NativeDescriptorBudgetModel::native_slot_spans);
         TRUFFLE_CHECK(caps.descriptorPolicy.flattenedNativeBindings);
         break;
     case truffle::rhi::BackendKind::vulkan:
@@ -175,6 +179,10 @@ int verify_capability_contract(const truffle::rhi::IBackend& backend,
                       truffle::rhi::NativeDescriptorMappingModel::descriptor_sets);
         TRUFFLE_CHECK(caps.descriptorPolicy.allocationModel ==
                       truffle::rhi::NativeDescriptorAllocationModel::bind_group_owned);
+        TRUFFLE_CHECK(caps.descriptorPolicy.updateModel ==
+                      truffle::rhi::NativeDescriptorUpdateModel::copy_into_allocation);
+        TRUFFLE_CHECK(caps.descriptorPolicy.budgetModel ==
+                      truffle::rhi::NativeDescriptorBudgetModel::descriptor_count);
         TRUFFLE_CHECK(!caps.descriptorPolicy.flattenedNativeBindings);
         break;
     case truffle::rhi::BackendKind::direct3d:
@@ -182,6 +190,10 @@ int verify_capability_contract(const truffle::rhi::IBackend& backend,
                       truffle::rhi::NativeDescriptorMappingModel::descriptor_tables);
         TRUFFLE_CHECK(caps.descriptorPolicy.allocationModel ==
                       truffle::rhi::NativeDescriptorAllocationModel::bind_group_owned);
+        TRUFFLE_CHECK(caps.descriptorPolicy.updateModel ==
+                      truffle::rhi::NativeDescriptorUpdateModel::copy_into_allocation);
+        TRUFFLE_CHECK(caps.descriptorPolicy.budgetModel ==
+                      truffle::rhi::NativeDescriptorBudgetModel::descriptor_count);
         TRUFFLE_CHECK(!caps.descriptorPolicy.flattenedNativeBindings);
         break;
     }
@@ -566,6 +578,21 @@ int verify_common_positive_path_contract(truffle::rhi::IDevice& device,
     TRUFFLE_CHECK(computePipeline.ok());
     TRUFFLE_CHECK(computePipeline.value()->cache_key() == 0x123456u);
     TRUFFLE_CHECK(verify_reflection_invariants(computePipeline.value()->reflection(), true));
+    const auto extractedGraphicsGroup1 =
+        truffle::rhi::pipeline_layout_bind_group_layout(graphicsLayout, 1);
+    TRUFFLE_CHECK(extractedGraphicsGroup1.has_value());
+    TRUFFLE_CHECK(extractedGraphicsGroup1->bindings.size() == 1);
+    TRUFFLE_CHECK(extractedGraphicsGroup1->bindings[0].groupIndex == 0);
+    TRUFFLE_CHECK(extractedGraphicsGroup1->bindings[0].type ==
+                  truffle::rhi::BindingResourceType::sampled_texture);
+    const auto graphicsLayoutBudget =
+        truffle::rhi::pipeline_layout_descriptor_budget(
+            graphicsLayout, device.capabilities());
+    TRUFFLE_CHECK(graphicsLayoutBudget.bindGroupCount == 2);
+    TRUFFLE_CHECK(graphicsLayoutBudget.maxBudgetPerBindGroup.model ==
+                  device.capabilities().descriptorPolicy.budgetModel);
+    TRUFFLE_CHECK(graphicsLayoutBudget.maxBudgetPerBindGroup.totalUnits == 1);
+    TRUFFLE_CHECK(graphicsLayoutBudget.totalBudget.totalUnits == 2);
     ForeignBuffer foreignBuffer;
     ForeignTexture foreignTexture;
     ForeignPipeline foreignPipeline;
@@ -1042,6 +1069,10 @@ int verify_backend_diagnostics_contract(truffle::rhi::IBackend& backend) {
                   reportedCaps.descriptorPolicy.mappingModel);
     TRUFFLE_CHECK(report.descriptorAllocationModel ==
                   reportedCaps.descriptorPolicy.allocationModel);
+    TRUFFLE_CHECK(report.descriptorUpdateModel ==
+                  reportedCaps.descriptorPolicy.updateModel);
+    TRUFFLE_CHECK(report.descriptorBudgetModel ==
+                  reportedCaps.descriptorPolicy.budgetModel);
     TRUFFLE_CHECK(report.flattenedNativeBindings ==
                   reportedCaps.descriptorPolicy.flattenedNativeBindings);
     TRUFFLE_CHECK(report.memoryHeapCount == reportedCaps.memoryHeaps.size());
@@ -1446,6 +1477,42 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
     TRUFFLE_CHECK(validBindGroup.value()->allocation_policy() ==
                   truffle::rhi::BindGroupAllocationPolicy::persistent);
     TRUFFLE_CHECK(validBindGroup.value()->allocation_frame_index() == 0);
+    TRUFFLE_CHECK(validBindGroup.value()->reuse_hint() ==
+                  truffle::rhi::BindGroupReuseHint::stable);
+    const auto stableStrategy = truffle::rhi::bind_group_descriptor_strategy(
+        validBindGroup.value()->desc(), caps);
+    TRUFFLE_CHECK(stableStrategy.cacheScope ==
+                  truffle::rhi::BindGroupCacheScope::persistent);
+    TRUFFLE_CHECK(!stableStrategy.rewriteDescriptors);
+    TRUFFLE_CHECK(!stableStrategy.recycleAfterFrame);
+    TRUFFLE_CHECK(stableStrategy.cacheKeyUsable);
+    TRUFFLE_CHECK(!stableStrategy.requiresFrameIndex);
+    TRUFFLE_CHECK(stableStrategy.frameSlotCount == 1);
+    TRUFFLE_CHECK(stableStrategy.recycleFrameLag == 0);
+    TRUFFLE_CHECK(stableStrategy.budget.model ==
+                  caps.descriptorPolicy.budgetModel);
+    TRUFFLE_CHECK(stableStrategy.budget.totalUnits == 3);
+    TRUFFLE_CHECK(stableStrategy.evictionPolicy ==
+                  truffle::rhi::BindGroupDescriptorEvictionPolicy::manual);
+    TRUFFLE_CHECK(stableStrategy.mappingModel ==
+                  caps.descriptorPolicy.mappingModel);
+    TRUFFLE_CHECK(stableStrategy.allocationModel ==
+                  caps.descriptorPolicy.allocationModel);
+    TRUFFLE_CHECK(stableStrategy.updateModel ==
+                  caps.descriptorPolicy.updateModel);
+    TRUFFLE_CHECK(stableStrategy.flattenedNativeBindings ==
+                  caps.descriptorPolicy.flattenedNativeBindings);
+    TRUFFLE_CHECK(!stableStrategy.rebuildAllocationOnUpdate);
+    const auto stableArenaPlan =
+        truffle::rhi::bind_group_descriptor_arena_plan(stableStrategy, 2);
+    TRUFFLE_CHECK(stableArenaPlan.bindGroupCount == 2);
+    TRUFFLE_CHECK(stableArenaPlan.reservationMultiplier == 1);
+    TRUFFLE_CHECK(stableArenaPlan.usesDescriptorCache);
+    TRUFFLE_CHECK(!stableArenaPlan.partitionsCachePerFrame);
+    TRUFFLE_CHECK(stableArenaPlan.cacheEntryCount == 2);
+    TRUFFLE_CHECK(stableArenaPlan.reservationEntryCount == 2);
+    TRUFFLE_CHECK(stableArenaPlan.cacheBudget.totalUnits == 6);
+    TRUFFLE_CHECK(stableArenaPlan.reservationBudget.totalUnits == 6);
     const auto bindGroupFootprint = validBindGroup.value()->descriptor_footprint();
     TRUFFLE_CHECK(bindGroupFootprint.bindingCount == layoutFootprint.bindingCount);
     TRUFFLE_CHECK(bindGroupFootprint.descriptorCount ==
@@ -1458,11 +1525,75 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
                   layoutFootprint.samplerSlots.firstSlot);
     const auto transientFrameIndex =
         caps.maxFramesInFlight > 1 ? 1u : 0u;
+    auto frameCachedBindGroup = device.create_bind_group({
+        .cacheKey = 0xB104u,
+        .layout = bindGroupLayout.value().get(),
+        .allocationPolicy =
+            truffle::rhi::BindGroupAllocationPolicy::transient_frame,
+        .allocationFrameIndex = transientFrameIndex,
+        .entries = {
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::uniform_buffer,
+                .buffer = {.buffer = bindGroupUniformBuffer.value().get(), .size = 16},
+            },
+            {
+                .bindingIndex = 1,
+                .type = truffle::rhi::BindingResourceType::sampled_texture,
+                .texture = goodTexture.value().get(),
+            },
+            {
+                .bindingIndex = 2,
+                .type = truffle::rhi::BindingResourceType::sampler,
+                .sampler = bindGroupSampler.value().get(),
+            },
+        },
+    });
+    TRUFFLE_CHECK(frameCachedBindGroup.ok());
+    TRUFFLE_CHECK(frameCachedBindGroup.value()->cache_key() == 0xB104u);
+    TRUFFLE_CHECK(frameCachedBindGroup.value()->allocation_policy() ==
+                  truffle::rhi::BindGroupAllocationPolicy::transient_frame);
+    TRUFFLE_CHECK(frameCachedBindGroup.value()->allocation_frame_index() ==
+                  transientFrameIndex);
+    TRUFFLE_CHECK(frameCachedBindGroup.value()->reuse_hint() ==
+                  truffle::rhi::BindGroupReuseHint::stable);
+    const auto frameCachedStrategy = truffle::rhi::bind_group_descriptor_strategy(
+        frameCachedBindGroup.value()->desc(), caps);
+    TRUFFLE_CHECK(frameCachedStrategy.cacheScope ==
+                  truffle::rhi::BindGroupCacheScope::per_frame);
+    TRUFFLE_CHECK(!frameCachedStrategy.rewriteDescriptors);
+    TRUFFLE_CHECK(!frameCachedStrategy.rebuildAllocationOnUpdate);
+    TRUFFLE_CHECK(frameCachedStrategy.recycleAfterFrame);
+    TRUFFLE_CHECK(frameCachedStrategy.cacheKeyUsable);
+    TRUFFLE_CHECK(frameCachedStrategy.requiresFrameIndex);
+    TRUFFLE_CHECK(frameCachedStrategy.frameSlotCount == caps.maxFramesInFlight);
+    TRUFFLE_CHECK(frameCachedStrategy.recycleFrameLag == caps.maxFramesInFlight);
+    TRUFFLE_CHECK(frameCachedStrategy.budget.model ==
+                  caps.descriptorPolicy.budgetModel);
+    TRUFFLE_CHECK(frameCachedStrategy.budget.totalUnits == 3);
+    TRUFFLE_CHECK(frameCachedStrategy.evictionPolicy ==
+                  truffle::rhi::BindGroupDescriptorEvictionPolicy::frame_retire);
+    const auto frameArenaPlan =
+        truffle::rhi::bind_group_descriptor_arena_plan(frameCachedStrategy, 2);
+    TRUFFLE_CHECK(frameArenaPlan.bindGroupCount == 2);
+    TRUFFLE_CHECK(frameArenaPlan.reservationMultiplier ==
+                  caps.maxFramesInFlight);
+    TRUFFLE_CHECK(frameArenaPlan.usesDescriptorCache);
+    TRUFFLE_CHECK(frameArenaPlan.partitionsCachePerFrame);
+    TRUFFLE_CHECK(frameArenaPlan.cacheEntryCount ==
+                  2 * caps.maxFramesInFlight);
+    TRUFFLE_CHECK(frameArenaPlan.reservationEntryCount ==
+                  2 * caps.maxFramesInFlight);
+    TRUFFLE_CHECK(frameArenaPlan.cacheBudget.totalUnits ==
+                  6 * caps.maxFramesInFlight);
+    TRUFFLE_CHECK(frameArenaPlan.reservationBudget.totalUnits ==
+                  6 * caps.maxFramesInFlight);
     auto transientBindGroup = device.create_bind_group({
         .cacheKey = 0xB102u,
         .layout = bindGroupLayout.value().get(),
         .allocationPolicy =
             truffle::rhi::BindGroupAllocationPolicy::transient_frame,
+        .reuseHint = truffle::rhi::BindGroupReuseHint::rebuild,
         .allocationFrameIndex = transientFrameIndex,
         .entries = {
             {
@@ -1488,6 +1619,1053 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
                   truffle::rhi::BindGroupAllocationPolicy::transient_frame);
     TRUFFLE_CHECK(transientBindGroup.value()->allocation_frame_index() ==
                   transientFrameIndex);
+    TRUFFLE_CHECK(transientBindGroup.value()->reuse_hint() ==
+                  truffle::rhi::BindGroupReuseHint::rebuild);
+    TRUFFLE_CHECK(
+        truffle::rhi::bind_group_prefers_arena_recycling(
+            transientBindGroup.value()->desc()));
+    const auto rebuildStrategy = truffle::rhi::bind_group_descriptor_strategy(
+        transientBindGroup.value()->desc(), caps);
+    TRUFFLE_CHECK(rebuildStrategy.cacheScope ==
+                  truffle::rhi::BindGroupCacheScope::none);
+    TRUFFLE_CHECK(!rebuildStrategy.rewriteDescriptors);
+    TRUFFLE_CHECK(!rebuildStrategy.rebuildAllocationOnUpdate);
+    TRUFFLE_CHECK(rebuildStrategy.recycleAfterFrame);
+    TRUFFLE_CHECK(!rebuildStrategy.cacheKeyUsable);
+    TRUFFLE_CHECK(rebuildStrategy.requiresFrameIndex);
+    TRUFFLE_CHECK(rebuildStrategy.frameSlotCount == caps.maxFramesInFlight);
+    TRUFFLE_CHECK(rebuildStrategy.recycleFrameLag == caps.maxFramesInFlight);
+    TRUFFLE_CHECK(rebuildStrategy.budget.model ==
+                  caps.descriptorPolicy.budgetModel);
+    TRUFFLE_CHECK(rebuildStrategy.budget.totalUnits == 3);
+    TRUFFLE_CHECK(rebuildStrategy.evictionPolicy ==
+                  truffle::rhi::BindGroupDescriptorEvictionPolicy::immediate);
+    TRUFFLE_CHECK(truffle::rhi::bind_group_descriptor_lifetime_class(
+                      rebuildStrategy) ==
+                  truffle::rhi::BindGroupDescriptorLifetimeClass::immediate);
+    const auto rebuildArenaPlan =
+        truffle::rhi::bind_group_descriptor_arena_plan(rebuildStrategy, 3);
+    TRUFFLE_CHECK(rebuildArenaPlan.bindGroupCount == 3);
+    TRUFFLE_CHECK(rebuildArenaPlan.reservationMultiplier ==
+                  caps.maxFramesInFlight);
+    TRUFFLE_CHECK(!rebuildArenaPlan.usesDescriptorCache);
+    TRUFFLE_CHECK(!rebuildArenaPlan.partitionsCachePerFrame);
+    TRUFFLE_CHECK(rebuildArenaPlan.cacheEntryCount == 0);
+    TRUFFLE_CHECK(rebuildArenaPlan.reservationEntryCount ==
+                  3 * caps.maxFramesInFlight);
+    TRUFFLE_CHECK(rebuildArenaPlan.cacheBudget.totalUnits == 0);
+    TRUFFLE_CHECK(rebuildArenaPlan.reservationBudget.totalUnits ==
+                  9 * caps.maxFramesInFlight);
+    TRUFFLE_CHECK(truffle::rhi::bind_group_descriptor_arena_pool_class(
+                      rebuildStrategy) ==
+                  truffle::rhi::BindGroupDescriptorArenaPoolClass::
+                      uncached_reservation);
+    auto updateHintBindGroup = device.create_bind_group({
+        .cacheKey = 0xB103u,
+        .layout = bindGroupLayout.value().get(),
+        .reuseHint = truffle::rhi::BindGroupReuseHint::update_in_place,
+        .entries = {
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::uniform_buffer,
+                .buffer = {.buffer = bindGroupUniformBuffer.value().get(), .size = 16},
+            },
+            {
+                .bindingIndex = 1,
+                .type = truffle::rhi::BindingResourceType::sampled_texture,
+                .texture = goodTexture.value().get(),
+            },
+            {
+                .bindingIndex = 2,
+                .type = truffle::rhi::BindingResourceType::sampler,
+                .sampler = bindGroupSampler.value().get(),
+            },
+        },
+    });
+    TRUFFLE_CHECK(updateHintBindGroup.ok());
+    TRUFFLE_CHECK(updateHintBindGroup.value()->reuse_hint() ==
+                  truffle::rhi::BindGroupReuseHint::update_in_place);
+    TRUFFLE_CHECK(
+        truffle::rhi::bind_group_prefers_descriptor_cache(
+            updateHintBindGroup.value()->desc()));
+    TRUFFLE_CHECK(
+        truffle::rhi::bind_group_prefers_descriptor_rewrite(
+            updateHintBindGroup.value()->desc()));
+    const auto updateStrategy = truffle::rhi::bind_group_descriptor_strategy(
+        updateHintBindGroup.value()->desc(), caps);
+    TRUFFLE_CHECK(updateStrategy.cacheScope ==
+                  truffle::rhi::BindGroupCacheScope::persistent);
+    TRUFFLE_CHECK(updateStrategy.rewriteDescriptors);
+    TRUFFLE_CHECK(!updateStrategy.rebuildAllocationOnUpdate);
+    TRUFFLE_CHECK(!updateStrategy.recycleAfterFrame);
+    TRUFFLE_CHECK(updateStrategy.cacheKeyUsable);
+    TRUFFLE_CHECK(!updateStrategy.requiresFrameIndex);
+    TRUFFLE_CHECK(updateStrategy.frameSlotCount == 1);
+    TRUFFLE_CHECK(updateStrategy.recycleFrameLag == 0);
+    TRUFFLE_CHECK(updateStrategy.budget.model ==
+                  caps.descriptorPolicy.budgetModel);
+    TRUFFLE_CHECK(updateStrategy.budget.totalUnits == 3);
+    TRUFFLE_CHECK(updateStrategy.evictionPolicy ==
+                  truffle::rhi::BindGroupDescriptorEvictionPolicy::manual);
+    TRUFFLE_CHECK(truffle::rhi::bind_group_descriptor_lifetime_class(
+                      updateStrategy) ==
+                  truffle::rhi::BindGroupDescriptorLifetimeClass::
+                      retained_manual);
+    const auto updateArenaPlan =
+        truffle::rhi::bind_group_descriptor_arena_plan(
+            updateHintBindGroup.value()->desc(), caps, 4);
+    TRUFFLE_CHECK(updateArenaPlan.bindGroupCount == 4);
+    TRUFFLE_CHECK(updateArenaPlan.reservationMultiplier == 1);
+    TRUFFLE_CHECK(updateArenaPlan.usesDescriptorCache);
+    TRUFFLE_CHECK(!updateArenaPlan.partitionsCachePerFrame);
+    TRUFFLE_CHECK(updateArenaPlan.cacheEntryCount == 4);
+    TRUFFLE_CHECK(updateArenaPlan.reservationEntryCount == 4);
+    TRUFFLE_CHECK(updateArenaPlan.cacheBudget.totalUnits == 12);
+    TRUFFLE_CHECK(updateArenaPlan.reservationBudget.totalUnits == 12);
+    TRUFFLE_CHECK(
+        !truffle::rhi::bind_group_descriptor_strategy_partition_compatible(
+            stableStrategy, updateStrategy));
+    TRUFFLE_CHECK(
+        truffle::rhi::bind_group_descriptor_strategy_partition_reusable(
+            stableStrategy, updateStrategy));
+    truffle::rhi::SharedPipelineLayoutDescriptorArenaSummary updateReuseFamilySummary;
+    updateReuseFamilySummary.layoutCount = 2;
+    updateReuseFamilySummary.requestCount = 2;
+    updateReuseFamilySummary.plannedGroupCount = 2;
+    updateReuseFamilySummary.familyCount = 2;
+    updateReuseFamilySummary.families.push_back({
+        .layout = {},
+        .strategy = stableStrategy,
+        .arenaPlan = stableArenaPlan,
+        .requestCount = 1,
+    });
+    updateReuseFamilySummary.families.push_back({
+        .layout = {},
+        .strategy = updateStrategy,
+        .arenaPlan = updateArenaPlan,
+        .requestCount = 1,
+    });
+    const auto updateReusePartitions =
+        truffle::rhi::pipeline_layout_shared_descriptor_arena_partition_summary(
+            updateReuseFamilySummary);
+    TRUFFLE_CHECK(updateReusePartitions.partitionCount == 1);
+    TRUFFLE_CHECK(updateReusePartitions.persistentCachePartitionCount == 1);
+    TRUFFLE_CHECK(updateReusePartitions.perFrameCachePartitionCount == 0);
+    TRUFFLE_CHECK(updateReusePartitions.uncachedReservationPartitionCount == 0);
+    TRUFFLE_CHECK(updateReusePartitions.mixedCacheKeyPartitionCount == 0);
+    TRUFFLE_CHECK(updateReusePartitions.mixedUpdatePartitionCount == 1);
+    TRUFFLE_CHECK(updateReusePartitions.familyResidencyCount == 2);
+    TRUFFLE_CHECK(updateReusePartitions.familyScopedLiveObjectCount == 2);
+    TRUFFLE_CHECK(updateReusePartitions.partitionScopedLiveObjectCount == 0);
+    TRUFFLE_CHECK(updateReusePartitions.partitions.size() == 1);
+    TRUFFLE_CHECK(updateReusePartitions.partitions[0].poolClass ==
+                  truffle::rhi::BindGroupDescriptorArenaPoolClass::
+                      persistent_cache);
+    TRUFFLE_CHECK(updateReusePartitions.partitions[0].familyCount == 2);
+    TRUFFLE_CHECK(updateReusePartitions.partitions[0].requestCount == 2);
+    TRUFFLE_CHECK(updateReusePartitions.partitions[0].bindGroupCount == 6);
+    TRUFFLE_CHECK(updateReusePartitions.partitions[0].entryCount == 6);
+    TRUFFLE_CHECK(
+        updateReusePartitions.partitions[0].cacheKeyUsableFamilyCount == 2);
+    TRUFFLE_CHECK(
+        updateReusePartitions.partitions[0].rewriteDescriptorFamilyCount == 1);
+    TRUFFLE_CHECK(updateReusePartitions.partitions[0]
+                      .rebuildAllocationOnUpdateFamilyCount == 0);
+    TRUFFLE_CHECK(!updateReusePartitions.partitions[0].mixedCacheKeyUsability);
+    TRUFFLE_CHECK(updateReusePartitions.partitions[0].mixedUpdateBehavior);
+    TRUFFLE_CHECK(!updateReusePartitions.partitions[0].mixedNativeUpdateModels);
+    TRUFFLE_CHECK(updateReusePartitions.partitions[0].strategy.cacheKeyUsable);
+    TRUFFLE_CHECK(
+        updateReusePartitions.partitions[0].strategy.rewriteDescriptors);
+    TRUFFLE_CHECK(!updateReusePartitions.partitions[0]
+                       .strategy.rebuildAllocationOnUpdate);
+    TRUFFLE_CHECK(updateReusePartitions.partitions[0].totalBudget.totalUnits ==
+                  18);
+    TRUFFLE_CHECK(updateReusePartitions.partitions[0].familyIndices.size() == 2);
+    TRUFFLE_CHECK(updateReusePartitions.partitions[0].familyIndices[0] == 0);
+    TRUFFLE_CHECK(updateReusePartitions.partitions[0].familyIndices[1] == 1);
+    TRUFFLE_CHECK(updateReusePartitions.familyResidencies.size() == 2);
+    TRUFFLE_CHECK(updateReusePartitions.familyResidencies[0].familyIndex == 0);
+    TRUFFLE_CHECK(updateReusePartitions.familyResidencies[0].partitionIndex == 0);
+    TRUFFLE_CHECK(updateReusePartitions.familyResidencies[0].poolClass ==
+                  truffle::rhi::BindGroupDescriptorArenaPoolClass::
+                      persistent_cache);
+    TRUFFLE_CHECK(updateReusePartitions.familyResidencies[0].lifetimeClass ==
+                  truffle::rhi::BindGroupDescriptorLifetimeClass::
+                      retained_manual);
+    TRUFFLE_CHECK(updateReusePartitions.familyResidencies[0].liveObjectScope ==
+                  truffle::rhi::BindGroupDescriptorLiveObjectScope::family);
+    TRUFFLE_CHECK(updateReusePartitions.familyResidencies[0]
+                      .sharesPartitionCapacity);
+    TRUFFLE_CHECK(updateReusePartitions.familyResidencies[0].usesDescriptorCache);
+    TRUFFLE_CHECK(!updateReusePartitions.familyResidencies[0]
+                       .partitionsCachePerFrame);
+    TRUFFLE_CHECK(updateReusePartitions.familyResidencies[0].entryCount == 2);
+    TRUFFLE_CHECK(updateReusePartitions.familyResidencies[0]
+                      .totalBudget.totalUnits == 6);
+    TRUFFLE_CHECK(updateReusePartitions.familyResidencies[0]
+                      .partitionHasMixedUpdateBehavior);
+    TRUFFLE_CHECK(!updateReusePartitions.familyResidencies[0]
+                       .partitionHasMixedNativeUpdateModels);
+    TRUFFLE_CHECK(updateReusePartitions.familyResidencies[1].familyIndex == 1);
+    TRUFFLE_CHECK(updateReusePartitions.familyResidencies[1].partitionIndex == 0);
+    TRUFFLE_CHECK(updateReusePartitions.familyResidencies[1].poolClass ==
+                  truffle::rhi::BindGroupDescriptorArenaPoolClass::
+                      persistent_cache);
+    TRUFFLE_CHECK(updateReusePartitions.familyResidencies[1].lifetimeClass ==
+                  truffle::rhi::BindGroupDescriptorLifetimeClass::
+                      retained_manual);
+    TRUFFLE_CHECK(updateReusePartitions.familyResidencies[1].liveObjectScope ==
+                  truffle::rhi::BindGroupDescriptorLiveObjectScope::family);
+    TRUFFLE_CHECK(updateReusePartitions.familyResidencies[1].entryCount == 4);
+    TRUFFLE_CHECK(updateReusePartitions.familyResidencies[1]
+                      .totalBudget.totalUnits == 12);
+    const auto updateReuseCohorts =
+        truffle::rhi::pipeline_layout_shared_descriptor_arena_cohort_summary(
+            updateReusePartitions);
+    TRUFFLE_CHECK(updateReuseCohorts.partitionCount == 1);
+    TRUFFLE_CHECK(updateReuseCohorts.familyResidencyCount == 2);
+    TRUFFLE_CHECK(updateReuseCohorts.cohortCount == 2);
+    TRUFFLE_CHECK(updateReuseCohorts.liveObjectCohortCount == 0);
+    TRUFFLE_CHECK(updateReuseCohorts.capacityOnlyCohortCount == 2);
+    TRUFFLE_CHECK(updateReuseCohorts.mixedCacheKeyCohortCount == 0);
+    TRUFFLE_CHECK(updateReuseCohorts.cohorts.size() == 2);
+    TRUFFLE_CHECK(updateReuseCohorts.cohorts[0].kind ==
+                  truffle::rhi::BindGroupDescriptorReuseCohortKind::
+                      capacity_only);
+    TRUFFLE_CHECK(!updateReuseCohorts.cohorts[0].rewriteDescriptors);
+    TRUFFLE_CHECK(!updateReuseCohorts.cohorts[0].rebuildAllocationOnUpdate);
+    TRUFFLE_CHECK(updateReuseCohorts.cohorts[0].familyCount == 1);
+    TRUFFLE_CHECK(updateReuseCohorts.cohorts[0].bindGroupCount == 2);
+    TRUFFLE_CHECK(updateReuseCohorts.cohorts[0].entryCount == 2);
+    TRUFFLE_CHECK(updateReuseCohorts.cohorts[0].familyIndices[0] == 0);
+    TRUFFLE_CHECK(updateReuseCohorts.cohorts[1].kind ==
+                  truffle::rhi::BindGroupDescriptorReuseCohortKind::
+                      capacity_only);
+    TRUFFLE_CHECK(updateReuseCohorts.cohorts[1].rewriteDescriptors);
+    TRUFFLE_CHECK(!updateReuseCohorts.cohorts[1].rebuildAllocationOnUpdate);
+    TRUFFLE_CHECK(updateReuseCohorts.cohorts[1].familyCount == 1);
+    TRUFFLE_CHECK(updateReuseCohorts.cohorts[1].bindGroupCount == 4);
+    TRUFFLE_CHECK(updateReuseCohorts.cohorts[1].entryCount == 4);
+    TRUFFLE_CHECK(updateReuseCohorts.cohorts[1].familyIndices[0] == 1);
+    truffle::rhi::SharedPipelineLayoutDescriptorArenaPlan updateReusePlan;
+    updateReusePlan.families = updateReuseFamilySummary;
+    updateReusePlan.partitions = updateReusePartitions;
+    updateReusePlan.cohorts = updateReuseCohorts;
+    const auto updateReuseMaterialization =
+        truffle::rhi::pipeline_layout_shared_descriptor_arena_materialization_summary(
+            updateReusePlan);
+    TRUFFLE_CHECK(updateReuseMaterialization.complete);
+    TRUFFLE_CHECK(updateReuseMaterialization.partitionCount == 1);
+    TRUFFLE_CHECK(updateReuseMaterialization.cohortCount == 2);
+    TRUFFLE_CHECK(updateReuseMaterialization.arenaCount == 1);
+    TRUFFLE_CHECK(updateReuseMaterialization.reuseMaterializationCount == 2);
+    TRUFFLE_CHECK(
+        updateReuseMaterialization.liveObjectReuseMaterializationCount == 0);
+    TRUFFLE_CHECK(
+        updateReuseMaterialization.capacityOnlyReuseMaterializationCount == 2);
+    TRUFFLE_CHECK(updateReuseMaterialization.arenas[0].bindGroupCapacity == 6);
+    TRUFFLE_CHECK(updateReuseMaterialization.arenas[0].entryCapacity == 6);
+    TRUFFLE_CHECK(!updateReuseMaterialization.arenas[0]
+                       .supportsPartitionWideLiveObjectReuse);
+    TRUFFLE_CHECK(updateReuseMaterialization.arenas[0].mixedUpdateBehavior);
+    TRUFFLE_CHECK(updateReuseMaterialization.reuseMaterializations[0]
+                      .bindGroupCapacity == 2);
+    TRUFFLE_CHECK(updateReuseMaterialization.reuseMaterializations[1]
+                      .bindGroupCapacity == 4);
+    const truffle::rhi::BindGroupDescriptorArenaPlan aggregatePlans[] = {
+        stableArenaPlan,
+        frameArenaPlan,
+        rebuildArenaPlan,
+        updateArenaPlan,
+    };
+    const auto aggregateTotals =
+        truffle::rhi::bind_group_descriptor_arena_totals(aggregatePlans);
+    TRUFFLE_CHECK(aggregateTotals.planCount == 4);
+    TRUFFLE_CHECK(aggregateTotals.bindGroupCount == 11);
+    TRUFFLE_CHECK(aggregateTotals.cachedBindGroupCount == 8);
+    TRUFFLE_CHECK(aggregateTotals.uncachedBindGroupCount == 3);
+    TRUFFLE_CHECK(aggregateTotals.cacheEntryCount ==
+                  6 + 2 * caps.maxFramesInFlight);
+    TRUFFLE_CHECK(aggregateTotals.reservationEntryCount ==
+                  6 + 5 * caps.maxFramesInFlight);
+    TRUFFLE_CHECK(aggregateTotals.persistentCacheEntryCount == 6);
+    TRUFFLE_CHECK(aggregateTotals.perFrameCacheEntryCount ==
+                  2 * caps.maxFramesInFlight);
+    TRUFFLE_CHECK(aggregateTotals.uncachedReservationEntryCount ==
+                  3 * caps.maxFramesInFlight);
+    TRUFFLE_CHECK(aggregateTotals.maxReservationMultiplier ==
+                  caps.maxFramesInFlight);
+    TRUFFLE_CHECK(aggregateTotals.usesDescriptorCache);
+    TRUFFLE_CHECK(aggregateTotals.partitionsCachePerFrame);
+    TRUFFLE_CHECK(!aggregateTotals.mixedBudgetModels);
+    TRUFFLE_CHECK(aggregateTotals.budgetModel ==
+                  caps.descriptorPolicy.budgetModel);
+    TRUFFLE_CHECK(aggregateTotals.maxBudgetPerEntry.totalUnits == 3);
+    TRUFFLE_CHECK(aggregateTotals.cacheBudget.totalUnits ==
+                  18 + 6 * caps.maxFramesInFlight);
+    TRUFFLE_CHECK(aggregateTotals.reservationBudget.totalUnits ==
+                  18 + 15 * caps.maxFramesInFlight);
+    TRUFFLE_CHECK(aggregateTotals.persistentCacheBudget.totalUnits == 18);
+    TRUFFLE_CHECK(aggregateTotals.perFrameCacheBudget.totalUnits ==
+                  6 * caps.maxFramesInFlight);
+    TRUFFLE_CHECK(aggregateTotals.uncachedReservationBudget.totalUnits ==
+                  9 * caps.maxFramesInFlight);
+    const truffle::rhi::PipelineLayoutDesc descriptorPlanningLayout{
+        .debugName = "contract_descriptor_planning_layout",
+        .bindings = {
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::uniform_buffer,
+                .visibility = truffle::rhi::ShaderStageFlags::vertex,
+                .minBindingSize = 16,
+            },
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::sampled_texture,
+                .visibility = truffle::rhi::ShaderStageFlags::fragment,
+                .groupIndex = 1,
+            },
+        },
+    };
+    const auto graphicsGroup1ArenaPlan =
+        truffle::rhi::pipeline_layout_bind_group_arena_plan(
+            descriptorPlanningLayout,
+            caps,
+            {
+                .groupIndex = 1,
+                .bindGroupCount = 3,
+                .cacheKey = 0xB201u,
+                .allocationPolicy =
+                    truffle::rhi::BindGroupAllocationPolicy::transient_frame,
+            });
+    TRUFFLE_CHECK(graphicsGroup1ArenaPlan.has_value());
+    TRUFFLE_CHECK(graphicsGroup1ArenaPlan->groupIndex == 1);
+    TRUFFLE_CHECK(graphicsGroup1ArenaPlan->layout.bindings.size() == 1);
+    TRUFFLE_CHECK(graphicsGroup1ArenaPlan->strategy.cacheScope ==
+                  truffle::rhi::BindGroupCacheScope::per_frame);
+    TRUFFLE_CHECK(graphicsGroup1ArenaPlan->strategy.budget.totalUnits == 1);
+    TRUFFLE_CHECK(graphicsGroup1ArenaPlan->arenaPlan.cacheEntryCount ==
+                  3 * caps.maxFramesInFlight);
+    TRUFFLE_CHECK(graphicsGroup1ArenaPlan->arenaPlan.cacheBudget.totalUnits ==
+                  3 * caps.maxFramesInFlight);
+    TRUFFLE_CHECK(!truffle::rhi::pipeline_layout_bind_group_arena_plan(
+        descriptorPlanningLayout,
+        caps,
+        {
+            .groupIndex = 2,
+            .bindGroupCount = 1,
+        }).has_value());
+    const truffle::rhi::PipelineLayoutBindGroupArenaRequest graphicsLayoutRequests[] = {
+        {
+            .groupIndex = 0,
+            .bindGroupCount = 2,
+            .cacheKey = 0xB202u,
+        },
+        {
+            .groupIndex = 1,
+            .bindGroupCount = 3,
+            .cacheKey = 0xB203u,
+            .allocationPolicy =
+                truffle::rhi::BindGroupAllocationPolicy::transient_frame,
+        },
+        {
+            .groupIndex = 2,
+            .bindGroupCount = 1,
+        },
+    };
+    const auto graphicsLayoutSummary =
+        truffle::rhi::pipeline_layout_descriptor_arena_summary(
+            descriptorPlanningLayout, caps, graphicsLayoutRequests);
+    TRUFFLE_CHECK(graphicsLayoutSummary.requestCount == 3);
+    TRUFFLE_CHECK(graphicsLayoutSummary.plannedGroupCount == 2);
+    TRUFFLE_CHECK(graphicsLayoutSummary.missingGroupCount == 1);
+    TRUFFLE_CHECK(!graphicsLayoutSummary.complete);
+    TRUFFLE_CHECK(graphicsLayoutSummary.totals.planCount == 2);
+    TRUFFLE_CHECK(graphicsLayoutSummary.totals.bindGroupCount == 5);
+    TRUFFLE_CHECK(graphicsLayoutSummary.totals.cachedBindGroupCount == 5);
+    TRUFFLE_CHECK(graphicsLayoutSummary.totals.uncachedBindGroupCount == 0);
+    TRUFFLE_CHECK(graphicsLayoutSummary.totals.cacheEntryCount ==
+                  2 + 3 * caps.maxFramesInFlight);
+    TRUFFLE_CHECK(graphicsLayoutSummary.totals.reservationEntryCount ==
+                  2 + 3 * caps.maxFramesInFlight);
+    TRUFFLE_CHECK(graphicsLayoutSummary.totals.persistentCacheEntryCount == 2);
+    TRUFFLE_CHECK(graphicsLayoutSummary.totals.perFrameCacheEntryCount ==
+                  3 * caps.maxFramesInFlight);
+    TRUFFLE_CHECK(graphicsLayoutSummary.totals.usesDescriptorCache);
+    TRUFFLE_CHECK(graphicsLayoutSummary.totals.partitionsCachePerFrame);
+    TRUFFLE_CHECK(graphicsLayoutSummary.totals.maxBudgetPerEntry.totalUnits == 1);
+    TRUFFLE_CHECK(graphicsLayoutSummary.totals.cacheBudget.totalUnits ==
+                  2 + 3 * caps.maxFramesInFlight);
+    TRUFFLE_CHECK(graphicsLayoutSummary.totals.reservationBudget.totalUnits ==
+                  2 + 3 * caps.maxFramesInFlight);
+    TRUFFLE_CHECK(graphicsLayoutSummary.totals.persistentCacheBudget.totalUnits ==
+                  2);
+    TRUFFLE_CHECK(graphicsLayoutSummary.totals.perFrameCacheBudget.totalUnits ==
+                  3 * caps.maxFramesInFlight);
+    const truffle::rhi::PipelineLayoutDesc sharedPoolLayoutA{
+        .debugName = "contract_shared_pool_layout_a",
+        .bindings = {
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::uniform_buffer,
+                .visibility = truffle::rhi::ShaderStageFlags::vertex,
+                .minBindingSize = 16,
+            },
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::sampler,
+                .visibility = truffle::rhi::ShaderStageFlags::fragment,
+                .groupIndex = 1,
+                .arrayCount = 2,
+            },
+        },
+    };
+    const truffle::rhi::PipelineLayoutDesc sharedPoolLayoutB{
+        .debugName = "contract_shared_pool_layout_b",
+        .bindings = {
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::uniform_buffer,
+                .visibility = truffle::rhi::ShaderStageFlags::vertex,
+                .minBindingSize = 16,
+            },
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::sampler,
+                .visibility = truffle::rhi::ShaderStageFlags::fragment,
+                .groupIndex = 2,
+                .arrayCount = 2,
+            },
+        },
+    };
+    const truffle::rhi::PipelineLayoutBindGroupArenaRequest sharedPoolRequestsA[] = {
+        {
+            .groupIndex = 0,
+            .bindGroupCount = 2,
+            .cacheKey = 0xB204u,
+        },
+        {
+            .groupIndex = 1,
+            .bindGroupCount = 1,
+            .cacheKey = 0xB205u,
+            .allocationPolicy =
+                truffle::rhi::BindGroupAllocationPolicy::transient_frame,
+        },
+    };
+    const truffle::rhi::PipelineLayoutBindGroupArenaRequest sharedPoolRequestsB[] = {
+        {
+            .groupIndex = 0,
+            .bindGroupCount = 3,
+            .cacheKey = 0xB206u,
+        },
+        {
+            .groupIndex = 2,
+            .bindGroupCount = 4,
+            .cacheKey = 0xB207u,
+            .allocationPolicy =
+                truffle::rhi::BindGroupAllocationPolicy::transient_frame,
+        },
+    };
+    const truffle::rhi::PipelineLayoutBindGroupArenaRequest sharedPoolRequestsC[] = {
+        {
+            .groupIndex = 0,
+            .bindGroupCount = 5,
+            .allocationPolicy =
+                truffle::rhi::BindGroupAllocationPolicy::transient_frame,
+        },
+        {
+            .groupIndex = 3,
+            .bindGroupCount = 1,
+        },
+    };
+    const truffle::rhi::PipelineLayoutBindGroupArenaRequest sharedPoolMissingLayoutRequests[] = {
+        {
+            .groupIndex = 0,
+            .bindGroupCount = 1,
+        },
+    };
+    const truffle::rhi::PipelineLayoutDescriptorArenaBatchRequest sharedPoolBatches[] = {
+        {
+            .layout = &sharedPoolLayoutA,
+            .requests = sharedPoolRequestsA,
+        },
+        {
+            .layout = &sharedPoolLayoutB,
+            .requests = sharedPoolRequestsB,
+        },
+        {
+            .layout = &sharedPoolLayoutA,
+            .requests = sharedPoolRequestsC,
+        },
+        {
+            .requests = sharedPoolMissingLayoutRequests,
+        },
+    };
+    const auto sharedPoolSummary =
+        truffle::rhi::pipeline_layout_shared_descriptor_arena_summary(
+            caps, sharedPoolBatches);
+    TRUFFLE_CHECK(sharedPoolSummary.layoutCount == 4);
+    TRUFFLE_CHECK(sharedPoolSummary.requestCount == 7);
+    TRUFFLE_CHECK(sharedPoolSummary.plannedGroupCount == 5);
+    TRUFFLE_CHECK(sharedPoolSummary.missingLayoutCount == 1);
+    TRUFFLE_CHECK(sharedPoolSummary.missingGroupCount == 1);
+    TRUFFLE_CHECK(sharedPoolSummary.familyCount == 3);
+    TRUFFLE_CHECK(sharedPoolSummary.mergedGroupCount == 2);
+    TRUFFLE_CHECK(sharedPoolSummary.strategySplitGroupCount == 1);
+    TRUFFLE_CHECK(!sharedPoolSummary.complete);
+    TRUFFLE_CHECK(sharedPoolSummary.families.size() == 3);
+    TRUFFLE_CHECK(sharedPoolSummary.totals.planCount == 3);
+    TRUFFLE_CHECK(sharedPoolSummary.totals.bindGroupCount == 15);
+    TRUFFLE_CHECK(sharedPoolSummary.totals.cachedBindGroupCount == 15);
+    TRUFFLE_CHECK(sharedPoolSummary.totals.uncachedBindGroupCount == 0);
+    TRUFFLE_CHECK(sharedPoolSummary.totals.cacheEntryCount ==
+                  5 + 10 * caps.maxFramesInFlight);
+    TRUFFLE_CHECK(sharedPoolSummary.totals.reservationEntryCount ==
+                  5 + 10 * caps.maxFramesInFlight);
+    TRUFFLE_CHECK(sharedPoolSummary.totals.persistentCacheEntryCount == 5);
+    TRUFFLE_CHECK(sharedPoolSummary.totals.perFrameCacheEntryCount ==
+                  10 * caps.maxFramesInFlight);
+    TRUFFLE_CHECK(sharedPoolSummary.totals.usesDescriptorCache);
+    TRUFFLE_CHECK(sharedPoolSummary.totals.partitionsCachePerFrame);
+    TRUFFLE_CHECK(sharedPoolSummary.totals.maxBudgetPerEntry.totalUnits == 2);
+    TRUFFLE_CHECK(sharedPoolSummary.totals.cacheBudget.totalUnits ==
+                  5 + 15 * caps.maxFramesInFlight);
+    TRUFFLE_CHECK(sharedPoolSummary.totals.reservationBudget.totalUnits ==
+                  5 + 15 * caps.maxFramesInFlight);
+    TRUFFLE_CHECK(sharedPoolSummary.totals.persistentCacheBudget.totalUnits == 5);
+    TRUFFLE_CHECK(sharedPoolSummary.totals.perFrameCacheBudget.totalUnits ==
+                  15 * caps.maxFramesInFlight);
+    TRUFFLE_CHECK(truffle::rhi::bind_group_descriptor_family_shareable(
+        sharedPoolSummary.families[0].layout,
+        sharedPoolSummary.families[0].strategy,
+        sharedPoolSummary.families[0].layout,
+        sharedPoolSummary.families[0].strategy));
+    TRUFFLE_CHECK(!truffle::rhi::bind_group_descriptor_family_shareable(
+        sharedPoolSummary.families[0].layout,
+        sharedPoolSummary.families[0].strategy,
+        sharedPoolSummary.families[2].layout,
+        sharedPoolSummary.families[2].strategy));
+    TRUFFLE_CHECK(
+        truffle::rhi::bind_group_descriptor_strategy_partition_compatible(
+            sharedPoolSummary.families[1].strategy,
+            sharedPoolSummary.families[2].strategy));
+    TRUFFLE_CHECK(
+        !truffle::rhi::bind_group_descriptor_strategy_partition_compatible(
+            sharedPoolSummary.families[0].strategy,
+            sharedPoolSummary.families[2].strategy));
+    const auto sharedPoolPartitions =
+        truffle::rhi::pipeline_layout_shared_descriptor_arena_partition_summary(
+            sharedPoolSummary);
+    TRUFFLE_CHECK(sharedPoolPartitions.layoutCount == 4);
+    TRUFFLE_CHECK(sharedPoolPartitions.requestCount == 7);
+    TRUFFLE_CHECK(sharedPoolPartitions.plannedGroupCount == 5);
+    TRUFFLE_CHECK(sharedPoolPartitions.missingLayoutCount == 1);
+    TRUFFLE_CHECK(sharedPoolPartitions.missingGroupCount == 1);
+    TRUFFLE_CHECK(sharedPoolPartitions.familyCount == 3);
+    TRUFFLE_CHECK(sharedPoolPartitions.partitionCount == 2);
+    TRUFFLE_CHECK(sharedPoolPartitions.persistentCachePartitionCount == 1);
+    TRUFFLE_CHECK(sharedPoolPartitions.perFrameCachePartitionCount == 1);
+    TRUFFLE_CHECK(sharedPoolPartitions.uncachedReservationPartitionCount == 0);
+    TRUFFLE_CHECK(sharedPoolPartitions.mixedCacheKeyPartitionCount == 1);
+    TRUFFLE_CHECK(sharedPoolPartitions.mixedUpdatePartitionCount == 0);
+    TRUFFLE_CHECK(sharedPoolPartitions.familyResidencyCount == 3);
+    TRUFFLE_CHECK(sharedPoolPartitions.familyScopedLiveObjectCount == 2);
+    TRUFFLE_CHECK(sharedPoolPartitions.partitionScopedLiveObjectCount == 1);
+    TRUFFLE_CHECK(sharedPoolPartitions.partitions.size() == 2);
+    TRUFFLE_CHECK(sharedPoolPartitions.partitions[0].poolClass ==
+                  truffle::rhi::BindGroupDescriptorArenaPoolClass::
+                      persistent_cache);
+    TRUFFLE_CHECK(sharedPoolPartitions.partitions[0].familyCount == 1);
+    TRUFFLE_CHECK(sharedPoolPartitions.partitions[0].requestCount == 2);
+    TRUFFLE_CHECK(sharedPoolPartitions.partitions[0].bindGroupCount == 5);
+    TRUFFLE_CHECK(sharedPoolPartitions.partitions[0].entryCount == 5);
+    TRUFFLE_CHECK(sharedPoolPartitions.partitions[0].reservationMultiplier == 1);
+    TRUFFLE_CHECK(
+        sharedPoolPartitions.partitions[0].cacheKeyUsableFamilyCount == 1);
+    TRUFFLE_CHECK(
+        sharedPoolPartitions.partitions[0].rewriteDescriptorFamilyCount == 0);
+    TRUFFLE_CHECK(sharedPoolPartitions.partitions[0]
+                      .rebuildAllocationOnUpdateFamilyCount == 0);
+    TRUFFLE_CHECK(!sharedPoolPartitions.partitions[0].mixedCacheKeyUsability);
+    TRUFFLE_CHECK(!sharedPoolPartitions.partitions[0].mixedUpdateBehavior);
+    TRUFFLE_CHECK(!sharedPoolPartitions.partitions[0].mixedNativeUpdateModels);
+    TRUFFLE_CHECK(sharedPoolPartitions.partitions[0].strategy.cacheScope ==
+                  truffle::rhi::BindGroupCacheScope::persistent);
+    TRUFFLE_CHECK(sharedPoolPartitions.partitions[0].strategy.cacheKeyUsable);
+    TRUFFLE_CHECK(sharedPoolPartitions.partitions[0].totalBudget.totalUnits == 5);
+    TRUFFLE_CHECK(sharedPoolPartitions.partitions[0].familyIndices.size() == 1);
+    TRUFFLE_CHECK(sharedPoolPartitions.partitions[0].familyIndices[0] == 0);
+    TRUFFLE_CHECK(sharedPoolPartitions.partitions[1].poolClass ==
+                  truffle::rhi::BindGroupDescriptorArenaPoolClass::
+                      per_frame_cache);
+    TRUFFLE_CHECK(sharedPoolPartitions.partitions[1].familyCount == 2);
+    TRUFFLE_CHECK(sharedPoolPartitions.partitions[1].requestCount == 3);
+    TRUFFLE_CHECK(sharedPoolPartitions.partitions[1].bindGroupCount == 10);
+    TRUFFLE_CHECK(sharedPoolPartitions.partitions[1].entryCount ==
+                  10 * caps.maxFramesInFlight);
+    TRUFFLE_CHECK(sharedPoolPartitions.partitions[1].reservationMultiplier ==
+                  caps.maxFramesInFlight);
+    TRUFFLE_CHECK(
+        sharedPoolPartitions.partitions[1].cacheKeyUsableFamilyCount == 1);
+    TRUFFLE_CHECK(
+        sharedPoolPartitions.partitions[1].rewriteDescriptorFamilyCount == 0);
+    TRUFFLE_CHECK(sharedPoolPartitions.partitions[1]
+                      .rebuildAllocationOnUpdateFamilyCount == 0);
+    TRUFFLE_CHECK(sharedPoolPartitions.partitions[1].mixedCacheKeyUsability);
+    TRUFFLE_CHECK(!sharedPoolPartitions.partitions[1].mixedUpdateBehavior);
+    TRUFFLE_CHECK(!sharedPoolPartitions.partitions[1].mixedNativeUpdateModels);
+    TRUFFLE_CHECK(sharedPoolPartitions.partitions[1].strategy.cacheScope ==
+                  truffle::rhi::BindGroupCacheScope::per_frame);
+    TRUFFLE_CHECK(!sharedPoolPartitions.partitions[1].strategy.cacheKeyUsable);
+    TRUFFLE_CHECK(sharedPoolPartitions.partitions[1].totalBudget.totalUnits ==
+                  15 * caps.maxFramesInFlight);
+    TRUFFLE_CHECK(sharedPoolPartitions.partitions[1].familyIndices.size() == 2);
+    TRUFFLE_CHECK(sharedPoolPartitions.partitions[1].familyIndices[0] == 1);
+    TRUFFLE_CHECK(sharedPoolPartitions.partitions[1].familyIndices[1] == 2);
+    TRUFFLE_CHECK(sharedPoolPartitions.familyResidencies.size() == 3);
+    TRUFFLE_CHECK(sharedPoolPartitions.familyResidencies[0].familyIndex == 0);
+    TRUFFLE_CHECK(sharedPoolPartitions.familyResidencies[0].partitionIndex == 0);
+    TRUFFLE_CHECK(sharedPoolPartitions.familyResidencies[0].poolClass ==
+                  truffle::rhi::BindGroupDescriptorArenaPoolClass::
+                      persistent_cache);
+    TRUFFLE_CHECK(sharedPoolPartitions.familyResidencies[0].lifetimeClass ==
+                  truffle::rhi::BindGroupDescriptorLifetimeClass::
+                      retained_manual);
+    TRUFFLE_CHECK(sharedPoolPartitions.familyResidencies[0].liveObjectScope ==
+                  truffle::rhi::BindGroupDescriptorLiveObjectScope::partition);
+    TRUFFLE_CHECK(sharedPoolPartitions.familyResidencies[1].familyIndex == 1);
+    TRUFFLE_CHECK(sharedPoolPartitions.familyResidencies[1].partitionIndex == 1);
+    TRUFFLE_CHECK(sharedPoolPartitions.familyResidencies[1].poolClass ==
+                  truffle::rhi::BindGroupDescriptorArenaPoolClass::
+                      per_frame_cache);
+    TRUFFLE_CHECK(sharedPoolPartitions.familyResidencies[1].lifetimeClass ==
+                  truffle::rhi::BindGroupDescriptorLifetimeClass::
+                      frame_retired);
+    TRUFFLE_CHECK(sharedPoolPartitions.familyResidencies[1].liveObjectScope ==
+                  truffle::rhi::BindGroupDescriptorLiveObjectScope::family);
+    TRUFFLE_CHECK(sharedPoolPartitions.familyResidencies[1].requiresFrameIndex);
+    TRUFFLE_CHECK(sharedPoolPartitions.familyResidencies[1].entryCount ==
+                  5 * caps.maxFramesInFlight);
+    TRUFFLE_CHECK(sharedPoolPartitions.familyResidencies[1]
+                      .partitionHasMixedCacheKeyUsability);
+    TRUFFLE_CHECK(sharedPoolPartitions.familyResidencies[2].familyIndex == 2);
+    TRUFFLE_CHECK(sharedPoolPartitions.familyResidencies[2].partitionIndex == 1);
+    TRUFFLE_CHECK(sharedPoolPartitions.familyResidencies[2].poolClass ==
+                  truffle::rhi::BindGroupDescriptorArenaPoolClass::
+                      per_frame_cache);
+    TRUFFLE_CHECK(sharedPoolPartitions.familyResidencies[2].lifetimeClass ==
+                  truffle::rhi::BindGroupDescriptorLifetimeClass::
+                      frame_retired);
+    TRUFFLE_CHECK(sharedPoolPartitions.familyResidencies[2].liveObjectScope ==
+                  truffle::rhi::BindGroupDescriptorLiveObjectScope::family);
+    TRUFFLE_CHECK(sharedPoolPartitions.familyResidencies[2].requiresFrameIndex);
+    TRUFFLE_CHECK(sharedPoolPartitions.familyResidencies[2].entryCount ==
+                  5 * caps.maxFramesInFlight);
+    const auto sharedPoolCohorts =
+        truffle::rhi::pipeline_layout_shared_descriptor_arena_cohort_summary(
+            sharedPoolPartitions);
+    TRUFFLE_CHECK(sharedPoolCohorts.partitionCount == 2);
+    TRUFFLE_CHECK(sharedPoolCohorts.familyResidencyCount == 3);
+    TRUFFLE_CHECK(sharedPoolCohorts.cohortCount == 2);
+    TRUFFLE_CHECK(sharedPoolCohorts.liveObjectCohortCount == 1);
+    TRUFFLE_CHECK(sharedPoolCohorts.capacityOnlyCohortCount == 1);
+    TRUFFLE_CHECK(sharedPoolCohorts.mixedCacheKeyCohortCount == 1);
+    TRUFFLE_CHECK(sharedPoolCohorts.cohorts.size() == 2);
+    TRUFFLE_CHECK(sharedPoolCohorts.cohorts[0].kind ==
+                  truffle::rhi::BindGroupDescriptorReuseCohortKind::
+                      live_objects);
+    TRUFFLE_CHECK(sharedPoolCohorts.cohorts[0].poolClass ==
+                  truffle::rhi::BindGroupDescriptorArenaPoolClass::
+                      persistent_cache);
+    TRUFFLE_CHECK(sharedPoolCohorts.cohorts[0].familyCount == 1);
+    TRUFFLE_CHECK(sharedPoolCohorts.cohorts[0].requestCount == 2);
+    TRUFFLE_CHECK(sharedPoolCohorts.cohorts[0].bindGroupCount == 5);
+    TRUFFLE_CHECK(sharedPoolCohorts.cohorts[0].entryCount == 5);
+    TRUFFLE_CHECK(sharedPoolCohorts.cohorts[1].kind ==
+                  truffle::rhi::BindGroupDescriptorReuseCohortKind::
+                      capacity_only);
+    TRUFFLE_CHECK(sharedPoolCohorts.cohorts[1].poolClass ==
+                  truffle::rhi::BindGroupDescriptorArenaPoolClass::
+                      per_frame_cache);
+    TRUFFLE_CHECK(sharedPoolCohorts.cohorts[1].familyCount == 2);
+    TRUFFLE_CHECK(sharedPoolCohorts.cohorts[1].requestCount == 3);
+    TRUFFLE_CHECK(sharedPoolCohorts.cohorts[1].bindGroupCount == 10);
+    TRUFFLE_CHECK(sharedPoolCohorts.cohorts[1].entryCount ==
+                  10 * caps.maxFramesInFlight);
+    TRUFFLE_CHECK(sharedPoolCohorts.cohorts[1].mixedCacheKeyUsability);
+    TRUFFLE_CHECK(sharedPoolCohorts.cohorts[1].familyIndices.size() == 2);
+    const auto sharedPoolPlan =
+        truffle::rhi::pipeline_layout_shared_descriptor_arena_plan(
+            caps, sharedPoolBatches);
+    TRUFFLE_CHECK(sharedPoolPlan.families.familyCount == 3);
+    TRUFFLE_CHECK(sharedPoolPlan.families.mergedGroupCount == 2);
+    TRUFFLE_CHECK(sharedPoolPlan.families.totals.bindGroupCount == 15);
+    TRUFFLE_CHECK(sharedPoolPlan.partitions.partitionCount == 2);
+    TRUFFLE_CHECK(sharedPoolPlan.partitions.familyResidencyCount == 3);
+    TRUFFLE_CHECK(sharedPoolPlan.cohorts.cohortCount == 2);
+    TRUFFLE_CHECK(sharedPoolPlan.cohorts.liveObjectCohortCount == 1);
+    TRUFFLE_CHECK(sharedPoolPlan.cohorts.capacityOnlyCohortCount == 1);
+    TRUFFLE_CHECK(!sharedPoolPlan.materialization.complete);
+    TRUFFLE_CHECK(sharedPoolPlan.materialization.partitionCount == 2);
+    TRUFFLE_CHECK(sharedPoolPlan.materialization.cohortCount == 2);
+    TRUFFLE_CHECK(sharedPoolPlan.materialization.arenaCount == 2);
+    TRUFFLE_CHECK(sharedPoolPlan.materialization.reuseMaterializationCount == 2);
+    TRUFFLE_CHECK(sharedPoolPlan.materialization
+                      .liveObjectReuseMaterializationCount == 1);
+    TRUFFLE_CHECK(sharedPoolPlan.materialization
+                      .capacityOnlyReuseMaterializationCount == 1);
+    TRUFFLE_CHECK(sharedPoolPlan.materialization.arenas[0].bindGroupCapacity == 5);
+    TRUFFLE_CHECK(sharedPoolPlan.materialization.arenas[0].entryCapacity == 5);
+    TRUFFLE_CHECK(sharedPoolPlan.materialization.arenas[0]
+                      .supportsPartitionWideLiveObjectReuse);
+    TRUFFLE_CHECK(sharedPoolPlan.materialization.arenas[1].bindGroupCapacity == 10);
+    TRUFFLE_CHECK(sharedPoolPlan.materialization.arenas[1].entryCapacity ==
+                  10 * caps.maxFramesInFlight);
+    TRUFFLE_CHECK(sharedPoolPlan.materialization.arenas[1]
+                      .mixedCacheKeyUsability);
+    TRUFFLE_CHECK(sharedPoolPlan.materialization.reuseMaterializations[0].kind ==
+                  truffle::rhi::BindGroupDescriptorReuseCohortKind::
+                      live_objects);
+    TRUFFLE_CHECK(sharedPoolPlan.materialization.reuseMaterializations[0]
+                      .supportsLiveObjectReuse);
+    TRUFFLE_CHECK(sharedPoolPlan.materialization.reuseMaterializations[0]
+                      .bindGroupCapacity == 5);
+    TRUFFLE_CHECK(sharedPoolPlan.materialization.reuseMaterializations[1].kind ==
+                  truffle::rhi::BindGroupDescriptorReuseCohortKind::
+                      capacity_only);
+    TRUFFLE_CHECK(!sharedPoolPlan.materialization.reuseMaterializations[1]
+                       .supportsLiveObjectReuse);
+    TRUFFLE_CHECK(sharedPoolPlan.materialization.reuseMaterializations[1]
+                      .mixedCacheKeyUsability);
+    TRUFFLE_CHECK(sharedPoolPlan.materialization.reuseMaterializations[1]
+                      .bindGroupCapacity == 10);
+    auto descriptorArena = device.create_bind_group_descriptor_arena(
+        sharedPoolPlan.materialization.arenas[0]);
+    TRUFFLE_CHECK(descriptorArena.ok());
+    TRUFFLE_CHECK(descriptorArena.value()->partition_index() == 0);
+    TRUFFLE_CHECK(descriptorArena.value()->pool_class() ==
+                  truffle::rhi::BindGroupDescriptorArenaPoolClass::
+                      persistent_cache);
+    TRUFFLE_CHECK(descriptorArena.value()->bind_group_capacity() == 5);
+    auto descriptorReuseMaterializer =
+        device.create_bind_group_descriptor_reuse_materializer(
+            sharedPoolPlan.materialization.reuseMaterializations[0]);
+    TRUFFLE_CHECK(descriptorReuseMaterializer.ok());
+    TRUFFLE_CHECK(descriptorReuseMaterializer.value()->cohort_index() == 0);
+    TRUFFLE_CHECK(descriptorReuseMaterializer.value()->kind() ==
+                  truffle::rhi::BindGroupDescriptorReuseCohortKind::
+                      live_objects);
+    TRUFFLE_CHECK(
+        descriptorReuseMaterializer.value()->supports_live_object_reuse());
+    TRUFFLE_CHECK(
+        descriptorReuseMaterializer.value()->compatible_with(*descriptorArena.value()));
+    TRUFFLE_CHECK(
+        descriptorReuseMaterializer.value()->state().issuedRequestCount == 0);
+    auto persistentReservationRequest =
+        descriptorReuseMaterializer.value()->make_reservation_request(3);
+    TRUFFLE_CHECK(persistentReservationRequest.ok());
+    TRUFFLE_CHECK(persistentReservationRequest.value().frameIndex == 0);
+    TRUFFLE_CHECK(
+        descriptorArena.value()->can_reserve(persistentReservationRequest.value()));
+    auto persistentReservation =
+        descriptorArena.value()->reserve(persistentReservationRequest.value());
+    TRUFFLE_CHECK(persistentReservation.ok());
+    TRUFFLE_CHECK(
+        descriptorReuseMaterializer.value()->observe_reservation(
+            persistentReservation.value())
+            .ok());
+    TRUFFLE_CHECK(descriptorArena.value()->usage().usedBindGroupCount == 3);
+    TRUFFLE_CHECK(
+        !descriptorArena.value()->can_reserve(
+            descriptorReuseMaterializer.value()->reservation_request(3)));
+    TRUFFLE_CHECK(
+        descriptorReuseMaterializer.value()->state().activeReservationCount == 1);
+    TRUFFLE_CHECK(
+        descriptorReuseMaterializer.value()->state().trackedReservations.size() == 1);
+    TRUFFLE_CHECK(descriptorArena.value()->release(persistentReservation.value())
+                      .ok());
+    TRUFFLE_CHECK(
+        descriptorReuseMaterializer.value()->release_reservation(
+            persistentReservation.value())
+            .ok());
+    TRUFFLE_CHECK(descriptorArena.value()->clear().ok());
+    TRUFFLE_CHECK(descriptorArena.value()->empty());
+    TRUFFLE_CHECK(descriptorReuseMaterializer.value()->clear().ok());
+    TRUFFLE_CHECK(
+        descriptorReuseMaterializer.value()->state().issuedRequestCount == 0);
+    truffle::rhi::BindGroupDescriptorRuntimeCoordinator persistentCoordinator{
+        *descriptorArena.value(), *descriptorReuseMaterializer.value()};
+    TRUFFLE_CHECK(persistentCoordinator.compatible());
+    TRUFFLE_CHECK(persistentCoordinator.empty());
+    auto coordinatedPersistentRequest =
+        persistentCoordinator.make_reservation_request(2);
+    TRUFFLE_CHECK(coordinatedPersistentRequest.ok());
+    TRUFFLE_CHECK(persistentCoordinator.can_reserve(2));
+    auto coordinatedPersistentReservation = persistentCoordinator.reserve(2);
+    TRUFFLE_CHECK(coordinatedPersistentReservation.ok());
+    const auto coordinatedPersistentState = persistentCoordinator.state();
+    TRUFFLE_CHECK(coordinatedPersistentState.trackedReservationCount == 1);
+    TRUFFLE_CHECK(!coordinatedPersistentState.drifted);
+    TRUFFLE_CHECK(coordinatedPersistentState.underlyingReservationsConsistent);
+    const auto coordinatedPersistentPressure =
+        truffle::rhi::bind_group_descriptor_runtime_coordinator_pressure(
+            persistentCoordinator);
+    TRUFFLE_CHECK(coordinatedPersistentPressure.action ==
+                  truffle::rhi::BindGroupDescriptorRuntimePressureAction::none);
+    auto externalPersistentRequest =
+        descriptorReuseMaterializer.value()->make_reservation_request(1);
+    TRUFFLE_CHECK(externalPersistentRequest.ok());
+    auto externalPersistentReservation =
+        descriptorArena.value()->reserve(externalPersistentRequest.value());
+    TRUFFLE_CHECK(externalPersistentReservation.ok());
+    TRUFFLE_CHECK(
+        descriptorReuseMaterializer.value()->observe_reservation(
+            externalPersistentReservation.value())
+            .ok());
+    TRUFFLE_CHECK(persistentCoordinator.state().drifted);
+    TRUFFLE_CHECK(
+        truffle::rhi::bind_group_descriptor_runtime_coordinator_pressure(
+            persistentCoordinator)
+            .action ==
+        truffle::rhi::BindGroupDescriptorRuntimePressureAction::reconcile);
+    TRUFFLE_CHECK(
+        truffle::rhi::bind_group_descriptor_runtime_reclamation_plan(
+            persistentCoordinator)
+            .action ==
+        truffle::rhi::BindGroupDescriptorRuntimeReclamationAction::reconcile);
+    const std::vector<const truffle::rhi::BindGroupDescriptorRuntimeCoordinator*>
+        driftedAdmissionCoordinators = {&persistentCoordinator};
+    const auto reconcileAdmissionPlan =
+        truffle::rhi::bind_group_descriptor_runtime_admission_plan(
+            driftedAdmissionCoordinators, 1);
+    TRUFFLE_CHECK(reconcileAdmissionPlan.action ==
+                  truffle::rhi::BindGroupDescriptorRuntimeAdmissionAction::
+                      reconcile_then_admit);
+    const auto reconcileReclaimAdmissionPlan =
+        truffle::rhi::bind_group_descriptor_runtime_admission_plan(
+            driftedAdmissionCoordinators, 3);
+    TRUFFLE_CHECK(reconcileReclaimAdmissionPlan.action ==
+                  truffle::rhi::BindGroupDescriptorRuntimeAdmissionAction::
+                      reconcile_then_reclaim_then_admit);
+    TRUFFLE_CHECK(reconcileReclaimAdmissionPlan.reclaimAdmissionCount == 1);
+    TRUFFLE_CHECK(persistentCoordinator.reconcile().ok());
+    TRUFFLE_CHECK(
+        persistentCoordinator.state().trackedReservationCount == 2);
+    TRUFFLE_CHECK(
+        persistentCoordinator.release(externalPersistentReservation.value()).ok());
+    TRUFFLE_CHECK(
+        persistentCoordinator.release(coordinatedPersistentReservation.value()).ok());
+    auto inconsistentPersistentReservation =
+        descriptorArena.value()->reserve(
+            descriptorReuseMaterializer.value()->reservation_request(1));
+    TRUFFLE_CHECK(inconsistentPersistentReservation.ok());
+    TRUFFLE_CHECK(persistentCoordinator.state().drifted);
+    TRUFFLE_CHECK(
+        truffle::rhi::bind_group_descriptor_runtime_reclamation_plan(
+            persistentCoordinator)
+            .action ==
+        truffle::rhi::BindGroupDescriptorRuntimeReclamationAction::
+            audit_inconsistent_state);
+    const auto auditAdmissionPlan =
+        truffle::rhi::bind_group_descriptor_runtime_admission_plan(
+            driftedAdmissionCoordinators, 1);
+    TRUFFLE_CHECK(auditAdmissionPlan.action ==
+                  truffle::rhi::BindGroupDescriptorRuntimeAdmissionAction::
+                      audit_before_admit);
+    TRUFFLE_CHECK(persistentCoordinator.clear().ok());
+    TRUFFLE_CHECK(!persistentCoordinator.drifted());
+    auto invalidDescriptorArenaDesc = sharedPoolPlan.materialization.arenas[0];
+    invalidDescriptorArenaDesc.bindGroupCapacity = 0;
+    auto invalidDescriptorArena =
+        device.create_bind_group_descriptor_arena(invalidDescriptorArenaDesc);
+    TRUFFLE_CHECK(!invalidDescriptorArena.ok());
+    TRUFFLE_CHECK(invalidDescriptorArena.status().code ==
+                  truffle::core::StatusCode::invalid_argument);
+    auto invalidDescriptorReuseDesc =
+        sharedPoolPlan.materialization.reuseMaterializations[0];
+    invalidDescriptorReuseDesc.supportsLiveObjectReuse = false;
+    auto invalidDescriptorReuseMaterializer =
+        device.create_bind_group_descriptor_reuse_materializer(
+            invalidDescriptorReuseDesc);
+    TRUFFLE_CHECK(!invalidDescriptorReuseMaterializer.ok());
+    TRUFFLE_CHECK(invalidDescriptorReuseMaterializer.status().code ==
+                  truffle::core::StatusCode::invalid_argument);
+    auto perFrameDescriptorArena = device.create_bind_group_descriptor_arena(
+        sharedPoolPlan.materialization.arenas[1]);
+    TRUFFLE_CHECK(perFrameDescriptorArena.ok());
+    TRUFFLE_CHECK(perFrameDescriptorArena.value()->slot_count() ==
+                  caps.maxFramesInFlight);
+    auto perFrameDescriptorReuseMaterializer =
+        device.create_bind_group_descriptor_reuse_materializer(
+            sharedPoolPlan.materialization.reuseMaterializations[1]);
+    TRUFFLE_CHECK(perFrameDescriptorReuseMaterializer.ok());
+    TRUFFLE_CHECK(perFrameDescriptorReuseMaterializer.value()->compatible_with(
+        *perFrameDescriptorArena.value()));
+    auto frameRequest0 =
+        perFrameDescriptorReuseMaterializer.value()->make_reservation_request(10);
+    TRUFFLE_CHECK(frameRequest0.ok());
+    TRUFFLE_CHECK(frameRequest0.value().frameIndex == 0);
+    auto frameReservation0 =
+        perFrameDescriptorArena.value()->reserve(frameRequest0.value());
+    TRUFFLE_CHECK(frameReservation0.ok());
+    TRUFFLE_CHECK(
+        perFrameDescriptorReuseMaterializer.value()->observe_reservation(
+            frameReservation0.value())
+            .ok());
+    auto frameRequest1 =
+        perFrameDescriptorReuseMaterializer.value()->make_reservation_request(10);
+    TRUFFLE_CHECK(frameRequest1.ok());
+    TRUFFLE_CHECK(frameRequest1.value().frameIndex == 1);
+    auto frameReservation1 =
+        perFrameDescriptorArena.value()->reserve(frameRequest1.value());
+    TRUFFLE_CHECK(frameReservation1.ok());
+    TRUFFLE_CHECK(
+        perFrameDescriptorReuseMaterializer.value()->observe_reservation(
+            frameReservation1.value())
+            .ok());
+    TRUFFLE_CHECK(!perFrameDescriptorArena.value()->can_reserve({
+        .bindGroupCount = 1,
+        .entryCount = 1,
+        .frameIndex = 0,
+    }));
+    const auto perFrameUsage = perFrameDescriptorArena.value()->usage();
+    TRUFFLE_CHECK(perFrameUsage.reservationCount == 2);
+    TRUFFLE_CHECK(perFrameUsage.usedEntryCount == 20);
+    TRUFFLE_CHECK(perFrameUsage.slots[0].usedBindGroupCount == 10);
+    TRUFFLE_CHECK(perFrameUsage.slots[1].usedBindGroupCount == 10);
+    const auto perFrameReuseState =
+        perFrameDescriptorReuseMaterializer.value()->state();
+    TRUFFLE_CHECK(perFrameReuseState.issuedRequestCount == 2);
+    TRUFFLE_CHECK(perFrameReuseState.activeReservationCount == 2);
+    TRUFFLE_CHECK(perFrameReuseState.capacityOnlyReservationCount == 2);
+    TRUFFLE_CHECK(perFrameReuseState.trackedReservations.size() == 2);
+    const auto perFrameArenaPressure =
+        truffle::rhi::bind_group_descriptor_arena_pressure(
+            *perFrameDescriptorArena.value());
+    TRUFFLE_CHECK(perFrameArenaPressure.shouldRetireHottestSlot);
+    TRUFFLE_CHECK(perFrameReuseState.nextFrameIndex ==
+                  (2 % perFrameDescriptorArena.value()->slot_count()));
+    auto retiredFrameSlot = perFrameDescriptorArena.value()->retire_slot(1);
+    TRUFFLE_CHECK(retiredFrameSlot.ok());
+    TRUFFLE_CHECK(retiredFrameSlot.value().releasedReservationCount == 1);
+    TRUFFLE_CHECK(retiredFrameSlot.value().releasedBindGroupCount == 10);
+    auto retiredReuseFrameSlot =
+        perFrameDescriptorReuseMaterializer.value()->retire_slot(1);
+    TRUFFLE_CHECK(retiredReuseFrameSlot.ok());
+    TRUFFLE_CHECK(retiredReuseFrameSlot.value().releasedReservationCount == 1);
+    TRUFFLE_CHECK(perFrameDescriptorArena.value()->release(frameReservation0.value())
+                      .ok());
+    TRUFFLE_CHECK(
+        perFrameDescriptorReuseMaterializer.value()->release_reservation(
+            frameReservation0.value())
+            .ok());
+    TRUFFLE_CHECK(perFrameDescriptorArena.value()->can_reserve({
+        .bindGroupCount = 1,
+        .entryCount = 1,
+        .frameIndex = 0,
+    }));
+    TRUFFLE_CHECK(perFrameDescriptorArena.value()->clear().ok());
+    TRUFFLE_CHECK(perFrameDescriptorArena.value()->empty());
+    TRUFFLE_CHECK(perFrameDescriptorReuseMaterializer.value()->clear().ok());
+    TRUFFLE_CHECK(
+        perFrameDescriptorReuseMaterializer.value()->state().activeReservationCount ==
+        0);
+    truffle::rhi::BindGroupDescriptorRuntimeCoordinator incompatibleCoordinator{
+        *perFrameDescriptorArena.value(), *descriptorReuseMaterializer.value()};
+    TRUFFLE_CHECK(!incompatibleCoordinator.compatible());
+    TRUFFLE_CHECK(!incompatibleCoordinator.make_reservation_request(1).ok());
+    truffle::rhi::BindGroupDescriptorRuntimeCoordinator perFrameCoordinator{
+        *perFrameDescriptorArena.value(), *perFrameDescriptorReuseMaterializer.value()};
+    auto coordinatedFrameReservation0 = perFrameCoordinator.reserve(10);
+    TRUFFLE_CHECK(coordinatedFrameReservation0.ok());
+    TRUFFLE_CHECK(coordinatedFrameReservation0.value().frameIndex == 0);
+    auto coordinatedFrameReservation1 = perFrameCoordinator.reserve(10);
+    TRUFFLE_CHECK(coordinatedFrameReservation1.ok());
+    TRUFFLE_CHECK(coordinatedFrameReservation1.value().frameIndex == 1);
+    TRUFFLE_CHECK(perFrameCoordinator.state().trackedReservationCount == 2);
+    TRUFFLE_CHECK(!perFrameCoordinator.state().drifted);
+    const auto perFrameCoordinatorPressure =
+        truffle::rhi::bind_group_descriptor_runtime_coordinator_pressure(
+            perFrameCoordinator);
+    TRUFFLE_CHECK(perFrameCoordinatorPressure.action ==
+                  truffle::rhi::BindGroupDescriptorRuntimePressureAction::retire_slot);
+    TRUFFLE_CHECK(perFrameCoordinatorPressure.reclaimSlotIndex.has_value());
+    const auto perFrameCoordinatorReclamationPlan =
+        truffle::rhi::bind_group_descriptor_runtime_reclamation_plan(
+            perFrameCoordinator);
+    TRUFFLE_CHECK(perFrameCoordinatorReclamationPlan.action ==
+                  truffle::rhi::BindGroupDescriptorRuntimeReclamationAction::retire_slot);
+    TRUFFLE_CHECK(perFrameCoordinatorReclamationPlan.recommendedSlotIndex.has_value());
+    TRUFFLE_CHECK(perFrameCoordinatorReclamationPlan.recommendedReleaseCount == 1);
+    TRUFFLE_CHECK(persistentCoordinator.reserve(4).ok());
+    const std::vector<const truffle::rhi::BindGroupDescriptorRuntimeCoordinator*>
+        arbitrationCoordinators = {&persistentCoordinator, &perFrameCoordinator};
+    const auto arbitrationPlan =
+        truffle::rhi::bind_group_descriptor_runtime_arbitration_plan(
+            arbitrationCoordinators);
+    TRUFFLE_CHECK(arbitrationPlan.coordinatorCount == 2);
+    TRUFFLE_CHECK(arbitrationPlan.preferredCoordinatorIndex.has_value());
+    TRUFFLE_CHECK(*arbitrationPlan.preferredCoordinatorIndex == 1);
+    TRUFFLE_CHECK(arbitrationPlan.preferredReclamationAction ==
+                  truffle::rhi::BindGroupDescriptorRuntimeReclamationAction::retire_slot);
+    TRUFFLE_CHECK(arbitrationPlan.coordinators.size() == 2);
+    TRUFFLE_CHECK(arbitrationPlan.coordinators[0].preferred);
+    TRUFFLE_CHECK(arbitrationPlan.coordinators[0].coordinatorIndex == 1);
+    const auto immediateAdmissionPlan =
+        truffle::rhi::bind_group_descriptor_runtime_admission_plan(
+            arbitrationCoordinators, 1, 0);
+    TRUFFLE_CHECK(immediateAdmissionPlan.immediateAdmissionCount == 1);
+    TRUFFLE_CHECK(immediateAdmissionPlan.reclaimAdmissionCount == 1);
+    TRUFFLE_CHECK(immediateAdmissionPlan.action ==
+                  truffle::rhi::BindGroupDescriptorRuntimeAdmissionAction::
+                      admit_now);
+    TRUFFLE_CHECK(immediateAdmissionPlan.preferredCoordinatorIndex.has_value());
+    TRUFFLE_CHECK(*immediateAdmissionPlan.preferredCoordinatorIndex == 0);
+    TRUFFLE_CHECK(immediateAdmissionPlan.coordinators[0].action ==
+                  truffle::rhi::BindGroupDescriptorRuntimeAdmissionAction::
+                      admit_now);
+    const std::vector<truffle::rhi::BindGroupDescriptorRuntimeBatchAdmissionIntent>
+        batchAdmissionRequests = {{
+            .bindGroupCount = 1,
+            .frameIndex = 0,
+        },
+        {
+            .bindGroupCount = 1,
+            .frameIndex = 0,
+        },
+        {
+            .bindGroupCount = 4,
+            .frameIndex = 0,
+        }};
+    const auto batchAdmissionPlan =
+        truffle::rhi::bind_group_descriptor_runtime_batch_admission_plan(
+            arbitrationCoordinators, batchAdmissionRequests);
+    TRUFFLE_CHECK(batchAdmissionPlan.requestCount == 3);
+    TRUFFLE_CHECK(batchAdmissionPlan.admittedCount == 3);
+    TRUFFLE_CHECK(batchAdmissionPlan.immediateAdmissionCount == 1);
+    TRUFFLE_CHECK(batchAdmissionPlan.reclaimAdmissionCount == 2);
+    TRUFFLE_CHECK(batchAdmissionPlan.decisions.size() == 3);
+    TRUFFLE_CHECK(batchAdmissionPlan.decisions[0].admission.action ==
+                  truffle::rhi::BindGroupDescriptorRuntimeAdmissionAction::
+                      admit_now);
+    TRUFFLE_CHECK(batchAdmissionPlan.decisions[0].admission.coordinatorIndex == 0);
+    TRUFFLE_CHECK(batchAdmissionPlan.decisions[1].admission.action ==
+                  truffle::rhi::BindGroupDescriptorRuntimeAdmissionAction::
+                      reclaim_then_admit);
+    TRUFFLE_CHECK(batchAdmissionPlan.decisions[1].admission.coordinatorIndex == 0);
+    TRUFFLE_CHECK(batchAdmissionPlan.decisions[2].admission.action ==
+                  truffle::rhi::BindGroupDescriptorRuntimeAdmissionAction::
+                      reclaim_then_admit);
+    TRUFFLE_CHECK(batchAdmissionPlan.decisions[2].admission.coordinatorIndex == 1);
+    TRUFFLE_CHECK(batchAdmissionPlan.remainingRecoverableBindGroupRelief >= 9);
+    auto coordinatedRetiredSlot = perFrameCoordinator.retire_slot(1);
+    TRUFFLE_CHECK(coordinatedRetiredSlot.ok());
+    TRUFFLE_CHECK(coordinatedRetiredSlot.value().releasedReservationCount == 1);
+    TRUFFLE_CHECK(perFrameCoordinator.state().trackedReservationCount == 1);
+    TRUFFLE_CHECK(perFrameCoordinator.clear().ok());
+    TRUFFLE_CHECK(perFrameCoordinator.empty());
+    TRUFFLE_CHECK(persistentCoordinator.clear().ok());
     auto invalidTransientBindGroup = device.create_bind_group({
         .layout = bindGroupLayout.value().get(),
         .allocationPolicy =
@@ -1537,6 +2715,30 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
     });
     TRUFFLE_CHECK(!invalidPersistentFrameBindGroup.ok());
     TRUFFLE_CHECK(invalidPersistentFrameBindGroup.status().code ==
+                  truffle::core::StatusCode::invalid_argument);
+    auto invalidRebuildPersistentBindGroup = device.create_bind_group({
+        .layout = bindGroupLayout.value().get(),
+        .reuseHint = truffle::rhi::BindGroupReuseHint::rebuild,
+        .entries = {
+            {
+                .bindingIndex = 0,
+                .type = truffle::rhi::BindingResourceType::uniform_buffer,
+                .buffer = {.buffer = bindGroupUniformBuffer.value().get(), .size = 16},
+            },
+            {
+                .bindingIndex = 1,
+                .type = truffle::rhi::BindingResourceType::sampled_texture,
+                .texture = goodTexture.value().get(),
+            },
+            {
+                .bindingIndex = 2,
+                .type = truffle::rhi::BindingResourceType::sampler,
+                .sampler = bindGroupSampler.value().get(),
+            },
+        },
+    });
+    TRUFFLE_CHECK(!invalidRebuildPersistentBindGroup.ok());
+    TRUFFLE_CHECK(invalidRebuildPersistentBindGroup.status().code ==
                   truffle::core::StatusCode::invalid_argument);
     if (truffle::rhi::supports_descriptor_arrays(caps)) {
         auto arrayBindGroupLayout = device.create_bind_group_layout({

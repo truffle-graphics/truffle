@@ -241,45 +241,21 @@ namespace truffle::rhi::validation {
 [[nodiscard]] constexpr bool binding_layout_compatible(
     const BindingLayoutDesc& expected,
     const BindingLayoutDesc& actual) noexcept {
-    return expected.bindingIndex == actual.bindingIndex &&
-           expected.type == actual.type &&
-           expected.visibility == actual.visibility &&
-            expected.arrayCount == actual.arrayCount &&
-            expected.minBindingSize == actual.minBindingSize &&
-            expected.dynamicIndexing == actual.dynamicIndexing &&
-            expected.bindless == actual.bindless &&
-            expected.dynamicOffset == actual.dynamicOffset &&
-            expected.nativeSlot == actual.nativeSlot;
+    return truffle::rhi::binding_layout_compatible(expected, actual);
 }
 
 [[nodiscard]] inline bool pipeline_layout_bind_group_compatible(
     const PipelineLayoutDesc& pipelineLayout,
     std::uint32_t groupIndex,
     const BindGroupLayoutDesc& bindGroupLayout) noexcept {
-    std::size_t expectedCount = 0;
-    for (const auto& binding : pipelineLayout.bindings) {
-        if (binding.groupIndex == groupIndex) {
-            ++expectedCount;
-        }
-    }
-    if (expectedCount == 0 || bindGroupLayout.bindings.size() != expectedCount) {
+    const auto expectedLayout =
+        pipeline_layout_bind_group_layout(pipelineLayout, groupIndex);
+    if (!expectedLayout ||
+        !truffle::rhi::bind_group_layout_compatible(*expectedLayout,
+                                                    bindGroupLayout) ||
+        !truffle::rhi::bind_group_layout_compatible(bindGroupLayout,
+                                                    *expectedLayout)) {
         return false;
-    }
-
-    for (const auto& expected : pipelineLayout.bindings) {
-        if (expected.groupIndex != groupIndex) {
-            continue;
-        }
-        bool found = false;
-        for (const auto& actual : bindGroupLayout.bindings) {
-            if (binding_layout_compatible(expected, actual)) {
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            return false;
-        }
     }
 
     return true;
@@ -1180,12 +1156,27 @@ namespace truffle::rhi::validation {
     return false;
 }
 
+[[nodiscard]] constexpr bool bind_group_reuse_hint_valid(
+    BindGroupReuseHint hint) noexcept {
+    switch (hint) {
+    case BindGroupReuseHint::stable:
+    case BindGroupReuseHint::update_in_place:
+    case BindGroupReuseHint::rebuild:
+        return true;
+    }
+
+    return false;
+}
+
 [[nodiscard]] inline bool bind_group_desc_valid(
     const BindGroupDesc& desc) noexcept {
     if (!desc.layout ||
         !bind_group_allocation_policy_valid(desc.allocationPolicy) ||
+        !bind_group_reuse_hint_valid(desc.reuseHint) ||
         (desc.allocationPolicy == BindGroupAllocationPolicy::persistent &&
-         desc.allocationFrameIndex != 0)) {
+         desc.allocationFrameIndex != 0) ||
+        (desc.reuseHint == BindGroupReuseHint::rebuild &&
+         desc.allocationPolicy != BindGroupAllocationPolicy::transient_frame)) {
         return false;
     }
 
@@ -1229,6 +1220,148 @@ namespace truffle::rhi::validation {
     }
 
     return true;
+}
+
+[[nodiscard]] constexpr bool bind_group_descriptor_runtime_frame_residency_valid(
+    bool                requiresFrameIndex,
+    std::uint32_t       frameSlotCount,
+    std::uint32_t       recycleFrameLag,
+    const Capabilities& capabilities) noexcept {
+    if (recycleFrameLag > capabilities.maxFramesInFlight) {
+        return false;
+    }
+
+    if (requiresFrameIndex) {
+        return frame_count_supported(frameSlotCount, capabilities);
+    }
+
+    return frameSlotCount <= 1;
+}
+
+[[nodiscard]] inline bool bind_group_descriptor_arena_materialization_valid(
+    const SharedBindGroupDescriptorArenaMaterialization& desc,
+    const Capabilities&                                  capabilities) noexcept {
+    if (desc.familyCount == 0 || desc.requestCount == 0 ||
+        desc.bindGroupCapacity == 0 || desc.entryCapacity == 0 ||
+        desc.familyIndices.size() != desc.familyCount ||
+        desc.cohortIndices.size() != desc.cohortCount ||
+        desc.maxBudgetPerEntry.model != desc.totalBudget.model) {
+        return false;
+    }
+
+    const auto usesDescriptorCache =
+        desc.poolClass != BindGroupDescriptorArenaPoolClass::uncached_reservation;
+    const auto partitionsCachePerFrame =
+        desc.poolClass == BindGroupDescriptorArenaPoolClass::per_frame_cache;
+    if (desc.usesDescriptorCache != usesDescriptorCache ||
+        desc.partitionsCachePerFrame != partitionsCachePerFrame ||
+        desc.requiresFrameIndex != partitionsCachePerFrame ||
+        (desc.requiresFrameIndex &&
+         (desc.frameSlotCount == 0 || desc.entryCapacity % desc.frameSlotCount != 0)) ||
+        !bind_group_descriptor_runtime_frame_residency_valid(desc.requiresFrameIndex,
+                                                             desc.frameSlotCount,
+                                                             desc.recycleFrameLag,
+                                                             capabilities) ||
+        (desc.supportsPartitionWideLiveObjectReuse && !desc.usesDescriptorCache)) {
+        return false;
+    }
+
+    return true;
+}
+
+[[nodiscard]] inline bool bind_group_descriptor_reuse_materialization_valid(
+    const SharedBindGroupDescriptorReuseMaterialization& desc,
+    const Capabilities&                                  capabilities) noexcept {
+    if (desc.familyCount == 0 || desc.requestCount == 0 ||
+        desc.bindGroupCapacity == 0 || desc.entryCapacity == 0 ||
+        desc.reservationMultiplier == 0 ||
+        desc.cacheKeyUsableFamilyCount > desc.familyCount ||
+        desc.familyIndices.size() != desc.familyCount ||
+        desc.maxBudgetPerEntry.model != desc.totalBudget.model) {
+        return false;
+    }
+
+    const auto usesDescriptorCache =
+        desc.poolClass != BindGroupDescriptorArenaPoolClass::uncached_reservation;
+    const auto partitionsCachePerFrame =
+        desc.poolClass == BindGroupDescriptorArenaPoolClass::per_frame_cache;
+    const auto supportsLiveObjectReuse =
+        desc.kind == BindGroupDescriptorReuseCohortKind::live_objects;
+    if (desc.usesDescriptorCache != usesDescriptorCache ||
+        desc.partitionsCachePerFrame != partitionsCachePerFrame ||
+        desc.requiresFrameIndex != partitionsCachePerFrame ||
+        (desc.requiresFrameIndex &&
+         (desc.frameSlotCount == 0 || desc.entryCapacity % desc.frameSlotCount != 0)) ||
+        !bind_group_descriptor_runtime_frame_residency_valid(desc.requiresFrameIndex,
+                                                             desc.frameSlotCount,
+                                                             desc.recycleFrameLag,
+                                                             capabilities) ||
+        desc.supportsLiveObjectReuse != supportsLiveObjectReuse) {
+        return false;
+    }
+
+    return true;
+}
+
+[[nodiscard]] inline bool bind_group_descriptor_arena_reservation_request_valid(
+    const BindGroupDescriptorArenaReservationRequest& request,
+    const SharedBindGroupDescriptorArenaMaterialization& desc) noexcept {
+    const bool invalidLiveObjectReuse =
+        request.liveObjectReuse && !desc.supportsPartitionWideLiveObjectReuse;
+    if (request.bindGroupCount == 0 || request.entryCount == 0 ||
+        request.bindGroupCount > desc.bindGroupCapacity ||
+        invalidLiveObjectReuse) {
+        return false;
+    }
+
+    const auto slotCount =
+        desc.requiresFrameIndex && desc.frameSlotCount != 0 ? desc.frameSlotCount : 1u;
+    const auto slotEntryCapacity =
+        slotCount != 0 ? desc.entryCapacity / slotCount : desc.entryCapacity;
+    if (request.entryCount > slotEntryCapacity) {
+        return false;
+    }
+
+    if (desc.requiresFrameIndex) {
+        return request.frameIndex < slotCount;
+    }
+
+    return request.frameIndex == 0;
+}
+
+[[nodiscard]] inline bool bind_group_descriptor_reuse_materializer_compatible(
+    const SharedBindGroupDescriptorReuseMaterialization& reuse,
+    const SharedBindGroupDescriptorArenaMaterialization& arena) noexcept {
+    return reuse.partitionIndex == arena.partitionIndex &&
+           reuse.poolClass == arena.poolClass &&
+           reuse.bindGroupCapacity <= arena.bindGroupCapacity &&
+           reuse.entryCapacity <= arena.entryCapacity &&
+           (!reuse.supportsLiveObjectReuse ||
+            arena.supportsPartitionWideLiveObjectReuse);
+}
+
+[[nodiscard]] inline bool bind_group_descriptor_reuse_materializer_request_valid(
+    const BindGroupDescriptorArenaReservationRequest&      request,
+    const SharedBindGroupDescriptorReuseMaterialization& reuse) noexcept {
+    if (request.bindGroupCount == 0 || request.entryCount == 0 ||
+        request.bindGroupCount > reuse.bindGroupCapacity ||
+        (request.liveObjectReuse && !reuse.supportsLiveObjectReuse)) {
+        return false;
+    }
+
+    const auto slotCount =
+        reuse.requiresFrameIndex && reuse.frameSlotCount != 0 ? reuse.frameSlotCount : 1u;
+    const auto slotEntryCapacity =
+        slotCount != 0 ? reuse.entryCapacity / slotCount : reuse.entryCapacity;
+    if (request.entryCount > slotEntryCapacity) {
+        return false;
+    }
+
+    if (reuse.requiresFrameIndex) {
+        return request.frameIndex < slotCount;
+    }
+
+    return request.frameIndex == 0;
 }
 
 [[nodiscard]] inline const BindingLayoutDesc* find_binding_layout(

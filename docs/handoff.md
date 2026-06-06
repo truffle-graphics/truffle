@@ -528,6 +528,293 @@ validation, diagnostics, and backend parity.
   - Added helper queries for flattened vs group-preserving descriptor models.
   - Extended shared backend contract and live parity reporter coverage so the
     reported descriptor policy matches backend capability data.
+- **Low-Level Graphics Foundation Slice 9S** — Complete.
+  - Added backend-neutral bind-group reuse/update hints:
+    `BindGroupReuseHint::stable`, `update_in_place`, and `rebuild`.
+  - Exposed retained `IBindGroup::reuse_hint()` plus helper queries that map
+    bind-group descriptors to descriptor-cache, descriptor-rewrite, and
+    arena-recycling preferences for higher layers.
+  - Added shared validation for invalid reuse hints and rejected
+    `rebuild` bind groups unless they opt into `transient_frame` allocation.
+  - Expanded core and shared backend contract tests for valid retained hints,
+    helper-query behavior, and invalid persistent-rebuild bind-group creation.
+- **Low-Level Graphics Foundation Slice 9T** — Complete.
+  - Added `BindGroupCacheScope`, `BindGroupDescriptorStrategy`, and
+    `bind_group_descriptor_strategy(...)` so higher layers can consume one
+    backend-neutral descriptor-management classification instead of recomputing
+    cache/rewrite/recycle policy from raw hints and capability fields.
+  - The strategy helper now combines bind-group allocation policy, reuse hint,
+    and backend descriptor policy into explicit cache scope, rewrite intent,
+    recycle-after-frame, native mapping model, native allocation model, and
+    flattened-native-binding fields.
+  - Expanded core and shared backend contract tests so the helper reports stable,
+    update-in-place, frame-cache, and rebuild strategies correctly across the
+    live backend capability matrix.
+- **Low-Level Graphics Foundation Slice 9U** — Complete.
+  - Added backend-neutral native descriptor update policy reporting through
+    `NativeDescriptorUpdateModel` on capabilities and parity output.
+  - Wired null, Metal, and OpenGL to report `direct_write`, and Vulkan plus
+    Direct3D to report `copy_into_allocation`, matching the current contract-era
+    descriptor direction for each backend family.
+  - Extended `bind_group_descriptor_strategy(...)` with resolved native update
+    behavior and `rebuildAllocationOnUpdate` so higher layers can distinguish
+    direct rewrites, copy-backed rewrites, and rebuild-on-update paths.
+  - Expanded core and shared backend contract tests plus the live parity JSON
+    reporter so update-path policy stays aligned with backend capability data.
+- **Low-Level Graphics Foundation Slice 9V** — Complete.
+  - Extended `BindGroupDescriptorStrategy` with explicit descriptor residency
+    metadata: cache-key usability, frame-index requirement, frame-slot count,
+    and recycle-frame lag.
+  - The strategy helper now tells higher layers whether a bind group can use its
+    cache key at all, whether it must be partitioned per frame slot, and how
+    many in-flight frames the underlying descriptor storage must stay resident
+    before recycling.
+  - Expanded core and shared backend contract tests so persistent, per-frame,
+    rebuild, and rebuild-on-update strategies all report deterministic residency
+    behavior from the public RHI contract.
+- **Low-Level Graphics Foundation Slice 9W** — Complete.
+  - Added backend-neutral native descriptor budget modeling through
+    `NativeDescriptorBudgetModel` on capabilities and parity output.
+  - Wired null, Metal, and OpenGL to budget by native slot span, while Vulkan
+    and Direct3D budget by descriptor count, matching the current contract-era
+    descriptor pressure model for each backend family.
+  - Added `BindGroupDescriptorBudget` and
+    `BindGroupDescriptorEvictionPolicy`, then extended
+    `bind_group_descriptor_strategy(...)` with resolved budget units and explicit
+    eviction policy (`manual`, `frame_retire`, `immediate`).
+  - Expanded core and shared backend contract tests plus the live parity JSON
+    reporter so budget model and eviction behavior stay aligned with backend
+    capability data.
+- **Low-Level Graphics Foundation Slice 9X** — Complete.
+  - Added `scale_bind_group_descriptor_budget(...)` plus
+    `BindGroupDescriptorArenaPlan` and `bind_group_descriptor_arena_plan(...)`
+    so higher layers can size descriptor caches and frame arenas directly from
+    the public RHI contract.
+  - Arena planning now resolves cache-entry count, reservation-entry count, and
+    scaled descriptor-unit totals from cache scope, frame-slot residency,
+    recycle lag, and per-entry budget.
+  - Expanded core and shared backend contract tests to lock persistent-cache,
+    per-frame-cache, and immediate-eviction arena sizing semantics.
+- **Low-Level Graphics Foundation Slice 9Y** — Complete.
+  - Added `BindGroupDescriptorArenaTotals`,
+    `include_bind_group_descriptor_arena_plan(...)`, and
+    `bind_group_descriptor_arena_totals(...)` so higher layers can aggregate
+    multiple bind-group families into whole descriptor-pool budgets directly from
+    the public RHI contract.
+  - Aggregate planning now separates persistent-cache, per-frame-cache, and
+    uncached transient reservation pressure while also reporting logical
+    bind-group counts, entry totals, peak per-entry budget, and invalid mixed
+    budget-model aggregation.
+  - Expanded core and shared backend contract tests to lock multi-family
+    aggregation semantics, per-frame cache aggregation on live backends, and
+    saturating descriptor-budget accumulation behavior.
+- **Low-Level Graphics Foundation Slice 9Z** — Complete.
+  - Added `pipeline_layout_bind_group_layout(...)`,
+    `pipeline_layout_descriptor_budget(...)`,
+    `pipeline_layout_bind_group_arena_plan(...)`, and
+    `pipeline_layout_descriptor_arena_summary(...)` so grouped pipeline layouts
+    can expose per-group bind-group layouts, whole-layout descriptor budgets,
+    and aggregate cache/arena pressure without manually restaging every
+    bind-group family.
+  - Layout-aware planning now shares the same derived bind-group layout contract
+    with `pipeline_layout_bind_group_compatible(...)`, keeping validation and
+    descriptor planning aligned on one public extraction path.
+  - Expanded core and shared backend contract tests to lock per-group extraction,
+    missing-group handling, whole-layout budget totals, and
+    pipeline-layout-driven aggregate arena sizing across live backends.
+- **Low-Level Graphics Foundation Slice 9AA** — Complete.
+  - Added `bind_group_layout_compatible(...)`,
+    `bind_group_descriptor_strategy_shareable(...)`,
+    `bind_group_descriptor_family_shareable(...)`, and
+    `pipeline_layout_shared_descriptor_arena_summary(...)`.
+  - Descriptor planning can now merge compatible bind-group families across
+    multiple grouped pipeline layouts into shared-pool totals while explicitly
+    surfacing missing layouts/groups and strategy-driven family splits when
+    residency or update policy requires separate partitions.
+  - Expanded core and shared backend contract tests to lock shared-family
+    merging, layout-compatibility reuse, split-family behavior, and aggregate
+    shared-pool budgeting across live backends.
+- **Low-Level Graphics Foundation Slice 9AB** — Complete.
+  - Added `bind_group_descriptor_strategy_partition_compatible(...)`,
+    `bind_group_descriptor_arena_pool_class(...)`, and
+    `pipeline_layout_shared_descriptor_arena_partition_summary(...)`.
+  - Shared descriptor-family summaries now collapse into explicit
+    persistent-cache, per-frame-cache, and uncached reservation partitions,
+    carrying forward conservative cache-key usability plus peak per-entry
+    budget so higher layers can materialize concrete arena objects without
+    backend-private partitioning heuristics.
+  - Expanded core and shared backend contract tests to lock partition merging,
+    uncached reservation classification, and shared-family-to-partition
+    aggregation across live backends.
+- **Low-Level Graphics Foundation Slice 9AC** — Complete.
+  - Added `bind_group_descriptor_strategy_partition_reusable(...)` and extended
+    shared partition summaries with mixed cache-key and mixed update-path
+    metadata.
+  - Shared descriptor families now stay split when update behavior differs, but
+    partition materialization can still reuse one concrete pool when the
+    underlying storage model matches, carrying forward conservative cache-key
+    usability plus explicit rewrite/rebuild family counts.
+  - Expanded core and shared backend contract tests to lock update-behavior
+    partition reuse, mixed-native-update reporting, and cache-key variance
+    aggregation across live backends.
+- **Low-Level Graphics Foundation Slice 9AD** — Complete.
+  - Added explicit family-to-partition residency hooks, including
+    lifetime-class and live-object-scope reporting on shared partition
+    summaries.
+  - Higher layers can now distinguish families that only share materialized
+    pool capacity from families whose live descriptor-object scope aligns with
+    the entire partition, without reconstructing residency rules from raw
+    strategy fields.
+  - Expanded core and shared backend contract tests to lock family residency
+    assignments, lifetime classes, and partition-vs-family live-object scope
+    across live backends.
+- **Low-Level Graphics Foundation Slice 9AE** — Complete.
+  - Added explicit reuse-cohort summaries plus a single shared arena planning
+    bundle that returns families, partitions, residencies, and cohorts
+    together.
+  - Higher layers can now consume one low-level descriptor planning result and
+    choose between partition-wide live-object reuse and capacity-only reuse
+    cohorts without manually stitching multiple helper layers together.
+  - Expanded core and shared backend contract tests to lock cohort grouping and
+    the consolidated shared arena planning bundle across live backends.
+- **Low-Level Graphics Foundation Slice 9AF** — Complete.
+  - Added concrete arena and reuse materialization descriptors derived directly
+    from the shared arena planning bundle.
+  - Allocator-facing code can now consume concrete partition capacities,
+    lifetimes, and cohort-specific reuse policy without reconstructing them
+    from analytical summaries.
+  - Expanded core and shared backend contract tests to lock materialization
+    descriptors for both single-arena/multi-cohort reuse and the full shared
+    multi-layout planning bundle across live backends.
+- **Low-Level Graphics Foundation Slice 9AG** — Complete.
+  - Added backend-neutral `IBindGroupDescriptorArena` and
+    `IBindGroupDescriptorReuseMaterializer` runtime contracts that consume the
+    concrete materialization descriptors directly.
+  - Added default-unsupported `IDevice` factory hooks for descriptor arena
+    allocators and reuse materializers so concrete backend support can land
+    incrementally without changing the public allocator-facing contract again.
+  - Expanded core contract tests to lock the runtime interface convenience
+    accessors, and expanded shared backend contract tests to lock the current
+    unsupported factory behavior across live backends.
+- **Low-Level Graphics Foundation Slice 9AH** — Complete.
+  - Added shared validation helpers for runtime descriptor arena and reuse
+    materialization descriptors, including frame-slot residency and
+    live-object-reuse consistency checks.
+  - Implemented retained-descriptor `IBindGroupDescriptorArena` and
+    `IBindGroupDescriptorReuseMaterializer` runtime objects across null, Metal,
+    Vulkan, OpenGL, and Direct3D backends.
+  - Updated shared backend contract coverage so valid materializations now
+    create runtime objects across all built-in backends and invalid runtime
+    descriptors fail with `invalid_argument`.
+- **Low-Level Graphics Foundation Slice 9AI** — Complete.
+  - Added explicit descriptor arena reservation requests, reservation handles,
+    slot-aware usage snapshots, and validation for runtime reservation shapes.
+  - Implemented retained descriptor arena capacity accounting across all
+    built-in backends, including per-slot availability for frame-indexed
+    arenas.
+  - Expanded core and shared backend contract coverage so persistent and
+    per-frame runtime arenas now prove successful reservation, exhaustion, and
+    targeted release behavior.
+- **Low-Level Graphics Foundation Slice 9AJ** — Complete.
+  - Added whole-slot retirement and full arena clearing operations to
+    `IBindGroupDescriptorArena`.
+  - Per-frame runtime arenas can now retire one frame slot worth of descriptor
+    reservations without releasing every reservation handle individually.
+  - Expanded core and shared backend contract coverage so slot retirement and
+    arena clearing reset runtime capacity state consistently across all
+    built-in backends.
+
+- **Low-Level Graphics Foundation Slice 9AK** — Complete.
+  - Expanded `IBindGroupDescriptorReuseMaterializer` into a stateful runtime
+    reuse-policy object with compatibility checks, state snapshots,
+    reservation-request shaping, observed reservation tracking, slot
+    retirement, and clear/reset behavior.
+  - Implemented retained reuse-materializer state across null, Metal, Vulkan,
+    OpenGL, and Direct3D backends, including round-robin per-frame slot
+    selection when callers omit an explicit frame index.
+  - Added shared validation helpers and expanded core/shared backend contract
+    coverage so compatibility, request validation, state accounting, slot
+    retirement, and reset semantics stay aligned across built-in backends.
+
+- **Low-Level Graphics Foundation Slice 9AL** — Complete.
+  - Added `BindGroupDescriptorRuntimeCoordinator` as a public low-level helper
+    that composes one runtime descriptor arena with one reuse materializer.
+  - Coordinated reservations now have one orchestration path for request
+    shaping, reserve/observe sequencing, release rollback, per-slot retirement,
+    clear/reset, and combined state snapshots.
+  - Expanded core and shared backend contract coverage so coordinated
+    reservations behave the same way across retained helpers and all built-in
+    backends.
+
+- **Low-Level Graphics Foundation Slice 9AM** — Complete.
+  - Extended runtime descriptor arena/reuse state snapshots with reservation
+    lists so low-level code can reason about concrete active reservation sets,
+    not only aggregate counts.
+  - Added coordinator drift detection plus explicit `reconcile()` support so
+    manual out-of-band arena/materializer mutations can be imported when both
+    underlying runtime objects still agree on the active reservation set.
+  - Expanded core and shared backend contract coverage so stale coordinated
+    tracking is detected, consistent drift can be reconciled, and inconsistent
+    arena/materializer mutations are surfaced as invalid state.
+
+- **Low-Level Graphics Foundation Slice 9AN** — Complete.
+  - Added backend-neutral descriptor pressure guidance queries for runtime
+    arenas, reuse materializers, and coordinators, including utilization
+    metrics, pressure levels, reclamation hints, and recommended next actions.
+  - Derived those pressure signals directly from the drift-aware runtime
+    snapshots and existing materialization budget/eviction metadata instead of
+    adding new backend-private state.
+  - Expanded core and shared backend contract coverage so moderate persistent
+    pressure, slot-hot per-frame pressure, reconcile-first drift pressure, and
+    reclaim-before-growth guidance stay aligned across retained helpers and all
+    built-in backends.
+
+- **Low-Level Graphics Foundation Slice 9AO** — Complete.
+  - Added backend-neutral runtime reclamation planning that turns coordinator
+    pressure/drift snapshots into concrete recommended actions, slot-retirement
+    plans, and ordered reservation-release candidates.
+  - Reclamation planning now prefers drift reconciliation first, escalates
+    inconsistent underlying state explicitly, retires hot frame slots when
+    frame-retire policy allows it, and otherwise ranks reservation releases by
+    slot pressure, reuse cost, and relief size.
+  - Expanded core and shared backend contract coverage so reconcile-first,
+    release-candidate, and retire-slot reclamation plans stay aligned across
+    retained helpers and all built-in backends.
+
+- **Low-Level Graphics Foundation Slice 9AP** — Complete.
+  - Added backend-neutral multi-coordinator arbitration that aggregates runtime
+    coordinator pressure/reclamation plans across descriptor pools and
+    partitions into one ranked decision surface.
+  - Arbitration now reports aggregate severity, admission/reconciliation flags,
+    a preferred coordinator/action/slot, and ordered coordinator entries so
+    higher layers can choose which low-level pool to reconcile or reclaim first.
+  - Expanded core and shared backend contract coverage so cross-pool ranking
+    prefers reconcile-first drift handling, then hot-slot retirement, then
+    release-candidate pressure relief across retained helpers and all built-in
+    backends.
+
+- **Low-Level Graphics Foundation Slice 9AQ** — Complete.
+  - Added backend-neutral multi-coordinator admission-control planning on top of
+    runtime arbitration so higher layers can evaluate a prospective descriptor
+    reservation before attempting it.
+  - Admission plans now classify each coordinator as admit-now,
+    reconcile-then-admit, reclaim-then-admit, reconcile-then-reclaim, audit, or
+    throttle/reject, while also reporting aggregate immediate headroom and
+    recoverable relief.
+  - Expanded core and shared backend contract coverage so drifted, inconsistent,
+    reclaim-bound, and deterministic per-slot admission decisions stay aligned
+    across retained helpers and all built-in backends.
+
+- **Low-Level Graphics Foundation Slice 9AR** — Complete.
+  - Added backend-neutral batch quota planning on top of runtime admission
+    planning so multiple reservation intents can be simulated against shared
+    coordinator headroom and reclaimable relief.
+  - Batch plans now consume per-slot immediate capacity and recoverable relief
+    across chosen coordinators, producing ordered placement decisions plus
+    remaining quota summaries after the simulated batch.
+  - Expanded core and shared backend contract coverage so deterministic frame-slot
+    placement and cross-pool quota consumption stay aligned across retained
+    helpers and all built-in backends.
 
 ## Relevant Decisions And Constraints
 
@@ -613,9 +900,76 @@ validation, diagnostics, and backend parity.
   and native slot spans to plan descriptor caches/arenas without backend-private
   introspection.
 - Backend capabilities and parity reports now expose the native descriptor
-  mapping/allocation model and whether bind groups flatten into one native slot
-  space. Higher layers should combine that policy with descriptor footprints
-  before choosing cache or arena behavior.
+  mapping/allocation/update model and whether bind groups flatten into one
+  native slot space. Higher layers should combine that policy with descriptor
+  footprints before choosing cache or arena behavior.
+- Backend descriptor policy now also exposes the native descriptor budget model.
+  Higher layers should use the resolved bind-group budget units and eviction
+  policy instead of inferring descriptor pressure from raw footprints alone.
+- Bind-group reuse/update hints are now public RHI contract metadata.
+  `rebuild` intentionally means transient-frame descriptor churn, while
+  `stable` and `update_in_place` preserve cacheable bind-group identities.
+- Descriptor strategy classification is now also a public RHI helper contract.
+  Higher layers should consume `bind_group_descriptor_strategy(...)` rather than
+  re-deriving cache/rewrite/recycle policy from raw bind-group metadata.
+- Descriptor strategy now also defines descriptor residency/eviction facts.
+  Higher layers should use the reported cache-key usability, frame-slot count,
+  and recycle-frame lag instead of inferring arena sizing from
+  `maxFramesInFlight` and allocation policy manually.
+- Descriptor arena planning is now also explicit public RHI contract data.
+  Higher layers should use `bind_group_descriptor_arena_plan(...)` rather than
+  multiplying cache entries, frame residency, and descriptor budgets manually.
+- Whole-pool descriptor aggregation is now also explicit public RHI contract
+  data. Higher layers should use `bind_group_descriptor_arena_totals(...)`
+  rather than re-summing persistent/per-frame cache budgets or transient rebuild
+  pressure manually.
+- Pipeline layouts now also participate directly in descriptor planning. Higher
+  layers should derive per-group layouts, whole-layout budgets, and grouped
+  arena summaries from the public pipeline-layout helpers instead of manually
+  rebuilding bind-group family descriptors.
+- Runtime descriptor arena creation now has a stable backend-neutral contract.
+  Built-in backends now support
+  `create_bind_group_descriptor_arena(...)` and
+  `create_bind_group_descriptor_reuse_materializer(...)` for validated retained
+  runtime objects; higher layers should target those public factories and
+  materialization descriptors rather than inventing an external
+  descriptor-arena interface.
+- Runtime descriptor arenas now own allocator-facing lifecycle state.
+  Higher layers should consume their usage snapshots, reservation handles, slot
+  retirement, and clearing operations rather than treating materialization
+  descriptors as the last allocation step.
+- Runtime descriptor reuse materializers now own low-level reuse-policy state.
+  Higher layers should consume their compatibility checks, state snapshots,
+  reservation-request shaping, observed reservation tracking, slot retirement,
+  and clear/reset operations rather than treating reuse cohorts as static
+  metadata only.
+- Runtime descriptor arenas and reuse materializers can now be composed through
+  `BindGroupDescriptorRuntimeCoordinator`. Higher layers should prefer that
+  helper when they want one reservation lifetime surface instead of manually
+  sequencing both runtime contracts.
+- Runtime descriptor arena usage, reuse-materializer state, and coordinator
+  state now expose concrete reservation snapshots. Higher layers can use those
+  snapshots to detect stale tracking and reconcile coordinated state after
+  manual low-level mutations.
+- Runtime descriptor arenas, reuse materializers, and coordinators now also
+  expose backend-neutral pressure/reclamation guidance derived from those same
+  snapshots and materialization budgets. Higher layers should use those low-
+  level signals instead of inventing separate saturation heuristics.
+- Runtime descriptor coordinators now also expose explicit reclamation plans.
+  Higher layers can use those plans to retire a slot or release ranked
+  reservations without rebuilding victim-selection policy themselves.
+- Runtime descriptor coordinators can now also be arbitrated as a group.
+  Higher layers should use the aggregate arbitration helpers when multiple
+  descriptor pools compete for budget instead of comparing per-coordinator
+  pressure heuristics ad hoc.
+- Runtime descriptor arbitration now also exposes explicit admission-control
+  plans for prospective reservations. Higher layers should use those plans
+  rather than probing coordinators ad hoc and re-deriving when to admit,
+  reconcile, reclaim, audit, or throttle.
+- Runtime admission planning now also supports batched quota carving. Higher
+  layers should use the batch planner when they need to order several
+  descriptor requests against shared coordinator capacity instead of consuming
+  one-request admission plans independently.
 - The repository commits only the public doctrine snapshot. The maintainer's
   private Copilot overlay lives in `~/.copilot/copilot-instructions.md` on the
   local machine and must not be copied into repository history.
@@ -647,13 +1001,12 @@ compute tests.
 
 ## Next Resume Steps
 
-1. Return to deeper backend-native descriptor allocation/mapping policy now that
-   bind-group lifetime, native slots, depth-stencil attachments, and stencil
-   pipeline/reference state are all explicit at the public RHI layer and
-   descriptor footprints plus descriptor policy are queryable.
-2. Continue expanding shared contract tests around descriptor caching/allocation
-   policy so higher-level renderer work can reuse descriptors without inventing
-   backend-specific policy.
+1. Decide whether the next descriptor-runtime slice should add explicit batch
+   execution/rollback helpers on top of quota planning so accepted simulated
+   placements can be committed to live coordinators through one low-level path.
+2. If descriptor runtime work continues, focus that next slice on low-level
+   batch reservation execution and rollback semantics rather than broadening
+   higher layers.
 
 ## Open Questions Or Risks
 
@@ -663,7 +1016,25 @@ compute tests.
   contract semantics; native API implementation and platform/runtime
   integration remain open.
 - Native descriptor allocation/mapping depth remains backend-specific future
-  work; the current bind group model is a validated contract layer.
+  work; the current bind group model now exposes validated footprint, policy,
+  reuse-intent, normalized strategy, update-path, residency, budget/eviction,
+  single-family and whole-pool arena plans, and pipeline-layout-aware
+  descriptor budgeting, including shared multi-layout cache aggregation and
+  explicit shared-family pool-class materialization plus mixed
+  cache-key/update-behavior partition reuse plus explicit family-to-partition
+  residency/lifetime hooks, reuse-cohort summaries, concrete
+  arena/materialization descriptors, and backend-neutral runtime
+  allocator/materializer contracts implemented across built-in backends. Arena
+  runtime objects now enforce slot-aware capacity accounting and retirement, and
+  reuse materializers now track stateful request shaping and observed
+  reservation lifetimes, while `BindGroupDescriptorRuntimeCoordinator` can keep
+  coordinated reservations in sync across both objects. Pressure guidance and
+  concrete reclamation planning are now also available from those synchronized
+  runtime snapshots, coordinators can now be arbitrated as a group, and
+  prospective reservations can be evaluated through explicit admission-control
+  planning, and several requests can now be quota-planned as a batch; the
+  remaining gap is executing those accepted batch plans through one rollback-
+  aware low-level commit path.
 - Bindless and dynamic-resource-indexing are feature-gated and descriptor arrays
   can now be populated, but backend-native bindless heap/argument-buffer mapping
   remains future work before higher layers can use bindless descriptors

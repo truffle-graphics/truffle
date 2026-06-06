@@ -49,6 +49,8 @@ using core::StatusCode;
         .descriptorPolicy = {
             .mappingModel = NativeDescriptorMappingModel::direct_slots,
             .allocationModel = NativeDescriptorAllocationModel::inline_direct,
+            .updateModel = NativeDescriptorUpdateModel::direct_write,
+            .budgetModel = NativeDescriptorBudgetModel::native_slot_spans,
             .flattenedNativeBindings = true,
         },
         .formats = {
@@ -166,6 +168,10 @@ public:
 private:
     BindGroupDesc desc_;
 };
+
+using OpenGLBindGroupDescriptorArena = RetainedBindGroupDescriptorArena;
+using OpenGLBindGroupDescriptorReuseMaterializer =
+    RetainedBindGroupDescriptorReuseMaterializer;
 
 class OpenGLCommandBuffer final : public ICommandBuffer {
 public:
@@ -1454,6 +1460,33 @@ public:
                              {}, "upload ring created");
         return std::unique_ptr<IFrameUploadRing>(
             std::make_unique<OpenGLFrameUploadRing>(frames_in_flight, buffer_size));
+    }
+
+    [[nodiscard]] core::Result<std::unique_ptr<IBindGroupDescriptorArena>>
+    create_bind_group_descriptor_arena(
+        const SharedBindGroupDescriptorArenaMaterialization& desc) override {
+        if (!validation::bind_group_descriptor_arena_materialization_valid(
+                desc, caps_)) {
+            return Status::failure(
+                StatusCode::invalid_argument,
+                "OpenGL backend: descriptor arena materialization is invalid");
+        }
+        return std::unique_ptr<IBindGroupDescriptorArena>(
+            std::make_unique<RetainedBindGroupDescriptorArena>(desc));
+    }
+
+    [[nodiscard]] core::Result<
+        std::unique_ptr<IBindGroupDescriptorReuseMaterializer>>
+    create_bind_group_descriptor_reuse_materializer(
+        const SharedBindGroupDescriptorReuseMaterialization& desc) override {
+        if (!validation::bind_group_descriptor_reuse_materialization_valid(
+                desc, caps_)) {
+            return Status::failure(
+                StatusCode::invalid_argument,
+                "OpenGL backend: descriptor reuse materialization is invalid");
+        }
+        return std::unique_ptr<IBindGroupDescriptorReuseMaterializer>(
+            std::make_unique<RetainedBindGroupDescriptorReuseMaterializer>(desc));
     }
 
 private:

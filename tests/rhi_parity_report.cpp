@@ -51,6 +51,32 @@ const char* descriptor_allocation_model_name(
     return "unknown";
 }
 
+const char* descriptor_update_model_name(
+    truffle::rhi::NativeDescriptorUpdateModel model) noexcept {
+    switch (model) {
+    case truffle::rhi::NativeDescriptorUpdateModel::direct_write:
+        return "direct_write";
+    case truffle::rhi::NativeDescriptorUpdateModel::copy_into_allocation:
+        return "copy_into_allocation";
+    case truffle::rhi::NativeDescriptorUpdateModel::rebuild_allocation:
+        return "rebuild_allocation";
+    }
+    return "unknown";
+}
+
+const char* descriptor_budget_model_name(
+    truffle::rhi::NativeDescriptorBudgetModel model) noexcept {
+    switch (model) {
+    case truffle::rhi::NativeDescriptorBudgetModel::native_slot_spans:
+        return "native_slot_spans";
+    case truffle::rhi::NativeDescriptorBudgetModel::descriptor_count:
+        return "descriptor_count";
+    case truffle::rhi::NativeDescriptorBudgetModel::bind_group_count:
+        return "bind_group_count";
+    }
+    return "unknown";
+}
+
 const char* backend_name(truffle::rhi::BackendKind kind) noexcept {
     switch (kind) {
     case truffle::rhi::BackendKind::null_backend:
@@ -151,6 +177,10 @@ void append_report(std::ostream& out, const truffle::rhi::BackendParityReport& r
     append_string(out, "descriptorAllocationModel",
                   descriptor_allocation_model_name(
                       report.descriptorAllocationModel));
+    append_string(out, "descriptorUpdateModel",
+                  descriptor_update_model_name(report.descriptorUpdateModel));
+    append_string(out, "descriptorBudgetModel",
+                  descriptor_budget_model_name(report.descriptorBudgetModel));
     append_bool(out, "flattenedNativeBindings", report.flattenedNativeBindings);
     append_uint(out, "maxFramesInFlight", report.maxFramesInFlight);
     append_uint(out, "maxResourceBindings", report.maxResourceBindings);
