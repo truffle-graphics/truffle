@@ -7,6 +7,7 @@
 #include "truffle/render/transform_compute_pass.hpp"
 #include "truffle/rhi/rhi.hpp"
 
+#include <memory>
 #include <span>
 
 namespace truffle::render {
@@ -36,8 +37,8 @@ public:
 private:
     rhi::IDevice*       device_ = nullptr;
     IPipelineCache*     cache_  = nullptr;
+    std::unique_ptr<NullPipelineCache> defaultCache_;
     RendererFrameStats  lastFrameStats_{};
 };
 
 } // namespace truffle::render
-

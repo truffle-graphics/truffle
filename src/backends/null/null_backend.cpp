@@ -1,8 +1,11 @@
 #include "truffle/rhi/null_backend.hpp"
 #include "truffle/rhi/shader_reflection.hpp"
+#include "truffle/rhi/validation.hpp"
 
+#include <algorithm>
 #include <memory>
 #include <utility>
+#include <vector>
 
 namespace truffle::rhi {
 namespace {
@@ -11,34 +14,251 @@ using core::Result;
 using core::Status;
 using core::StatusCode;
 
+[[nodiscard]] Capabilities make_null_capabilities() {
+    return Capabilities{
+        .presentation = true,
+        .validation = true,
+        .maxFramesInFlight = 3,
+        .queues = {.graphics = true, .compute = true, .transfer = true},
+        .features = {
+            .headlessSurface = true,
+            .nativeSurface = false,
+            .presentation = true,
+            .compute = true,
+            .indirectDraw = true,
+            .shaderReflection = false,
+            .debugLabels = true,
+            .validation = true,
+            .unifiedMemory = true,
+            .descriptorArrays = true,
+            .dynamicResourceIndexing = true,
+            .bindlessResources = true,
+        },
+        .limits = {
+            .maxTextureDimension2D = 16384,
+            .maxBufferSize = 256ull * 1024ull * 1024ull,
+            .minUniformBufferOffsetAlignment = 16,
+            .minStorageBufferOffsetAlignment = 16,
+            .maxColorAttachments = 8,
+            .maxVertexBuffers = 16,
+            .maxVertexAttributes = 16,
+            .maxVertexBufferStride = 2048,
+            .maxDescriptorArrayElements = 16,
+            .maxBindlessResources = 64,
+            .maxSamplerAnisotropy = 16,
+        },
+        .descriptorPolicy = {
+            .mappingModel = NativeDescriptorMappingModel::direct_slots,
+            .allocationModel = NativeDescriptorAllocationModel::inline_direct,
+            .updateModel = NativeDescriptorUpdateModel::direct_write,
+            .budgetModel = NativeDescriptorBudgetModel::native_slot_spans,
+            .flattenedNativeBindings = true,
+        },
+        .formats = {
+            {.format = TextureFormat::rgba8_unorm,
+             .sampled = true,
+             .colorAttachment = true,
+             .transferSource = true,
+             .transferDestination = true},
+            {.format = TextureFormat::bgra8_unorm,
+             .sampled = true,
+             .colorAttachment = true,
+             .transferSource = true,
+             .transferDestination = true},
+            {.format = TextureFormat::depth32_float,
+             .sampled = true,
+             .depthStencilAttachment = true,
+             .transferSource = true,
+             .transferDestination = true},
+            {.format = TextureFormat::depth32_float_stencil8,
+             .sampled = true,
+             .depthStencilAttachment = true,
+             .transferSource = true,
+             .transferDestination = true},
+        },
+        .memoryHeaps = {
+            {.kind = MemoryHeapKind::unified,
+             .budgetBytes = 256ull * 1024ull * 1024ull,
+             .dedicated = false},
+        },
+        .presentModes = {
+            PresentMode::immediate,
+            PresentMode::fifo,
+            PresentMode::mailbox,
+        },
+        .surfaceKinds = {
+            NativeSurfaceKind::headless,
+        },
+        .shaderFormats = {
+            ShaderByteFormat::contract,
+            ShaderByteFormat::msl_source,
+            ShaderByteFormat::spirv_binary,
+            ShaderByteFormat::glsl_source,
+            ShaderByteFormat::hlsl_source,
+            ShaderByteFormat::dxil_binary,
+        },
+    };
+}
+
 struct SharedStats {
     NullBackendStats value;
+    std::vector<BackendEvent> events;
+    std::uint64_t nextEventSequence = 1;
 };
+
+void record_event(const std::shared_ptr<SharedStats>& stats,
+                  BackendEventKind kind,
+                  std::string label = {},
+                  std::string message = {},
+                  core::StatusCode status = core::StatusCode::ok) {
+    if (!stats) {
+        return;
+    }
+    if (stats->events.size() == 64) {
+        stats->events.erase(stats->events.begin());
+    }
+    stats->events.push_back(BackendEvent{
+        .sequence = stats->nextEventSequence++,
+        .backend = BackendKind::null_backend,
+        .kind = kind,
+        .status = status,
+        .label = std::move(label),
+        .message = std::move(message),
+    });
+}
 class NullDevice;
 class NullBuffer final : public IBuffer {
 public:
-    explicit NullBuffer(BufferDesc desc) : desc_(std::move(desc)) {}
+    explicit NullBuffer(BufferDesc desc)
+        : desc_(std::move(desc)),
+          storage_(desc_.size),
+          mapped_(desc_.mappedAtCreation) {}
+    NullBuffer(BufferDesc desc, std::byte* externalData)
+        : desc_(std::move(desc)),
+          externalData_(externalData),
+          mapped_(desc_.mappedAtCreation) {}
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::null_backend;
+    }
     [[nodiscard]] const BufferDesc& desc() const noexcept override { return desc_; }
+    [[nodiscard]] Result<void*> map() override {
+        if (!validation::buffer_memory_mappable(desc_)) {
+            return Status::failure(StatusCode::unsupported,
+                                   "null buffer memory is not CPU-mappable");
+        }
+        if (mapped_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "null buffer is already mapped");
+        }
+        mapped_ = true;
+        return data();
+    }
+    [[nodiscard]] Status unmap() override {
+        if (!mapped_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "null buffer is not mapped");
+        }
+        mapped_ = false;
+        return Status::success();
+    }
+    [[nodiscard]] bool mapped() const noexcept override { return mapped_; }
+    [[nodiscard]] void* mapped_data() noexcept override {
+        return mapped_ ? data() : nullptr;
+    }
 
 private:
+    [[nodiscard]] std::byte* data() noexcept {
+        return externalData_ ? externalData_ : storage_.data();
+    }
+
     BufferDesc desc_;
+    std::vector<std::byte> storage_;
+    std::byte* externalData_ = nullptr;
+    bool mapped_ = false;
 };
 
 class NullTexture final : public ITexture {
 public:
     explicit NullTexture(TextureDesc desc) : desc_(std::move(desc)) {}
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::null_backend;
+    }
     [[nodiscard]] const TextureDesc& desc() const noexcept override { return desc_; }
 
 private:
     TextureDesc desc_;
 };
 
-class NullSampler final : public ISampler {};
-class NullShader final : public IShader {};
+class NullSampler final : public ISampler {
+public:
+    explicit NullSampler(SamplerDesc desc) : desc_(std::move(desc)) {}
+
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::null_backend;
+    }
+    [[nodiscard]] const SamplerDesc& desc() const noexcept override { return desc_; }
+
+private:
+    SamplerDesc desc_;
+};
+
+class NullBindGroupLayout final : public IBindGroupLayout {
+public:
+    explicit NullBindGroupLayout(BindGroupLayoutDesc desc)
+        : desc_(std::move(desc)) {}
+
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::null_backend;
+    }
+
+    [[nodiscard]] const BindGroupLayoutDesc& desc() const noexcept override {
+        return desc_;
+    }
+
+private:
+    BindGroupLayoutDesc desc_;
+};
+
+class NullBindGroup final : public IBindGroup {
+public:
+    explicit NullBindGroup(BindGroupDesc desc) : desc_(std::move(desc)) {}
+
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::null_backend;
+    }
+
+    [[nodiscard]] const BindGroupDesc& desc() const noexcept override {
+        return desc_;
+    }
+
+private:
+    BindGroupDesc desc_;
+};
+
+using NullBindGroupDescriptorArena = RetainedBindGroupDescriptorArena;
+using NullBindGroupDescriptorReuseMaterializer =
+    RetainedBindGroupDescriptorReuseMaterializer;
+
+class NullShader final : public IShader {
+public:
+    explicit NullShader(ShaderDesc desc) : desc_(std::move(desc)) {}
+
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::null_backend;
+    }
+
+    [[nodiscard]] const ShaderDesc& desc() const noexcept { return desc_; }
+
+private:
+    ShaderDesc desc_;
+};
 
 class NullPipeline final : public IPipeline {
 public:
     explicit NullPipeline(PipelineDesc desc) : desc_(std::move(desc)) {}
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::null_backend;
+    }
     [[nodiscard]] const PipelineDesc& desc() const noexcept override { return desc_; }
     [[nodiscard]] const IPipelineReflection* reflection() const noexcept override { return nullptr; }
 
@@ -49,6 +269,9 @@ private:
 class NullComputePipeline final : public IComputePipeline {
 public:
     explicit NullComputePipeline(ComputePipelineDesc desc) : desc_(std::move(desc)) {}
+    [[nodiscard]] std::optional<BackendKind> backend_kind() const noexcept override {
+        return BackendKind::null_backend;
+    }
     [[nodiscard]] const ComputePipelineDesc& desc() const noexcept override { return desc_; }
     [[nodiscard]] const IPipelineReflection* reflection() const noexcept override { return nullptr; }
 
@@ -67,7 +290,11 @@ private:
 
 class NullSwapchain final : public ISwapchain {
 public:
-    explicit NullSwapchain(SwapchainDesc desc) : desc_(std::move(desc)) {}
+    explicit NullSwapchain(SwapchainDesc desc) : desc_(std::move(desc)) {
+        if (desc_.imageCount == 0) {
+            desc_.imageCount = desc_.framesInFlight;
+        }
+    }
     [[nodiscard]] const SwapchainDesc& desc() const noexcept override { return desc_; }
 
     [[nodiscard]] Status resize(Extent2D extent) override {
@@ -76,53 +303,114 @@ public:
                                    "swapchain extent must be non-zero");
         }
         desc_.extent = extent;
+        drawable_.reset();
+        acquired_ = false;
+        currentImageIndex_ = 0;
+        nextImageIndex_ = 0;
         return Status::success();
     }
 
-    [[nodiscard]] ITexture* acquire_next_texture() override {
-        if (!drawable_) {
+    [[nodiscard]] std::uint32_t image_count() const noexcept override {
+        return effective_swapchain_image_count(desc_);
+    }
+
+    [[nodiscard]] std::uint32_t current_image_index() const noexcept override {
+        return currentImageIndex_;
+    }
+
+    [[nodiscard]] bool has_acquired_texture() const noexcept override {
+        return acquired_;
+    }
+
+    [[nodiscard]] SwapchainAcquireResult acquire_next_texture_result() override {
+        if (!drawable_ || drawable_->desc().extent.width != desc_.extent.width ||
+            drawable_->desc().extent.height != desc_.extent.height) {
             drawable_ = std::make_unique<NullTexture>(TextureDesc{
                 .extent    = desc_.extent,
                 .format    = desc_.format,
                 .debugName = "swapchain_drawable",
             });
         }
-        return drawable_.get();
+        currentImageIndex_ = nextImageIndex_;
+        nextImageIndex_ = (nextImageIndex_ + 1) % image_count();
+        acquired_ = true;
+        return {
+            .texture = drawable_.get(),
+            .imageIndex = currentImageIndex_,
+        };
     }
 
-    [[nodiscard]] Status schedule_present(ICommandBuffer& /*cmd*/) override {
-        return Status::success();
-    }
+    [[nodiscard]] Status schedule_present(ICommandBuffer& cmd) override;
 
 private:
     SwapchainDesc                desc_;
     std::unique_ptr<NullTexture> drawable_;
+    bool                         acquired_ = false;
+    std::uint32_t                currentImageIndex_ = 0;
+    std::uint32_t                nextImageIndex_ = 0;
 };
 
 class NullFence final : public IFence {
 public:
-    explicit NullFence(FenceDesc desc) : signaled_(desc.signaled) {}
+    explicit NullFence(FenceDesc desc)
+        : value_(desc.signaled && desc.initialValue == 0 ? 1 : desc.initialValue) {}
 
-    [[nodiscard]] bool signaled() const noexcept override { return signaled_; }
-    void signal() noexcept { signaled_ = true; }
+    [[nodiscard]] bool signaled() const noexcept override { return value_ != 0; }
+    [[nodiscard]] std::uint64_t value() const noexcept override { return value_; }
+    void signal() noexcept { ++value_; }
+    [[nodiscard]] Status wait_for(std::uint64_t /*timeoutNanoseconds*/) noexcept override {
+        if (!signaled()) {
+            return Status::failure(StatusCode::timeout, "fence wait timed out");
+        }
+        return Status::success();
+    }
+    [[nodiscard]] Status wait_for_value(
+        std::uint64_t targetValue,
+        std::uint64_t /*timeoutNanoseconds*/) noexcept override {
+        if (value_ < targetValue) {
+            return Status::failure(StatusCode::timeout,
+                                   "fence timeline wait timed out");
+        }
+        return Status::success();
+    }
+    [[nodiscard]] Status reset() noexcept override {
+        value_ = 0;
+        return Status::success();
+    }
     void wait() noexcept override { /* already signaled synchronously before submit returns */ }
 
     // Allows pooling logic to update initial state
-    void reset(bool is_signaled) { signaled_ = is_signaled; }
+    void reset(FenceDesc desc) {
+        value_ = desc.signaled && desc.initialValue == 0 ? 1 : desc.initialValue;
+    }
 
     NullDevice* device_ = nullptr;
 private:
-    bool signaled_ = false;
+    std::uint64_t value_ = 0;
 };
 
 class NullCommandBuffer final : public ICommandBuffer {
 public:
-    explicit NullCommandBuffer(std::shared_ptr<SharedStats> stats)
-        : stats_(std::move(stats)) {}
+    NullCommandBuffer(std::shared_ptr<SharedStats> stats, DeviceLimits limits)
+        : stats_(std::move(stats)), limits_(limits) {}
 
-    void reset() { state_ = State::initial; } // For pooling
+    void reset() {
+        state_ = State::initial;
+        inRenderPass_ = false;
+        debugLabelDepth_ = 0;
+        graphicsLayout_ = nullptr;
+        computeLayout_ = nullptr;
+        boundGraphicsGroups_.clear();
+        boundComputeGroups_.clear();
+        activeColorFormat_.reset();
+        activeDepthFormat_.reset();
+    }
 
     NullDevice* device_ = nullptr;
+
+    [[nodiscard]] bool can_schedule_present() const noexcept {
+        return state_ == State::recording && !inRenderPass_;
+    }
 
     [[nodiscard]] Status begin() override {
         if (state_ != State::initial) {
@@ -133,12 +421,39 @@ public:
         return Status::success();
     }
 
-    [[nodiscard]] Status begin_render_pass(
-        const RenderPassDesc& /*desc*/) override {
+    [[nodiscard]] Status begin_render_pass(const RenderPassDesc& desc) override {
         if (state_ != State::recording) {
             return Status::failure(StatusCode::invalid_state,
                                    "begin_render_pass requires recording");
         }
+        if (inRenderPass_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "render pass already active");
+        }
+        if (!validation::render_pass_desc_valid(desc)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "render pass descriptor is invalid");
+        }
+        if (desc.colorAttachment.texture &&
+            desc.colorAttachment.texture->backend_kind() != BackendKind::null_backend) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "color attachment texture must be created by null backend");
+        }
+        if (desc.depthAttachment.texture &&
+            desc.depthAttachment.texture->backend_kind() != BackendKind::null_backend) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "depth attachment texture must be created by null backend");
+        }
+        activeColorFormat_.reset();
+        activeDepthFormat_.reset();
+        if (desc.colorAttachment.texture) {
+            activeColorFormat_ = desc.colorAttachment.texture->desc().format;
+        }
+        if (desc.depthAttachment.texture) {
+            activeDepthFormat_ = desc.depthAttachment.texture->desc().format;
+        }
+        stencilReference_ = 0;
+        inRenderPass_ = true;
         return Status::success();
     }
 
@@ -147,90 +462,298 @@ public:
             return Status::failure(StatusCode::invalid_state,
                                    "end_render_pass requires recording");
         }
+        if (!inRenderPass_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "no active render pass");
+        }
+        inRenderPass_ = false;
+        graphicsLayout_ = nullptr;
+        boundGraphicsGroups_.clear();
+        activeColorFormat_.reset();
+        activeDepthFormat_.reset();
         return Status::success();
     }
 
-    [[nodiscard]] Status bind_pipeline(IPipeline& /*pipeline*/) override {
+    [[nodiscard]] Status bind_pipeline(IPipeline& pipeline) override {
         if (state_ != State::recording) {
             return Status::failure(StatusCode::invalid_state,
                                    "bind_pipeline requires recording");
         }
+        if (!inRenderPass_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "bind_pipeline requires active render pass");
+        }
+        if (pipeline.backend_kind() != BackendKind::null_backend) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "pipeline must be created by null backend");
+        }
+        if (!validation::pipeline_render_pass_compatible(
+                pipeline.desc(), activeColorFormat_, activeDepthFormat_)) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "pipeline is incompatible with the active render pass");
+        }
+        graphicsLayout_ = &pipeline.desc().layout;
+        boundGraphicsGroups_.clear();
+        computeLayout_ = nullptr;
+        boundComputeGroups_.clear();
         return Status::success();
     }
 
-    [[nodiscard]] Status bind_compute_pipeline(IComputePipeline& /*pipeline*/) override {
+    [[nodiscard]] Status bind_compute_pipeline(IComputePipeline& pipeline) override {
         if (state_ != State::recording) {
             return Status::failure(StatusCode::invalid_state,
                                    "bind_compute_pipeline requires recording");
         }
+        if (inRenderPass_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "bind_compute_pipeline cannot run inside render pass");
+        }
+        if (pipeline.backend_kind() != BackendKind::null_backend) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "compute pipeline must be created by null backend");
+        }
+        computeLayout_ = &pipeline.desc().layout;
+        boundComputeGroups_.clear();
+        graphicsLayout_ = nullptr;
+        boundGraphicsGroups_.clear();
         return Status::success();
     }
 
     [[nodiscard]] Status bind_vertex_buffer(std::uint32_t /*binding*/,
-                                             IBuffer& /*buffer*/,
+                                             IBuffer& buffer,
                                              std::size_t /*offset*/) override {
         if (state_ != State::recording) {
             return Status::failure(StatusCode::invalid_state,
                                    "bind_vertex_buffer requires recording");
         }
+        if (!inRenderPass_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "bind_vertex_buffer requires active render pass");
+        }
+        if (!validation::buffer_supports_usage(buffer.desc(), BufferUsageFlags::vertex)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "buffer lacks vertex usage");
+        }
+        if (buffer.backend_kind() != BackendKind::null_backend) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "vertex buffer must be created by null backend");
+        }
         return Status::success();
     }
 
-    [[nodiscard]] Status bind_index_buffer(IBuffer& /*buffer*/,
+    [[nodiscard]] Status bind_index_buffer(IBuffer& buffer,
                                             std::size_t /*offset*/,
                                             IndexFormat /*format*/) override {
         if (state_ != State::recording) {
             return Status::failure(StatusCode::invalid_state,
                                    "bind_index_buffer requires recording");
         }
+        if (!inRenderPass_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "bind_index_buffer requires active render pass");
+        }
+        if (!validation::buffer_supports_usage(buffer.desc(), BufferUsageFlags::index)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "buffer lacks index usage");
+        }
+        if (buffer.backend_kind() != BackendKind::null_backend) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "index buffer must be created by null backend");
+        }
         return Status::success();
     }
 
     [[nodiscard]] Status bind_uniform_buffer(std::uint32_t /*binding*/,
-                                              IBuffer& /*buffer*/,
+                                              IBuffer& buffer,
                                               std::size_t /*offset*/) override {
         if (state_ != State::recording) {
             return Status::failure(StatusCode::invalid_state,
                                    "bind_uniform_buffer requires recording");
         }
+        if (!inRenderPass_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "bind_uniform_buffer requires active render pass");
+        }
+        if (!validation::buffer_supports_usage(buffer.desc(), BufferUsageFlags::uniform)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "buffer lacks uniform usage");
+        }
+        if (buffer.backend_kind() != BackendKind::null_backend) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "uniform buffer must be created by null backend");
+        }
         return Status::success();
     }
 
     [[nodiscard]] Status bind_storage_buffer(std::uint32_t /*binding*/,
-                                              IBuffer& /*buffer*/,
-                                              std::size_t /*offset*/) override {
+                                                IBuffer& buffer,
+                                                std::size_t /*offset*/) override {
         if (state_ != State::recording) {
             return Status::failure(StatusCode::invalid_state,
                                    "bind_storage_buffer requires recording");
         }
-        return Status::success();
-    }
-
-    [[nodiscard]] Status set_viewport(float /*x*/, float /*y*/,
-                                       float /*width*/, float /*height*/,
-                                       float /*minDepth*/,
-                                       float /*maxDepth*/) override {
-        if (state_ != State::recording) {
+        if (inRenderPass_) {
             return Status::failure(StatusCode::invalid_state,
-                                   "set_viewport requires recording");
+                                   "bind_storage_buffer cannot run inside render pass");
+        }
+        if (!validation::buffer_supports_usage(buffer.desc(), BufferUsageFlags::storage)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "buffer lacks storage usage");
+        }
+        if (buffer.backend_kind() != BackendKind::null_backend) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "storage buffer must be created by null backend");
         }
         return Status::success();
     }
 
-    [[nodiscard]] Status set_scissor(std::uint32_t /*x*/, std::uint32_t /*y*/,
-                                      std::uint32_t /*width*/,
-                                      std::uint32_t /*height*/) override {
+    [[nodiscard]] Status bind_group(std::uint32_t groupIndex,
+                                    IBindGroup& group) override {
+        static const std::vector<BindGroupDynamicOffset> noDynamicOffsets;
+        return bind_group(groupIndex, group, noDynamicOffsets);
+    }
+
+    [[nodiscard]] Status bind_group(
+        std::uint32_t groupIndex,
+        IBindGroup& group,
+        const std::vector<BindGroupDynamicOffset>& dynamicOffsets) override {
         if (state_ != State::recording) {
             return Status::failure(StatusCode::invalid_state,
-                                   "set_scissor requires recording");
+                                   "bind_group requires recording");
         }
+        if (!dynamic_cast<NullBindGroup*>(&group)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "bind group must be created by null backend");
+        }
+        if (!validation::bind_group_desc_valid(group.desc())) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "bind group descriptor is invalid");
+        }
+        if (!validation::bind_group_dynamic_offsets_valid(
+                group.desc(), dynamicOffsets, limits_)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "bind group dynamic offsets are invalid");
+        }
+        const auto* activeLayout = inRenderPass_ ? graphicsLayout_ : computeLayout_;
+        auto& boundGroups = inRenderPass_ ? boundGraphicsGroups_ : boundComputeGroups_;
+        if (!activeLayout) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "bind_group requires a bound pipeline");
+        }
+        if (!validation::pipeline_layout_bind_group_compatible(
+                *activeLayout, groupIndex, group.desc().layout->desc())) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "bind group layout is incompatible with pipeline layout");
+        }
+        remember_bound_group(boundGroups, groupIndex);
+        return Status::success();
+    }
+
+    [[nodiscard]] Status resource_barrier(
+        const BufferBarrierDesc& barrier) override {
+        if (state_ != State::recording) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "buffer barrier requires recording");
+        }
+        if (inRenderPass_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "buffer barrier cannot run inside render pass");
+        }
+        if (!validation::buffer_barrier_valid(barrier)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "buffer barrier is invalid");
+        }
+        if (barrier.buffer->backend_kind() != BackendKind::null_backend) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "buffer barrier resource must be created by null backend");
+        }
+        return Status::success();
+    }
+
+    [[nodiscard]] Status resource_barrier(
+        const TextureBarrierDesc& barrier) override {
+        if (state_ != State::recording) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "texture barrier requires recording");
+        }
+        if (inRenderPass_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "texture barrier cannot run inside render pass");
+        }
+        if (!validation::texture_barrier_valid(barrier)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "texture barrier is invalid");
+        }
+        if (barrier.texture->backend_kind() != BackendKind::null_backend) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "texture barrier resource must be created by null backend");
+        }
+        return Status::success();
+    }
+
+    [[nodiscard]] Status set_viewport(float x, float y,
+                                       float width, float height,
+                                       float minDepth,
+                                       float maxDepth) override {
+        if (state_ != State::recording) {
+            return Status::failure(StatusCode::invalid_state,
+                                    "set_viewport requires recording");
+        }
+        if (!inRenderPass_) {
+            return Status::failure(StatusCode::invalid_state,
+                                    "set_viewport requires active render pass");
+        }
+        if (!validation::viewport_valid(x, y, width, height, minDepth, maxDepth)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "viewport descriptor is invalid");
+        }
+        return Status::success();
+    }
+
+    [[nodiscard]] Status set_scissor(std::uint32_t x, std::uint32_t y,
+                                       std::uint32_t width,
+                                       std::uint32_t height) override {
+        if (state_ != State::recording) {
+            return Status::failure(StatusCode::invalid_state,
+                                    "set_scissor requires recording");
+        }
+        if (!inRenderPass_) {
+            return Status::failure(StatusCode::invalid_state,
+                                    "set_scissor requires active render pass");
+        }
+        if (!validation::scissor_valid(x, y, width, height)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "scissor rectangle is invalid");
+        }
+        return Status::success();
+    }
+
+    [[nodiscard]] Status set_stencil_reference(
+        std::uint32_t reference) override {
+        if (state_ != State::recording) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "set_stencil_reference requires recording");
+        }
+        if (!inRenderPass_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "set_stencil_reference requires active render pass");
+        }
+        if (!activeDepthFormat_ ||
+            !texture_format_has_stencil_aspect(*activeDepthFormat_)) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "set_stencil_reference requires stencil-capable depth attachment");
+        }
+        stencilReference_ = reference;
         return Status::success();
     }
 
     [[nodiscard]] Status draw(std::uint32_t vertex_count) override {
-        if (state_ != State::recording || vertex_count == 0) {
+        if (state_ != State::recording || !inRenderPass_ || vertex_count == 0) {
             return Status::failure(StatusCode::invalid_state,
-                                   "draw requires a recording command buffer");
+                                   "draw requires active render pass");
+        }
+        if (const auto s = require_graphics_bind_groups("draw"); !s.ok()) {
+            return s;
         }
         ++stats_->value.drawsRecorded;
         return Status::success();
@@ -238,9 +761,13 @@ public:
 
     [[nodiscard]] Status draw_instanced(std::uint32_t vertex_count,
                                         std::uint32_t instance_count) override {
-        if (state_ != State::recording || vertex_count == 0 || instance_count == 0) {
+        if (state_ != State::recording || !inRenderPass_ || vertex_count == 0 ||
+            instance_count == 0) {
             return Status::failure(StatusCode::invalid_state,
-                                   "draw_instanced requires a recording command buffer");
+                                   "draw_instanced requires active render pass");
+        }
+        if (const auto s = require_graphics_bind_groups("draw_instanced"); !s.ok()) {
+            return s;
         }
         ++stats_->value.drawsRecorded;
         return Status::success();
@@ -252,28 +779,57 @@ public:
 
     [[nodiscard]] Status draw_indexed_instanced(std::uint32_t index_count,
                                                 std::uint32_t instance_count) override {
-        if (state_ != State::recording || index_count == 0 || instance_count == 0) {
+        if (state_ != State::recording || !inRenderPass_ || index_count == 0 ||
+            instance_count == 0) {
             return Status::failure(StatusCode::invalid_state,
-                                   "draw_indexed_instanced requires a recording command buffer");
+                                   "draw_indexed_instanced requires active render pass");
         }
-        ++stats_->value.drawsRecorded;
-        return Status::success();
-    }
-    [[nodiscard]] Status draw_indirect(IBuffer& /*indirect_buffer*/,
-                                        std::size_t /*offset*/) override {
-        if (state_ != State::recording) {
-            return Status::failure(StatusCode::invalid_state,
-                                   "draw_indirect failed validation");
+        if (const auto s = require_graphics_bind_groups("draw_indexed_instanced"); !s.ok()) {
+            return s;
         }
         ++stats_->value.drawsRecorded;
         return Status::success();
     }
 
-    [[nodiscard]] Status draw_indexed_indirect(IBuffer& /*indirect_buffer*/,
+    [[nodiscard]] Status draw_indirect(IBuffer& indirect_buffer,
+                                        std::size_t /*offset*/) override {
+        if (state_ != State::recording) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "draw_indirect failed validation");
+        }
+        if (!inRenderPass_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "draw_indirect requires active render pass");
+        }
+        if (!validation::buffer_supports_usage(indirect_buffer.desc(),
+                                               BufferUsageFlags::indirect)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "buffer lacks indirect usage");
+        }
+        if (const auto s = require_graphics_bind_groups("draw_indirect"); !s.ok()) {
+            return s;
+        }
+        ++stats_->value.drawsRecorded;
+        return Status::success();
+    }
+
+    [[nodiscard]] Status draw_indexed_indirect(IBuffer& indirect_buffer,
                                                 std::size_t /*offset*/) override {
         if (state_ != State::recording) {
             return Status::failure(StatusCode::invalid_state,
                                    "draw_indexed_indirect failed validation");
+        }
+        if (!inRenderPass_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "draw_indexed_indirect requires active render pass");
+        }
+        if (!validation::buffer_supports_usage(indirect_buffer.desc(),
+                                               BufferUsageFlags::indirect)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "buffer lacks indirect usage");
+        }
+        if (const auto s = require_graphics_bind_groups("draw_indexed_indirect"); !s.ok()) {
+            return s;
         }
         ++stats_->value.drawsRecorded;
         return Status::success();
@@ -286,13 +842,38 @@ public:
             return Status::failure(StatusCode::invalid_state,
                                    "dispatch_compute requires recording");
         }
-        ++stats_->value.drawsRecorded; // Re-use draw counter for now
+        if (inRenderPass_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "dispatch_compute cannot run inside render pass");
+        }
+        if (!computeLayout_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "dispatch_compute requires a bound compute pipeline");
+        }
+        if (!validation::pipeline_layout_required_groups_bound(
+                *computeLayout_, boundComputeGroups_)) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "dispatch_compute requires all pipeline bind groups");
+        }
+        ++stats_->value.drawsRecorded; // Preserved for existing null stats.
+        ++stats_->value.dispatchesRecorded;
+        record_event(stats_, BackendEventKind::command_recorded, {},
+                     "dispatch recorded");
         return Status::success();
     }
+
     [[nodiscard]] Status end() override {
         if (state_ != State::recording) {
             return Status::failure(StatusCode::invalid_state,
                                    "command buffer is not recording");
+        }
+        if (inRenderPass_) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "command buffer cannot end with active render pass");
+        }
+        if (debugLabelDepth_ != 0) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "command buffer cannot end with active debug label");
         }
         state_ = State::ready;
         return Status::success();
@@ -302,28 +883,155 @@ public:
         return state_ == State::ready;
     }
 
+    [[nodiscard]] CommandBufferState state() const noexcept override {
+        switch (state_) {
+            case State::initial: return CommandBufferState::initial;
+            case State::recording: return CommandBufferState::recording;
+            case State::ready: return CommandBufferState::executable;
+            case State::submitted: return CommandBufferState::submitted;
+        }
+        return CommandBufferState::initial;
+    }
+
+    [[nodiscard]] Status push_debug_label(const DebugLabelDesc& desc) override {
+        if (state_ != State::recording) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "push_debug_label requires recording");
+        }
+        if (!validation::debug_label_valid(desc)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "debug label descriptor is invalid");
+        }
+        ++debugLabelDepth_;
+        ++stats_->value.debugLabelsPushed;
+        record_event(stats_, BackendEventKind::command_recorded, desc.name,
+                     "debug label pushed");
+        return Status::success();
+    }
+
+    [[nodiscard]] Status pop_debug_label() override {
+        if (state_ != State::recording) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "pop_debug_label requires recording");
+        }
+        if (debugLabelDepth_ == 0) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "no active debug label to pop");
+        }
+        --debugLabelDepth_;
+        return Status::success();
+    }
+
+    [[nodiscard]] Status insert_debug_marker(const DebugLabelDesc& desc) override {
+        if (state_ != State::recording) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "insert_debug_marker requires recording");
+        }
+        if (!validation::debug_label_valid(desc)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "debug marker descriptor is invalid");
+        }
+        ++stats_->value.debugMarkersInserted;
+        record_event(stats_, BackendEventKind::debug_marker, desc.name,
+                     "debug marker inserted");
+        return Status::success();
+    }
+
+    void mark_submitted() noexcept {
+        if (state_ == State::ready) {
+            state_ = State::submitted;
+        }
+    }
+
 private:
-    enum class State { initial, recording, ready };
+    static void remember_bound_group(std::vector<std::uint32_t>& boundGroups,
+                                     std::uint32_t groupIndex) {
+        for (const auto bound : boundGroups) {
+            if (bound == groupIndex) {
+                return;
+            }
+        }
+        boundGroups.push_back(groupIndex);
+    }
+
+    [[nodiscard]] Status require_graphics_bind_groups(const char* op) const {
+        if (!graphicsLayout_) {
+            return Status::failure(
+                StatusCode::invalid_state,
+                std::string{op} + " requires a bound graphics pipeline");
+        }
+        if (!validation::pipeline_layout_required_groups_bound(
+                *graphicsLayout_, boundGraphicsGroups_)) {
+            return Status::failure(
+                StatusCode::invalid_state,
+                std::string{op} + " requires all pipeline bind groups");
+        }
+        return Status::success();
+    }
+
+    enum class State { initial, recording, ready, submitted };
     std::shared_ptr<SharedStats> stats_;
     State state_ = State::initial;
+    bool inRenderPass_ = false;
+    std::optional<TextureFormat> activeColorFormat_;
+    std::optional<TextureFormat> activeDepthFormat_;
+    std::uint32_t stencilReference_ = 0;
+    std::uint32_t debugLabelDepth_ = 0;
+    const PipelineLayoutDesc* graphicsLayout_ = nullptr;
+    const PipelineLayoutDesc* computeLayout_ = nullptr;
+    std::vector<std::uint32_t> boundGraphicsGroups_;
+    std::vector<std::uint32_t> boundComputeGroups_;
+    DeviceLimits limits_;
 };
+
+Status NullSwapchain::schedule_present(ICommandBuffer& cmd) {
+    auto* nullCmd = dynamic_cast<NullCommandBuffer*>(&cmd);
+    if (!nullCmd) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "schedule_present requires a null command buffer");
+    }
+    if (!nullCmd->can_schedule_present()) {
+        return Status::failure(StatusCode::invalid_state,
+                               "schedule_present requires recording state outside render pass");
+    }
+    if (!acquired_) {
+        return Status::failure(StatusCode::invalid_state,
+                               "schedule_present requires an acquired drawable");
+    }
+    acquired_ = false;
+    return Status::success();
+}
 
 class NullQueue final : public IQueue {
 public:
-    explicit NullQueue(std::shared_ptr<SharedStats> stats) : stats_(std::move(stats)) {}
+    NullQueue(std::shared_ptr<SharedStats> stats, QueueKind kind)
+        : stats_(std::move(stats)), kind_(kind) {}
 
     [[nodiscard]] QueueKind kind() const noexcept override {
-        return QueueKind::graphics;
+        return kind_;
     }
 
     [[nodiscard]] Status submit(ICommandBuffer& command_buffer,
                                 IFence* signal_fence) override {
+        auto* cmd = dynamic_cast<NullCommandBuffer*>(&command_buffer);
+        if (!cmd) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "command buffer does not belong to null backend");
+        }
         if (!command_buffer.ready_for_submit()) {
             return Status::failure(StatusCode::invalid_state,
-                                   "command buffer is not ready for submit");
+                                    "command buffer is not ready for submit");
         }
         ++stats_->value.submissions;
-        if (auto* fence = dynamic_cast<NullFence*>(signal_fence)) {
+        record_event(stats_, BackendEventKind::submitted, {},
+                     "command buffer submitted");
+        cmd->mark_submitted();
+        if (signal_fence) {
+            auto* fence = dynamic_cast<NullFence*>(signal_fence);
+            if (!fence) {
+                return Status::failure(StatusCode::invalid_argument,
+                                       "signal fence does not belong to null backend");
+            }
             fence->signal();
         }
         return Status::success();
@@ -331,6 +1039,7 @@ public:
 
 private:
     std::shared_ptr<SharedStats> stats_;
+    QueueKind kind_ = QueueKind::graphics;
 };
 
 class NullFrameUploadRing final : public IFrameUploadRing {
@@ -339,21 +1048,21 @@ public:
         : framesInFlight_(framesInFlight)
         , capacityPerFrame_(capacityPerFrame)
         , storage_(static_cast<std::size_t>(framesInFlight) * capacityPerFrame)
-        , backingBuffer_(BufferDesc{
-              .size      = static_cast<std::size_t>(framesInFlight) * capacityPerFrame,
-              .usage     = BufferUsage::storage,
-              .debugName = "upload_ring",
-          }) {}
+           , backingBuffer_(BufferDesc{
+               .size      = static_cast<std::size_t>(framesInFlight) * capacityPerFrame,
+               .usage     = BufferUsage::storage,
+               .debugName = "upload_ring",
+           }, storage_.data()) {}
 
     [[nodiscard]] FrameAllocation allocate(std::size_t size,
                                            std::size_t alignment) override {
-        std::size_t base = frameOffset_;
-        if (alignment > 1) {
-            base = (base + alignment - 1) & ~(alignment - 1);
+        std::size_t base = 0;
+        if (!validation::align_up(frameOffset_, alignment, base)) {
+            return {};
         }
         const std::size_t frameEnd =
             (static_cast<std::size_t>(currentFrame_) + 1) * capacityPerFrame_;
-        if (base + size > frameEnd || size == 0) {
+        if (!validation::range_fits(base, size, frameEnd)) {
             return {};
         }
         void* ptr     = storage_.data() + base;
@@ -366,12 +1075,25 @@ public:
         frameOffset_  = static_cast<std::size_t>(currentFrame_) * capacityPerFrame_;
     }
 
+    [[nodiscard]] Status advance_if_ready(const IFence& completedFence) override {
+        if (!completedFence.signaled()) {
+            return Status::failure(StatusCode::timeout,
+                                   "upload ring frame is not ready for reuse");
+        }
+        advance();
+        return Status::success();
+    }
+
     [[nodiscard]] std::uint32_t frames_in_flight() const noexcept override {
         return framesInFlight_;
     }
 
     [[nodiscard]] std::size_t capacity_per_frame() const noexcept override {
         return capacityPerFrame_;
+    }
+
+    [[nodiscard]] std::uint32_t current_frame_index() const noexcept override {
+        return currentFrame_;
     }
 
 private:
@@ -386,13 +1108,23 @@ private:
 class NullDevice final : public IDevice {
 public:
     explicit NullDevice(std::shared_ptr<SharedStats> stats)
-        : stats_(std::move(stats)), queue_(stats_) {}
+        : stats_(std::move(stats))
+        , graphicsQueue_(stats_, QueueKind::graphics)
+        , computeQueue_(stats_, QueueKind::compute)
+        , transferQueue_(stats_, QueueKind::transfer) {}
 
     [[nodiscard]] const Capabilities& capabilities() const noexcept override {
         return capabilities_;
     }
 
-    [[nodiscard]] IQueue& queue(QueueKind) override { return queue_; }
+    [[nodiscard]] IQueue& queue(QueueKind kind) override {
+        switch (kind) {
+            case QueueKind::graphics: return graphicsQueue_;
+            case QueueKind::compute: return computeQueue_;
+            case QueueKind::transfer: return transferQueue_;
+        }
+        return graphicsQueue_;
+    }
 
     [[nodiscard]] Result<std::unique_ptr<IBuffer>>
     create_buffer(const BufferDesc& desc) override {
@@ -400,74 +1132,243 @@ public:
             return Status::failure(StatusCode::invalid_argument,
                                    "buffer size must be non-zero");
         }
+        if (desc.size > capabilities_.limits.maxBufferSize) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "buffer size exceeds device limit");
+        }
+        if (!validation::memory_domain_supported(desc.memory, capabilities_)) {
+            return Status::failure(StatusCode::unsupported,
+                                   "buffer memory domain is not supported");
+        }
+        if (desc.mappedAtCreation &&
+            !validation::buffer_memory_mappable(desc)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "mapped buffer memory must be CPU-mappable");
+        }
         ++stats_->value.buffersCreated;
+        record_event(stats_, BackendEventKind::resource_created, desc.debugName,
+                     "buffer created");
         return std::unique_ptr<IBuffer>(std::make_unique<NullBuffer>(desc));
     }
 
     [[nodiscard]] Result<std::unique_ptr<ITexture>>
     create_texture(const TextureDesc& desc) override {
-        if (desc.extent.width == 0 || desc.extent.height == 0) {
+        if (!validation::texture_shape_valid(
+                desc, capabilities_.limits.maxTextureDimension2D)) {
             return Status::failure(StatusCode::invalid_argument,
-                                   "texture extent must be non-zero");
+                                    "texture extent exceeds device limits");
+        }
+        if (!validation::memory_domain_supported(desc.memory, capabilities_)) {
+            return Status::failure(StatusCode::unsupported,
+                                   "texture memory domain is not supported");
+        }
+        if (!validation::texture_usage_supported_by_format(capabilities_, desc)) {
+            return Status::failure(StatusCode::unsupported,
+                                   "texture format does not support requested usage");
         }
         ++stats_->value.texturesCreated;
+        record_event(stats_, BackendEventKind::resource_created, desc.debugName,
+                     "texture created");
         return std::unique_ptr<ITexture>(std::make_unique<NullTexture>(desc));
     }
 
     [[nodiscard]] Result<std::unique_ptr<ISampler>>
-    create_sampler(const SamplerDesc&) override {
-        return std::unique_ptr<ISampler>(std::make_unique<NullSampler>());
+    create_sampler(const SamplerDesc& desc) override {
+        if (!validation::sampler_desc_valid(desc, capabilities_)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "sampler descriptor is invalid");
+        }
+        ++stats_->value.samplersCreated;
+        record_event(stats_, BackendEventKind::resource_created, desc.debugName,
+                     "sampler created");
+        return std::unique_ptr<ISampler>(std::make_unique<NullSampler>(desc));
     }
 
     [[nodiscard]] Result<std::unique_ptr<IShader>>
     create_shader(const ShaderDesc& desc) override {
-        if (desc.bytecode.empty()) {
+        if (!validation::shader_payload_valid(desc)) {
             return Status::failure(StatusCode::invalid_argument,
-                                   "shader bytecode must be present");
+                                   "shader descriptor payload is invalid");
         }
-        return std::unique_ptr<IShader>(std::make_unique<NullShader>());
+        if (!validation::shader_byte_format_supported(desc.byteFormat, capabilities_)) {
+            return Status::failure(StatusCode::unsupported,
+                                   "shader byte format is not supported");
+        }
+        ++stats_->value.shadersCreated;
+        record_event(stats_, BackendEventKind::resource_created, desc.entryPoint,
+                     "shader created");
+        return std::unique_ptr<IShader>(std::make_unique<NullShader>(desc));
     }
 
     [[nodiscard]] Result<std::unique_ptr<IPipeline>>
     create_pipeline(const PipelineDesc& desc) override {
+        if (!validation::pipeline_layout_valid(desc.layout, capabilities_)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "pipeline layout is invalid");
+        }
+        if (!validation::pipeline_render_state_valid(desc, capabilities_)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "pipeline render state is invalid");
+        }
+        if ((desc.vertexShader == nullptr) != (desc.fragmentShader == nullptr)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "pipeline requires both vertex and fragment shaders or neither");
+        }
+        auto* vertexShader =
+            desc.vertexShader ? dynamic_cast<NullShader*>(desc.vertexShader) : nullptr;
+        auto* fragmentShader =
+            desc.fragmentShader ? dynamic_cast<NullShader*>(desc.fragmentShader) : nullptr;
+        if ((desc.vertexShader && !vertexShader) ||
+            (desc.fragmentShader && !fragmentShader)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "pipeline shaders must be created by null backend");
+        }
+        if ((vertexShader && vertexShader->desc().stage != ShaderStage::vertex) ||
+            (fragmentShader && fragmentShader->desc().stage != ShaderStage::fragment)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "pipeline shader stages are invalid");
+        }
+        ++stats_->value.graphicsPipelinesCreated;
+        record_event(stats_, BackendEventKind::pipeline_created, desc.debugName,
+                     "graphics pipeline created");
         return std::unique_ptr<IPipeline>(std::make_unique<NullPipeline>(desc));
+    }
+
+    [[nodiscard]] Result<std::unique_ptr<IBindGroupLayout>>
+    create_bind_group_layout(const BindGroupLayoutDesc& desc) override {
+        if (!validation::bind_group_layout_valid(desc, capabilities_)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "bind group layout is invalid");
+        }
+        ++stats_->value.bindGroupLayoutsCreated;
+        record_event(stats_, BackendEventKind::bind_group_created, desc.debugName,
+                     "bind group layout created");
+        return std::unique_ptr<IBindGroupLayout>(
+            std::make_unique<NullBindGroupLayout>(desc));
+    }
+
+    [[nodiscard]] Result<std::unique_ptr<IBindGroup>>
+    create_bind_group(const BindGroupDesc& desc) override {
+        if (!validation::bind_group_desc_valid(desc, capabilities_)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "bind group descriptor is invalid");
+        }
+        if (!dynamic_cast<NullBindGroupLayout*>(desc.layout)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "bind group layout must be created by null backend");
+        }
+        for (const auto& entry : desc.entries) {
+            switch (entry.type) {
+                case BindingResourceType::uniform_buffer:
+                case BindingResourceType::storage_buffer:
+                    if ((entry.buffer.buffer &&
+                         !dynamic_cast<NullBuffer*>(entry.buffer.buffer)) ||
+                        std::any_of(entry.buffers.begin(), entry.buffers.end(),
+                                    [](const BufferBindingDesc& binding) {
+                                        return !dynamic_cast<NullBuffer*>(binding.buffer);
+                                    })) {
+                        return Status::failure(StatusCode::invalid_argument,
+                                                "bind group buffer must be created by null backend");
+                    }
+                    break;
+                case BindingResourceType::sampled_texture:
+                case BindingResourceType::storage_texture:
+                    if ((entry.texture &&
+                         !dynamic_cast<NullTexture*>(entry.texture)) ||
+                        std::any_of(entry.textures.begin(), entry.textures.end(),
+                                    [](const ITexture* texture) {
+                                        return !dynamic_cast<const NullTexture*>(texture);
+                                    })) {
+                        return Status::failure(StatusCode::invalid_argument,
+                                                "bind group texture must be created by null backend");
+                    }
+                    break;
+                case BindingResourceType::sampler:
+                    if ((entry.sampler &&
+                         !dynamic_cast<NullSampler*>(entry.sampler)) ||
+                        std::any_of(entry.samplers.begin(), entry.samplers.end(),
+                                    [](const ISampler* sampler) {
+                                        return !dynamic_cast<const NullSampler*>(sampler);
+                                    })) {
+                        return Status::failure(StatusCode::invalid_argument,
+                                                "bind group sampler must be created by null backend");
+                    }
+                    break;
+            }
+        }
+        ++stats_->value.bindGroupsCreated;
+        record_event(stats_, BackendEventKind::bind_group_created, desc.debugName,
+                     "bind group created");
+        return std::unique_ptr<IBindGroup>(
+            std::make_unique<NullBindGroup>(desc));
     }
 
     [[nodiscard]] Result<std::unique_ptr<IComputePipeline>>
     create_compute_pipeline(const ComputePipelineDesc& desc) override {
+        if (!validation::pipeline_layout_valid(desc.layout, capabilities_)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "compute pipeline layout is invalid");
+        }
+        auto* computeShader =
+            desc.computeShader ? dynamic_cast<NullShader*>(desc.computeShader) : nullptr;
+        if (desc.computeShader && !computeShader) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "compute shader must be created by null backend");
+        }
+        if (computeShader && computeShader->desc().stage != ShaderStage::compute) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "compute pipeline requires compute shader stage");
+        }
+        ++stats_->value.computePipelinesCreated;
+        record_event(stats_, BackendEventKind::pipeline_created, desc.debugName,
+                     "compute pipeline created");
         return std::unique_ptr<IComputePipeline>(std::make_unique<NullComputePipeline>(desc));
     }
 
     [[nodiscard]] Result<std::unique_ptr<ISurface>>
     create_surface(const SurfaceDesc& desc) override {
-        if (desc.initialExtent.width == 0 || desc.initialExtent.height == 0) {
+        if (!validation::extent_within(desc.initialExtent,
+                                       capabilities_.limits.maxTextureDimension2D)) {
             return Status::failure(StatusCode::invalid_argument,
-                                   "surface extent must be non-zero");
+                                   "surface extent exceeds device limits");
+        }
+        if (!validation::native_surface_handles_valid(desc.native)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "native surface handles are invalid for the surface kind");
+        }
+        if (!validation::native_surface_kind_supported(desc.native.kind, capabilities_)) {
+            return Status::failure(StatusCode::unsupported,
+                                   "native surface kind is not supported by the backend");
         }
         ++stats_->value.surfacesCreated;
+        record_event(stats_, BackendEventKind::surface_created, {},
+                     "surface created");
         return std::unique_ptr<ISurface>(std::make_unique<NullSurface>(desc));
     }
 
     [[nodiscard]] Result<std::unique_ptr<ISwapchain>>
     create_swapchain(ISurface&, const SwapchainDesc& desc) override {
-        if (desc.extent.width == 0 || desc.extent.height == 0 ||
-            desc.framesInFlight == 0) {
+        if (!validation::swapchain_supported(desc, capabilities_)) {
             return Status::failure(StatusCode::invalid_argument,
                                    "swapchain description is invalid");
         }
         ++stats_->value.swapchainsCreated;
+        record_event(stats_, BackendEventKind::swapchain_created, {},
+                     "swapchain created");
         return std::unique_ptr<ISwapchain>(std::make_unique<NullSwapchain>(desc));
     }
 
     [[nodiscard]] CommandBufferPtr create_command_buffer() override {
         std::lock_guard<std::mutex> lock(pool_mutex_);
+        ++stats_->value.commandBuffersCreated;
+        record_event(stats_, BackendEventKind::command_buffer_created, {},
+                     "command buffer created");
         NullCommandBuffer* cmd = nullptr;
         if (!cmd_pool_.empty()) {
             cmd = cmd_pool_.back();
             cmd_pool_.pop_back();
         } else {
-            ++stats_->value.commandBuffersCreated;
-            cmd = new NullCommandBuffer(stats_);
+            cmd = new NullCommandBuffer(stats_, make_null_capabilities().limits);
             cmd->device_ = this; // need to add device_ to NullCommandBuffer
         }
         return CommandBufferPtr(cmd, [](ICommandBuffer* p) {
@@ -479,11 +1380,14 @@ public:
 
     [[nodiscard]] FencePtr create_fence(const FenceDesc& desc) override {
         std::lock_guard<std::mutex> lock(pool_mutex_);
+        ++stats_->value.fencesCreated;
+        record_event(stats_, BackendEventKind::fence_created, {},
+                     "fence created");
         NullFence* f = nullptr;
         if (!fence_pool_.empty()) {
             f = fence_pool_.back();
             fence_pool_.pop_back();
-            f->reset(desc.signaled);
+            f->reset(desc);
         } else {
             f = new NullFence(desc);
             f->device_ = this;
@@ -498,12 +1402,43 @@ public:
     [[nodiscard]] core::Result<std::unique_ptr<IFrameUploadRing>>
     create_upload_ring(std::uint32_t frames_in_flight,
                        std::size_t   capacity_per_frame) override {
-        if (frames_in_flight == 0 || capacity_per_frame == 0) {
+        if (!validation::frame_count_supported(frames_in_flight, capabilities_) ||
+            capacity_per_frame == 0 || capacity_per_frame > capabilities_.limits.maxBufferSize) {
             return Status::failure(StatusCode::invalid_argument,
                                    "frames_in_flight and capacity must be non-zero");
         }
+        ++stats_->value.uploadRingsCreated;
+        record_event(stats_, BackendEventKind::upload_ring_created, {},
+                     "upload ring created");
         return std::unique_ptr<IFrameUploadRing>(
             std::make_unique<NullFrameUploadRing>(frames_in_flight, capacity_per_frame));
+    }
+
+    [[nodiscard]] core::Result<std::unique_ptr<IBindGroupDescriptorArena>>
+    create_bind_group_descriptor_arena(
+        const SharedBindGroupDescriptorArenaMaterialization& desc) override {
+        if (!validation::bind_group_descriptor_arena_materialization_valid(
+                desc, capabilities_)) {
+            return Status::failure(
+                StatusCode::invalid_argument,
+                "descriptor arena materialization is invalid for the backend");
+        }
+        return std::unique_ptr<IBindGroupDescriptorArena>(
+            std::make_unique<RetainedBindGroupDescriptorArena>(desc));
+    }
+
+    [[nodiscard]] core::Result<
+        std::unique_ptr<IBindGroupDescriptorReuseMaterializer>>
+    create_bind_group_descriptor_reuse_materializer(
+        const SharedBindGroupDescriptorReuseMaterialization& desc) override {
+        if (!validation::bind_group_descriptor_reuse_materialization_valid(
+                desc, capabilities_)) {
+            return Status::failure(
+                StatusCode::invalid_argument,
+                "descriptor reuse materialization is invalid for the backend");
+        }
+        return std::unique_ptr<IBindGroupDescriptorReuseMaterializer>(
+            std::make_unique<RetainedBindGroupDescriptorReuseMaterializer>(desc));
     }
 
     void recycle_command_buffer(NullCommandBuffer* cmd) {
@@ -524,8 +1459,10 @@ public:
 
 private:
     std::shared_ptr<SharedStats> stats_;
-    Capabilities capabilities_{true, true, 2};
-    NullQueue queue_;
+    Capabilities capabilities_ = make_null_capabilities();
+    NullQueue graphicsQueue_;
+    NullQueue computeQueue_;
+    NullQueue transferQueue_;
     std::mutex pool_mutex_;
     std::vector<NullCommandBuffer*> cmd_pool_;
     std::vector<NullFence*> fence_pool_;
@@ -538,8 +1475,14 @@ public:
     }
 
     [[nodiscard]] std::vector<AdapterInfo> enumerate_adapters() const override {
-        return {{0, "Truffle Null Adapter", BackendKind::null_backend,
-                 Capabilities{true, true, 2}}};
+        return {AdapterInfo{
+            .id = 0,
+            .name = "Truffle Null Adapter",
+            .backend = BackendKind::null_backend,
+            .capabilities = make_null_capabilities(),
+            .type = AdapterType::cpu,
+            .driverDescription = "Strict CPU-backed RHI validation adapter",
+        }};
     }
 
     [[nodiscard]] Result<std::unique_ptr<IDevice>>
@@ -548,7 +1491,24 @@ public:
             return Status::failure(StatusCode::unavailable,
                                    "null backend has one adapter");
         }
+        ++stats_->value.devicesCreated;
+        record_event(stats_, BackendEventKind::device_created, {},
+                     "device created");
         return std::unique_ptr<IDevice>(std::make_unique<NullDevice>(stats_));
+    }
+
+    [[nodiscard]] BackendStats backend_stats() const noexcept override {
+        return stats_->value;
+    }
+
+    [[nodiscard]] std::vector<BackendEvent> recent_events() const override {
+        return stats_->events;
+    }
+
+    void clear_diagnostics() noexcept override {
+        stats_->value = {};
+        stats_->events.clear();
+        stats_->nextEventSequence = 1;
     }
 
     [[nodiscard]] NullBackendStats stats() const noexcept override {

@@ -87,9 +87,36 @@ if(TRUFFLE_BUILD_BACKEND_DIRECT3D)
 endif()
 add_test(NAME truffle_rhi_contract_tests COMMAND truffle_rhi_contract_tests)
 
+add_executable(truffle_rhi_parity_report rhi_parity_report.cpp)
+target_link_libraries(truffle_rhi_parity_report PRIVATE truffle_backend_null)
+if(TRUFFLE_BUILD_BACKEND_VULKAN)
+    target_link_libraries(truffle_rhi_parity_report PRIVATE truffle_backend_vulkan)
+    target_compile_definitions(truffle_rhi_parity_report PRIVATE TRUFFLE_HAS_VULKAN_BACKEND=1)
+endif()
+if(TRUFFLE_BUILD_BACKEND_METAL)
+    target_link_libraries(truffle_rhi_parity_report PRIVATE truffle_backend_metal)
+    target_compile_definitions(truffle_rhi_parity_report PRIVATE TRUFFLE_HAS_METAL_BACKEND=1)
+endif()
+if(TRUFFLE_BUILD_BACKEND_OPENGL)
+    target_link_libraries(truffle_rhi_parity_report PRIVATE truffle_backend_opengl)
+    target_compile_definitions(truffle_rhi_parity_report PRIVATE TRUFFLE_HAS_OPENGL_BACKEND=1)
+endif()
+if(TRUFFLE_BUILD_BACKEND_DIRECT3D)
+    target_link_libraries(truffle_rhi_parity_report PRIVATE truffle_backend_direct3d)
+    target_compile_definitions(truffle_rhi_parity_report PRIVATE TRUFFLE_HAS_DIRECT3D_BACKEND=1)
+endif()
+add_test(
+    NAME truffle_rhi_parity_report
+    COMMAND truffle_rhi_parity_report
+            "${PROJECT_BINARY_DIR}/rhi-parity-report.json")
+
 add_executable(truffle_api_version_tests api_version_tests.cpp)
 target_link_libraries(truffle_api_version_tests PRIVATE truffle_core)
 add_test(NAME truffle_api_version_tests COMMAND truffle_api_version_tests)
+
+add_executable(truffle_core_contract_tests core_contract_tests.cpp)
+target_link_libraries(truffle_core_contract_tests PRIVATE truffle_rhi)
+add_test(NAME truffle_core_contract_tests COMMAND truffle_core_contract_tests)
 
 add_executable(truffle_performance_sanity_tests performance_sanity_tests.cpp)
 target_link_libraries(truffle_performance_sanity_tests PRIVATE truffle_backend_null)

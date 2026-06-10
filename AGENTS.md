@@ -1,8 +1,8 @@
 # AGENTS.md
 
-This repository follows TinMan Doctrine. Truffle's local repository docs govern
-project-specific scope and workflow; the Doctrine snapshot provides ecosystem
-defaults.
+This repository follows the Doctrine baseline. Truffle's local repository docs
+govern project-specific scope and workflow; the Doctrine snapshot provides
+ecosystem defaults.
 
 ## Agent Operating Rules
 

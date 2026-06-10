@@ -68,7 +68,13 @@ int main() {
     auto swapchain = std::move(swapchainResult).value();
     TRUFFLE_CHECK(swapchain->acquire_next_texture() != nullptr);
     TRUFFLE_CHECK(swapchain->resize({64, 64}).ok());
-    TRUFFLE_CHECK(swapchain->schedule_present(*cmd).ok());
+    TRUFFLE_CHECK(!swapchain->schedule_present(*cmd).ok());
+    TRUFFLE_CHECK(swapchain->acquire_next_texture() != nullptr);
+    auto presentCmd = device->create_command_buffer();
+    TRUFFLE_CHECK(presentCmd->begin().ok());
+    TRUFFLE_CHECK(swapchain->schedule_present(*presentCmd).ok());
+    TRUFFLE_CHECK(presentCmd->end().ok());
+    TRUFFLE_CHECK(!swapchain->schedule_present(*presentCmd).ok());
 
     // State machine enforcement checks
     auto cmdInvalid = device->create_command_buffer();
@@ -81,7 +87,7 @@ int main() {
     TRUFFLE_CHECK(cmdInvalid->begin_render_pass(passDesc).ok());
     TRUFFLE_CHECK(!cmdInvalid->dispatch_compute(1, 1, 1).ok());
     TRUFFLE_CHECK(cmdInvalid->end_render_pass().ok());
-    TRUFFLE_CHECK(cmdInvalid->dispatch_compute(1, 1, 1).ok());
+    TRUFFLE_CHECK(!cmdInvalid->dispatch_compute(1, 1, 1).ok());
     TRUFFLE_CHECK(cmdInvalid->end().ok());
 
     // Milestone 1 resource foundation checks.

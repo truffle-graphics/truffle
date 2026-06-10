@@ -131,9 +131,12 @@ public:
         }
         pipeline_ = std::move(pipelineResult).value();
 
+        const auto nativeSurface = hostWindowHandle
+            ? rhi::NativeSurface{.kind = NativeSurfaceKind::external,
+                                 .handle = hostWindowHandle}
+            : rhi::NativeSurface{.kind = NativeSurfaceKind::headless};
         auto surfaceResult = device_->create_surface(SurfaceDesc{
-            .native = {.kind = NativeSurfaceKind::external,
-                       .handle = hostWindowHandle},
+            .native = nativeSurface,
             .initialExtent = extent,
         });
         if (!surfaceResult.ok()) {
@@ -195,7 +198,7 @@ public:
             static_cast<std::uint64_t>(renderedFrames_) * shape_.meshBatches;
         if (stats.buffersCreated != 1 || stats.texturesCreated != 1 ||
             stats.surfacesCreated != 1 || stats.swapchainsCreated != 1 ||
-            stats.commandBuffersCreated != 1 ||
+            stats.commandBuffersCreated == 0 ||
             stats.drawsRecorded != expectedDraws ||
             stats.submissions != renderedFrames_) {
             return Status::failure(StatusCode::invalid_state,
