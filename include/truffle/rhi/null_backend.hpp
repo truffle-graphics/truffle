@@ -7,15 +7,7 @@
 
 namespace truffle::rhi {
 
-struct NullBackendStats {
-    std::uint64_t buffersCreated = 0;
-    std::uint64_t texturesCreated = 0;
-    std::uint64_t surfacesCreated = 0;
-    std::uint64_t swapchainsCreated = 0;
-    std::uint64_t commandBuffersCreated = 0;
-    std::uint64_t drawsRecorded = 0;
-    std::uint64_t submissions = 0;
-};
+using NullBackendStats = BackendStats;
 
 class INullBackend : public IBackend {
 public:

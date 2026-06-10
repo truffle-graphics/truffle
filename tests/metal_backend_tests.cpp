@@ -91,6 +91,12 @@ int main() {
 
     // --- Sampler ---
     TRUFFLE_CHECK(device->create_sampler({}).ok());
+    auto unsupportedLodBiasSampler = device->create_sampler({
+        .mipLodBias = 1.0f,
+    });
+    TRUFFLE_CHECK(!unsupportedLodBiasSampler.ok());
+    TRUFFLE_CHECK(unsupportedLodBiasSampler.status().code ==
+                  truffle::core::StatusCode::unsupported);
 
     // --- Shaders (MSL source as bytecode) ---
     auto vertResult = device->create_shader({
@@ -257,7 +263,7 @@ int main() {
     });
     TRUFFLE_CHECK(computeShaderResult.ok());
     auto computeShader = std::move(computeShaderResult).value();
-    
+
     auto computePipelineResult = device->create_compute_pipeline({
         .debugName = "test_compute_pipeline",
         .computeShader = computeShader.get(),
@@ -272,7 +278,12 @@ int main() {
     auto localBuf = device->create_buffer({.size = 1024, .usage = truffle::rhi::BufferUsage::storage}).value();
     auto parentBuf = device->create_buffer({.size = 1024, .usage = truffle::rhi::BufferUsage::storage}).value();
     auto globalBuf = device->create_buffer({.size = 1024, .usage = truffle::rhi::BufferUsage::storage}).value();
-    
+
+    auto cmdComputeInvalid = device->create_command_buffer();
+    TRUFFLE_CHECK(!cmdComputeInvalid->bind_compute_pipeline(*computePipeline).ok());
+    TRUFFLE_CHECK(!cmdComputeInvalid->bind_storage_buffer(0, *localBuf, 0).ok());
+    TRUFFLE_CHECK(!cmdComputeInvalid->dispatch_compute(1, 1, 1).ok());
+
     auto cmdCompute = device->create_command_buffer();
     TRUFFLE_CHECK(cmdCompute->begin().ok());
     TRUFFLE_CHECK(cmdCompute->bind_compute_pipeline(*computePipeline).ok());
@@ -281,7 +292,7 @@ int main() {
     TRUFFLE_CHECK(cmdCompute->bind_storage_buffer(2, *globalBuf, 0).ok());
     TRUFFLE_CHECK(cmdCompute->dispatch_compute(1, 1, 1).ok());
     TRUFFLE_CHECK(cmdCompute->end().ok());
-    
+
     TRUFFLE_CHECK(device->queue(truffle::rhi::QueueKind::compute).submit(*cmdCompute).ok());
 
     // --- Negative Reflection Validation: compute bindings mismatch ---
@@ -328,4 +339,3 @@ int main() {
 
     return 0;
 }
-

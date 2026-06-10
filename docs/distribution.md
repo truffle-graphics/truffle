@@ -36,22 +36,25 @@ This verifies:
 
 ## CI Packaging
 
-`build.yml` includes a package job that:
+`build.yml` includes package and parity-report automation that:
 
 - configures install-enabled builds
 - builds and installs Truffle
 - runs CPack
 - uploads generated package artifacts
-- emits backend parity report artifacts
+- emits backend parity report artifacts from the CI test build
+  (`parity-matrix.md`,
+  `parity-matrix.json`, and `rhi-parity-report.json`)
 
 ## Tagged Release Flow
 
 `release.yml` handles tag-driven release publication:
 
-- builds and tests release artifacts
+- builds release package artifacts and parity-report test targets
 - runs package generation
 - attaches package archives to GitHub Releases
-- publishes parity matrix artifacts with release outputs
+- publishes parity matrix Markdown/JSON and live RHI parity JSON artifacts with
+  release outputs
 
 ## Backend Packaging Notes
 

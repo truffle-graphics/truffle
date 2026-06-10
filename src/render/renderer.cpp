@@ -3,6 +3,7 @@
 #include "truffle/rhi/shader_reflection.hpp"
 
 #include <array>
+#include <memory>
 #include <string>
 
 namespace truffle::render {
@@ -143,7 +144,12 @@ void PipelineCache::invalidate_all() {
 // ---------------------------------------------------------------------------
 
 Renderer::Renderer(rhi::IDevice& device, IPipelineCache* cache)
-    : device_(&device), cache_(cache) {}
+    : device_(&device), cache_(cache) {
+    if (!cache_) {
+        defaultCache_ = std::make_unique<NullPipelineCache>(device);
+        cache_ = defaultCache_.get();
+    }
+}
 
 core::Status Renderer::render(const FrameGraph& graph, rhi::ISwapchain* swapchain) {
     lastFrameStats_ = {};
@@ -204,14 +210,19 @@ core::Status Renderer::render(const FrameGraph& graph, rhi::ISwapchain* swapchai
             }
 
             for (const auto& batch : node->batches()) {
-                if (cache_) {
-                    if (auto* pipeline = cache_->get_or_create(batch.layout, batch.material, batch.variantHash)) {
-                        (void)cmd->bind_pipeline(*pipeline);
-
-                        if (const auto s = validate_render_batch_bindings(batch, *pipeline); !s.ok()) {
-                            return s;
-                        }
-                    }
+                auto* pipeline = cache_->get_or_create(
+                    batch.layout, batch.material, batch.variantHash);
+                if (!pipeline) {
+                    return core::Status::failure(
+                        core::StatusCode::invalid_state,
+                        "Renderer: no graphics pipeline available for render batch");
+                }
+                if (const auto s = cmd->bind_pipeline(*pipeline); !s.ok()) {
+                    return s;
+                }
+                if (const auto s = validate_render_batch_bindings(batch, *pipeline);
+                    !s.ok()) {
+                    return s;
                 }
 
                 for (std::uint32_t i = 0; i < RenderBatch::kMaxBindings; ++i) {
@@ -260,4 +271,3 @@ core::Status Renderer::render(const FrameGraph& graph, rhi::ISwapchain* swapchai
 }
 
 } // namespace truffle::render
-

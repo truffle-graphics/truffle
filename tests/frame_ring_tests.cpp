@@ -30,14 +30,17 @@ int main() {
     TRUFFLE_CHECK(alloc.buffer != nullptr);
     TRUFFLE_CHECK(alloc.mappedPtr != nullptr);
     TRUFFLE_CHECK(alloc.size == kAllocSize);
+    TRUFFLE_CHECK(!ring->allocate(1, 0).valid());
+    TRUFFLE_CHECK(!ring->allocate(1, 3).valid());
 
     // Write into mapped memory (must not crash).
     std::memset(alloc.mappedPtr, 0xAB, kAllocSize);
 
     // --- Second allocation in same frame ---
-    auto alloc2 = ring->allocate(kAllocSize);
+    auto alloc2 = ring->allocate(kAllocSize, 64);
     TRUFFLE_CHECK(alloc2.valid());
     TRUFFLE_CHECK(alloc2.offset > alloc.offset);
+    TRUFFLE_CHECK((alloc2.offset % 64) == 0);
 
     // --- Exhausting a frame returns invalid allocation ---
     auto bigAlloc = ring->allocate(kCapacity); // too large for what remains
