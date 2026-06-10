@@ -852,6 +852,43 @@ validation, diagnostics, and backend parity.
     into executable replacement plans across retained helpers and all built-in
     backends.
 
+- **Low-Level Graphics Foundation Slice 9AV** — Complete.
+  - Added backend-neutral atomic repair-and-execute helpers so stale saved batch
+    plans can move through one low-level recovery path instead of forcing higher
+    layers to chain replacement-plan repair and execution manually.
+  - The new result surface now reports whether execution used the original saved
+    plan or a repaired replacement plan while preserving the underlying
+    rollback-aware execution details.
+  - Expanded core and shared backend contract coverage so unchanged saved plans
+    execute directly and incompatible saved plans repair-and-execute cleanly
+    across retained helpers and all built-in backends.
+
+- **Low-Level Graphics Foundation Slice 9AW** — Complete.
+  - Added backend-neutral batch repair delta helpers so stale-plan recovery can
+    be expressed as compact per-request rewrites instead of always requiring the
+    full replacement-plan decision array.
+  - Delta plans now capture only changed or unrecoverable requests, preserve the
+    repaired aggregate batch summaries, and can be applied back onto a saved
+    batch plan through one low-level patch helper.
+  - Expanded core and shared backend contract coverage so drifted saved plans
+    report repair deltas, unchanged saved plans produce empty delta sets, and
+    incompatible saved placements can be patched into executable replacement
+    plans across retained helpers and all built-in backends.
+
+- **Low-Level Graphics Foundation Slice 9AX** — Complete.
+  - Added causal/provenance reason metadata to backend-neutral batch repair
+    deltas so callers can tell why stale saved requests changed without
+    re-reading the full repair context.
+  - Delta entries now carry reason flags and counts for invalid saved plans,
+    stale actions, incompatible coordinators, coordinator drift, capacity
+    pressure, reconcile/reclaim requirements, selection changes, and structural
+    rewrites.
+  - Expanded core and shared backend contract coverage so drifted saved plans
+    report invalid/stale-action reasons, unchanged saved plans report no reason
+    deltas, and incompatible saved placements report incompatibility plus
+    coordinator-reassignment reasons across retained helpers and all built-in
+    backends.
+
 ## Relevant Decisions And Constraints
 
 - Truffle is embeddable graphics infrastructure, not an application host or a dedicated game engine.
@@ -1017,6 +1054,17 @@ validation, diagnostics, and backend parity.
   batch admission plans. Higher layers should prefer the public repair helper
   over ad hoc re-planning so stale-plan detection and rewrite metadata stay
   aligned with the same low-level batch admission rules.
+- Saved batch quota/execution plans can now also be repaired and executed
+  through one atomic helper. Higher layers should use that surface when they
+  want stale-plan recovery without manually sequencing repair, replacement-plan
+  selection, and low-level batch execution.
+- Saved batch quota/execution repair can now also be represented as a compact
+  delta plan plus a patch helper. Higher layers should use that surface when
+  they only need changed-request rewrites rather than the full replacement-plan
+  decision array.
+- Batch repair deltas now carry causal reason flags and aggregate reason counts.
+  Higher layers should use those reason fields when deciding whether a repaired
+  plan can be accepted automatically or needs caller-visible diagnostics.
 - The repository commits only the public doctrine snapshot. The maintainer's
   private Copilot overlay lives in `~/.copilot/copilot-instructions.md` on the
   local machine and must not be copied into repository history.
@@ -1048,11 +1096,12 @@ compute tests.
 
 ## Next Resume Steps
 
-1. Decide whether the next descriptor-runtime slice should add divergence-local
-   repair metadata or an atomic repair-and-execute helper on top of the new
-   replacement-plan primitive.
-2. If descriptor runtime work continues, keep the focus on batch repair/execution
-   depth rather than broadening into higher renderer layers.
+1. Decide whether the next descriptor-runtime slice should add explicit repair
+   policy knobs so callers can choose strict saved-plan preservation, allow
+   coordinator reassignment, allow selection drops/promotions, or require manual
+   review for specific delta reasons.
+2. If descriptor runtime work continues, keep the focus on low-level stale-plan
+   recovery policy rather than broadening into higher renderer layers.
 
 ## Open Questions Or Risks
 
@@ -1080,9 +1129,11 @@ compute tests.
   prospective reservations can be evaluated through explicit admission-control
   planning, several requests can now be quota-planned as a batch, accepted
   batch plans can now be executed through one rollback-aware low-level commit
-  path, revalidated before execution, and repaired into replacement plans when
-  live coordinator state changes; the remaining gap is whether repair should
-  grow divergence-local deltas or an atomic repair-and-execute bridge.
+  path, revalidated before execution, repaired into replacement plans when live
+  coordinator state changes, recovered through an atomic repair-and-execute
+  helper, expressed as divergence-local patch deltas, and annotated with
+  causal/provenance reason flags; the remaining gap is whether callers should be
+  able to constrain repair behavior through explicit low-level policy knobs.
 - Bindless and dynamic-resource-indexing are feature-gated and descriptor arrays
   can now be populated, but backend-native bindless heap/argument-buffer mapping
   remains future work before higher layers can use bindless descriptors

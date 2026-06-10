@@ -262,7 +262,15 @@ scope and active extension-backend work continuing in parallel:
   Those saved plans can now also be repaired by replaying the original request
   intents through current low-level coordinator state, which yields an explicit
   replacement plan plus per-request rewrite metadata when placements or
-  admission actions must change.
+  admission actions must change. That repaired replacement plan can now also be
+  executed through one atomic helper, so callers can recover stale saved batch
+  work without manually chaining repair and commit steps. Repair can now also
+  be expressed as a compact delta plan plus an apply helper, so callers can
+  inspect or patch only the changed requests instead of depending on the full
+  replacement-plan decision array. Those deltas now also carry causal reason
+  flags and aggregate reason counts, so callers can distinguish stale actions,
+  incompatible coordinators, drift, capacity/reclaim pressure, and structural
+  rewrites without re-reading the full repair context.
 - Buffers expose explicit CPU mapping hooks, including `mapped_data()` access for
   mapped-at-creation buffers. The low-level contract treats
   automatic/upload/readback buffer memory as CPU-mappable and rejects

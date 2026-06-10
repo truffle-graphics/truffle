@@ -2708,6 +2708,35 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
     TRUFFLE_CHECK(staleBatchRepairPlan.entries[0].changed);
     TRUFFLE_CHECK(staleBatchRepairPlan.entries[0].savedSelected);
     TRUFFLE_CHECK(staleBatchRepairPlan.entries[0].repairedSelected);
+    const auto staleBatchDeltaPlan =
+        truffle::rhi::bind_group_descriptor_runtime_batch_repair_delta_plan(
+            arbitrationCoordinators, batchAdmissionPlan);
+    TRUFFLE_CHECK(staleBatchDeltaPlan.repairable);
+    TRUFFLE_CHECK(staleBatchDeltaPlan.changed);
+    TRUFFLE_CHECK(staleBatchDeltaPlan.shouldReplaceSavedPlan);
+    TRUFFLE_CHECK(staleBatchDeltaPlan.deltaCount >= 1);
+    TRUFFLE_CHECK(staleBatchDeltaPlan.firstDeltaRequestIndex.has_value());
+    TRUFFLE_CHECK(*staleBatchDeltaPlan.firstDeltaRequestIndex == 0);
+    TRUFFLE_CHECK(staleBatchDeltaPlan.deltas[0].kind ==
+                  truffle::rhi::BindGroupDescriptorRuntimeBatchRepairDeltaKind::
+                      rewrite);
+    TRUFFLE_CHECK(staleBatchDeltaPlan.invalidSavedPlanReasonCount >= 1);
+    TRUFFLE_CHECK(staleBatchDeltaPlan.staleActionReasonCount >= 1);
+    TRUFFLE_CHECK(staleBatchDeltaPlan.rewrittenActionReasonCount >= 1);
+    TRUFFLE_CHECK(staleBatchDeltaPlan.deltas[0].reasonCount >= 2);
+    TRUFFLE_CHECK(
+        truffle::rhi::bind_group_descriptor_runtime_batch_repair_delta_has_reason(
+            staleBatchDeltaPlan.deltas[0].reasons,
+            truffle::rhi::BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags::
+                saved_plan_invalid));
+    auto staleBatchDeltaApplied =
+        truffle::rhi::bind_group_descriptor_runtime_apply_batch_repair_delta_plan(
+            batchAdmissionPlan, staleBatchDeltaPlan);
+    TRUFFLE_CHECK(staleBatchDeltaApplied.ok());
+    TRUFFLE_CHECK(staleBatchDeltaApplied.value().admittedCount ==
+                  staleBatchRepairPlan.repairedPlan.admittedCount);
+    TRUFFLE_CHECK(staleBatchDeltaApplied.value().decisions[0].admission.action ==
+                  staleBatchRepairPlan.repairedPlan.decisions[0].admission.action);
     const auto staleBatchExecutionResult =
         truffle::rhi::bind_group_descriptor_runtime_execute_batch_admission_plan(
             mutableArbitrationCoordinators, batchAdmissionPlan);
@@ -2726,6 +2755,38 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
     TRUFFLE_CHECK(perFrameCoordinator.state().trackedReservationCount == 1);
     TRUFFLE_CHECK(perFrameCoordinator.clear().ok());
     TRUFFLE_CHECK(perFrameCoordinator.empty());
+    TRUFFLE_CHECK(persistentCoordinator.clear().ok());
+    std::array<const truffle::rhi::BindGroupDescriptorRuntimeCoordinator*, 2>
+        repairExecutionCoordinators = {&persistentCoordinator, &perFrameCoordinator};
+    std::array<truffle::rhi::BindGroupDescriptorRuntimeBatchAdmissionIntent, 2>
+        repairExecutionRequests = {{
+            {.bindGroupCount = 1, .frameIndex = 0},
+            {.bindGroupCount = 1, .frameIndex = 1},
+        }};
+    const auto repairExecutionPlan =
+        truffle::rhi::bind_group_descriptor_runtime_batch_admission_plan(
+            repairExecutionCoordinators, repairExecutionRequests);
+    std::array<truffle::rhi::BindGroupDescriptorRuntimeCoordinator*, 2>
+        mutableRepairExecutionCoordinators = {&persistentCoordinator,
+                                              &perFrameCoordinator};
+    const auto repairExecutionResult =
+        truffle::rhi::bind_group_descriptor_runtime_repair_and_execute_batch_admission_plan(
+            mutableRepairExecutionCoordinators, repairExecutionPlan);
+    const auto repairExecutionDeltaPlan =
+        truffle::rhi::bind_group_descriptor_runtime_batch_repair_delta_plan(
+            repairExecutionCoordinators, repairExecutionPlan);
+    TRUFFLE_CHECK(repairExecutionResult.status.ok());
+    TRUFFLE_CHECK(repairExecutionResult.usedSavedPlan);
+    TRUFFLE_CHECK(!repairExecutionResult.usedReplacementPlan);
+    TRUFFLE_CHECK(repairExecutionResult.repair.revalidation.valid);
+    TRUFFLE_CHECK(!repairExecutionResult.repair.shouldReplaceSavedPlan);
+    TRUFFLE_CHECK(repairExecutionDeltaPlan.repairable);
+    TRUFFLE_CHECK(repairExecutionDeltaPlan.empty);
+    TRUFFLE_CHECK(repairExecutionDeltaPlan.deltaCount == 0);
+    TRUFFLE_CHECK(repairExecutionDeltaPlan.invalidSavedPlanReasonCount == 0);
+    TRUFFLE_CHECK(repairExecutionResult.execution.committedCount ==
+                  repairExecutionPlan.admittedCount);
+    TRUFFLE_CHECK(perFrameCoordinator.clear().ok());
     TRUFFLE_CHECK(persistentCoordinator.clear().ok());
     auto rollbackExecutionRequest = persistentCoordinator.make_reservation_request(1);
     TRUFFLE_CHECK(rollbackExecutionRequest.ok());
@@ -2790,11 +2851,39 @@ int verify_common_device_contract(truffle::rhi::IDevice& device,
     TRUFFLE_CHECK(rollbackRepairPlan.rewrittenSelectedCount >= 1);
     TRUFFLE_CHECK(
         rollbackRepairPlan.repairedPlan.decisions[1].admission.coordinatorIndex == 0);
-    const auto repairedRollbackExecutionResult =
-        truffle::rhi::bind_group_descriptor_runtime_execute_batch_admission_plan(
-            rollbackCoordinators, rollbackRepairPlan.repairedPlan);
-    TRUFFLE_CHECK(repairedRollbackExecutionResult.status.ok());
-    TRUFFLE_CHECK(repairedRollbackExecutionResult.committedCount == 2);
+    const auto rollbackRepairDeltaPlan =
+        truffle::rhi::bind_group_descriptor_runtime_batch_repair_delta_plan(
+            rollbackRepairCoordinators, rollbackBatchPlan);
+    TRUFFLE_CHECK(rollbackRepairDeltaPlan.repairable);
+    TRUFFLE_CHECK(!rollbackRepairDeltaPlan.empty);
+    TRUFFLE_CHECK(rollbackRepairDeltaPlan.deltaCount >= 1);
+    TRUFFLE_CHECK(rollbackRepairDeltaPlan.changedCoordinatorCount >= 1);
+    TRUFFLE_CHECK(rollbackRepairDeltaPlan.incompatibleCoordinatorReasonCount >= 1);
+    TRUFFLE_CHECK(rollbackRepairDeltaPlan.reassignedCoordinatorReasonCount >= 1);
+    TRUFFLE_CHECK(
+        truffle::rhi::bind_group_descriptor_runtime_batch_repair_delta_has_reason(
+            rollbackRepairDeltaPlan.deltas[0].reasons,
+            truffle::rhi::BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags::
+                coordinator_incompatible));
+    TRUFFLE_CHECK(
+        truffle::rhi::bind_group_descriptor_runtime_batch_repair_delta_has_reason(
+            rollbackRepairDeltaPlan.deltas[0].reasons,
+            truffle::rhi::BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags::
+                coordinator_reassigned));
+    auto rollbackDeltaApplied =
+        truffle::rhi::bind_group_descriptor_runtime_apply_batch_repair_delta_plan(
+            rollbackBatchPlan, rollbackRepairDeltaPlan);
+    TRUFFLE_CHECK(rollbackDeltaApplied.ok());
+    TRUFFLE_CHECK(
+        rollbackDeltaApplied.value().decisions[1].admission.coordinatorIndex == 0);
+    const auto rollbackRepairExecutionResult =
+        truffle::rhi::bind_group_descriptor_runtime_repair_and_execute_batch_admission_plan(
+            rollbackCoordinators, rollbackBatchPlan);
+    TRUFFLE_CHECK(rollbackRepairExecutionResult.status.ok());
+    TRUFFLE_CHECK(!rollbackRepairExecutionResult.usedSavedPlan);
+    TRUFFLE_CHECK(rollbackRepairExecutionResult.usedReplacementPlan);
+    TRUFFLE_CHECK(rollbackRepairExecutionResult.repair.shouldReplaceSavedPlan);
+    TRUFFLE_CHECK(rollbackRepairExecutionResult.execution.committedCount == 2);
     TRUFFLE_CHECK(persistentCoordinator.state().trackedReservationCount == 2);
     TRUFFLE_CHECK(persistentCoordinator.clear().ok());
     auto invalidTransientBindGroup = device.create_bind_group({

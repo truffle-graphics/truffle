@@ -4327,6 +4327,137 @@ struct BindGroupDescriptorRuntimeBatchRepairPlan {
     std::vector<BindGroupDescriptorRuntimeBatchRepairEntry> entries;
 };
 
+enum class BindGroupDescriptorRuntimeBatchRepairDeltaKind {
+    none,
+    rewrite,
+    drop_selection,
+    promote_selection,
+    unrepairable,
+};
+
+enum class BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags : std::uint32_t {
+    none                      = 0,
+    saved_plan_invalid        = 1u << 0u,
+    saved_action_stale        = 1u << 1u,
+    coordinator_incompatible  = 1u << 2u,
+    coordinator_drifted       = 1u << 3u,
+    capacity_pressure         = 1u << 4u,
+    reconcile_required        = 1u << 5u,
+    reclaim_required          = 1u << 6u,
+    coordinator_reassigned    = 1u << 7u,
+    admission_action_rewritten = 1u << 8u,
+    slot_reassigned           = 1u << 9u,
+    selection_changed         = 1u << 10u,
+    unrepairable_request      = 1u << 11u,
+};
+
+[[nodiscard]] constexpr BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags
+operator|(BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags lhs,
+          BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags rhs) noexcept {
+    return static_cast<BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags>(
+        static_cast<std::uint32_t>(lhs) | static_cast<std::uint32_t>(rhs));
+}
+
+[[nodiscard]] constexpr BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags
+operator&(BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags lhs,
+          BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags rhs) noexcept {
+    return static_cast<BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags>(
+        static_cast<std::uint32_t>(lhs) & static_cast<std::uint32_t>(rhs));
+}
+
+constexpr BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags&
+operator|=(BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags& lhs,
+           BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags rhs) noexcept {
+    lhs = lhs | rhs;
+    return lhs;
+}
+
+[[nodiscard]] constexpr bool
+bind_group_descriptor_runtime_batch_repair_delta_has_reason(
+    BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags flags,
+    BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags reason) noexcept {
+    return (flags & reason) !=
+           BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags::none;
+}
+
+struct BindGroupDescriptorRuntimeBatchRepairDeltaEntry {
+    std::size_t requestIndex = 0;
+    BindGroupDescriptorRuntimeBatchAdmissionIntent request;
+    BindGroupDescriptorRuntimeBatchRepairDeltaKind kind =
+        BindGroupDescriptorRuntimeBatchRepairDeltaKind::none;
+    BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags reasons =
+        BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags::none;
+    std::uint32_t reasonCount = 0;
+    bool coordinatorChanged = false;
+    bool actionChanged = false;
+    bool slotChanged = false;
+    std::optional<std::size_t> savedCoordinatorIndex;
+    std::optional<std::size_t> repairedCoordinatorIndex;
+    std::optional<std::uint32_t> savedSlotIndex;
+    std::optional<std::uint32_t> repairedSlotIndex;
+    BindGroupDescriptorRuntimeAdmissionAction savedAction =
+        BindGroupDescriptorRuntimeAdmissionAction::none;
+    BindGroupDescriptorRuntimeAdmissionAction repairedAction =
+        BindGroupDescriptorRuntimeAdmissionAction::none;
+    core::Status status;
+    std::optional<BindGroupDescriptorRuntimeBatchAdmissionDecision> repairedDecision;
+};
+
+struct BindGroupDescriptorRuntimeBatchRepairDeltaPlan {
+    std::uint32_t requestCount = 0;
+    std::uint32_t deltaCount = 0;
+    std::uint32_t rewrittenSelectedCount = 0;
+    std::uint32_t droppedSelectedCount = 0;
+    std::uint32_t promotedSelectedCount = 0;
+    std::uint32_t changedCoordinatorCount = 0;
+    std::uint32_t changedActionCount = 0;
+    std::uint32_t changedSlotCount = 0;
+    std::uint32_t invalidSavedPlanReasonCount = 0;
+    std::uint32_t staleActionReasonCount = 0;
+    std::uint32_t incompatibleCoordinatorReasonCount = 0;
+    std::uint32_t driftReasonCount = 0;
+    std::uint32_t capacityPressureReasonCount = 0;
+    std::uint32_t reconcileRequiredReasonCount = 0;
+    std::uint32_t reclaimRequiredReasonCount = 0;
+    std::uint32_t reassignedCoordinatorReasonCount = 0;
+    std::uint32_t rewrittenActionReasonCount = 0;
+    std::uint32_t reassignedSlotReasonCount = 0;
+    std::uint32_t selectionChangedReasonCount = 0;
+    std::uint32_t unrepairableReasonCount = 0;
+    std::uint32_t unrecoverableRequestCount = 0;
+    std::uint32_t admittedCount = 0;
+    std::uint32_t immediateAdmissionCount = 0;
+    std::uint32_t reconcileAdmissionCount = 0;
+    std::uint32_t reclaimAdmissionCount = 0;
+    std::uint32_t throttledRequestCount = 0;
+    std::uint32_t auditedRequestCount = 0;
+    std::uint32_t rejectedRequestCount = 0;
+    std::uint32_t remainingImmediateBindGroupCount = 0;
+    std::uint32_t remainingImmediateEntryCount = 0;
+    std::uint32_t remainingRecoverableBindGroupRelief = 0;
+    std::uint32_t remainingRecoverableEntryRelief = 0;
+    bool repairable = true;
+    bool empty = true;
+    bool changed = false;
+    bool shouldReplaceSavedPlan = false;
+    bool shouldThrottleRemainingAdmissions = false;
+    std::optional<std::size_t> firstDeltaRequestIndex;
+    std::optional<std::size_t> firstUnrepairableRequestIndex;
+    BindGroupDescriptorRuntimeArbitrationPlan arbitration;
+    std::vector<BindGroupDescriptorRuntimeBatchCoordinatorBudget> coordinators;
+    std::vector<BindGroupDescriptorRuntimeBatchRepairDeltaEntry> deltas;
+};
+
+struct BindGroupDescriptorRuntimeBatchRepairExecutionResult {
+    core::Status status;
+    bool usedSavedPlan = false;
+    bool usedReplacementPlan = false;
+    std::optional<std::size_t> failedRequestIndex;
+    std::optional<std::size_t> failedCoordinatorIndex;
+    BindGroupDescriptorRuntimeBatchRepairPlan repair;
+    BindGroupDescriptorRuntimeBatchExecutionResult execution;
+};
+
 [[nodiscard]] constexpr std::uint32_t bind_group_descriptor_utilization_permille(
     std::uint32_t used,
     std::uint32_t capacity) noexcept {
@@ -6033,6 +6164,347 @@ bind_group_descriptor_runtime_repair_batch_admission_plan(
 
     plan.shouldReplaceSavedPlan = plan.changed || !plan.revalidation.valid;
     return plan;
+}
+
+[[nodiscard]] inline BindGroupDescriptorRuntimeBatchRepairDeltaPlan
+bind_group_descriptor_runtime_batch_repair_delta_plan(
+    std::span<const BindGroupDescriptorRuntimeCoordinator* const> coordinators,
+    const BindGroupDescriptorRuntimeBatchAdmissionPlan&           batchPlan) noexcept {
+    BindGroupDescriptorRuntimeBatchRepairDeltaPlan deltaPlan;
+    deltaPlan.requestCount = static_cast<std::uint32_t>(batchPlan.decisions.size());
+
+    const auto repairPlan =
+        bind_group_descriptor_runtime_repair_batch_admission_plan(coordinators, batchPlan);
+    deltaPlan.repairable = repairPlan.repairable;
+    deltaPlan.changed = repairPlan.changed;
+    deltaPlan.shouldReplaceSavedPlan = repairPlan.shouldReplaceSavedPlan;
+    deltaPlan.firstUnrepairableRequestIndex = repairPlan.firstUnrepairableRequestIndex;
+
+    deltaPlan.admittedCount = repairPlan.repairedPlan.admittedCount;
+    deltaPlan.immediateAdmissionCount =
+        repairPlan.repairedPlan.immediateAdmissionCount;
+    deltaPlan.reconcileAdmissionCount =
+        repairPlan.repairedPlan.reconcileAdmissionCount;
+    deltaPlan.reclaimAdmissionCount = repairPlan.repairedPlan.reclaimAdmissionCount;
+    deltaPlan.throttledRequestCount =
+        repairPlan.repairedPlan.throttledRequestCount;
+    deltaPlan.auditedRequestCount = repairPlan.repairedPlan.auditedRequestCount;
+    deltaPlan.rejectedRequestCount = repairPlan.repairedPlan.rejectedRequestCount;
+    deltaPlan.remainingImmediateBindGroupCount =
+        repairPlan.repairedPlan.remainingImmediateBindGroupCount;
+    deltaPlan.remainingImmediateEntryCount =
+        repairPlan.repairedPlan.remainingImmediateEntryCount;
+    deltaPlan.remainingRecoverableBindGroupRelief =
+        repairPlan.repairedPlan.remainingRecoverableBindGroupRelief;
+    deltaPlan.remainingRecoverableEntryRelief =
+        repairPlan.repairedPlan.remainingRecoverableEntryRelief;
+    deltaPlan.shouldThrottleRemainingAdmissions =
+        repairPlan.repairedPlan.shouldThrottleRemainingAdmissions;
+    deltaPlan.arbitration = repairPlan.repairedPlan.arbitration;
+    deltaPlan.coordinators = repairPlan.repairedPlan.coordinators;
+
+    for (std::size_t index = 0; index < repairPlan.entries.size(); ++index) {
+        const auto& repairEntry = repairPlan.entries[index];
+        if (repairEntry.repairable && !repairEntry.changed) {
+            continue;
+        }
+
+        BindGroupDescriptorRuntimeBatchRepairDeltaEntry deltaEntry;
+        deltaEntry.requestIndex = repairEntry.requestIndex;
+        deltaEntry.request = repairEntry.request;
+        deltaEntry.coordinatorChanged = repairEntry.coordinatorChanged;
+        deltaEntry.actionChanged = repairEntry.actionChanged;
+        deltaEntry.slotChanged = repairEntry.slotChanged;
+        deltaEntry.savedCoordinatorIndex = repairEntry.savedCoordinatorIndex;
+        deltaEntry.repairedCoordinatorIndex = repairEntry.repairedCoordinatorIndex;
+        deltaEntry.savedSlotIndex = repairEntry.savedSlotIndex;
+        deltaEntry.repairedSlotIndex = repairEntry.repairedSlotIndex;
+        deltaEntry.savedAction = repairEntry.savedAction;
+        deltaEntry.repairedAction = repairEntry.repairedAction;
+        deltaEntry.status = repairEntry.status;
+
+        auto add_reason =
+            [&](BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags reason) noexcept {
+                if (bind_group_descriptor_runtime_batch_repair_delta_has_reason(
+                        deltaEntry.reasons,
+                        reason)) {
+                    return;
+                }
+                deltaEntry.reasons |= reason;
+                deltaEntry.reasonCount =
+                    saturating_add_u32(deltaEntry.reasonCount, 1);
+            };
+
+        const auto revalidationIt =
+            std::find_if(repairPlan.revalidation.entries.begin(),
+                         repairPlan.revalidation.entries.end(),
+                         [&](const auto& revalidationEntry) noexcept {
+                             return revalidationEntry.requestIndex ==
+                                    repairEntry.requestIndex;
+                         });
+        if (revalidationIt != repairPlan.revalidation.entries.end()) {
+            if (!revalidationIt->valid) {
+                add_reason(
+                    BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags::
+                        saved_plan_invalid);
+            }
+            if (revalidationIt->stale) {
+                add_reason(
+                    BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags::
+                        saved_action_stale);
+            }
+            if (!revalidationIt->compatible) {
+                add_reason(
+                    BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags::
+                        coordinator_incompatible);
+            }
+            if (revalidationIt->drifted) {
+                add_reason(
+                    BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags::
+                        coordinator_drifted);
+            }
+            if (revalidationIt->requiredBindGroupRelief != 0 ||
+                revalidationIt->requiredEntryRelief != 0) {
+                add_reason(
+                    BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags::
+                        capacity_pressure);
+            }
+            if (bind_group_descriptor_runtime_admission_requires_reconcile(
+                    revalidationIt->currentAction)) {
+                add_reason(
+                    BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags::
+                        reconcile_required);
+            }
+            if (bind_group_descriptor_runtime_admission_requires_reclaim(
+                    revalidationIt->currentAction)) {
+                add_reason(
+                    BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags::
+                        reclaim_required);
+            }
+        }
+
+        if (deltaEntry.coordinatorChanged) {
+            add_reason(
+                BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags::
+                    coordinator_reassigned);
+        }
+        if (deltaEntry.actionChanged) {
+            add_reason(
+                BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags::
+                    admission_action_rewritten);
+        }
+        if (deltaEntry.slotChanged) {
+            add_reason(
+                BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags::
+                    slot_reassigned);
+        }
+        if (repairEntry.savedSelected != repairEntry.repairedSelected) {
+            add_reason(
+                BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags::
+                    selection_changed);
+        }
+
+        if (!repairEntry.repairable) {
+            deltaEntry.kind =
+                BindGroupDescriptorRuntimeBatchRepairDeltaKind::unrepairable;
+            add_reason(
+                BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags::
+                    unrepairable_request);
+            deltaPlan.repairable = false;
+            deltaPlan.unrecoverableRequestCount =
+                saturating_add_u32(deltaPlan.unrecoverableRequestCount, 1);
+        } else if (repairEntry.savedSelected && repairEntry.repairedSelected) {
+            deltaEntry.kind = BindGroupDescriptorRuntimeBatchRepairDeltaKind::rewrite;
+            deltaPlan.rewrittenSelectedCount =
+                saturating_add_u32(deltaPlan.rewrittenSelectedCount, 1);
+            deltaEntry.repairedDecision =
+                repairPlan.repairedPlan.decisions[index];
+        } else if (repairEntry.savedSelected) {
+            deltaEntry.kind =
+                BindGroupDescriptorRuntimeBatchRepairDeltaKind::drop_selection;
+            deltaPlan.droppedSelectedCount =
+                saturating_add_u32(deltaPlan.droppedSelectedCount, 1);
+            deltaEntry.repairedDecision =
+                repairPlan.repairedPlan.decisions[index];
+        } else {
+            deltaEntry.kind =
+                BindGroupDescriptorRuntimeBatchRepairDeltaKind::promote_selection;
+            deltaPlan.promotedSelectedCount =
+                saturating_add_u32(deltaPlan.promotedSelectedCount, 1);
+            deltaEntry.repairedDecision =
+                repairPlan.repairedPlan.decisions[index];
+        }
+
+        if (deltaEntry.coordinatorChanged) {
+            deltaPlan.changedCoordinatorCount =
+                saturating_add_u32(deltaPlan.changedCoordinatorCount, 1);
+        }
+        if (deltaEntry.actionChanged) {
+            deltaPlan.changedActionCount =
+                saturating_add_u32(deltaPlan.changedActionCount, 1);
+        }
+        if (deltaEntry.slotChanged) {
+            deltaPlan.changedSlotCount =
+                saturating_add_u32(deltaPlan.changedSlotCount, 1);
+        }
+
+        auto count_reason =
+            [&](BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags reason,
+                std::uint32_t& count) noexcept {
+                if (bind_group_descriptor_runtime_batch_repair_delta_has_reason(
+                        deltaEntry.reasons,
+                        reason)) {
+                    count = saturating_add_u32(count, 1);
+                }
+            };
+        count_reason(BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags::
+                         saved_plan_invalid,
+                     deltaPlan.invalidSavedPlanReasonCount);
+        count_reason(BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags::
+                         saved_action_stale,
+                     deltaPlan.staleActionReasonCount);
+        count_reason(BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags::
+                         coordinator_incompatible,
+                     deltaPlan.incompatibleCoordinatorReasonCount);
+        count_reason(BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags::
+                         coordinator_drifted,
+                     deltaPlan.driftReasonCount);
+        count_reason(BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags::
+                         capacity_pressure,
+                     deltaPlan.capacityPressureReasonCount);
+        count_reason(BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags::
+                         reconcile_required,
+                     deltaPlan.reconcileRequiredReasonCount);
+        count_reason(BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags::
+                         reclaim_required,
+                     deltaPlan.reclaimRequiredReasonCount);
+        count_reason(BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags::
+                         coordinator_reassigned,
+                     deltaPlan.reassignedCoordinatorReasonCount);
+        count_reason(BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags::
+                         admission_action_rewritten,
+                     deltaPlan.rewrittenActionReasonCount);
+        count_reason(BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags::
+                         slot_reassigned,
+                     deltaPlan.reassignedSlotReasonCount);
+        count_reason(BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags::
+                         selection_changed,
+                     deltaPlan.selectionChangedReasonCount);
+        count_reason(BindGroupDescriptorRuntimeBatchRepairDeltaReasonFlags::
+                         unrepairable_request,
+                     deltaPlan.unrepairableReasonCount);
+
+        deltaPlan.deltaCount = saturating_add_u32(deltaPlan.deltaCount, 1);
+        deltaPlan.empty = false;
+        if (!deltaPlan.firstDeltaRequestIndex.has_value()) {
+            deltaPlan.firstDeltaRequestIndex = deltaEntry.requestIndex;
+        }
+        deltaPlan.deltas.push_back(std::move(deltaEntry));
+    }
+
+    return deltaPlan;
+}
+
+[[nodiscard]] inline core::Result<BindGroupDescriptorRuntimeBatchAdmissionPlan>
+bind_group_descriptor_runtime_apply_batch_repair_delta_plan(
+    const BindGroupDescriptorRuntimeBatchAdmissionPlan&      batchPlan,
+    const BindGroupDescriptorRuntimeBatchRepairDeltaPlan& deltaPlan) noexcept {
+    if (!deltaPlan.repairable) {
+        return core::Status::failure(
+            core::StatusCode::invalid_argument,
+            "batch repair deltas contain unrecoverable requests");
+    }
+
+    if (deltaPlan.requestCount != batchPlan.decisions.size()) {
+        return core::Status::failure(
+            core::StatusCode::invalid_argument,
+            "batch repair deltas do not match the saved plan request count");
+    }
+
+    auto repairedPlan = batchPlan;
+    repairedPlan.requestCount = deltaPlan.requestCount;
+    repairedPlan.admittedCount = deltaPlan.admittedCount;
+    repairedPlan.immediateAdmissionCount = deltaPlan.immediateAdmissionCount;
+    repairedPlan.reconcileAdmissionCount = deltaPlan.reconcileAdmissionCount;
+    repairedPlan.reclaimAdmissionCount = deltaPlan.reclaimAdmissionCount;
+    repairedPlan.throttledRequestCount = deltaPlan.throttledRequestCount;
+    repairedPlan.auditedRequestCount = deltaPlan.auditedRequestCount;
+    repairedPlan.rejectedRequestCount = deltaPlan.rejectedRequestCount;
+    repairedPlan.remainingImmediateBindGroupCount =
+        deltaPlan.remainingImmediateBindGroupCount;
+    repairedPlan.remainingImmediateEntryCount =
+        deltaPlan.remainingImmediateEntryCount;
+    repairedPlan.remainingRecoverableBindGroupRelief =
+        deltaPlan.remainingRecoverableBindGroupRelief;
+    repairedPlan.remainingRecoverableEntryRelief =
+        deltaPlan.remainingRecoverableEntryRelief;
+    repairedPlan.shouldThrottleRemainingAdmissions =
+        deltaPlan.shouldThrottleRemainingAdmissions;
+    repairedPlan.arbitration = deltaPlan.arbitration;
+    repairedPlan.coordinators = deltaPlan.coordinators;
+
+    for (const auto& deltaEntry : deltaPlan.deltas) {
+        if (!deltaEntry.repairedDecision.has_value()) {
+            return core::Status::failure(
+                core::StatusCode::invalid_argument,
+                "batch repair delta is missing a replacement decision");
+        }
+
+        auto decisionIt = std::find_if(repairedPlan.decisions.begin(),
+                                       repairedPlan.decisions.end(),
+                                       [&](const auto& decision) noexcept {
+                                           return decision.requestIndex ==
+                                                  deltaEntry.requestIndex;
+                                       });
+        if (decisionIt == repairedPlan.decisions.end()) {
+            return core::Status::failure(
+                core::StatusCode::invalid_argument,
+                "batch repair delta request index is invalid");
+        }
+
+        *decisionIt = *deltaEntry.repairedDecision;
+    }
+
+    return repairedPlan;
+}
+
+[[nodiscard]] inline BindGroupDescriptorRuntimeBatchExecutionResult
+bind_group_descriptor_runtime_execute_batch_admission_plan(
+    std::span<BindGroupDescriptorRuntimeCoordinator* const>       coordinators,
+    const BindGroupDescriptorRuntimeBatchAdmissionPlan& batchPlan) noexcept;
+
+[[nodiscard]] inline BindGroupDescriptorRuntimeBatchRepairExecutionResult
+bind_group_descriptor_runtime_repair_and_execute_batch_admission_plan(
+    std::span<BindGroupDescriptorRuntimeCoordinator* const>       coordinators,
+    const BindGroupDescriptorRuntimeBatchAdmissionPlan& batchPlan) noexcept {
+    BindGroupDescriptorRuntimeBatchRepairExecutionResult result;
+    result.repair = bind_group_descriptor_runtime_repair_batch_admission_plan(
+        std::span<const BindGroupDescriptorRuntimeCoordinator* const>(
+            coordinators.data(), coordinators.size()),
+        batchPlan);
+
+    if (!result.repair.repairable) {
+        result.status = core::Status::failure(
+            core::StatusCode::invalid_argument,
+            "batch repair execution requires repairable reservation intents");
+        result.failedRequestIndex = result.repair.firstUnrepairableRequestIndex;
+        return result;
+    }
+
+    const auto* executionPlan = &batchPlan;
+    result.usedReplacementPlan = result.repair.shouldReplaceSavedPlan;
+    result.usedSavedPlan = !result.usedReplacementPlan;
+    if (result.usedReplacementPlan) {
+        executionPlan = &result.repair.repairedPlan;
+    }
+
+    result.execution =
+        bind_group_descriptor_runtime_execute_batch_admission_plan(coordinators,
+                                                                   *executionPlan);
+    result.status = result.execution.status;
+    result.failedRequestIndex = result.execution.failedRequestIndex;
+    result.failedCoordinatorIndex = result.execution.failedCoordinatorIndex;
+    return result;
 }
 
 [[nodiscard]] inline BindGroupDescriptorRuntimeBatchExecutionResult
