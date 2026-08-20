@@ -1,7 +1,7 @@
 # Doctrine Governance
 
 Status: Draft  
-Last Reviewed: 2026-06-04
+Last Reviewed: 2026-08-20
 
 ## Purpose
 
@@ -21,15 +21,18 @@ When two doctrine rules conflict, resolve in this order:
 3. `coding.md`
 4. `export-policy.md`
 5. `naming.md`
-6. `identity.md`
-7. `usernames.md`
-8. `AI_CONTEXT.md`
+6. `AI_CONTEXT.md`
 
 Conflict handling:
 
 - The stricter rule wins.
 - If strictness is equal, the file with the newer `Last Reviewed` date wins.
 - If still ambiguous, create a Doctrine Change Record before applying either rule.
+
+For agent guidance, apply explicit task and safety constraints first, then
+repository-local `AGENTS.md` and `PROJECT_CONTEXT.md`, then the public Doctrine
+snapshot. User-level tool configuration is private and may guide personal
+workflow, but must not introduce non-public material into committed output.
 
 ## Change Control Workflow
 

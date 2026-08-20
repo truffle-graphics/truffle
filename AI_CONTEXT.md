@@ -1,7 +1,7 @@
 # AI Context
 
 Status: Stable  
-Last Reviewed: 2026-06-04
+Last Reviewed: 2026-08-20
 
 Purpose: Provide contributor-neutral context to AI tools about repository standards, engineering practices, and safe public project defaults.
 
@@ -13,7 +13,15 @@ This file is safe to copy into public repositories.
 
 Do not add maintainer-private identity, legal identity, account ownership details, private contact details, credentials, private infrastructure names, or recovery information here.
 
-Maintainer-specific preferences belong in a private/local overlay that is not copied into public templates or generated repositories.
+Maintainer-specific preferences belong in private, tool-local configuration that
+is not copied into public templates or generated repositories.
+
+## Project Context Contract
+
+Use root `AGENTS.md` for repository operating rules and root
+`PROJECT_CONTEXT.md` for durable project intent, architecture, constraints, and
+current direction. Read the project context when it exists; it is created from
+actual project evidence, never from invented details.
 
 ## Authorship and Identity
 

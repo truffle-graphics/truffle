@@ -1,7 +1,7 @@
 # Project Standards
 
 Status: Stable  
-Last Reviewed: 2026-06-04
+Last Reviewed: 2026-08-20
 
 ## Purpose
 
@@ -91,6 +91,21 @@ Typical docs:
 - Build system explanation
 - API usage
 - Design decisions
+
+### Project Context
+
+Active or long-lived repositories should keep a concise root
+`PROJECT_CONTEXT.md`. It is the durable re-entry point for maintainers and AI
+agents, covering:
+
+- Project intent and non-goals
+- Current maturity and next meaningful direction
+- Architecture, constraints, and decisions that must not be changed casually
+- Relevant validation and deeper documentation
+
+Create the document from a real project brief or repository evidence. Keep it
+specific to the project; do not fill it with generic doctrine or invented
+claims. Use `templates/project-context-template.md` as a starting structure.
 
 ---
 

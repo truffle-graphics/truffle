@@ -8,7 +8,9 @@ The canonical source remains the Doctrine repository.
 
 ## Refresh
 
-Re-run bootstrap when doctrine updates are needed.
+Run bootstrap again to add missing baseline files. Use `--refresh-baseline` to
+refresh only this Doctrine-owned snapshot without replacing local agent or
+project-context files.
 
 ## Export Boundary
 
