@@ -135,7 +135,8 @@ struct FoundationBackendConfig {
     bool presentation = false;
     bool logicalResources = false;
     std::shared_ptr<void> nativeContext;
-    Result<std::shared_ptr<void>> (*createBuffer)(const BufferDesc&) = nullptr;
+    Result<std::shared_ptr<void>> (*createBuffer)(
+        const std::shared_ptr<void>&, const BufferDesc&) = nullptr;
     Result<std::span<std::byte>> (*mapBuffer)(
         const std::shared_ptr<void>&) = nullptr;
     Status (*unmapBuffer)(const std::shared_ptr<void>&) = nullptr;
@@ -147,7 +148,8 @@ struct FoundationBackendConfig {
                           std::span<const std::byte>) = nullptr;
     Status (*readBuffer)(const std::shared_ptr<void>&, std::size_t,
                          std::span<std::byte>) = nullptr;
-    Result<std::shared_ptr<void>> (*createTexture)(const TextureDesc&) = nullptr;
+    Result<std::shared_ptr<void>> (*createTexture)(
+        const std::shared_ptr<void>&, const TextureDesc&) = nullptr;
     Result<std::shared_ptr<void>> (*createTextureView)(
         const std::shared_ptr<void>&, const TextureViewDesc&) = nullptr;
     Status (*writeTexture)(const std::shared_ptr<void>&, const TextureRegion&,

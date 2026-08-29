@@ -10,14 +10,15 @@ rather than growing a historical transcript here.
 ## Current Focus
 
 Deliver issue #33's native backend/platform matrix in evidence-gated slices.
-The current branch establishes native initialization/smoke and public reporting;
-resource, pipeline, synchronization, WSI, and broader platform work follows.
+The current branch adds Vulkan-owned buffers, host memory operations, and native
+buffer transfers; textures, pipelines, synchronization, WSI, and broader
+platform work follow.
 
 ## Latest Handoff
 
-- PR #42 is merged and issue #31 is closed. The RHI 1 public foundation through
-  explicit synchronization and presentation is on `develop`.
-- `feat/rhi1-native-matrix` publishes `BackendMaturity`, `PlatformKind`,
+- PR #43 is merged without closing issue #33. The first native matrix slice is
+  on `develop` and its package, macOS, Ubuntu, and Windows lanes are green.
+- The merged matrix slice publishes `BackendMaturity`, `PlatformKind`,
   per-dimension evidence, and the full backend/platform table through the public
   RHI. Runtime `AdapterInfo` carries its platform and maturity separately.
 - `truffle-rhi-doctor` emits the repository matrix plus live adapter probes as
@@ -48,9 +49,19 @@ resource, pipeline, synchronization, WSI, and broader platform work follows.
   initial `PlatformKind` enumerator in installed consumer headers. The C++ name
   is now `linux_host` while its serialized/public display value remains
   `"linux"`.
-- GitHub build run `33259452897` passes package archive, macOS, Ubuntu, and
+- GitHub build run `33259668349` passes package archive, macOS, Ubuntu, and
   Windows. Ubuntu proves Vulkan plus both EGL profiles and installed consumers;
   Windows proves the D3D12 WARP path; strict doctor passes on every host.
+- `feat/rhi1-vulkan-resources` makes backend resource creation instance-aware
+  and binds each Vulkan buffer to the instance/device that allocated it.
+  Vulkan buffers now use backend-owned `VkBuffer`/`VkDeviceMemory`, select
+  device-local or host-visible memory types, and implement map, unmap, flush,
+  invalidate, write, and read for upload/readback domains.
+- Vulkan queue submission now records native buffer copies and byte-pattern
+  fills. The Linux-only native test uploads deterministic bytes, copies through
+  device-local memory, fills a subrange, reads the exact result back, and checks
+  mapped invalidation. Texture capabilities remain false and texture creation
+  fails explicitly in this slice.
 
 ## Durable Decisions
 
@@ -109,18 +120,21 @@ cmake --build build/gcc-rhi33 -j 8
 ctest --test-dir build/gcc-rhi33 --output-on-failure  # 30/30
 ```
 
-Clang and GCC warning-as-error builds pass locally, as do the segmented shared
-and Metal suites. GitHub run `33259452897` passes package, macOS Metal, Ubuntu
+Clang and GCC warning-as-error builds pass locally with the Vulkan buffer slice,
+as do the 34-test segmented shared suite and Metal native smoke. GitHub run
+`33259668349` passes the preceding package, macOS Metal, Ubuntu
 Vulkan/EGL, and Windows D3D12/WARP with strict doctor enabled. The local sandbox
 does not expose a Metal device to strict doctor, so GitHub's macOS runner is the
-live-device gate. `truffle_format_check` remains unavailable because
-`clang-format` is not installed on this host.
+live-device gate. Linux CI remains the acceptance gate for the new exact Vulkan
+buffer readback. `truffle_format_check` remains unavailable because CMake does
+not discover `clang-format` on this host's `PATH`; `git diff --check` passes.
 
 ## Next Resume Steps
 
-1. Merge PR #43 without closing #33.
-2. Continue #33 with backend-owned resources and
-   transfers before shaders/pipelines, synchronization, and WSI/presentation.
+1. Publish the Vulkan buffer slice and require Ubuntu validation-layer evidence
+   for exact device-local readback before merging it into `develop`.
+2. Continue #33 with Vulkan textures and image transfers, then add equivalent
+   D3D12 and GL/GLES resources before shaders/pipelines and presentation.
 3. Keep WebGPU/WebGL2 and every unexecuted mobile/Apple/Vulkan platform at
    `source_only`; keep native slices at `native_smoke` until shared native
    contracts and presentation evidence exist.
@@ -133,9 +147,10 @@ live-device gate. `truffle_format_check` remains unavailable because
   tracking; aliased heap allocations are not implemented.
 - Physical Metal device-removal evidence is not available in macOS CI; the
   private fault hook validates public loss-state behavior only.
-- Vulkan/D3D12/EGL currently prove native initialization and one narrow workload
-  only. Their intentionally empty capabilities must not be described as
-  resource, shader, synchronization, WSI, or presentation support.
+- Vulkan buffer copies/fills currently follow Vulkan's four-byte transfer
+  alignment. Texture, shader, synchronization, WSI, and presentation capability
+  flags stay false until matching native evidence exists. D3D12/EGL still prove
+  initialization and a narrow smoke workload only.
 - Linux EGL context destruction is thread-sensitive. The synchronous matrix
   slice serializes and restores the context; asynchronous GL work needs a
   deliberate context-ownership model.
