@@ -10,15 +10,15 @@ rather than growing a historical transcript here.
 ## Current Focus
 
 Deliver issue #33's native backend/platform matrix in evidence-gated slices.
-The current branch adds Vulkan-owned 2D textures, views, image layout tracking,
-and buffer/image transfers on top of the merged buffer work; pipelines,
+The current branch adds D3D12 committed upload, readback, and default-heap
+buffers plus native copy/fill submission on WARP; textures, pipelines,
 synchronization, WSI, and broader platform work follow.
 
 ## Latest Handoff
 
-- PR #44 is merged without closing issue #33. Vulkan buffer allocation and
-  exact device-local readback are on `develop`; post-merge build run
-  `33260734421` is green on package, macOS, Ubuntu, and Windows.
+- PR #45 is merged without closing issue #33. Vulkan buffer and 2D texture
+  transfers are on `develop`; post-merge build run `33261275493` is green on
+  package, macOS, Ubuntu, and Windows.
 - The merged matrix slice publishes `BackendMaturity`, `PlatformKind`,
   per-dimension evidence, and the full backend/platform table through the public
   RHI. Runtime `AdapterInfo` carries its platform and maturity separately.
@@ -69,10 +69,19 @@ synchronization, WSI, and broader platform work follow.
   depth formats are checked against the physical device before allocation;
   compressed formats, multisampling, non-device-local images, and presentation
   images still fail explicitly.
-- The pending Linux texture proof uses padded 64-byte rows for an 8x4 RGBA8
-  image, copies buffer -> image -> image -> buffer, and compares the complete
-  readback including untouched padding. Color image transfers are the only
-  image-transfer capability proposed in this slice.
+- PR #45's Linux texture proof uses padded 64-byte rows for an 8x4 RGBA8 image,
+  copies buffer -> image -> image -> buffer, and compares the complete readback
+  including untouched padding. Color image transfers are the only image-transfer
+  capability evidenced in that slice.
+- `feat/rhi1-d3d12-buffers` adds committed upload, readback, and default-heap
+  buffers tied to the creating WARP device, including map/unmap and direct host
+  read/write operations. Native submission records buffer copies with explicit
+  default-heap state transitions. Byte fills use transient upload buffers so
+  the public operation supports unaligned offsets and sizes rather than exposing
+  a D3D12-specific restriction.
+- The pending Windows proof uploads 67 deterministic bytes, copies through a
+  default-heap buffer, overwrites an unaligned 17-byte readback subrange, and
+  verifies both direct and mapped output exactly under the D3D12 debug layer.
 
 ## Durable Decisions
 
@@ -131,20 +140,21 @@ cmake --build build/gcc-rhi33 -j 8
 ctest --test-dir build/gcc-rhi33 --output-on-failure  # 30/30
 ```
 
-Clang and GCC warning-as-error builds pass locally with the Vulkan texture slice,
+Clang and GCC warning-as-error builds pass locally with the D3D12 buffer slice,
 as do the 34-test segmented shared suite and Metal native smoke. GitHub run
-`33259668349` passes the preceding package, macOS Metal, Ubuntu
+`33261275493` passes the preceding package, macOS Metal, Ubuntu
 Vulkan/EGL, and Windows D3D12/WARP with strict doctor enabled. The local sandbox
 does not expose a Metal device to strict doctor, so GitHub's macOS runner is the
-live-device gate. Linux CI remains the acceptance gate for the new padded-row
-Vulkan texture readback. `truffle_format_check` remains unavailable because CMake does
-not discover `clang-format` on this host's `PATH`; `git diff --check` passes.
+live-device gate. Windows CI remains the compile and native acceptance gate for
+the new D3D12 buffer implementation. `truffle_format_check` remains unavailable
+because CMake does not discover `clang-format` on this host's `PATH`;
+`git diff --check` passes.
 
 ## Next Resume Steps
 
-1. Publish the Vulkan texture slice and require Ubuntu validation-layer evidence
-   for exact padded-row image readback before merging it into `develop`.
-2. Continue #33 with equivalent D3D12 and GL/GLES resources before native
+1. Publish the D3D12 buffer slice and require the Windows debug-layer lane for
+   exact default-heap readback before merging it into `develop`.
+2. Continue #33 with D3D12 textures and GL/GLES resources before native
    shaders/pipelines and presentation.
 3. Keep WebGPU/WebGL2 and every unexecuted mobile/Apple/Vulkan platform at
    `source_only`; keep native slices at `native_smoke` until shared native
@@ -162,8 +172,11 @@ not discover `clang-format` on this host's `PATH`; `git diff --check` passes.
   four-byte transfer alignment. The texture slice is limited to device-local,
   single-sample 2D images and color transfers; host-visible images, compressed
   copies, clears, resolves, blits, shaders, WSI, and presentation remain false
-  or explicitly unsupported. D3D12/EGL still prove initialization and a narrow
-  smoke workload only.
+  or explicitly unsupported. EGL still proves initialization and a narrow smoke
+  workload only.
+- D3D12 submission remains synchronous and fill commands allocate transient
+  upload resources per operation. Pooling and asynchronous retirement belong to
+  a later performance slice after resource correctness is evidenced.
 - Linux EGL context destruction is thread-sensitive. The synchronous matrix
   slice serializes and restores the context; asynchronous GL work needs a
   deliberate context-ownership model.
