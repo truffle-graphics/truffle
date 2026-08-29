@@ -9,8 +9,7 @@ rather than growing a historical transcript here.
 
 ## Current Focus
 
-RHI 1 Phase 0: reset architecture and maturity truth before the breaking public
-API cutover.
+RHI 1 Phase 1: breaking public object and dispatch cutover under issue #28.
 
 ## Latest Handoff
 
@@ -29,6 +28,8 @@ API cutover.
   Vulkan, Direct3D, and OpenGL are contract simulators and only `source_only`
   for their future native implementations.
 - Replaced the old completion ladder with the issue-aligned RHI 1 roadmap.
+- PR #37 passes the package, macOS, Ubuntu, and Windows Build jobs and completes
+  issue #27's Phase 0 truth reset.
 
 ## Durable Decisions
 
@@ -77,12 +78,15 @@ git diff --check
 All passed. New relative documentation link targets were inspected locally;
 the repository currently has no automated Markdown link-check command.
 
+PR #37 GitHub Build also passed package, macOS, Ubuntu, and Windows jobs.
+
 ## Next Resume Steps
 
-1. Finish validation and merge issue #27.
-2. Start #28 from fresh `develop`.
-3. Implement the object/dispatch foundation and migrate in-tree consumers in a
+1. Start #28 from fresh `develop`.
+2. Implement the object/dispatch foundation and migrate in-tree consumers in a
    single breaking public cutover.
+3. Delete the preliminary descriptor policy engine instead of adapting it to
+   the new dispatch layer.
 
 ## Open Risks
 

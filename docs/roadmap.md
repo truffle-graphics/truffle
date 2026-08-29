@@ -11,10 +11,10 @@ The earlier Phase 1-12 labels described useful preliminary contracts and tests,
 but their “Complete” wording did not prove native GPU execution or platform
 support. They are historical inputs, not the current delivery gates.
 
-## Phase 0: Restore Baseline And Project Truth — In Progress
+## Phase 0: Restore Baseline And Project Truth — Complete
 
 - [x] #26 restore warning-clean package, macOS, Ubuntu, and Windows CI.
-- [ ] #27 accept the RHI 1 ADR, public ownership/threading/lifetime rules,
+- [x] #27 accept the RHI 1 ADR, public ownership/threading/lifetime rules,
   dependency policy, shader-package direction, target matrix, and objective
   maturity gates.
 

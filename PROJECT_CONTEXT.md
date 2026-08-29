@@ -83,5 +83,5 @@ consumer selects concrete loading, upload, and backend behavior.
 
 ## Next Meaningful Direction
 
-Complete issue #27's truth and architecture reset, then replace the public
-object and dispatch foundation under issue #28 before adding capability slices.
+Replace the public object and dispatch foundation under issue #28 before adding
+resource, binding, synchronization, or presentation capability slices.
