@@ -1776,7 +1776,7 @@ constexpr void include_native_descriptor_slots(
     return plan;
 }
 
-[[nodiscard]] constexpr BindGroupDescriptorArenaPlan bind_group_descriptor_arena_plan(
+[[nodiscard]] inline BindGroupDescriptorArenaPlan bind_group_descriptor_arena_plan(
     const BindGroupDesc& desc,
     const Capabilities&  capabilities,
     std::uint32_t        bindGroupCount) noexcept {

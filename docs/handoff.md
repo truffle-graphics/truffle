@@ -22,10 +22,11 @@ validation, diagnostics, and backend parity.
 - Started the Truffle RHI 1 replacement program under GitHub milestone
   `Truffle RHI 1`; issue #25 tracks the program and issue #26 tracks the
   cross-platform baseline repair.
-- On `fix/rhi1-cross-platform-baseline`, removed the invalid `constexpr`
-  annotation from the vector-backed descriptor strategy overload, completed
-  the saved admission-entry initializer, and changed renderer pipeline setup to
-  default-construct descriptors before assigning selected fields.
+- On `fix/rhi1-cross-platform-baseline`, removed invalid `constexpr`
+  annotations from the vector-backed descriptor strategy and arena-plan
+  overloads; completed the saved admission-entry initializer; and changed
+  renderer pipeline setup to default-construct descriptors before assigning
+  selected fields.
 - Corrected declaration-order initializer warnings in the core and shared RHI
   contract tests. The warnings-as-errors `ci` preset now builds locally and all
   26 tests pass on macOS Apple Silicon; Linux and Windows GitHub validation is
