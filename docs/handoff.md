@@ -10,15 +10,15 @@ rather than growing a historical transcript here.
 ## Current Focus
 
 Deliver issue #33's native backend/platform matrix in evidence-gated slices.
-The current branch adds D3D12 committed upload, readback, and default-heap
-buffers plus native copy/fill submission on WARP; textures, pipelines,
-synchronization, WSI, and broader platform work follow.
+The current branch adds shared EGL-owned GL/GLES buffers, mapping, and native
+copy/fill submission; textures, pipelines, synchronization, WSI, and broader
+platform work follow.
 
 ## Latest Handoff
 
-- PR #45 is merged without closing issue #33. Vulkan buffer and 2D texture
-  transfers are on `develop`; post-merge build run `33261275493` is green on
-  package, macOS, Ubuntu, and Windows.
+- PR #46 is merged without closing issue #33. Vulkan buffer/texture and D3D12
+  buffer transfers are on `develop`; post-merge build run `33261566114` is green
+  on package, macOS, Ubuntu, and Windows.
 - The merged matrix slice publishes `BackendMaturity`, `PlatformKind`,
   per-dimension evidence, and the full backend/platform table through the public
   RHI. Runtime `AdapterInfo` carries its platform and maturity separately.
@@ -79,9 +79,18 @@ synchronization, WSI, and broader platform work follow.
   default-heap state transitions. Byte fills use transient upload buffers so
   the public operation supports unaligned offsets and sizes rather than exposing
   a D3D12-specific restriction.
-- The pending Windows proof uploads 67 deterministic bytes, copies through a
+- PR #46's Windows proof uploads 67 deterministic bytes, copies through a
   default-heap buffer, overwrites an unaligned 17-byte readback subrange, and
   verifies both direct and mapped output exactly under the D3D12 debug layer.
+- `feat/rhi1-egl-buffers` adds buffer ownership and mapping to the shared EGL
+  implementation used by desktop OpenGL and OpenGL ES. Copies use native copy
+  targets; fills use transient upload buffers, preserving arbitrary byte ranges.
+  Both Linux profiles share one exact upload -> device-local -> readback test
+  with an unaligned fill and mapped verification.
+- PR #47's first Ubuntu run reached both native profiles and found that a
+  mapped-at-creation upload flush inherited the most recent global GL target
+  binding. The write path now rebinds its owning buffer before explicit flush;
+  native acceptance is pending the rerun.
 
 ## Durable Decisions
 
@@ -140,21 +149,21 @@ cmake --build build/gcc-rhi33 -j 8
 ctest --test-dir build/gcc-rhi33 --output-on-failure  # 30/30
 ```
 
-Clang and GCC warning-as-error builds pass locally with the D3D12 buffer slice,
+Clang and GCC warning-as-error builds pass locally with the EGL buffer slice,
 as do the 34-test segmented shared suite and Metal native smoke. GitHub run
 `33261275493` passes the preceding package, macOS Metal, Ubuntu
 Vulkan/EGL, and Windows D3D12/WARP with strict doctor enabled. The local sandbox
 does not expose a Metal device to strict doctor, so GitHub's macOS runner is the
-live-device gate. Windows CI remains the compile and native acceptance gate for
-the new D3D12 buffer implementation. `truffle_format_check` remains unavailable
+live-device gate. Ubuntu CI remains the compile and native acceptance gate for
+the shared GL/GLES implementation. `truffle_format_check` remains unavailable
 because CMake does not discover `clang-format` on this host's `PATH`;
 `git diff --check` passes.
 
 ## Next Resume Steps
 
-1. Publish the D3D12 buffer slice and require the Windows debug-layer lane for
-   exact default-heap readback before merging it into `develop`.
-2. Continue #33 with D3D12 textures and GL/GLES resources before native
+1. Publish the EGL buffer slice and require both Ubuntu GL profiles to pass exact
+   device-local readback before merging it into `develop`.
+2. Continue #33 with D3D12 and GL/GLES textures before native
    shaders/pipelines and presentation.
 3. Keep WebGPU/WebGL2 and every unexecuted mobile/Apple/Vulkan platform at
    `source_only`; keep native slices at `native_smoke` until shared native
