@@ -46,6 +46,11 @@ then begin explicit synchronization and presentation under issue #31.
 - Renderer pipeline preparation now matches its placeholder pipeline to the
   current pass format, depth format, and sample count, preserving existing
   renderer tests under the stricter attachment compatibility rules.
+- PR #41's first Ubuntu and Windows builds exposed GCC/MinGW
+  `-Wmissing-field-initializers` diagnostics for partially designated command
+  and pipeline aggregates. The follow-up uses explicit default construction and
+  field assignment; a local GCC 15 warnings-as-errors build and all 26
+  non-Metal tests pass.
 
 ## Durable Decisions
 
@@ -87,6 +92,13 @@ MTL_DEBUG_LAYER=1 ctest --preset ci --output-on-failure  # 31/31
 MTL_DEBUG_LAYER=1 build/ci/tests/truffle_metal_tests
 cmake --build --preset ci --target package
 git diff --check
+
+cmake --preset ci -B /tmp/truffle-rhi30-gcc \
+      -DCMAKE_CXX_COMPILER=/opt/homebrew/bin/g++-15 \
+      -DTRUFFLE_BUILD_BACKEND_METAL=OFF \
+      -DTRUFFLE_BUILD_EXAMPLES=OFF
+cmake --build /tmp/truffle-rhi30-gcc -j 6
+ctest --test-dir /tmp/truffle-rhi30-gcc --output-on-failure  # 26/26
 ```
 
 The dedicated Null binding/pipeline suite exercises the complete portable

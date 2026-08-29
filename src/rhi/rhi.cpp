@@ -4035,12 +4035,11 @@ Result<RenderEncoder> CommandList::begin_rendering(const RenderPassDesc& desc) {
         }
         value->renderSampleCount = texture->desc.sampleCount;
         sampleCountSet = true;
-        detail::NativeRenderAttachment nativeAttachment{
-            .texture = texture->native,
-            .loadOp = attachment.loadOp,
-            .storeOp = attachment.storeOp,
-            .clear = attachment.clear,
-        };
+        detail::NativeRenderAttachment nativeAttachment;
+        nativeAttachment.texture = texture->native;
+        nativeAttachment.loadOp = attachment.loadOp;
+        nativeAttachment.storeOp = attachment.storeOp;
+        nativeAttachment.clear = attachment.clear;
         value->retained.push_back(texture);
         value->renderColorFormats.push_back(texture->desc.format);
         if (attachment.resolveTexture != nullptr) {
@@ -4133,9 +4132,9 @@ Result<ComputeEncoder> CommandList::begin_compute() {
     value->activeEncoder = 2;
     value->computePipelineBound = false;
     value->computePipeline.reset();
-    value->nativeCommands.push_back({
-        .kind = detail::NativeCommandKind::begin_compute,
-    });
+    detail::NativeCommand command;
+    command.kind = detail::NativeCommandKind::begin_compute;
+    value->nativeCommands.push_back(std::move(command));
     return ComputeEncoder{*this};
 }
 
@@ -4211,10 +4210,10 @@ Status CommandList::encoder_command(std::uint32_t opcode, ObjectId object,
             pipeline->desc.dynamicState, DynamicState::stencil_reference);
         value->depthBiasSet = !has_dynamic_state(
             pipeline->desc.dynamicState, DynamicState::depth_bias);
-        value->nativeCommands.push_back({
-            .kind = detail::NativeCommandKind::bind_graphics_pipeline,
-            .object = pipeline->native,
-        });
+        detail::NativeCommand command;
+        command.kind = detail::NativeCommandKind::bind_graphics_pipeline;
+        command.object = pipeline->native;
+        value->nativeCommands.push_back(std::move(command));
         break;
     }
     case 2:
@@ -4284,16 +4283,16 @@ Status CommandList::encoder_command(std::uint32_t opcode, ObjectId object,
         value->retained.push_back(pipeline);
         value->computePipelineBound = true;
         value->computePipeline = pipeline;
-        value->nativeCommands.push_back({
-            .kind = detail::NativeCommandKind::bind_compute_pipeline,
-            .object = pipeline->native,
-            .arguments = {pipeline->requiredWorkgroupSize.width,
-                          pipeline->requiredWorkgroupSize.height,
-                          pipeline->requiredWorkgroupSize.depth,
-                          pipeline->preferredWorkgroupSize.width,
-                          pipeline->preferredWorkgroupSize.height,
-                          pipeline->preferredWorkgroupSize.depth},
-        });
+        detail::NativeCommand command;
+        command.kind = detail::NativeCommandKind::bind_compute_pipeline;
+        command.object = pipeline->native;
+        command.arguments = {pipeline->requiredWorkgroupSize.width,
+                             pipeline->requiredWorkgroupSize.height,
+                             pipeline->requiredWorkgroupSize.depth,
+                             pipeline->preferredWorkgroupSize.width,
+                             pipeline->preferredWorkgroupSize.height,
+                             pipeline->preferredWorkgroupSize.depth};
+        value->nativeCommands.push_back(std::move(command));
         break;
     }
     case 6:
@@ -4304,10 +4303,12 @@ Status CommandList::encoder_command(std::uint32_t opcode, ObjectId object,
         }
         state_->runtime->update_stats(
             [](BackendStats& stats) { ++stats.drawsRecorded; });
-        value->nativeCommands.push_back({
-            .kind = detail::NativeCommandKind::draw,
-            .arguments = {arg0, arg1},
-        });
+        {
+            detail::NativeCommand command;
+            command.kind = detail::NativeCommandKind::draw;
+            command.arguments = {arg0, arg1};
+            value->nativeCommands.push_back(std::move(command));
+        }
         break;
     case 9:
         if (value->activeEncoder != 2 || !value->computePipelineBound ||
@@ -4317,10 +4318,12 @@ Status CommandList::encoder_command(std::uint32_t opcode, ObjectId object,
         }
         state_->runtime->update_stats(
             [](BackendStats& stats) { ++stats.dispatchesRecorded; });
-        value->nativeCommands.push_back({
-            .kind = detail::NativeCommandKind::dispatch,
-            .arguments = {arg0, arg1, 1},
-        });
+        {
+            detail::NativeCommand command;
+            command.kind = detail::NativeCommandKind::dispatch;
+            command.arguments = {arg0, arg1, 1};
+            value->nativeCommands.push_back(std::move(command));
+        }
         break;
     default:
         return Status::failure(StatusCode::invalid_argument,
@@ -4342,13 +4345,13 @@ Status CommandList::end_encoder(std::uint32_t encoderKind) {
                                "encoder end does not match active encoder");
     }
     if (encoderKind == 1) {
-        value->nativeCommands.push_back({
-            .kind = detail::NativeCommandKind::end_render,
-        });
+        detail::NativeCommand command;
+        command.kind = detail::NativeCommandKind::end_render;
+        value->nativeCommands.push_back(std::move(command));
     } else if (encoderKind == 2) {
-        value->nativeCommands.push_back({
-            .kind = detail::NativeCommandKind::end_compute,
-        });
+        detail::NativeCommand command;
+        command.kind = detail::NativeCommandKind::end_compute;
+        value->nativeCommands.push_back(std::move(command));
     }
     value->activeEncoder = 0;
     return Status::success();
@@ -4543,15 +4546,14 @@ namespace detail {
                                        "dynamic buffer offset exceeds allocation");
             }
         }
-        NativeBindingResource native{
-            .group = group,
-            .binding = resource->entry.binding,
-            .arrayElement = resource->entry.arrayElement,
-            .type = resource->type,
-            .visibility = layoutEntry->visibility,
-            .offset = effectiveOffset,
-            .size = resource->entry.size,
-        };
+        NativeBindingResource native;
+        native.group = group;
+        native.binding = resource->entry.binding;
+        native.arrayElement = resource->entry.arrayElement;
+        native.type = resource->type;
+        native.visibility = layoutEntry->visibility;
+        native.offset = effectiveOffset;
+        native.size = resource->entry.size;
         if (resource->buffer) {
             native.resource = resource->buffer->native;
         } else if (resource->textureView) {
@@ -4568,13 +4570,13 @@ namespace detail {
             return Status::failure(StatusCode::invalid_state,
                                    "immutable sampler mapping is incomplete");
         }
-        command.bindings.push_back({
-            .group = group,
-            .binding = binding,
-            .type = BindingType::sampler,
-            .visibility = entry->visibility,
-            .resource = sampler->native,
-        });
+        NativeBindingResource native;
+        native.group = group;
+        native.binding = binding;
+        native.type = BindingType::sampler;
+        native.visibility = entry->visibility;
+        native.resource = sampler->native;
+        command.bindings.push_back(std::move(native));
     }
     list->retained.push_back(bindGroup);
     list->nativeCommands.push_back(std::move(command));
@@ -4834,10 +4836,10 @@ Status RenderEncoder::set_stencil_reference(std::uint32_t reference) {
         return Status::failure(StatusCode::invalid_state,
                                "dynamic stencil reference is unavailable");
     }
-    list->nativeCommands.push_back({
-        .kind = detail::NativeCommandKind::set_stencil_reference,
-        .arguments = {reference},
-    });
+    detail::NativeCommand command;
+    command.kind = detail::NativeCommandKind::set_stencil_reference;
+    command.arguments = {reference};
+    list->nativeCommands.push_back(std::move(command));
     list->stencilReferenceSet = true;
     return Status::success();
 }
@@ -4879,11 +4881,10 @@ Status RenderEncoder::draw(std::uint32_t vertexCount,
     if (!active_ || list_ == nullptr) {
         return detail::invalid_object("render encoder");
     }
-    return detail::record_draw(
-        *list_->state_,
-        {.kind = detail::NativeCommandKind::draw,
-         .arguments = {vertexCount, instanceCount, firstVertex, firstInstance}},
-        false);
+    detail::NativeCommand command;
+    command.kind = detail::NativeCommandKind::draw;
+    command.arguments = {vertexCount, instanceCount, firstVertex, firstInstance};
+    return detail::record_draw(*list_->state_, std::move(command), false);
 }
 
 Status RenderEncoder::draw_indexed(std::uint32_t indexCount,
@@ -4894,12 +4895,11 @@ Status RenderEncoder::draw_indexed(std::uint32_t indexCount,
     if (!active_ || list_ == nullptr) {
         return detail::invalid_object("render encoder");
     }
-    return detail::record_draw(
-        *list_->state_,
-        {.kind = detail::NativeCommandKind::draw_indexed,
-         .arguments = {indexCount, instanceCount, firstIndex,
-                       static_cast<std::uint32_t>(vertexOffset), firstInstance}},
-        true);
+    detail::NativeCommand command;
+    command.kind = detail::NativeCommandKind::draw_indexed;
+    command.arguments = {indexCount, instanceCount, firstIndex,
+                         static_cast<std::uint32_t>(vertexOffset), firstInstance};
+    return detail::record_draw(*list_->state_, std::move(command), true);
 }
 
 Status RenderEncoder::draw_indirect(Buffer& buffer, std::size_t offset,
@@ -4937,11 +4937,12 @@ Status RenderEncoder::draw_indirect(Buffer& buffer, std::size_t offset,
                                "indirect draw range or state is invalid");
     }
     list->retained.push_back(indirect);
-    list->nativeCommands.push_back({
-        .kind = detail::NativeCommandKind::draw_indirect,
-        .object = indirect->native,
-        .arguments = {offset, indexed ? 1u : 0u, drawCount, effectiveStride},
-    });
+    detail::NativeCommand command;
+    command.kind = detail::NativeCommandKind::draw_indirect;
+    command.object = indirect->native;
+    command.arguments = {offset, indexed ? 1u : 0u, drawCount,
+                         effectiveStride};
+    list->nativeCommands.push_back(std::move(command));
     list_->state_->runtime->update_stats(
         [](BackendStats& stats) { ++stats.drawsRecorded; });
     return Status::success();
@@ -4991,13 +4992,13 @@ Status RenderEncoder::draw_indirect_count(
     }
     list->retained.push_back(indirect);
     list->retained.push_back(count);
-    list->nativeCommands.push_back({
-        .kind = detail::NativeCommandKind::draw_indirect_count,
-        .object = indirect->native,
-        .secondaryObject = count->native,
-        .arguments = {offset, countOffset, maximumDrawCount, effectiveStride,
-                      indexed ? 1u : 0u},
-    });
+    detail::NativeCommand command;
+    command.kind = detail::NativeCommandKind::draw_indirect_count;
+    command.object = indirect->native;
+    command.secondaryObject = count->native;
+    command.arguments = {offset, countOffset, maximumDrawCount, effectiveStride,
+                         indexed ? 1u : 0u};
+    list->nativeCommands.push_back(std::move(command));
     list_->state_->runtime->update_stats(
         [](BackendStats& stats) { ++stats.drawsRecorded; });
     return Status::success();
@@ -5089,10 +5090,10 @@ Status ComputeEncoder::dispatch(std::uint32_t x, std::uint32_t y,
     if (!active_ || list_ == nullptr) {
         return detail::invalid_object("compute encoder");
     }
-    return detail::record_dispatch(
-        *list_->state_,
-        {.kind = detail::NativeCommandKind::dispatch,
-         .arguments = {x, y, z}});
+    detail::NativeCommand command;
+    command.kind = detail::NativeCommandKind::dispatch;
+    command.arguments = {x, y, z};
+    return detail::record_dispatch(*list_->state_, std::move(command));
 }
 
 Status ComputeEncoder::dispatch_indirect(Buffer& buffer, std::size_t offset) {
@@ -5123,11 +5124,11 @@ Status ComputeEncoder::dispatch_indirect(Buffer& buffer, std::size_t offset) {
                                "dispatch-indirect range or state is invalid");
     }
     list->retained.push_back(indirect);
-    list->nativeCommands.push_back({
-        .kind = detail::NativeCommandKind::dispatch_indirect,
-        .object = indirect->native,
-        .arguments = {offset},
-    });
+    detail::NativeCommand command;
+    command.kind = detail::NativeCommandKind::dispatch_indirect;
+    command.object = indirect->native;
+    command.arguments = {offset};
+    list->nativeCommands.push_back(std::move(command));
     list_->state_->runtime->update_stats(
         [](BackendStats& stats) { ++stats.dispatchesRecorded; });
     return Status::success();
