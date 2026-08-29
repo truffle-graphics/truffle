@@ -76,7 +76,9 @@ rhi::IPipeline* NullPipelineCache::get_or_create(const InstanceLayout& /*layout*
                                               MaterialId /*material*/,
                                               std::size_t /*variantHash*/) {
     if (!pipeline_) {
-        auto result = device_->create_pipeline({.debugName = "null_pipeline"});
+        rhi::PipelineDesc desc;
+        desc.debugName = "null_pipeline";
+        auto result = device_->create_pipeline(desc);
         if (result.ok()) {
             pipeline_ = std::move(result).value();
         }
@@ -111,12 +113,12 @@ rhi::IPipeline* PipelineCache::get_or_create(const InstanceLayout& layout,
 
     const std::string debugName =
         "pipeline_mat" + std::to_string(static_cast<std::uint64_t>(material));
-    auto result = device_->create_pipeline({
-        .debugName      = debugName,
-        .vertexShader   = sb.vertexShader,
-        .fragmentShader = sb.fragmentShader,
-        .colorFormat    = colorFormat_,
-    });
+    rhi::PipelineDesc desc;
+    desc.debugName = debugName;
+    desc.vertexShader = sb.vertexShader;
+    desc.fragmentShader = sb.fragmentShader;
+    desc.colorFormat = colorFormat_;
+    auto result = device_->create_pipeline(desc);
     if (!result.ok()) {
         return nullptr;
     }

@@ -64,10 +64,10 @@ core::Status validate_compute_bindings(const TransformComputePassDesc& desc,
 TransformComputePass::TransformComputePass(rhi::IDevice& device, rhi::IShader* computeShader)
     : device_(&device) {
     if (computeShader) {
-        auto res = device_->create_compute_pipeline({
-            .debugName = "TransformComputePass",
-            .computeShader = computeShader,
-        });
+        rhi::ComputePipelineDesc desc;
+        desc.debugName = "TransformComputePass";
+        desc.computeShader = computeShader;
+        auto res = device_->create_compute_pipeline(desc);
         if (res.ok()) {
             pipeline_ = std::move(res).value();
         }

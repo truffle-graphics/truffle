@@ -19,6 +19,20 @@ validation, diagnostics, and backend parity.
 
 ## Latest Handoff
 
+- Started the Truffle RHI 1 replacement program under GitHub milestone
+  `Truffle RHI 1`; issue #25 tracks the program and issue #26 tracks the
+  cross-platform baseline repair.
+- On `fix/rhi1-cross-platform-baseline`, removed invalid `constexpr`
+  annotations from the vector-backed descriptor strategy and arena-plan
+  overloads; completed the saved admission-entry initializer; and changed
+  renderer pipeline setup to default-construct descriptors before assigning
+  selected fields.
+- Corrected declaration-order initializer warnings in the core and shared RHI
+  contract tests. The warnings-as-errors `ci` preset builds locally and all 26
+  tests pass on macOS Apple Silicon. Pull request #36 passes the package,
+  macOS, Ubuntu, and Windows build jobs; its separate companion-task router
+  fails before dispatch because the configured GitHub agent token receives a
+  `401 Bad credentials` response.
 - Added portable `AGENTS.md`, `CLAUDE.md`, and `PROJECT_CONTEXT.md` guidance so
   fresh agent sessions can recover Truffle's architecture and working rules.
 - Refreshed the public Doctrine snapshot without overwriting repository-local

@@ -1742,7 +1742,7 @@ constexpr void include_native_descriptor_slots(
     return strategy;
 }
 
-[[nodiscard]] constexpr BindGroupDescriptorStrategy bind_group_descriptor_strategy(
+[[nodiscard]] inline BindGroupDescriptorStrategy bind_group_descriptor_strategy(
     const BindGroupDesc& desc,
     const Capabilities&  capabilities) noexcept {
     return bind_group_descriptor_strategy(desc.allocationPolicy,
@@ -1776,7 +1776,7 @@ constexpr void include_native_descriptor_slots(
     return plan;
 }
 
-[[nodiscard]] constexpr BindGroupDescriptorArenaPlan bind_group_descriptor_arena_plan(
+[[nodiscard]] inline BindGroupDescriptorArenaPlan bind_group_descriptor_arena_plan(
     const BindGroupDesc& desc,
     const Capabilities&  capabilities,
     std::uint32_t        bindGroupCount) noexcept {
@@ -5979,6 +5979,8 @@ bind_group_descriptor_runtime_revalidate_batch_admission_plan(
                             BindGroupDescriptorRuntimeAdmissionEntry{
                                 .request = request,
                                 .targetSlotIndex = entry.slotIndex,
+                                .recommendedSlotIndex =
+                                    decision.admission.recommendedSlotIndex,
                                 .availableBindGroupCount =
                                     entry.availableBindGroupCount,
                                 .availableEntryCount = entry.availableEntryCount,
