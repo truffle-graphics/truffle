@@ -48,6 +48,9 @@ resource, pipeline, synchronization, WSI, and broader platform work follows.
   initial `PlatformKind` enumerator in installed consumer headers. The C++ name
   is now `linux_host` while its serialized/public display value remains
   `"linux"`.
+- GitHub build run `33259452897` passes package archive, macOS, Ubuntu, and
+  Windows. Ubuntu proves Vulkan plus both EGL profiles and installed consumers;
+  Windows proves the D3D12 WARP path; strict doctor passes on every host.
 
 ## Durable Decisions
 
@@ -107,18 +110,16 @@ ctest --test-dir build/gcc-rhi33 --output-on-failure  # 30/30
 ```
 
 Clang and GCC warning-as-error builds pass locally, as do the segmented shared
-and Metal suites. The local sandbox does not expose a Metal device to strict
-doctor, so GitHub's macOS runner is the strict live-device gate. Linux
-Vulkan/EGL and Windows D3D12/WARP compile and runtime results remain pending
-until the branch reaches GitHub CI. `truffle_format_check` remains unavailable
-because `clang-format` is not installed on this host.
+and Metal suites. GitHub run `33259452897` passes package, macOS Metal, Ubuntu
+Vulkan/EGL, and Windows D3D12/WARP with strict doctor enabled. The local sandbox
+does not expose a Metal device to strict doctor, so GitHub's macOS runner is the
+live-device gate. `truffle_format_check` remains unavailable because
+`clang-format` is not installed on this host.
 
 ## Next Resume Steps
 
-1. Commit and push the matrix foundation, open a #33 PR without closing the
-   issue, and repair Linux Vulkan/EGL or Windows WARP diagnostics until strict
-   platform jobs pass.
-2. Merge this bounded slice, then continue #33 with backend-owned resources and
+1. Merge PR #43 without closing #33.
+2. Continue #33 with backend-owned resources and
    transfers before shaders/pipelines, synchronization, and WSI/presentation.
 3. Keep WebGPU/WebGL2 and every unexecuted mobile/Apple/Vulkan platform at
    `source_only`; keep native slices at `native_smoke` until shared native
