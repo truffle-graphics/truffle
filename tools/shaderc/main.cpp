@@ -186,19 +186,26 @@ void usage(std::ostream& output) {
 }
 
 [[nodiscard]] int self_test() {
-    ShaderPackageDesc desc{
-        .name = "truffle-shaderc-self-test",
-        .sources = {{.path = "self-test.spv",
-                     .language = truffle::rhi::ShaderSourceLanguage::spirv,
-                     .sha256 = std::string(64, '0')}},
-        .compilers = {{.name = "truffle-shaderc", .version = "self-test"}},
-        .variants = {{.target = ShaderTarget::spirv,
-                      .format = ShaderByteFormat::spirv,
-                      .kind = ShaderVariantKind::precompiled,
-                      .stage = ShaderStage::compute,
-                      .code = {std::byte{0x03}, std::byte{0x02},
-                               std::byte{0x23}, std::byte{0x07}}}},
-    };
+    ShaderPackageDesc desc;
+    desc.name = "truffle-shaderc-self-test";
+    desc.sources.push_back({
+        .path = "self-test.spv",
+        .language = truffle::rhi::ShaderSourceLanguage::spirv,
+        .sha256 = std::string(64, '0'),
+    });
+    desc.compilers.push_back({
+        .name = "truffle-shaderc",
+        .version = "self-test",
+        .revision = {},
+    });
+    ShaderVariantDesc variant;
+    variant.target = ShaderTarget::spirv;
+    variant.format = ShaderByteFormat::spirv;
+    variant.kind = ShaderVariantKind::precompiled;
+    variant.stage = ShaderStage::compute;
+    variant.code = {std::byte{0x03}, std::byte{0x02}, std::byte{0x23},
+                    std::byte{0x07}};
+    desc.variants.push_back(std::move(variant));
     auto package = ShaderPackage::create(std::move(desc));
     if (!package.ok()) {
         return 1;
@@ -306,12 +313,14 @@ int main(int argc, char** argv) {
         desc.compilers.end()) {
         desc.compilers.push_back(compiler);
     }
-    desc.variants.push_back({.target = target,
-                             .format = format_for_target(target),
-                             .kind = kindResult.value(),
-                             .stage = stageResult.value(),
-                             .entryPoint = arguments.entry,
-                             .code = std::move(codeResult).value()});
+    ShaderVariantDesc variant;
+    variant.target = target;
+    variant.format = format_for_target(target);
+    variant.kind = kindResult.value();
+    variant.stage = stageResult.value();
+    variant.entryPoint = arguments.entry;
+    variant.code = std::move(codeResult).value();
+    desc.variants.push_back(std::move(variant));
     auto packageResult = ShaderPackage::create(std::move(desc));
     if (!packageResult.ok()) {
         std::cerr << packageResult.status().message << '\n';

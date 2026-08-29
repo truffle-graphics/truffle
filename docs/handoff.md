@@ -49,6 +49,10 @@ Finish the deterministic ShaderPackage and optional package-tool PR for issue
 - `Device::create_shader` can consume an exact package target variant without a
   compiler. Optional `truffle-shaderc` assembles, appends, and inspects
   multi-target package files while adding no runtime or configure-time download.
+- PR #40's first Ubuntu and Windows builds caught GCC/MinGW
+  `-Wmissing-field-initializers` diagnostics in tool-only fixture construction;
+  the follow-up uses explicit default construction and field assignment. macOS
+  and package jobs were already green; the cross-platform rerun is pending.
 
 ## Durable Decisions
 
