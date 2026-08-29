@@ -1,9 +1,10 @@
 # Truffle RHI 1
 
 RHI 1 is the breaking replacement for Truffle's preliminary graphics API. It
-is the only backend-facing graphics contract. The public object and dispatch
-cutover tracked by issue #28 is complete; later capability slices remain in
-progress and return `unsupported` where they are not implemented.
+is the only backend-facing graphics contract. The public object and dispatch,
+resource, shader-package, binding, and pipeline slices tracked by issues
+#28-#30 and #32 are complete. Later synchronization and presentation slices
+remain in progress and return `unsupported` where they are not implemented.
 
 ## Ownership And Object Model
 
@@ -57,6 +58,9 @@ belong to an optional feature with its own synchronization requirements.
 - Destroying or moving a wrapper invalidates that wrapper immediately.
 - A `CommandList` retains references needed by its recorded commands through
   submission. Reset releases unsubmitted references.
+- A descriptor-arena reset advances its epoch and immediately invalidates bind
+  groups allocated from earlier epochs. Recorded commands retain resources but
+  do not make an invalidated group bindable again.
 - Swapchain images are borrowed for one acquisition epoch. Resize,
   `out_of_date`, or swapchain destruction invalidates outstanding image views.
 - A native surface handle is borrowed from the host. The host keeps the native
@@ -112,6 +116,7 @@ never encoded into a command list.
 ## Related Specifications
 
 - [Resources, memory, views, and transfers](resources.md)
+- [Bindings and graphics/compute pipelines](bindings-and-pipelines.md)
 - [Backend and platform maturity](support-matrix.md)
 - [Dependency policy](dependencies.md)
 - [Shader package contract](shader-package.md)

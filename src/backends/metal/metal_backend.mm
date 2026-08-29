@@ -1,11 +1,14 @@
 #import <Metal/Metal.h>
+#import <dispatch/dispatch.h>
 
 #include "truffle/rhi/metal_backend.hpp"
 
 #include "foundation_backend.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <memory>
 #include <mutex>
@@ -49,6 +52,81 @@ struct MetalTextureViewResource {
     id<MTLTexture> texture = nil;
 };
 
+struct MetalSamplerResource {
+    explicit MetalSamplerResource(id<MTLSamplerState> samplerValue)
+        : sampler(samplerValue) {}
+    ~MetalSamplerResource() { [sampler release]; }
+    MetalSamplerResource(const MetalSamplerResource&) = delete;
+    MetalSamplerResource& operator=(const MetalSamplerResource&) = delete;
+
+    id<MTLSamplerState> sampler = nil;
+};
+
+struct MetalShaderResource {
+    MetalShaderResource(id<MTLLibrary> libraryValue,
+                        id<MTLFunction> functionValue, ShaderDesc descValue)
+        : library(libraryValue), function(functionValue),
+          desc(std::move(descValue)) {}
+    ~MetalShaderResource() {
+        [function release];
+        [library release];
+    }
+    MetalShaderResource(const MetalShaderResource&) = delete;
+    MetalShaderResource& operator=(const MetalShaderResource&) = delete;
+
+    id<MTLLibrary> library = nil;
+    id<MTLFunction> function = nil;
+    ShaderDesc desc;
+};
+
+struct MetalPipelineResource {
+    MetalPipelineResource(id<MTLRenderPipelineState> pipelineValue,
+                          id<MTLDepthStencilState> depthStencilValue,
+                          PipelineDesc descValue,
+                          std::vector<ShaderBindingMap> vertexMapValue,
+                          std::vector<ShaderBindingMap> fragmentMapValue)
+        : pipeline(pipelineValue), depthStencil(depthStencilValue),
+          desc(std::move(descValue)), vertexMap(std::move(vertexMapValue)),
+          fragmentMap(std::move(fragmentMapValue)) {
+        desc.vertexShader = nullptr;
+        desc.fragmentShader = nullptr;
+        desc.layout = nullptr;
+        desc.cache = nullptr;
+    }
+    ~MetalPipelineResource() {
+        [pipeline release];
+        [depthStencil release];
+    }
+    MetalPipelineResource(const MetalPipelineResource&) = delete;
+    MetalPipelineResource& operator=(const MetalPipelineResource&) = delete;
+
+    id<MTLRenderPipelineState> pipeline = nil;
+    id<MTLDepthStencilState> depthStencil = nil;
+    PipelineDesc desc;
+    std::vector<ShaderBindingMap> vertexMap;
+    std::vector<ShaderBindingMap> fragmentMap;
+};
+
+struct MetalComputePipelineResource {
+    MetalComputePipelineResource(id<MTLComputePipelineState> pipelineValue,
+                                 ComputePipelineDesc descValue,
+                                 std::vector<ShaderBindingMap> bindingMapValue)
+        : pipeline(pipelineValue), desc(std::move(descValue)),
+          bindingMap(std::move(bindingMapValue)) {
+        desc.computeShader = nullptr;
+        desc.layout = nullptr;
+        desc.cache = nullptr;
+    }
+    ~MetalComputePipelineResource() { [pipeline release]; }
+    MetalComputePipelineResource(const MetalComputePipelineResource&) = delete;
+    MetalComputePipelineResource& operator=(const MetalComputePipelineResource&) =
+        delete;
+
+    id<MTLComputePipelineState> pipeline = nil;
+    ComputePipelineDesc desc;
+    std::vector<ShaderBindingMap> bindingMap;
+};
+
 [[nodiscard]] id<MTLDevice> system_device() {
     static std::once_flag once;
     static id<MTLDevice> device = nil;
@@ -65,6 +143,364 @@ struct MetalTextureViewResource {
             .nativeCode = nativeCode,
             .message = std::move(message),
         });
+}
+
+[[nodiscard]] std::string metal_error_message(NSError* error,
+                                              std::string fallback) {
+    return error != nil && error.localizedDescription != nil
+               ? std::string{error.localizedDescription.UTF8String}
+               : std::move(fallback);
+}
+
+[[nodiscard]] MTLCompareFunction metal_compare(CompareOp operation) {
+    switch (operation) {
+    case CompareOp::never:
+        return MTLCompareFunctionNever;
+    case CompareOp::less:
+        return MTLCompareFunctionLess;
+    case CompareOp::equal:
+        return MTLCompareFunctionEqual;
+    case CompareOp::less_equal:
+        return MTLCompareFunctionLessEqual;
+    case CompareOp::greater:
+        return MTLCompareFunctionGreater;
+    case CompareOp::not_equal:
+        return MTLCompareFunctionNotEqual;
+    case CompareOp::greater_equal:
+        return MTLCompareFunctionGreaterEqual;
+    case CompareOp::always:
+        return MTLCompareFunctionAlways;
+    }
+    return MTLCompareFunctionAlways;
+}
+
+[[nodiscard]] MTLStencilOperation metal_stencil_operation(
+    StencilOp operation) {
+    switch (operation) {
+    case StencilOp::keep:
+        return MTLStencilOperationKeep;
+    case StencilOp::zero:
+        return MTLStencilOperationZero;
+    case StencilOp::replace:
+        return MTLStencilOperationReplace;
+    case StencilOp::increment_clamp:
+        return MTLStencilOperationIncrementClamp;
+    case StencilOp::decrement_clamp:
+        return MTLStencilOperationDecrementClamp;
+    case StencilOp::invert:
+        return MTLStencilOperationInvert;
+    case StencilOp::increment_wrap:
+        return MTLStencilOperationIncrementWrap;
+    case StencilOp::decrement_wrap:
+        return MTLStencilOperationDecrementWrap;
+    }
+    return MTLStencilOperationKeep;
+}
+
+[[nodiscard]] MTLBlendFactor metal_blend_factor(BlendFactor factor) {
+    switch (factor) {
+    case BlendFactor::zero:
+        return MTLBlendFactorZero;
+    case BlendFactor::one:
+        return MTLBlendFactorOne;
+    case BlendFactor::source_color:
+        return MTLBlendFactorSourceColor;
+    case BlendFactor::one_minus_source_color:
+        return MTLBlendFactorOneMinusSourceColor;
+    case BlendFactor::destination_color:
+        return MTLBlendFactorDestinationColor;
+    case BlendFactor::one_minus_destination_color:
+        return MTLBlendFactorOneMinusDestinationColor;
+    case BlendFactor::source_alpha:
+        return MTLBlendFactorSourceAlpha;
+    case BlendFactor::one_minus_source_alpha:
+        return MTLBlendFactorOneMinusSourceAlpha;
+    case BlendFactor::destination_alpha:
+        return MTLBlendFactorDestinationAlpha;
+    case BlendFactor::one_minus_destination_alpha:
+        return MTLBlendFactorOneMinusDestinationAlpha;
+    }
+    return MTLBlendFactorOne;
+}
+
+[[nodiscard]] MTLBlendOperation metal_blend_operation(BlendOp operation) {
+    switch (operation) {
+    case BlendOp::add:
+        return MTLBlendOperationAdd;
+    case BlendOp::subtract:
+        return MTLBlendOperationSubtract;
+    case BlendOp::reverse_subtract:
+        return MTLBlendOperationReverseSubtract;
+    case BlendOp::minimum:
+        return MTLBlendOperationMin;
+    case BlendOp::maximum:
+        return MTLBlendOperationMax;
+    }
+    return MTLBlendOperationAdd;
+}
+
+[[nodiscard]] MTLVertexFormat metal_vertex_format(VertexFormat format) {
+    switch (format) {
+    case VertexFormat::float32:
+        return MTLVertexFormatFloat;
+    case VertexFormat::float32x2:
+        return MTLVertexFormatFloat2;
+    case VertexFormat::float32x3:
+        return MTLVertexFormatFloat3;
+    case VertexFormat::float32x4:
+        return MTLVertexFormatFloat4;
+    case VertexFormat::uint32:
+        return MTLVertexFormatUInt;
+    case VertexFormat::uint32x2:
+        return MTLVertexFormatUInt2;
+    case VertexFormat::uint32x3:
+        return MTLVertexFormatUInt3;
+    case VertexFormat::uint32x4:
+        return MTLVertexFormatUInt4;
+    }
+    return MTLVertexFormatInvalid;
+}
+
+[[nodiscard]] MTLPrimitiveTopologyClass metal_topology_class(
+    PrimitiveTopology topology) {
+    switch (topology) {
+    case PrimitiveTopology::point_list:
+        return MTLPrimitiveTopologyClassPoint;
+    case PrimitiveTopology::line_list:
+        return MTLPrimitiveTopologyClassLine;
+    case PrimitiveTopology::triangle_list:
+    case PrimitiveTopology::triangle_strip:
+        return MTLPrimitiveTopologyClassTriangle;
+    case PrimitiveTopology::patch_list:
+        return MTLPrimitiveTopologyClassUnspecified;
+    }
+    return MTLPrimitiveTopologyClassUnspecified;
+}
+
+[[nodiscard]] MTLPrimitiveType metal_primitive_type(
+    PrimitiveTopology topology) {
+    switch (topology) {
+    case PrimitiveTopology::point_list:
+        return MTLPrimitiveTypePoint;
+    case PrimitiveTopology::line_list:
+        return MTLPrimitiveTypeLine;
+    case PrimitiveTopology::triangle_strip:
+        return MTLPrimitiveTypeTriangleStrip;
+    case PrimitiveTopology::triangle_list:
+    case PrimitiveTopology::patch_list:
+        return MTLPrimitiveTypeTriangle;
+    }
+    return MTLPrimitiveTypeTriangle;
+}
+
+[[nodiscard]] MTLSamplerAddressMode metal_address_mode(
+    SamplerAddressMode mode) {
+    switch (mode) {
+    case SamplerAddressMode::clamp_to_edge:
+        return MTLSamplerAddressModeClampToEdge;
+    case SamplerAddressMode::repeat:
+        return MTLSamplerAddressModeRepeat;
+    case SamplerAddressMode::mirror_repeat:
+        return MTLSamplerAddressModeMirrorRepeat;
+    }
+    return MTLSamplerAddressModeClampToEdge;
+}
+
+[[nodiscard]] MTLLoadAction metal_load_action(LoadOp operation) {
+    switch (operation) {
+    case LoadOp::load:
+        return MTLLoadActionLoad;
+    case LoadOp::clear:
+        return MTLLoadActionClear;
+    case LoadOp::dont_care:
+        return MTLLoadActionDontCare;
+    }
+    return MTLLoadActionDontCare;
+}
+
+[[nodiscard]] MTLStoreAction metal_store_action(StoreOp operation) {
+    return operation == StoreOp::store ? MTLStoreActionStore
+                                       : MTLStoreActionDontCare;
+}
+
+[[nodiscard]] Result<std::shared_ptr<void>> create_metal_sampler(
+    const SamplerDesc& desc) {
+    @autoreleasepool {
+        const auto device = system_device();
+        auto* descriptor = [[MTLSamplerDescriptor alloc] init];
+        descriptor.minFilter = desc.minFilter == Filter::linear
+                                   ? MTLSamplerMinMagFilterLinear
+                                   : MTLSamplerMinMagFilterNearest;
+        descriptor.magFilter = desc.magFilter == Filter::linear
+                                   ? MTLSamplerMinMagFilterLinear
+                                   : MTLSamplerMinMagFilterNearest;
+        descriptor.mipFilter = desc.mipFilter == Filter::linear
+                                   ? MTLSamplerMipFilterLinear
+                                   : MTLSamplerMipFilterNearest;
+        descriptor.sAddressMode = metal_address_mode(desc.addressU);
+        descriptor.tAddressMode = metal_address_mode(desc.addressV);
+        descriptor.rAddressMode = metal_address_mode(desc.addressW);
+        descriptor.lodMinClamp = desc.lodMin;
+        descriptor.lodMaxClamp = desc.lodMax;
+        descriptor.maxAnisotropy = static_cast<NSUInteger>(
+            std::clamp(desc.maxAnisotropy, 1.0F, 16.0F));
+        descriptor.compareFunction = metal_compare(desc.compare);
+        if (!desc.debugName.empty()) {
+            descriptor.label =
+                [NSString stringWithUTF8String:desc.debugName.c_str()];
+        }
+        id<MTLSamplerState> sampler =
+            [device newSamplerStateWithDescriptor:descriptor];
+        [descriptor release];
+        if (sampler == nil) {
+            return metal_failure(StatusCode::backend_error,
+                                 "Metal sampler creation failed");
+        }
+        return std::static_pointer_cast<void>(
+            std::make_shared<MetalSamplerResource>(sampler));
+    }
+}
+
+[[nodiscard]] Result<std::shared_ptr<void>> create_metal_shader(
+    const ShaderDesc& desc) {
+    @autoreleasepool {
+        const auto device = system_device();
+        if (desc.format != ShaderByteFormat::native_source &&
+            desc.format != ShaderByteFormat::metal_library) {
+            return Status::failure(
+                StatusCode::unsupported,
+                "Metal accepts MSL source and metallib shader variants");
+        }
+        NSError* error = nil;
+        id<MTLLibrary> library = nil;
+        if (desc.format == ShaderByteFormat::native_source) {
+            auto* source = [[NSString alloc]
+                initWithBytes:desc.code.data()
+                       length:desc.code.size()
+                     encoding:NSUTF8StringEncoding];
+            if (source == nil) {
+                return Status::failure(StatusCode::invalid_argument,
+                                       "Metal shader source is not valid UTF-8");
+            }
+            library = [device newLibraryWithSource:source
+                                           options:nil
+                                             error:&error];
+            [source release];
+        } else {
+            const auto data = dispatch_data_create(
+                desc.code.data(), desc.code.size(),
+                dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0),
+                DISPATCH_DATA_DESTRUCTOR_DEFAULT);
+            library = [device newLibraryWithData:data error:&error];
+#if !OS_OBJECT_USE_OBJC
+            dispatch_release(data);
+#endif
+        }
+        if (library == nil) {
+            const auto message =
+                metal_error_message(error, "Metal shader compilation failed");
+            return metal_failure(StatusCode::backend_error, message, error.code);
+        }
+        auto* entryPoint =
+            [NSString stringWithUTF8String:desc.entryPoint.c_str()];
+        id<MTLFunction> function = [library newFunctionWithName:entryPoint];
+        if (function == nil) {
+            [library release];
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Metal shader entry point was not found");
+        }
+        for (const auto& mapping : desc.bindingMap) {
+            const auto reflected = std::find_if(
+                desc.reflection.begin(), desc.reflection.end(),
+                [&](const ResourceBinding& binding) {
+                    return binding.group == mapping.group &&
+                           binding.binding == mapping.binding;
+                });
+            if (reflected != desc.reflection.end() &&
+                reflected->type == ResourceBindingType::buffer &&
+                mapping.nativeBinding == 30) {
+                [function release];
+                [library release];
+                return Status::failure(
+                    StatusCode::invalid_argument,
+                    "Metal buffer index 30 is reserved for push constants");
+            }
+        }
+        return std::static_pointer_cast<void>(
+            std::make_shared<MetalShaderResource>(library, function, desc));
+    }
+}
+
+[[nodiscard]] Result<id<MTLFunction>> specialize_metal_function(
+    const std::shared_ptr<MetalShaderResource>& shader,
+    std::span<const SpecializationValue> values) {
+    const auto hasValue = std::any_of(
+        values.begin(), values.end(), [&](const SpecializationValue& value) {
+            return std::any_of(
+                shader->desc.specializationConstants.begin(),
+                shader->desc.specializationConstants.end(),
+                [&](const ShaderSpecializationConstant& constant) {
+                    return constant.id == value.id;
+                });
+        });
+    if (!hasValue) {
+        [shader->function retain];
+        return shader->function;
+    }
+    @autoreleasepool {
+        auto* constants = [[MTLFunctionConstantValues alloc] init];
+        for (const auto& value : values) {
+            const auto reflected = std::find_if(
+                shader->desc.specializationConstants.begin(),
+                shader->desc.specializationConstants.end(),
+                [&](const ShaderSpecializationConstant& constant) {
+                    return constant.id == value.id;
+                });
+            if (reflected == shader->desc.specializationConstants.end()) {
+                continue;
+            }
+            switch (value.type) {
+            case ShaderValueType::boolean: {
+                const bool typed = value.valueBits != 0;
+                [constants setConstantValue:&typed
+                                       type:MTLDataTypeBool
+                                    atIndex:value.id];
+                break;
+            }
+            case ShaderValueType::sint32: {
+                const auto typed = static_cast<std::int32_t>(value.valueBits);
+                [constants setConstantValue:&typed
+                                       type:MTLDataTypeInt
+                                    atIndex:value.id];
+                break;
+            }
+            case ShaderValueType::uint32:
+                [constants setConstantValue:&value.valueBits
+                                       type:MTLDataTypeUInt
+                                    atIndex:value.id];
+                break;
+            case ShaderValueType::float32:
+                [constants setConstantValue:&value.valueBits
+                                       type:MTLDataTypeFloat
+                                    atIndex:value.id];
+                break;
+            }
+        }
+        NSError* error = nil;
+        auto* entryPoint =
+            [NSString stringWithUTF8String:shader->desc.entryPoint.c_str()];
+        id<MTLFunction> function =
+            [shader->library newFunctionWithName:entryPoint
+                                  constantValues:constants
+                                           error:&error];
+        [constants release];
+        if (function == nil) {
+            const auto message = metal_error_message(
+                error, "Metal shader specialization failed");
+            return metal_failure(StatusCode::backend_error, message, error.code);
+        }
+        return function;
+    }
 }
 
 [[nodiscard]] MTLResourceOptions buffer_options(MemoryDomain domain) {
@@ -223,8 +659,206 @@ struct MetalFormat {
         return {MTLPixelFormatDepth16Unorm, 2};
     case TextureFormat::depth32_float:
         return {MTLPixelFormatDepth32Float, 4};
+    case TextureFormat::depth32_float_stencil8:
+        return {MTLPixelFormatDepth32Float_Stencil8, 8};
     default:
         return {};
+    }
+}
+
+[[nodiscard]] MTLStencilDescriptor* make_metal_stencil(
+    const StencilFaceState& state, std::uint32_t readMask,
+    std::uint32_t writeMask) {
+    auto* descriptor = [[MTLStencilDescriptor alloc] init];
+    descriptor.stencilCompareFunction = metal_compare(state.compare);
+    descriptor.stencilFailureOperation =
+        metal_stencil_operation(state.failOp);
+    descriptor.depthFailureOperation =
+        metal_stencil_operation(state.depthFailOp);
+    descriptor.depthStencilPassOperation =
+        metal_stencil_operation(state.passOp);
+    descriptor.readMask = readMask;
+    descriptor.writeMask = writeMask;
+    return descriptor;
+}
+
+[[nodiscard]] Result<std::shared_ptr<void>> create_metal_pipeline(
+    const PipelineDesc& desc, const std::shared_ptr<void>& vertexResource,
+    const std::shared_ptr<void>& fragmentResource) {
+    @autoreleasepool {
+        const auto unsupportedDynamic =
+            static_cast<std::uint32_t>(desc.dynamicState) &
+            ~(static_cast<std::uint32_t>(DynamicState::viewport) |
+              static_cast<std::uint32_t>(DynamicState::scissor) |
+              static_cast<std::uint32_t>(DynamicState::blend_constant) |
+              static_cast<std::uint32_t>(DynamicState::stencil_reference) |
+              static_cast<std::uint32_t>(DynamicState::depth_bias));
+        if (desc.rasterization.polygonMode == PolygonMode::point ||
+            unsupportedDynamic != 0 ||
+            desc.multisample.sampleMask != 0xffffffffu) {
+            return Status::failure(
+                StatusCode::unsupported,
+                "this Metal polygon or dynamic state is not implemented");
+        }
+        const auto vertex =
+            std::static_pointer_cast<MetalShaderResource>(vertexResource);
+        const auto fragment =
+            std::static_pointer_cast<MetalShaderResource>(fragmentResource);
+        if (!vertex || !fragment) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Metal graphics shaders are invalid");
+        }
+        auto vertexFunction =
+            specialize_metal_function(vertex, desc.specializationConstants);
+        if (!vertexFunction.ok()) {
+            return vertexFunction.status();
+        }
+        auto fragmentFunction =
+            specialize_metal_function(fragment, desc.specializationConstants);
+        if (!fragmentFunction.ok()) {
+            [vertexFunction.value() release];
+            return fragmentFunction.status();
+        }
+        auto* descriptor = [[MTLRenderPipelineDescriptor alloc] init];
+        descriptor.vertexFunction = vertexFunction.value();
+        descriptor.fragmentFunction = fragmentFunction.value();
+        descriptor.rasterSampleCount = desc.multisample.sampleCount;
+        descriptor.alphaToCoverageEnabled =
+            desc.multisample.alphaToCoverageEnabled;
+        descriptor.inputPrimitiveTopology =
+            metal_topology_class(desc.topology);
+        if (!desc.debugName.empty()) {
+            descriptor.label =
+                [NSString stringWithUTF8String:desc.debugName.c_str()];
+        }
+        for (std::size_t index = 0; index < desc.colorTargets.size(); ++index) {
+            const auto& target = desc.colorTargets[index];
+            auto* output = descriptor.colorAttachments[index];
+            output.pixelFormat = metal_format(target.format).format;
+            output.writeMask = static_cast<MTLColorWriteMask>(target.writeMask);
+            output.blendingEnabled = target.blend.enabled;
+            output.sourceRGBBlendFactor =
+                metal_blend_factor(target.blend.color.sourceFactor);
+            output.destinationRGBBlendFactor =
+                metal_blend_factor(target.blend.color.destinationFactor);
+            output.rgbBlendOperation =
+                metal_blend_operation(target.blend.color.operation);
+            output.sourceAlphaBlendFactor =
+                metal_blend_factor(target.blend.alpha.sourceFactor);
+            output.destinationAlphaBlendFactor =
+                metal_blend_factor(target.blend.alpha.destinationFactor);
+            output.alphaBlendOperation =
+                metal_blend_operation(target.blend.alpha.operation);
+        }
+        if (desc.depthStencil.format != TextureFormat::unknown) {
+            const auto depthFormat = metal_format(desc.depthStencil.format).format;
+            descriptor.depthAttachmentPixelFormat = depthFormat;
+            if (desc.depthStencil.format ==
+                TextureFormat::depth32_float_stencil8) {
+                descriptor.stencilAttachmentPixelFormat = depthFormat;
+            }
+        }
+        auto* vertexDescriptor = [[MTLVertexDescriptor alloc] init];
+        for (std::size_t bufferIndex = 0;
+             bufferIndex < desc.vertexBuffers.size(); ++bufferIndex) {
+            const auto& buffer = desc.vertexBuffers[bufferIndex];
+            auto* layout = vertexDescriptor.layouts[bufferIndex];
+            layout.stride = buffer.stride;
+            layout.stepFunction =
+                buffer.stepMode == VertexStepMode::instance
+                    ? MTLVertexStepFunctionPerInstance
+                    : MTLVertexStepFunctionPerVertex;
+            layout.stepRate = 1;
+            for (const auto& attribute : buffer.attributes) {
+                auto* output = vertexDescriptor.attributes[attribute.location];
+                output.format = metal_vertex_format(attribute.format);
+                output.offset = attribute.offset;
+                output.bufferIndex = bufferIndex;
+            }
+        }
+        descriptor.vertexDescriptor = vertexDescriptor;
+        NSError* error = nil;
+        id<MTLRenderPipelineState> pipeline =
+            [system_device() newRenderPipelineStateWithDescriptor:descriptor
+                                                             error:&error];
+        [vertexDescriptor release];
+        [descriptor release];
+        [vertexFunction.value() release];
+        [fragmentFunction.value() release];
+        if (pipeline == nil) {
+            const auto message = metal_error_message(
+                error, "Metal render pipeline creation failed");
+            return metal_failure(StatusCode::backend_error, message, error.code);
+        }
+
+        auto* depth = [[MTLDepthStencilDescriptor alloc] init];
+        depth.depthWriteEnabled = desc.depthStencil.depthWriteEnabled;
+        depth.depthCompareFunction =
+            metal_compare(desc.depthStencil.depthCompare);
+        if (desc.depthStencil.format ==
+            TextureFormat::depth32_float_stencil8) {
+            auto* front = make_metal_stencil(
+                desc.depthStencil.front, desc.depthStencil.stencilReadMask,
+                desc.depthStencil.stencilWriteMask);
+            auto* back = make_metal_stencil(
+                desc.depthStencil.back, desc.depthStencil.stencilReadMask,
+                desc.depthStencil.stencilWriteMask);
+            depth.frontFaceStencil = front;
+            depth.backFaceStencil = back;
+            [front release];
+            [back release];
+        }
+        id<MTLDepthStencilState> depthStencil =
+            [system_device() newDepthStencilStateWithDescriptor:depth];
+        [depth release];
+        if (depthStencil == nil) {
+            [pipeline release];
+            return metal_failure(StatusCode::backend_error,
+                                 "Metal depth-stencil state creation failed");
+        }
+        return std::static_pointer_cast<void>(
+            std::make_shared<MetalPipelineResource>(
+                pipeline, depthStencil, desc, vertex->desc.bindingMap,
+                fragment->desc.bindingMap));
+    }
+}
+
+[[nodiscard]] Result<std::shared_ptr<void>> create_metal_compute_pipeline(
+    const ComputePipelineDesc& desc, const std::shared_ptr<void>& shaderResource) {
+    @autoreleasepool {
+        const auto shader =
+            std::static_pointer_cast<MetalShaderResource>(shaderResource);
+        if (!shader) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Metal compute shader is invalid");
+        }
+        auto function =
+            specialize_metal_function(shader, desc.specializationConstants);
+        if (!function.ok()) {
+            return function.status();
+        }
+        NSError* error = nil;
+        id<MTLComputePipelineState> pipeline =
+            [system_device() newComputePipelineStateWithFunction:function.value()
+                                                            error:&error];
+        [function.value() release];
+        if (pipeline == nil) {
+            const auto message = metal_error_message(
+                error, "Metal compute pipeline creation failed");
+            return metal_failure(StatusCode::backend_error, message, error.code);
+        }
+        if (pipeline.maxTotalThreadsPerThreadgroup <
+            static_cast<NSUInteger>(desc.requiredWorkgroupSize.width) *
+                desc.requiredWorkgroupSize.height *
+                desc.requiredWorkgroupSize.depth) {
+            [pipeline release];
+            return Status::failure(
+                StatusCode::unsupported,
+                "Metal compute workgroup exceeds compiled pipeline limits");
+        }
+        return std::static_pointer_cast<void>(
+            std::make_shared<MetalComputePipelineResource>(
+                pipeline, desc, shader->desc.bindingMap));
     }
 }
 
@@ -253,7 +887,11 @@ struct MetalFormat {
         }
         const auto format = metal_format(desc.format);
         if (desc.dimension != TextureDimension::d2 || desc.extent.depth != 1 ||
-            desc.arrayLayers != 1 || desc.sampleCount != 1 ||
+            desc.arrayLayers != 1 || desc.sampleCount == 0 ||
+            (desc.sampleCount > 1 &&
+             (![device supportsTextureSampleCount:desc.sampleCount] ||
+              desc.mipLevels != 1 ||
+              desc.memory != MemoryDomain::device_local)) ||
             format.format == MTLPixelFormatInvalid || desc.shareable ||
             desc.memory == MemoryDomain::external) {
             return Status::failure(
@@ -261,14 +899,16 @@ struct MetalFormat {
                 "this Metal texture shape, format, sample count, or memory mode is unsupported");
         }
         auto* descriptor = [[MTLTextureDescriptor alloc] init];
-        descriptor.textureType = MTLTextureType2D;
+        descriptor.textureType = desc.sampleCount > 1
+                                     ? MTLTextureType2DMultisample
+                                     : MTLTextureType2D;
         descriptor.pixelFormat = format.format;
         descriptor.width = desc.extent.width;
         descriptor.height = desc.extent.height;
         descriptor.depth = 1;
         descriptor.mipmapLevelCount = desc.mipLevels;
         descriptor.arrayLength = 1;
-        descriptor.sampleCount = 1;
+        descriptor.sampleCount = desc.sampleCount;
         descriptor.storageMode = desc.memory == MemoryDomain::device_local
                                      ? MTLStorageModePrivate
                                      : MTLStorageModeShared;
@@ -300,9 +940,12 @@ struct MetalFormat {
             return Status::failure(StatusCode::unsupported,
                                    "this Metal texture view is unsupported");
         }
+        const auto textureType = metal->texture.sampleCount > 1
+                                     ? MTLTextureType2DMultisample
+                                     : MTLTextureType2D;
         id<MTLTexture> view = [metal->texture
             newTextureViewWithPixelFormat:format.format
-                               textureType:MTLTextureType2D
+                               textureType:textureType
                                     levels:NSMakeRange(desc.range.baseMipLevel,
                                                        desc.range.mipLevelCount)
                                     slices:NSMakeRange(desc.range.baseArrayLayer,
@@ -528,8 +1171,211 @@ struct MetalFormat {
                            "Metal transfer resources are invalid");
 }
 
+[[nodiscard]] NSUInteger metal_binding_index(
+    std::span<const ShaderBindingMap> mappings,
+    const detail::NativeBindingResource& binding) {
+    const auto found = std::find_if(
+        mappings.begin(), mappings.end(), [&](const ShaderBindingMap& mapping) {
+            return mapping.group == binding.group &&
+                   mapping.binding == binding.binding &&
+                   mapping.arrayElement == binding.arrayElement;
+        });
+    if (found != mappings.end()) {
+        return static_cast<NSUInteger>(found->nativeBinding) +
+               found->nativeArrayElement;
+    }
+    return static_cast<NSUInteger>(binding.group) * 8u + binding.binding +
+           binding.arrayElement;
+}
+
+[[nodiscard]] Status encode_metal_render_bindings(
+    id<MTLRenderCommandEncoder> encoder,
+    const MetalPipelineResource& pipeline,
+    std::span<const detail::NativeBindingResource> bindings) {
+    for (const auto& binding : bindings) {
+        const auto bind_stage = [&](ShaderStageMask stage,
+                                    std::span<const ShaderBindingMap> mappings) {
+            if (!has_stage(binding.visibility, stage)) {
+                return Status::success();
+            }
+            const auto index = metal_binding_index(mappings, binding);
+            switch (binding.type) {
+            case BindingType::uniform_buffer:
+            case BindingType::storage_buffer: {
+                const auto resource =
+                    std::static_pointer_cast<MetalBufferResource>(binding.resource);
+                if (!resource || resource->buffer == nil) {
+                    return Status::failure(StatusCode::invalid_argument,
+                                           "Metal bind-group buffer is invalid");
+                }
+                if (stage == ShaderStageMask::vertex) {
+                    [encoder setVertexBuffer:resource->buffer
+                                      offset:binding.offset
+                                     atIndex:index];
+                } else {
+                    [encoder setFragmentBuffer:resource->buffer
+                                        offset:binding.offset
+                                       atIndex:index];
+                }
+                break;
+            }
+            case BindingType::sampled_texture:
+            case BindingType::storage_texture: {
+                const auto resource = std::static_pointer_cast<
+                    MetalTextureViewResource>(binding.resource);
+                if (!resource || resource->texture == nil) {
+                    return Status::failure(StatusCode::invalid_argument,
+                                           "Metal bind-group texture is invalid");
+                }
+                if (stage == ShaderStageMask::vertex) {
+                    [encoder setVertexTexture:resource->texture atIndex:index];
+                } else {
+                    [encoder setFragmentTexture:resource->texture atIndex:index];
+                }
+                break;
+            }
+            case BindingType::sampler: {
+                const auto resource =
+                    std::static_pointer_cast<MetalSamplerResource>(binding.resource);
+                if (!resource || resource->sampler == nil) {
+                    return Status::failure(StatusCode::invalid_argument,
+                                           "Metal bind-group sampler is invalid");
+                }
+                if (stage == ShaderStageMask::vertex) {
+                    [encoder setVertexSamplerState:resource->sampler atIndex:index];
+                } else {
+                    [encoder setFragmentSamplerState:resource->sampler
+                                             atIndex:index];
+                }
+                break;
+            }
+            }
+            return Status::success();
+        };
+        if (auto status = bind_stage(ShaderStageMask::vertex,
+                                     pipeline.vertexMap);
+            !status.ok()) {
+            return status;
+        }
+        if (auto status = bind_stage(ShaderStageMask::fragment,
+                                     pipeline.fragmentMap);
+            !status.ok()) {
+            return status;
+        }
+    }
+    return Status::success();
+}
+
+[[nodiscard]] Status encode_metal_compute_bindings(
+    id<MTLComputeCommandEncoder> encoder,
+    const MetalComputePipelineResource& pipeline,
+    std::span<const detail::NativeBindingResource> bindings) {
+    for (const auto& binding : bindings) {
+        if (!has_stage(binding.visibility, ShaderStageMask::compute)) {
+            continue;
+        }
+        const auto index = metal_binding_index(pipeline.bindingMap, binding);
+        switch (binding.type) {
+        case BindingType::uniform_buffer:
+        case BindingType::storage_buffer: {
+            const auto resource =
+                std::static_pointer_cast<MetalBufferResource>(binding.resource);
+            if (!resource || resource->buffer == nil) {
+                return Status::failure(StatusCode::invalid_argument,
+                                       "Metal compute buffer binding is invalid");
+            }
+            [encoder setBuffer:resource->buffer
+                        offset:binding.offset
+                       atIndex:index];
+            break;
+        }
+        case BindingType::sampled_texture:
+        case BindingType::storage_texture: {
+            const auto resource =
+                std::static_pointer_cast<MetalTextureViewResource>(binding.resource);
+            if (!resource || resource->texture == nil) {
+                return Status::failure(StatusCode::invalid_argument,
+                                       "Metal compute texture binding is invalid");
+            }
+            [encoder setTexture:resource->texture atIndex:index];
+            break;
+        }
+        case BindingType::sampler: {
+            const auto resource =
+                std::static_pointer_cast<MetalSamplerResource>(binding.resource);
+            if (!resource || resource->sampler == nil) {
+                return Status::failure(StatusCode::invalid_argument,
+                                       "Metal compute sampler binding is invalid");
+            }
+            [encoder setSamplerState:resource->sampler atIndex:index];
+            break;
+        }
+        }
+    }
+    return Status::success();
+}
+
+[[nodiscard]] MTLRenderPassDescriptor* make_metal_render_pass(
+    const detail::NativeCommand& command) {
+    auto* descriptor = [[MTLRenderPassDescriptor alloc] init];
+    for (std::size_t index = 0; index < command.colorAttachments.size(); ++index) {
+        const auto& attachment = command.colorAttachments[index];
+        const auto texture =
+            std::static_pointer_cast<MetalTextureResource>(attachment.texture);
+        if (!texture || texture->texture == nil) {
+            [descriptor release];
+            return nil;
+        }
+        auto* output = descriptor.colorAttachments[index];
+        output.texture = texture->texture;
+        output.loadAction = metal_load_action(attachment.loadOp);
+        output.storeAction = metal_store_action(attachment.storeOp);
+        output.clearColor = MTLClearColorMake(
+            attachment.clear.r, attachment.clear.g, attachment.clear.b,
+            attachment.clear.a);
+        if (attachment.resolveTexture) {
+            const auto resolve = std::static_pointer_cast<MetalTextureResource>(
+                attachment.resolveTexture);
+            if (!resolve || resolve->texture == nil) {
+                [descriptor release];
+                return nil;
+            }
+            output.resolveTexture = resolve->texture;
+            output.storeAction = attachment.storeOp == StoreOp::store
+                                     ? MTLStoreActionStoreAndMultisampleResolve
+                                     : MTLStoreActionMultisampleResolve;
+        }
+    }
+    if (command.depthStencilAttachment.texture) {
+        const auto texture = std::static_pointer_cast<MetalTextureResource>(
+            command.depthStencilAttachment.texture);
+        if (!texture || texture->texture == nil) {
+            [descriptor release];
+            return nil;
+        }
+        const auto& attachment = command.depthStencilAttachment;
+        descriptor.depthAttachment.texture = texture->texture;
+        descriptor.depthAttachment.loadAction =
+            metal_load_action(attachment.depthLoadOp);
+        descriptor.depthAttachment.storeAction =
+            metal_store_action(attachment.depthStoreOp);
+        descriptor.depthAttachment.clearDepth = attachment.clearDepth;
+        if (texture->desc.format == TextureFormat::depth32_float_stencil8) {
+            descriptor.stencilAttachment.texture = texture->texture;
+            descriptor.stencilAttachment.loadAction =
+                metal_load_action(attachment.stencilLoadOp);
+            descriptor.stencilAttachment.storeAction =
+                metal_store_action(attachment.stencilStoreOp);
+            descriptor.stencilAttachment.clearStencil =
+                attachment.clearStencil;
+        }
+    }
+    return descriptor;
+}
+
 [[nodiscard]] Status submit_metal_commands(
-    std::span<const detail::NativeTransfer> transfers) {
+    std::span<const detail::NativeTransfer> transfers,
+    std::span<const detail::NativeCommand> commands) {
     @autoreleasepool {
         const auto device = system_device();
         if (device == nil) {
@@ -564,6 +1410,462 @@ struct MetalFormat {
             }
             [encoder endEncoding];
         }
+
+        id<MTLRenderCommandEncoder> render = nil;
+        id<MTLComputeCommandEncoder> compute = nil;
+        std::shared_ptr<MetalPipelineResource> graphicsPipeline;
+        std::shared_ptr<MetalComputePipelineResource> computePipeline;
+        std::shared_ptr<MetalBufferResource> indexBuffer;
+        NSUInteger indexBufferOffset = 0;
+        MTLIndexType indexType = MTLIndexTypeUInt32;
+        Extent2D renderExtent;
+        std::vector<MTLViewport> viewports;
+        std::vector<MTLScissorRect> scissors;
+        std::array<std::byte, 256> renderPushConstants{};
+        std::array<std::byte, 256> computePushConstants{};
+        std::size_t renderPushConstantBytes = 0;
+        std::size_t computePushConstantBytes = 0;
+
+        const auto fail = [&](Status status) {
+            if (render != nil) {
+                [render endEncoding];
+                render = nil;
+            }
+            if (compute != nil) {
+                [compute endEncoding];
+                compute = nil;
+            }
+            [queue release];
+            return status;
+        };
+
+        for (const auto& encoded : commands) {
+            switch (encoded.kind) {
+            case detail::NativeCommandKind::begin_render: {
+                if (render != nil || compute != nil) {
+                    return fail(Status::failure(
+                        StatusCode::invalid_state,
+                        "Metal command encoders overlap"));
+                }
+                auto* pass = make_metal_render_pass(encoded);
+                if (pass == nil) {
+                    return fail(Status::failure(
+                        StatusCode::invalid_argument,
+                        "Metal render-pass attachments are invalid"));
+                }
+                render = [command renderCommandEncoderWithDescriptor:pass];
+                [pass release];
+                if (render == nil) {
+                    return fail(metal_failure(
+                        StatusCode::backend_error,
+                        "Metal render command encoder creation failed"));
+                }
+                renderExtent = encoded.extent;
+                graphicsPipeline.reset();
+                indexBuffer.reset();
+                viewports.clear();
+                scissors.clear();
+                renderPushConstants.fill(std::byte{});
+                renderPushConstantBytes = 0;
+                break;
+            }
+            case detail::NativeCommandKind::end_render:
+                if (render == nil) {
+                    return fail(Status::failure(
+                        StatusCode::invalid_state,
+                        "Metal has no active render encoder"));
+                }
+                [render endEncoding];
+                render = nil;
+                graphicsPipeline.reset();
+                break;
+            case detail::NativeCommandKind::begin_compute:
+                if (render != nil || compute != nil) {
+                    return fail(Status::failure(
+                        StatusCode::invalid_state,
+                        "Metal command encoders overlap"));
+                }
+                compute = [command computeCommandEncoder];
+                if (compute == nil) {
+                    return fail(metal_failure(
+                        StatusCode::backend_error,
+                        "Metal compute command encoder creation failed"));
+                }
+                computePipeline.reset();
+                computePushConstants.fill(std::byte{});
+                computePushConstantBytes = 0;
+                break;
+            case detail::NativeCommandKind::end_compute:
+                if (compute == nil) {
+                    return fail(Status::failure(
+                        StatusCode::invalid_state,
+                        "Metal has no active compute encoder"));
+                }
+                [compute endEncoding];
+                compute = nil;
+                computePipeline.reset();
+                break;
+            case detail::NativeCommandKind::bind_graphics_pipeline: {
+                graphicsPipeline = std::static_pointer_cast<MetalPipelineResource>(
+                    encoded.object);
+                if (render == nil || !graphicsPipeline ||
+                    graphicsPipeline->pipeline == nil) {
+                    return fail(Status::failure(
+                        StatusCode::invalid_argument,
+                        "Metal graphics pipeline binding is invalid"));
+                }
+                [render setRenderPipelineState:graphicsPipeline->pipeline];
+                [render setDepthStencilState:graphicsPipeline->depthStencil];
+                switch (graphicsPipeline->desc.rasterization.cullMode) {
+                case CullMode::none:
+                    [render setCullMode:MTLCullModeNone];
+                    break;
+                case CullMode::front:
+                    [render setCullMode:MTLCullModeFront];
+                    break;
+                case CullMode::back:
+                    [render setCullMode:MTLCullModeBack];
+                    break;
+                }
+                [render setFrontFacingWinding:
+                            graphicsPipeline->desc.rasterization.frontFace ==
+                                    FrontFace::clockwise
+                                ? MTLWindingClockwise
+                                : MTLWindingCounterClockwise];
+                [render setTriangleFillMode:
+                            graphicsPipeline->desc.rasterization.polygonMode ==
+                                    PolygonMode::line
+                                ? MTLTriangleFillModeLines
+                                : MTLTriangleFillModeFill];
+                [render setDepthClipMode:
+                            graphicsPipeline->desc.rasterization
+                                    .depthClampEnabled
+                                ? MTLDepthClipModeClamp
+                                : MTLDepthClipModeClip];
+                [render setDepthBias:
+                            graphicsPipeline->desc.rasterization.depthBias
+                      slopeScale:graphicsPipeline->desc.rasterization
+                                     .depthBiasSlopeScale
+                           clamp:graphicsPipeline->desc.rasterization
+                                     .depthBiasClamp];
+                [render
+                    setBlendColorRed:graphicsPipeline->desc.blendConstant[0]
+                              green:graphicsPipeline->desc.blendConstant[1]
+                               blue:graphicsPipeline->desc.blendConstant[2]
+                              alpha:graphicsPipeline->desc.blendConstant[3]];
+                [render setStencilReferenceValue:
+                            graphicsPipeline->desc.stencilReference];
+                if (!graphicsPipeline->desc.viewports.empty()) {
+                    viewports.clear();
+                    for (const auto& viewport :
+                         graphicsPipeline->desc.viewports) {
+                        viewports.push_back({viewport.x, viewport.y,
+                                             viewport.width, viewport.height,
+                                             viewport.minimumDepth,
+                                             viewport.maximumDepth});
+                    }
+                    [render setViewports:viewports.data()
+                                   count:viewports.size()];
+                } else if (!has_dynamic_state(
+                               graphicsPipeline->desc.dynamicState,
+                               DynamicState::viewport)) {
+                    const MTLViewport viewport{0.0, 0.0,
+                                               static_cast<double>(renderExtent.width),
+                                               static_cast<double>(renderExtent.height),
+                                               0.0, 1.0};
+                    [render setViewport:viewport];
+                }
+                if (!graphicsPipeline->desc.scissors.empty()) {
+                    scissors.clear();
+                    for (const auto& scissor :
+                         graphicsPipeline->desc.scissors) {
+                        scissors.push_back(
+                            {static_cast<NSUInteger>(scissor.x),
+                             static_cast<NSUInteger>(scissor.y), scissor.width,
+                             scissor.height});
+                    }
+                    [render setScissorRects:scissors.data()
+                                      count:scissors.size()];
+                } else if (!has_dynamic_state(
+                               graphicsPipeline->desc.dynamicState,
+                               DynamicState::scissor)) {
+                    const MTLScissorRect scissor{0, 0, renderExtent.width,
+                                                  renderExtent.height};
+                    [render setScissorRect:scissor];
+                }
+                break;
+            }
+            case detail::NativeCommandKind::bind_compute_pipeline:
+                computePipeline =
+                    std::static_pointer_cast<MetalComputePipelineResource>(
+                        encoded.object);
+                if (compute == nil || !computePipeline ||
+                    computePipeline->pipeline == nil) {
+                    return fail(Status::failure(
+                        StatusCode::invalid_argument,
+                        "Metal compute pipeline binding is invalid"));
+                }
+                [compute setComputePipelineState:computePipeline->pipeline];
+                break;
+            case detail::NativeCommandKind::bind_vertex_buffer:
+            case detail::NativeCommandKind::bind_uniform_buffer:
+            case detail::NativeCommandKind::bind_storage_buffer: {
+                const auto buffer =
+                    std::static_pointer_cast<MetalBufferResource>(encoded.object);
+                if (!buffer || buffer->buffer == nil) {
+                    return fail(Status::failure(
+                        StatusCode::invalid_argument,
+                        "Metal direct buffer binding is invalid"));
+                }
+                if (encoded.kind ==
+                    detail::NativeCommandKind::bind_vertex_buffer) {
+                    [render setVertexBuffer:buffer->buffer
+                                     offset:encoded.arguments[1]
+                                    atIndex:encoded.arguments[0]];
+                } else if (encoded.kind ==
+                           detail::NativeCommandKind::bind_uniform_buffer) {
+                    [render setVertexBuffer:buffer->buffer
+                                     offset:encoded.arguments[1]
+                                    atIndex:encoded.arguments[0]];
+                    [render setFragmentBuffer:buffer->buffer
+                                       offset:encoded.arguments[1]
+                                      atIndex:encoded.arguments[0]];
+                } else {
+                    [compute setBuffer:buffer->buffer
+                                offset:encoded.arguments[1]
+                               atIndex:encoded.arguments[0]];
+                }
+                break;
+            }
+            case detail::NativeCommandKind::bind_index_buffer:
+                indexBuffer =
+                    std::static_pointer_cast<MetalBufferResource>(encoded.object);
+                if (!indexBuffer || indexBuffer->buffer == nil) {
+                    return fail(Status::failure(
+                        StatusCode::invalid_argument,
+                        "Metal index buffer binding is invalid"));
+                }
+                indexBufferOffset = encoded.arguments[0];
+                indexType = encoded.arguments[1] ==
+                                    static_cast<std::uint64_t>(IndexFormat::uint16)
+                                ? MTLIndexTypeUInt16
+                                : MTLIndexTypeUInt32;
+                break;
+            case detail::NativeCommandKind::bind_group:
+                if (render != nil && graphicsPipeline) {
+                    if (auto status = encode_metal_render_bindings(
+                            render, *graphicsPipeline, encoded.bindings);
+                        !status.ok()) {
+                        return fail(status);
+                    }
+                } else if (compute != nil && computePipeline) {
+                    if (auto status = encode_metal_compute_bindings(
+                            compute, *computePipeline, encoded.bindings);
+                        !status.ok()) {
+                        return fail(status);
+                    }
+                } else {
+                    return fail(Status::failure(
+                        StatusCode::invalid_state,
+                        "Metal bind group requires a pipeline"));
+                }
+                break;
+            case detail::NativeCommandKind::push_constants: {
+                const auto offset =
+                    static_cast<std::size_t>(encoded.arguments[1]);
+                if (offset > renderPushConstants.size() ||
+                    encoded.bytes.size() >
+                        renderPushConstants.size() - offset) {
+                    return fail(Status::failure(
+                        StatusCode::invalid_argument,
+                        "Metal push constants exceed the reserved range"));
+                }
+                const auto stages =
+                    static_cast<ShaderStageMask>(encoded.arguments[0]);
+                if (render != nil) {
+                    std::copy(encoded.bytes.begin(), encoded.bytes.end(),
+                              renderPushConstants.begin() +
+                                  static_cast<std::ptrdiff_t>(offset));
+                    renderPushConstantBytes = std::max(
+                        renderPushConstantBytes, offset + encoded.bytes.size());
+                    if (has_stage(stages, ShaderStageMask::vertex)) {
+                        [render setVertexBytes:renderPushConstants.data()
+                                       length:renderPushConstantBytes
+                                      atIndex:30];
+                    }
+                    if (has_stage(stages, ShaderStageMask::fragment)) {
+                        [render setFragmentBytes:renderPushConstants.data()
+                                         length:renderPushConstantBytes
+                                        atIndex:30];
+                    }
+                } else if (compute != nil) {
+                    std::copy(encoded.bytes.begin(), encoded.bytes.end(),
+                              computePushConstants.begin() +
+                                  static_cast<std::ptrdiff_t>(offset));
+                    computePushConstantBytes = std::max(
+                        computePushConstantBytes, offset + encoded.bytes.size());
+                    [compute setBytes:computePushConstants.data()
+                                length:computePushConstantBytes
+                               atIndex:30];
+                }
+                break;
+            }
+            case detail::NativeCommandKind::set_viewports: {
+                const auto first =
+                    static_cast<std::size_t>(encoded.arguments[0]);
+                if (viewports.size() < first + encoded.viewports.size()) {
+                    viewports.resize(first + encoded.viewports.size());
+                }
+                for (std::size_t index = 0; index < encoded.viewports.size();
+                     ++index) {
+                    const auto& viewport = encoded.viewports[index];
+                    viewports[first + index] =
+                        {viewport.x, viewport.y, viewport.width, viewport.height,
+                         viewport.minimumDepth, viewport.maximumDepth};
+                }
+                [render setViewports:viewports.data() count:viewports.size()];
+                break;
+            }
+            case detail::NativeCommandKind::set_scissors: {
+                const auto first =
+                    static_cast<std::size_t>(encoded.arguments[0]);
+                if (scissors.size() < first + encoded.scissors.size()) {
+                    scissors.resize(first + encoded.scissors.size());
+                }
+                for (std::size_t index = 0; index < encoded.scissors.size();
+                     ++index) {
+                    const auto& scissor = encoded.scissors[index];
+                    scissors[first + index] =
+                        {static_cast<NSUInteger>(scissor.x),
+                         static_cast<NSUInteger>(scissor.y), scissor.width,
+                         scissor.height};
+                }
+                [render setScissorRects:scissors.data() count:scissors.size()];
+                break;
+            }
+            case detail::NativeCommandKind::set_blend_constant: {
+                if (render == nil || encoded.bytes.size() != 4 * sizeof(float)) {
+                    return fail(Status::failure(
+                        StatusCode::invalid_argument,
+                        "Metal blend-constant command is invalid"));
+                }
+                std::array<float, 4> color{};
+                std::memcpy(color.data(), encoded.bytes.data(),
+                            encoded.bytes.size());
+                [render setBlendColorRed:color[0]
+                                   green:color[1]
+                                    blue:color[2]
+                                   alpha:color[3]];
+                break;
+            }
+            case detail::NativeCommandKind::set_stencil_reference:
+                if (render == nil) {
+                    return fail(Status::failure(
+                        StatusCode::invalid_state,
+                        "Metal stencil-reference command has no encoder"));
+                }
+                [render setStencilReferenceValue:encoded.arguments[0]];
+                break;
+            case detail::NativeCommandKind::set_depth_bias: {
+                if (render == nil || encoded.bytes.size() != 3 * sizeof(float)) {
+                    return fail(Status::failure(
+                        StatusCode::invalid_argument,
+                        "Metal depth-bias command is invalid"));
+                }
+                std::array<float, 3> values{};
+                std::memcpy(values.data(), encoded.bytes.data(),
+                            encoded.bytes.size());
+                [render setDepthBias:values[0]
+                          slopeScale:values[1]
+                               clamp:values[2]];
+                break;
+            }
+            case detail::NativeCommandKind::draw:
+                [render drawPrimitives:metal_primitive_type(
+                                           graphicsPipeline->desc.topology)
+                              vertexStart:encoded.arguments[2]
+                              vertexCount:encoded.arguments[0]
+                            instanceCount:encoded.arguments[1]
+                             baseInstance:encoded.arguments[3]];
+                break;
+            case detail::NativeCommandKind::draw_indexed: {
+                const auto indexSize =
+                    indexType == MTLIndexTypeUInt16 ? NSUInteger{2}
+                                                    : NSUInteger{4};
+                [render
+                    drawIndexedPrimitives:metal_primitive_type(
+                                              graphicsPipeline->desc.topology)
+                               indexCount:encoded.arguments[0]
+                                indexType:indexType
+                              indexBuffer:indexBuffer->buffer
+                        indexBufferOffset:indexBufferOffset +
+                                          encoded.arguments[2] * indexSize
+                            instanceCount:encoded.arguments[1]
+                               baseVertex:static_cast<std::int32_t>(
+                                              encoded.arguments[3])
+                             baseInstance:encoded.arguments[4]];
+                break;
+            }
+            case detail::NativeCommandKind::draw_indirect: {
+                const auto indirect =
+                    std::static_pointer_cast<MetalBufferResource>(encoded.object);
+                const auto indexed = encoded.arguments[1] != 0;
+                for (std::uint64_t drawIndex = 0;
+                     drawIndex < encoded.arguments[2]; ++drawIndex) {
+                    const auto offset = encoded.arguments[0] +
+                                        drawIndex * encoded.arguments[3];
+                    if (indexed) {
+                        [render
+                            drawIndexedPrimitives:metal_primitive_type(
+                                                      graphicsPipeline->desc.topology)
+                                       indexType:indexType
+                                     indexBuffer:indexBuffer->buffer
+                               indexBufferOffset:indexBufferOffset
+                                    indirectBuffer:indirect->buffer
+                              indirectBufferOffset:offset];
+                    } else {
+                        [render drawPrimitives:metal_primitive_type(
+                                                   graphicsPipeline->desc.topology)
+                                    indirectBuffer:indirect->buffer
+                              indirectBufferOffset:offset];
+                    }
+                }
+                break;
+            }
+            case detail::NativeCommandKind::draw_indirect_count:
+                return fail(Status::failure(
+                    StatusCode::unsupported,
+                    "Metal indirect-count drawing is not exposed"));
+            case detail::NativeCommandKind::dispatch: {
+                const auto threads = MTLSizeMake(
+                    computePipeline->desc.requiredWorkgroupSize.width,
+                    computePipeline->desc.requiredWorkgroupSize.height,
+                    computePipeline->desc.requiredWorkgroupSize.depth);
+                [compute dispatchThreadgroups:MTLSizeMake(
+                                                  encoded.arguments[0],
+                                                  encoded.arguments[1],
+                                                  encoded.arguments[2])
+                      threadsPerThreadgroup:threads];
+                break;
+            }
+            case detail::NativeCommandKind::dispatch_indirect: {
+                const auto indirect =
+                    std::static_pointer_cast<MetalBufferResource>(encoded.object);
+                const auto threads = MTLSizeMake(
+                    computePipeline->desc.requiredWorkgroupSize.width,
+                    computePipeline->desc.requiredWorkgroupSize.height,
+                    computePipeline->desc.requiredWorkgroupSize.depth);
+                [compute dispatchThreadgroupsWithIndirectBuffer:indirect->buffer
+                                            indirectBufferOffset:encoded.arguments[0]
+                                           threadsPerThreadgroup:threads];
+                break;
+            }
+            }
+        }
+        if (render != nil || compute != nil) {
+            return fail(Status::failure(StatusCode::invalid_state,
+                                        "Metal command encoder was not ended"));
+        }
         [command commit];
         [command waitUntilCompleted];
         const auto commandStatus = command.status;
@@ -597,9 +1899,12 @@ Result<Instance> create_metal_instance(const InstanceDesc& desc) {
             {
                 .kind = BackendKind::metal,
                 .adapterName = name != nullptr ? name : "Metal adapter",
-                .queueKinds = {QueueKind::graphics, QueueKind::transfer},
-                .supportedFeatures = {Feature::transfer,
-                                      Feature::memory_budget},
+                .queueKinds = {QueueKind::graphics, QueueKind::compute,
+                               QueueKind::transfer},
+                .supportedFeatures = {
+                    Feature::compute, Feature::transfer, Feature::memory_budget,
+                    Feature::descriptor_arrays, Feature::dynamic_offsets,
+                    Feature::push_constants},
                 .resourceCapabilities = {
                     .bufferViews = true,
                     .textureViews = true,
@@ -614,6 +1919,37 @@ Result<Instance> create_metal_instance(const InstanceDesc& desc) {
                     .textureBlitLinear = false,
                     .externalImport = false,
                     .externalExport = false,
+                },
+                .bindingCapabilities = {
+                    .ordinaryBindGroups = true,
+                    .descriptorArrays = true,
+                    .dynamicOffsets = true,
+                    .immutableSamplers = true,
+                    .pushConstants = true,
+                    .bindlessTables = false,
+                    .updateAfterBind = false,
+                    .maxBindGroups = 2,
+                    .maxBindingsPerGroup = 8,
+                    .maxDescriptorsPerGroup = 8,
+                    .maxPushConstantBytes = 256,
+                    .minUniformBufferOffsetAlignment = 256,
+                    .minStorageBufferOffsetAlignment = 16,
+                },
+                .pipelineCapabilities = {
+                    .graphics = true,
+                    .compute = true,
+                    .multipleRenderTargets = true,
+                    .depthStencil = true,
+                    .multisample = true,
+                    .tessellation = false,
+                    .indirect = true,
+                    .indirectCount = false,
+                    .pipelineCache = false,
+                    .maxColorAttachments = 8,
+                    .maxVertexBuffers = 16,
+                    .maxViewports = 16,
+                    .maxComputeWorkgroupSize = {1024, 1024, 64},
+                    .maxComputeInvocations = 1024,
                 },
                 .uploadBudgetBytes = 512u * 1024u * 1024u,
                 .readbackBudgetBytes = 512u * 1024u * 1024u,
@@ -634,6 +1970,10 @@ Result<Instance> create_metal_instance(const InstanceDesc& desc) {
                 .createTextureView = &create_metal_texture_view,
                 .writeTexture = &write_metal_texture,
                 .readTexture = &read_metal_texture,
+                .createSampler = &create_metal_sampler,
+                .createShader = &create_metal_shader,
+                .createPipeline = &create_metal_pipeline,
+                .createComputePipeline = &create_metal_compute_pipeline,
                 .nativeSubmit = &submit_metal_commands,
             });
     }

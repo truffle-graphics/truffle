@@ -14,6 +14,13 @@ add_executable(truffle_rhi_resource_tests rhi_resource_tests.cpp)
 target_link_libraries(truffle_rhi_resource_tests PRIVATE truffle_backend_null)
 add_test(NAME truffle_rhi_resource_tests COMMAND truffle_rhi_resource_tests)
 
+add_executable(truffle_rhi_binding_pipeline_tests
+               rhi_binding_pipeline_tests.cpp)
+target_link_libraries(truffle_rhi_binding_pipeline_tests
+                      PRIVATE truffle_backend_null)
+add_test(NAME truffle_rhi_binding_pipeline_tests
+         COMMAND truffle_rhi_binding_pipeline_tests)
+
 add_executable(truffle_render_tests render_flow_tests.cpp)
 target_link_libraries(truffle_render_tests PRIVATE truffle_backend_null truffle_render)
 add_test(NAME truffle_render_tests COMMAND truffle_render_tests)

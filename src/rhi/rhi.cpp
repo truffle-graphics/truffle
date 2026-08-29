@@ -7,6 +7,7 @@
 #include <array>
 #include <atomic>
 #include <bit>
+#include <cmath>
 #include <condition_variable>
 #include <cstring>
 #include <limits>
@@ -46,6 +47,13 @@ enum class ObjectKind {
     buffer_view,
     texture,
     texture_view,
+    sampler,
+    bind_group_layout,
+    descriptor_arena,
+    bind_group,
+    bindless_table,
+    pipeline_layout,
+    pipeline_cache,
     shader,
     pipeline,
     compute_pipeline,
@@ -75,6 +83,19 @@ struct BackendDispatch {
                                     ExternalMemoryHandle);
     Result<Handle> (*import_texture)(Runtime&, Handle, const TextureDesc&,
                                      ExternalMemoryHandle);
+    Result<Handle> (*create_sampler)(Runtime&, Handle, const SamplerDesc&);
+    Result<Handle> (*create_bind_group_layout)(Runtime&, Handle,
+                                               const BindGroupLayoutDesc&);
+    Result<Handle> (*create_descriptor_arena)(Runtime&, Handle,
+                                              const DescriptorArenaDesc&);
+    Result<Handle> (*create_bind_group)(Runtime&, Handle,
+                                        const BindGroupDesc&);
+    Result<Handle> (*create_bindless_table)(Runtime&, Handle,
+                                            const BindlessTableDesc&);
+    Result<Handle> (*create_pipeline_layout)(Runtime&, Handle,
+                                             const PipelineLayoutDesc&);
+    Result<Handle> (*create_pipeline_cache)(Runtime&, Handle,
+                                            const PipelineCacheDesc&);
     Result<Handle> (*create_shader)(Runtime&, Handle, const ShaderDesc&);
     Result<Handle> (*create_pipeline)(Runtime&, Handle, const PipelineDesc&);
     Result<Handle> (*create_compute_pipeline)(Runtime&, Handle,
@@ -501,6 +522,52 @@ struct TextureViewPayload {
     std::shared_ptr<void> native;
 };
 
+struct SamplerPayload {
+    SamplerDesc desc;
+    std::shared_ptr<void> native;
+};
+
+struct BindGroupLayoutPayload {
+    BindGroupLayoutDesc desc;
+    std::vector<std::pair<std::uint32_t, std::shared_ptr<SamplerPayload>>>
+        immutableSamplers;
+};
+
+struct DescriptorArenaPayload {
+    DescriptorArenaDesc desc;
+    std::thread::id owner;
+    std::uint64_t epoch = 1;
+    std::uint32_t allocatedBindGroups = 0;
+    std::uint32_t allocatedDescriptors = 0;
+    mutable std::mutex mutex;
+};
+
+struct BoundResource {
+    BindGroupEntry entry;
+    BindingType type = BindingType::uniform_buffer;
+    std::shared_ptr<BufferPayload> buffer;
+    std::shared_ptr<TextureViewPayload> textureView;
+    std::shared_ptr<SamplerPayload> sampler;
+};
+
+struct BindGroupPayload {
+    Handle layoutHandle = 0;
+    std::shared_ptr<BindGroupLayoutPayload> layout;
+    std::shared_ptr<DescriptorArenaPayload> arena;
+    std::uint64_t arenaEpoch = 0;
+    std::vector<BoundResource> resources;
+};
+
+struct PipelineLayoutPayload {
+    PipelineLayoutDesc desc;
+    std::vector<Handle> layoutHandles;
+    std::vector<std::shared_ptr<BindGroupLayoutPayload>> layouts;
+};
+
+struct PipelineCachePayload {
+    std::vector<std::byte> data;
+};
+
 enum class TransferKind {
     copy_buffer,
     fill_buffer,
@@ -859,6 +926,9 @@ struct TransferCommand {
     return native;
 }
 
+struct PipelinePayload;
+struct ComputePipelinePayload;
+
 struct CommandListPayload {
     QueueKind kind = QueueKind::graphics;
     CommandListState state = CommandListState::initial;
@@ -866,25 +936,51 @@ struct CommandListPayload {
     std::uint32_t activeEncoder = 0;
     bool graphicsPipelineBound = false;
     bool computePipelineBound = false;
+    bool indexBufferBound = false;
+    bool viewportSet = true;
+    bool scissorSet = true;
+    bool blendConstantSet = true;
+    bool stencilReferenceSet = true;
+    bool depthBiasSet = true;
+    std::shared_ptr<PipelinePayload> graphicsPipeline;
+    std::shared_ptr<ComputePipelinePayload> computePipeline;
+    std::vector<TextureFormat> renderColorFormats;
+    TextureFormat renderDepthStencilFormat = TextureFormat::unknown;
+    std::uint32_t renderSampleCount = 1;
     std::vector<std::shared_ptr<void>> retained;
     std::vector<TransferCommand> transfers;
+    std::vector<NativeCommand> nativeCommands;
     std::mutex mutex;
 };
 
 struct ShaderPayload {
-    explicit ShaderPayload(ShaderDesc value)
-        : desc(std::move(value)), reflection(desc.reflection) {}
+    ShaderPayload(ShaderDesc value, std::shared_ptr<void> nativeValue = {})
+        : desc(std::move(value)), reflection(desc.reflection),
+          native(std::move(nativeValue)) {}
     ShaderDesc desc;
     PipelineReflection reflection;
+    std::shared_ptr<void> native;
 };
 
 struct PipelinePayload {
     PipelineReflection reflection;
+    std::shared_ptr<PipelineLayoutPayload> layout;
+    std::shared_ptr<ShaderPayload> vertexShader;
+    std::shared_ptr<ShaderPayload> fragmentShader;
+    std::shared_ptr<PipelineCachePayload> cache;
+    PipelineDesc desc;
+    std::shared_ptr<void> native;
 };
 
 struct ComputePipelinePayload {
     PipelineReflection reflection;
+    std::shared_ptr<PipelineLayoutPayload> layout;
+    std::shared_ptr<ShaderPayload> computeShader;
+    std::shared_ptr<PipelineCachePayload> cache;
+    ComputePipelineDesc desc;
     Extent3D preferredWorkgroupSize{64, 1, 1};
+    Extent3D requiredWorkgroupSize{1, 1, 1};
+    std::shared_ptr<void> native;
 };
 
 struct FencePayload {
@@ -1125,6 +1221,39 @@ struct Factory {
         const std::shared_ptr<Runtime>& runtime, Handle handle) {
         return TextureView{make_state(runtime, ObjectKind::texture_view, handle)};
     }
+    [[nodiscard]] static Sampler sampler(const std::shared_ptr<Runtime>& runtime,
+                                         Handle handle) {
+        return Sampler{make_state(runtime, ObjectKind::sampler, handle)};
+    }
+    [[nodiscard]] static BindGroupLayout bind_group_layout(
+        const std::shared_ptr<Runtime>& runtime, Handle handle) {
+        return BindGroupLayout{
+            make_state(runtime, ObjectKind::bind_group_layout, handle)};
+    }
+    [[nodiscard]] static DescriptorArena descriptor_arena(
+        const std::shared_ptr<Runtime>& runtime, Handle handle) {
+        return DescriptorArena{
+            make_state(runtime, ObjectKind::descriptor_arena, handle)};
+    }
+    [[nodiscard]] static BindGroup bind_group(
+        const std::shared_ptr<Runtime>& runtime, Handle handle) {
+        return BindGroup{make_state(runtime, ObjectKind::bind_group, handle)};
+    }
+    [[nodiscard]] static BindlessTable bindless_table(
+        const std::shared_ptr<Runtime>& runtime, Handle handle) {
+        return BindlessTable{
+            make_state(runtime, ObjectKind::bindless_table, handle)};
+    }
+    [[nodiscard]] static PipelineLayout pipeline_layout(
+        const std::shared_ptr<Runtime>& runtime, Handle handle) {
+        return PipelineLayout{
+            make_state(runtime, ObjectKind::pipeline_layout, handle)};
+    }
+    [[nodiscard]] static PipelineCache pipeline_cache(
+        const std::shared_ptr<Runtime>& runtime, Handle handle) {
+        return PipelineCache{
+            make_state(runtime, ObjectKind::pipeline_cache, handle)};
+    }
     [[nodiscard]] static Shader shader(const std::shared_ptr<Runtime>& runtime,
                                        Handle handle) {
         return Shader{make_state(runtime, ObjectKind::shader, handle)};
@@ -1191,6 +1320,8 @@ struct Factory {
     info.queueKinds = runtime.config.queueKinds;
     info.supportedFeatures = runtime.config.supportedFeatures;
     info.resources = runtime.config.resourceCapabilities;
+    info.bindings = runtime.config.bindingCapabilities;
+    info.pipelines = runtime.config.pipelineCapabilities;
     return runtime.allocate(ObjectKind::adapter,
                             std::make_shared<AdapterPayload>(
                                 AdapterPayload{std::move(info)}));
@@ -1504,22 +1635,513 @@ struct Factory {
     return unsupported(runtime, "external texture import");
 }
 
+[[nodiscard]] Result<Handle> foundation_create_sampler(
+    Runtime& runtime, Handle deviceHandle, const SamplerDesc& desc) {
+    const auto device = runtime.resolve<DevicePayload>(ObjectKind::device,
+                                                       deviceHandle);
+    if (!device) {
+        return invalid_object("device");
+    }
+    if (!device->adapter.bindings.ordinaryBindGroups) {
+        return unsupported(runtime, "sampler creation");
+    }
+    if (!std::isfinite(desc.lodMin) || !std::isfinite(desc.lodMax) ||
+        !std::isfinite(desc.maxAnisotropy) || desc.lodMin < 0.0F ||
+        desc.lodMax < desc.lodMin || desc.maxAnisotropy < 1.0F) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "sampler LOD or anisotropy is invalid");
+    }
+    std::shared_ptr<void> native;
+    if (!runtime.config.logicalResources) {
+        if (runtime.config.createSampler == nullptr) {
+            return unsupported(runtime, "sampler creation");
+        }
+        auto result = runtime.config.createSampler(desc);
+        if (!result.ok()) {
+            return result.status();
+        }
+        native = std::move(result).value();
+    }
+    auto payload = std::make_shared<SamplerPayload>();
+    payload->desc = desc;
+    payload->native = std::move(native);
+    runtime.update_stats([](BackendStats& stats) { ++stats.samplersCreated; });
+    return runtime.allocate(ObjectKind::sampler, std::move(payload));
+}
+
+[[nodiscard]] Result<Handle> foundation_create_bind_group_layout(
+    Runtime& runtime, Handle deviceHandle, const BindGroupLayoutDesc& desc) {
+    const auto device = runtime.resolve<DevicePayload>(ObjectKind::device,
+                                                       deviceHandle);
+    if (!device) {
+        return invalid_object("device");
+    }
+    const auto& capabilities = device->adapter.bindings;
+    if (!capabilities.ordinaryBindGroups) {
+        return unsupported(runtime, "bind-group layout creation");
+    }
+    if (desc.group >= capabilities.maxBindGroups ||
+        desc.entries.size() > capabilities.maxBindingsPerGroup) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "bind-group layout exceeds device limits");
+    }
+    auto payload = std::make_shared<BindGroupLayoutPayload>();
+    payload->desc = desc;
+    std::sort(payload->desc.entries.begin(), payload->desc.entries.end(),
+              [](const auto& lhs, const auto& rhs) {
+                  return lhs.binding < rhs.binding;
+              });
+    std::uint64_t descriptors = 0;
+    for (std::size_t index = 0; index < payload->desc.entries.size(); ++index) {
+        auto& entry = payload->desc.entries[index];
+        descriptors += entry.arrayCount;
+        if (entry.arrayCount == 0 ||
+            (entry.arrayCount > 1 && !capabilities.descriptorArrays) ||
+            (entry.dynamicOffset && !capabilities.dynamicOffsets) ||
+            (entry.dynamicOffset &&
+             entry.type != BindingType::uniform_buffer &&
+             entry.type != BindingType::storage_buffer) ||
+            (entry.minimumBufferSize != 0 &&
+             entry.type != BindingType::uniform_buffer &&
+             entry.type != BindingType::storage_buffer) ||
+            entry.visibility == ShaderStageMask::none ||
+            (index != 0 && payload->desc.entries[index - 1].binding ==
+                               entry.binding)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "bind-group layout entry is invalid");
+        }
+        if (entry.immutableSampler != nullptr) {
+            if (entry.type != BindingType::sampler || entry.arrayCount != 1 ||
+                !capabilities.immutableSamplers ||
+                !entry.immutableSampler->valid()) {
+                return Status::failure(StatusCode::invalid_argument,
+                                       "immutable sampler entry is invalid");
+            }
+            const auto sampler = runtime.resolve<SamplerPayload>(
+                ObjectKind::sampler, entry.immutableSampler->id().value);
+            if (!sampler) {
+                return invalid_object("immutable sampler");
+            }
+            payload->immutableSamplers.emplace_back(entry.binding, sampler);
+            entry.immutableSampler = nullptr;
+        }
+    }
+    if (descriptors > capabilities.maxDescriptorsPerGroup) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "bind-group layout exceeds descriptor limit");
+    }
+    runtime.update_stats(
+        [](BackendStats& stats) { ++stats.bindGroupLayoutsCreated; });
+    return runtime.allocate(ObjectKind::bind_group_layout, std::move(payload));
+}
+
+[[nodiscard]] Result<Handle> foundation_create_descriptor_arena(
+    Runtime& runtime, Handle deviceHandle, const DescriptorArenaDesc& desc) {
+    const auto device = runtime.resolve<DevicePayload>(ObjectKind::device,
+                                                       deviceHandle);
+    if (!device) {
+        return invalid_object("device");
+    }
+    if (!device->adapter.bindings.ordinaryBindGroups) {
+        return unsupported(runtime, "descriptor arena creation");
+    }
+    if (desc.maxBindGroups == 0 || desc.maxDescriptors == 0) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "descriptor arena limits must be non-zero");
+    }
+    if (desc.updateAfterBind && !device->adapter.bindings.updateAfterBind) {
+        return unsupported(runtime, "update-after-bind descriptor arena");
+    }
+    auto payload = std::make_shared<DescriptorArenaPayload>();
+    payload->desc = desc;
+    payload->owner = std::this_thread::get_id();
+    runtime.update_stats(
+        [](BackendStats& stats) { ++stats.descriptorArenasCreated; });
+    return runtime.allocate(ObjectKind::descriptor_arena, std::move(payload));
+}
+
+[[nodiscard]] const BindGroupLayoutEntry* find_layout_entry(
+    const BindGroupLayoutPayload& layout, std::uint32_t binding) {
+    const auto found = std::lower_bound(
+        layout.desc.entries.begin(), layout.desc.entries.end(), binding,
+        [](const auto& entry, std::uint32_t value) {
+            return entry.binding < value;
+        });
+    return found != layout.desc.entries.end() && found->binding == binding
+               ? &*found
+               : nullptr;
+}
+
+[[nodiscard]] std::shared_ptr<SamplerPayload> find_immutable_sampler(
+    const BindGroupLayoutPayload& layout, std::uint32_t binding) {
+    const auto found = std::find_if(
+        layout.immutableSamplers.begin(), layout.immutableSamplers.end(),
+        [&](const auto& candidate) { return candidate.first == binding; });
+    return found != layout.immutableSamplers.end() ? found->second
+                                                   : nullptr;
+}
+
+[[nodiscard]] Result<Handle> foundation_create_bind_group(
+    Runtime& runtime, Handle deviceHandle, const BindGroupDesc& desc) {
+    const auto device = runtime.resolve<DevicePayload>(ObjectKind::device,
+                                                       deviceHandle);
+    if (!device) {
+        return invalid_object("device");
+    }
+    if (!device->adapter.bindings.ordinaryBindGroups) {
+        return unsupported(runtime, "bind-group creation");
+    }
+    if (desc.layout == nullptr || desc.arena == nullptr ||
+        !desc.layout->valid() || !desc.arena->valid()) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "bind group requires a layout and arena");
+    }
+    const auto layout = runtime.resolve<BindGroupLayoutPayload>(
+        ObjectKind::bind_group_layout, desc.layout->id().value);
+    const auto arena = runtime.resolve<DescriptorArenaPayload>(
+        ObjectKind::descriptor_arena, desc.arena->id().value);
+    if (!layout || !arena) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "bind-group layout or arena is foreign");
+    }
+    auto payload = std::make_shared<BindGroupPayload>();
+    payload->layoutHandle = desc.layout->id().value;
+    payload->layout = layout;
+    payload->arena = arena;
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> seen;
+    seen.reserve(desc.entries.size());
+    for (const auto& entry : desc.entries) {
+        const auto* layoutEntry = find_layout_entry(*layout, entry.binding);
+        if (layoutEntry == nullptr ||
+            entry.arrayElement >= layoutEntry->arrayCount ||
+            std::find(seen.begin(), seen.end(),
+                      std::pair{entry.binding, entry.arrayElement}) != seen.end()) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "bind-group entry identity is invalid");
+        }
+        seen.emplace_back(entry.binding, entry.arrayElement);
+        BoundResource resource;
+        resource.entry = entry;
+        resource.type = layoutEntry->type;
+        switch (layoutEntry->type) {
+        case BindingType::uniform_buffer:
+        case BindingType::storage_buffer: {
+            if (entry.buffer == nullptr || !entry.buffer->valid() ||
+                entry.textureView != nullptr || entry.sampler != nullptr) {
+                return Status::failure(StatusCode::invalid_argument,
+                                       "buffer binding resource is invalid");
+            }
+            resource.buffer = runtime.resolve<BufferPayload>(
+                ObjectKind::buffer, entry.buffer->id().value);
+            if (!resource.buffer) {
+                return invalid_object("bind-group buffer");
+            }
+            if (resource.entry.size == whole_size) {
+                resource.entry.size =
+                    resource.entry.offset <= resource.buffer->desc.size
+                        ? resource.buffer->desc.size - resource.entry.offset
+                        : 0;
+            }
+            const auto requiredUsage =
+                layoutEntry->type == BindingType::uniform_buffer
+                    ? BufferUsage::uniform
+                    : BufferUsage::storage;
+            if (!has_usage(resource.buffer->desc.usage, requiredUsage) ||
+                !buffer_range_valid(*resource.buffer, resource.entry.offset,
+                                    resource.entry.size) ||
+                resource.entry.size < layoutEntry->minimumBufferSize) {
+                return Status::failure(StatusCode::invalid_argument,
+                                       "buffer binding usage or range is invalid");
+            }
+            break;
+        }
+        case BindingType::sampled_texture:
+        case BindingType::storage_texture:
+            if (entry.textureView == nullptr || !entry.textureView->valid() ||
+                entry.buffer != nullptr || entry.sampler != nullptr) {
+                return Status::failure(StatusCode::invalid_argument,
+                                       "texture binding resource is invalid");
+            }
+            resource.textureView = runtime.resolve<TextureViewPayload>(
+                ObjectKind::texture_view, entry.textureView->id().value);
+            if (!resource.textureView) {
+                return invalid_object("bind-group texture view");
+            }
+            if (!has_usage(
+                    resource.textureView->texture->desc.usage,
+                    layoutEntry->type == BindingType::sampled_texture
+                        ? TextureUsage::sampled
+                        : TextureUsage::storage)) {
+                return Status::failure(StatusCode::invalid_argument,
+                                       "texture binding usage is invalid");
+            }
+            break;
+        case BindingType::sampler:
+            if (!find_immutable_sampler(*layout, entry.binding)) {
+                if (entry.sampler == nullptr || !entry.sampler->valid() ||
+                    entry.buffer != nullptr || entry.textureView != nullptr) {
+                    return Status::failure(StatusCode::invalid_argument,
+                                           "sampler binding resource is invalid");
+                }
+                resource.sampler = runtime.resolve<SamplerPayload>(
+                    ObjectKind::sampler, entry.sampler->id().value);
+                if (!resource.sampler) {
+                    return invalid_object("bind-group sampler");
+                }
+            } else if (entry.sampler != nullptr || entry.buffer != nullptr ||
+                       entry.textureView != nullptr) {
+                return Status::failure(StatusCode::invalid_argument,
+                                       "immutable sampler binding has a resource");
+            }
+            break;
+        }
+        payload->resources.push_back(std::move(resource));
+    }
+    std::uint32_t expectedEntries = 0;
+    for (const auto& entry : layout->desc.entries) {
+        if (!find_immutable_sampler(*layout, entry.binding)) {
+            expectedEntries += entry.arrayCount;
+        }
+    }
+    if (payload->resources.size() != expectedEntries) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "bind group does not populate its complete layout");
+    }
+    {
+        std::lock_guard lock{arena->mutex};
+        if (arena->owner != std::this_thread::get_id()) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "descriptor arena is owned by another thread");
+        }
+        if (arena->allocatedBindGroups >= arena->desc.maxBindGroups ||
+            payload->resources.size() >
+                arena->desc.maxDescriptors - arena->allocatedDescriptors) {
+            return Status::failure(StatusCode::out_of_memory,
+                                   "descriptor arena capacity is exhausted");
+        }
+        payload->arenaEpoch = arena->epoch;
+        ++arena->allocatedBindGroups;
+        arena->allocatedDescriptors +=
+            static_cast<std::uint32_t>(payload->resources.size());
+    }
+    runtime.update_stats([](BackendStats& stats) { ++stats.bindGroupsCreated; });
+    return runtime.allocate(ObjectKind::bind_group, std::move(payload));
+}
+
+[[nodiscard]] Result<Handle> foundation_create_pipeline_layout(
+    Runtime& runtime, Handle deviceHandle, const PipelineLayoutDesc& desc) {
+    const auto device = runtime.resolve<DevicePayload>(ObjectKind::device,
+                                                       deviceHandle);
+    if (!device) {
+        return invalid_object("device");
+    }
+    if (!device->adapter.bindings.ordinaryBindGroups) {
+        return unsupported(runtime, "pipeline-layout creation");
+    }
+    if (desc.bindGroupLayouts.size() > device->adapter.bindings.maxBindGroups) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "pipeline layout exceeds bind-group limit");
+    }
+    auto payload = std::make_shared<PipelineLayoutPayload>();
+    payload->desc = desc;
+    std::uint32_t previousGroup = 0;
+    bool first = true;
+    for (auto* layoutObject : desc.bindGroupLayouts) {
+        if (layoutObject == nullptr || !layoutObject->valid()) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "pipeline layout contains invalid bind-group layout");
+        }
+        const auto layout = runtime.resolve<BindGroupLayoutPayload>(
+            ObjectKind::bind_group_layout, layoutObject->id().value);
+        if (!layout || (!first && layout->desc.group <= previousGroup)) {
+            return Status::failure(
+                StatusCode::invalid_argument,
+                "pipeline bind-group layouts must be foreign-free and group sorted");
+        }
+        first = false;
+        previousGroup = layout->desc.group;
+        payload->layoutHandles.push_back(layoutObject->id().value);
+        payload->layouts.push_back(layout);
+    }
+    payload->desc.bindGroupLayouts.clear();
+    std::uint64_t pushBytes = 0;
+    for (std::size_t index = 0; index < desc.pushConstants.size(); ++index) {
+        const auto& range = desc.pushConstants[index];
+        if (range.size == 0 || range.offset % 4 != 0 || range.size % 4 != 0) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "pipeline push-constant range is invalid");
+        }
+        const auto end =
+            static_cast<std::uint64_t>(range.offset) + range.size;
+        for (std::size_t previousIndex = 0; previousIndex < index;
+             ++previousIndex) {
+            const auto& previous = desc.pushConstants[previousIndex];
+            if (previous.stage != range.stage) {
+                continue;
+            }
+            const auto previousEnd =
+                static_cast<std::uint64_t>(previous.offset) + previous.size;
+            if (range.offset < previousEnd && previous.offset < end) {
+                return Status::failure(
+                    StatusCode::invalid_argument,
+                    "pipeline push-constant ranges overlap for one stage");
+            }
+        }
+        pushBytes = std::max(pushBytes, static_cast<std::uint64_t>(range.offset) +
+                                           range.size);
+    }
+    if (!desc.pushConstants.empty() &&
+        !device->adapter.bindings.pushConstants) {
+        return unsupported(runtime, "pipeline push-constant layout");
+    }
+    if (pushBytes > device->adapter.bindings.maxPushConstantBytes) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "pipeline push-constant layout exceeds device limit");
+    }
+    runtime.update_stats(
+        [](BackendStats& stats) { ++stats.pipelineLayoutsCreated; });
+    return runtime.allocate(ObjectKind::pipeline_layout, std::move(payload));
+}
+
+[[nodiscard]] Result<Handle> foundation_create_bindless_table(
+    Runtime& runtime, Handle deviceHandle, const BindlessTableDesc& desc) {
+    const auto device = runtime.resolve<DevicePayload>(ObjectKind::device,
+                                                       deviceHandle);
+    if (!device) {
+        return invalid_object("device");
+    }
+    if (!device->adapter.bindings.bindlessTables ||
+        !device->adapter.bindings.updateAfterBind) {
+        return unsupported(runtime, "bindless descriptor tables");
+    }
+    if (desc.layout == nullptr || !desc.layout->valid() || desc.capacity == 0) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "bindless table descriptor is invalid");
+    }
+    return unsupported(runtime, "bindless descriptor tables");
+}
+
+[[nodiscard]] Result<Handle> foundation_create_pipeline_cache(
+    Runtime& runtime, Handle deviceHandle, const PipelineCacheDesc& desc) {
+    const auto device = runtime.resolve<DevicePayload>(ObjectKind::device,
+                                                       deviceHandle);
+    if (!device) {
+        return invalid_object("device");
+    }
+    if (!device->adapter.pipelines.pipelineCache) {
+        return unsupported(runtime, "pipeline cache creation");
+    }
+    auto payload = std::make_shared<PipelineCachePayload>();
+    payload->data = desc.initialData;
+    runtime.update_stats(
+        [](BackendStats& stats) { ++stats.pipelineCachesCreated; });
+    return runtime.allocate(ObjectKind::pipeline_cache, std::move(payload));
+}
+
 [[nodiscard]] Result<Handle> foundation_create_shader(Runtime& runtime,
                                                       Handle deviceHandle,
                                                       const ShaderDesc& desc) {
     if (!runtime.resolve<DevicePayload>(ObjectKind::device, deviceHandle)) {
         return invalid_object("device");
     }
-    if (!runtime.config.logicalResources) {
-        return unsupported(runtime, "shader creation");
-    }
     if (desc.entryPoint.empty() || desc.code.empty()) {
         return Status::failure(StatusCode::invalid_argument,
                                "shader entry point and code are required");
     }
+    for (std::size_t index = 0; index < desc.reflection.size(); ++index) {
+        const auto& binding = desc.reflection[index];
+        if (binding.stage != desc.stage || binding.arrayCount == 0) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "shader resource reflection is invalid");
+        }
+        for (std::size_t previous = 0; previous < index; ++previous) {
+            if (desc.reflection[previous].group == binding.group &&
+                desc.reflection[previous].binding == binding.binding) {
+                return Status::failure(StatusCode::invalid_argument,
+                                       "shader resource reflection is duplicated");
+            }
+        }
+    }
+    for (std::size_t index = 0; index < desc.pushConstants.size(); ++index) {
+        const auto& range = desc.pushConstants[index];
+        if (range.stage != desc.stage || range.size == 0 ||
+            range.offset % 4 != 0 || range.size % 4 != 0) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "shader push-constant reflection is invalid");
+        }
+        const auto end = static_cast<std::uint64_t>(range.offset) + range.size;
+        for (std::size_t previous = 0; previous < index; ++previous) {
+            const auto& candidate = desc.pushConstants[previous];
+            const auto candidateEnd =
+                static_cast<std::uint64_t>(candidate.offset) + candidate.size;
+            if (range.offset < candidateEnd && candidate.offset < end) {
+                return Status::failure(
+                    StatusCode::invalid_argument,
+                    "shader push-constant reflection ranges overlap");
+            }
+        }
+    }
+    for (std::size_t index = 0; index < desc.specializationConstants.size();
+         ++index) {
+        for (std::size_t previous = 0; previous < index; ++previous) {
+            if (desc.specializationConstants[previous].id ==
+                desc.specializationConstants[index].id) {
+                return Status::failure(
+                    StatusCode::invalid_argument,
+                    "shader specialization-constant ids are duplicated");
+            }
+        }
+    }
+    for (std::size_t index = 0; index < desc.bindingMap.size(); ++index) {
+        const auto& mapping = desc.bindingMap[index];
+        const auto reflected = std::find_if(
+            desc.reflection.begin(), desc.reflection.end(),
+            [&](const ResourceBinding& binding) {
+                return mapping.stage == desc.stage &&
+                       binding.group == mapping.group &&
+                       binding.binding == mapping.binding &&
+                       mapping.arrayElement < binding.arrayCount;
+            });
+        if (reflected == desc.reflection.end()) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "shader binding remap has no logical resource");
+        }
+        for (std::size_t previous = 0; previous < index; ++previous) {
+            const auto& candidate = desc.bindingMap[previous];
+            if (candidate.stage == mapping.stage &&
+                candidate.group == mapping.group &&
+                candidate.binding == mapping.binding &&
+                candidate.arrayElement == mapping.arrayElement) {
+                return Status::failure(StatusCode::invalid_argument,
+                                       "shader binding remap is duplicated");
+            }
+        }
+    }
+    if (desc.stage == ShaderStage::compute &&
+        (desc.requiredWorkgroupSize.width == 0 ||
+         desc.requiredWorkgroupSize.height == 0 ||
+         desc.requiredWorkgroupSize.depth == 0 ||
+         desc.preferredWorkgroupSize.width == 0 ||
+         desc.preferredWorkgroupSize.height == 0 ||
+         desc.preferredWorkgroupSize.depth == 0)) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "compute shader workgroup metadata is invalid");
+    }
+    std::shared_ptr<void> native;
+    if (!runtime.config.logicalResources) {
+        if (runtime.config.createShader == nullptr) {
+            return unsupported(runtime, "shader creation");
+        }
+        auto result = runtime.config.createShader(desc);
+        if (!result.ok()) {
+            return result.status();
+        }
+        native = std::move(result).value();
+    }
     runtime.update_stats([](BackendStats& stats) { ++stats.shadersCreated; });
     return runtime.allocate(ObjectKind::shader,
-                            std::make_shared<ShaderPayload>(desc));
+                            std::make_shared<ShaderPayload>(desc,
+                                                            std::move(native)));
 }
 
 [[nodiscard]] std::vector<ResourceBinding> merge_reflection(
@@ -1537,13 +2159,91 @@ struct Factory {
     return bindings;
 }
 
+[[nodiscard]] bool push_constant_layout_matches(
+    const std::shared_ptr<PipelineLayoutPayload>& layout,
+    const std::shared_ptr<ShaderPayload>& shader) {
+    if (!shader) {
+        return true;
+    }
+    for (const auto& reflected : shader->desc.pushConstants) {
+        if (!layout) {
+            return false;
+        }
+        const auto reflectedEnd =
+            static_cast<std::uint64_t>(reflected.offset) + reflected.size;
+        const auto found = std::find_if(
+            layout->desc.pushConstants.begin(), layout->desc.pushConstants.end(),
+            [&](const PushConstantRange& range) {
+                return range.stage == reflected.stage &&
+                       range.offset <= reflected.offset &&
+                       reflectedEnd <=
+                           static_cast<std::uint64_t>(range.offset) + range.size;
+            });
+        if (found == layout->desc.pushConstants.end()) {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] bool specialization_values_match(
+    std::span<const SpecializationValue> values,
+    const std::shared_ptr<ShaderPayload>& first,
+    const std::shared_ptr<ShaderPayload>& second = {}) {
+    for (std::size_t index = 0; index < values.size(); ++index) {
+        for (std::size_t previous = 0; previous < index; ++previous) {
+            if (values[previous].id == values[index].id) {
+                return false;
+            }
+        }
+        const auto shader_matches = [&](const std::shared_ptr<ShaderPayload>& shader) {
+            if (!shader) {
+                return false;
+            }
+            const auto found = std::find_if(
+                shader->desc.specializationConstants.begin(),
+                shader->desc.specializationConstants.end(),
+                [&](const ShaderSpecializationConstant& constant) {
+                    return constant.id == values[index].id;
+                });
+            return found != shader->desc.specializationConstants.end() &&
+                   found->type == values[index].type;
+        };
+        if (!shader_matches(first) && !shader_matches(second)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] constexpr std::uint32_t vertex_format_size(
+    VertexFormat format) noexcept {
+    switch (format) {
+    case VertexFormat::float32:
+    case VertexFormat::uint32:
+        return 4;
+    case VertexFormat::float32x2:
+    case VertexFormat::uint32x2:
+        return 8;
+    case VertexFormat::float32x3:
+    case VertexFormat::uint32x3:
+        return 12;
+    case VertexFormat::float32x4:
+    case VertexFormat::uint32x4:
+        return 16;
+    }
+    return 0;
+}
+
 [[nodiscard]] Result<Handle> foundation_create_pipeline(Runtime& runtime,
                                                         Handle deviceHandle,
                                                         const PipelineDesc& desc) {
-    if (!runtime.resolve<DevicePayload>(ObjectKind::device, deviceHandle)) {
+    const auto device = runtime.resolve<DevicePayload>(ObjectKind::device,
+                                                       deviceHandle);
+    if (!device) {
         return invalid_object("device");
     }
-    if (!runtime.config.logicalResources) {
+    if (!device->adapter.pipelines.graphics) {
         return unsupported(runtime, "graphics pipeline creation");
     }
     std::shared_ptr<ShaderPayload> vertex;
@@ -1571,18 +2271,192 @@ struct Factory {
                 "fragment pipeline input must be a fragment shader");
         }
     }
+    std::shared_ptr<PipelineLayoutPayload> layout;
+    if (desc.layout != nullptr) {
+        layout = runtime.resolve<PipelineLayoutPayload>(
+            ObjectKind::pipeline_layout, desc.layout->id().value);
+        if (!layout) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "graphics pipeline layout is foreign");
+        }
+    }
+    const auto layout_matches = [&](const std::shared_ptr<ShaderPayload>& shader) {
+        if (!shader) {
+            return true;
+        }
+        for (const auto& binding : shader->desc.reflection) {
+            if (!layout) {
+                return false;
+            }
+            const auto layoutFound = std::find_if(
+                layout->layouts.begin(), layout->layouts.end(),
+                [&](const auto& candidate) {
+                    return candidate->desc.group == binding.group;
+                });
+            if (layoutFound == layout->layouts.end()) {
+                return false;
+            }
+            const auto* entry = find_layout_entry(**layoutFound, binding.binding);
+            if (entry == nullptr || entry->arrayCount < binding.arrayCount ||
+                !has_stage(entry->visibility, shader_stage_mask(binding.stage))) {
+                return false;
+            }
+            const auto compatible =
+                (binding.type == ResourceBindingType::buffer &&
+                 (entry->type == BindingType::uniform_buffer ||
+                  entry->type == BindingType::storage_buffer)) ||
+                (binding.type == ResourceBindingType::texture &&
+                 (entry->type == BindingType::sampled_texture ||
+                  entry->type == BindingType::storage_texture)) ||
+                (binding.type == ResourceBindingType::sampler &&
+                 entry->type == BindingType::sampler);
+            if (!compatible || entry->minimumBufferSize < binding.minimumSize) {
+                return false;
+            }
+        }
+        return true;
+    };
+    if (!layout_matches(vertex) || !layout_matches(fragment) ||
+        !push_constant_layout_matches(layout, vertex) ||
+        !push_constant_layout_matches(layout, fragment)) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "pipeline layout does not match shader reflection");
+    }
+    if (!specialization_values_match(desc.specializationConstants, vertex,
+                                     fragment)) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "graphics specialization constants are invalid");
+    }
+    if (desc.colorTargets.size() > device->adapter.pipelines.maxColorAttachments ||
+        (desc.colorTargets.size() > 1 &&
+         !device->adapter.pipelines.multipleRenderTargets) ||
+        (desc.depthStencil.format != TextureFormat::unknown &&
+         !device->adapter.pipelines.depthStencil) ||
+        (desc.multisample.sampleCount > 1 &&
+         !device->adapter.pipelines.multisample) ||
+        desc.vertexBuffers.size() > device->adapter.pipelines.maxVertexBuffers ||
+        desc.multisample.sampleCount == 0 ||
+        (desc.topology == PrimitiveTopology::patch_list &&
+         !device->adapter.pipelines.tessellation)) {
+        return Status::failure(StatusCode::unsupported,
+                               "graphics pipeline state exceeds backend capabilities");
+    }
+    if ((desc.topology == PrimitiveTopology::patch_list &&
+         desc.patchControlPoints == 0) ||
+        (desc.topology != PrimitiveTopology::patch_list &&
+         desc.patchControlPoints != 0) ||
+        (desc.multisample.sampleCount != 1 &&
+         desc.multisample.sampleCount != 2 &&
+         desc.multisample.sampleCount != 4 &&
+         desc.multisample.sampleCount != 8) ||
+        desc.viewports.size() > device->adapter.pipelines.maxViewports ||
+        desc.scissors.size() > device->adapter.pipelines.maxViewports ||
+        (!desc.viewports.empty() && !desc.scissors.empty() &&
+         desc.viewports.size() != desc.scissors.size())) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "graphics pipeline topology or raster state is invalid");
+    }
+    for (const auto& target : desc.colorTargets) {
+        const auto info = format_info(target.format);
+        if (!has_aspect(info.aspects, TextureAspect::color) ||
+            target.writeMask > 0x0f) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "graphics color target state is invalid");
+        }
+    }
+    if (desc.depthStencil.format != TextureFormat::unknown &&
+        !has_aspect(format_info(desc.depthStencil.format).aspects,
+                    TextureAspect::depth)) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "graphics depth-stencil format is invalid");
+    }
+    std::vector<std::uint32_t> vertexLocations;
+    for (const auto& buffer : desc.vertexBuffers) {
+        if (buffer.stride == 0 || buffer.attributes.empty()) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "vertex-buffer layout is empty");
+        }
+        for (const auto& attribute : buffer.attributes) {
+            const auto size = vertex_format_size(attribute.format);
+            if (size == 0 || attribute.offset > buffer.stride ||
+                size > buffer.stride - attribute.offset ||
+                std::find(vertexLocations.begin(), vertexLocations.end(),
+                          attribute.location) != vertexLocations.end()) {
+                return Status::failure(StatusCode::invalid_argument,
+                                       "vertex attribute layout is invalid");
+            }
+            vertexLocations.push_back(attribute.location);
+        }
+    }
+    for (const auto& viewport : desc.viewports) {
+        if (viewport.width <= 0.0F || viewport.height <= 0.0F ||
+            viewport.minimumDepth < 0.0F || viewport.maximumDepth > 1.0F ||
+            viewport.minimumDepth > viewport.maximumDepth) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "static viewport is invalid");
+        }
+    }
+    for (const auto& scissor : desc.scissors) {
+        if (scissor.x < 0 || scissor.y < 0 || scissor.width == 0 ||
+            scissor.height == 0) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "static scissor is invalid");
+        }
+    }
+    if (!std::all_of(desc.blendConstant.begin(), desc.blendConstant.end(),
+                     [](float component) { return std::isfinite(component); }) ||
+        !std::isfinite(desc.rasterization.depthBias) ||
+        !std::isfinite(desc.rasterization.depthBiasSlopeScale) ||
+        !std::isfinite(desc.rasterization.depthBiasClamp)) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "graphics state contains a non-finite value");
+    }
+    std::shared_ptr<PipelineCachePayload> cache;
+    if (desc.cache != nullptr) {
+        cache = runtime.resolve<PipelineCachePayload>(
+            ObjectKind::pipeline_cache, desc.cache->id().value);
+        if (!cache) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "graphics pipeline cache is foreign");
+        }
+    }
+    std::shared_ptr<void> native;
+    if (!runtime.config.logicalResources) {
+        if (!vertex || !fragment || runtime.config.createPipeline == nullptr) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "native graphics pipeline requires shaders");
+        }
+        auto result = runtime.config.createPipeline(desc, vertex->native,
+                                                    fragment->native);
+        if (!result.ok()) {
+            return result.status();
+        }
+        native = std::move(result).value();
+    }
     auto payload = std::make_shared<PipelinePayload>();
     payload->reflection = PipelineReflection{merge_reflection(vertex, fragment)};
+    payload->layout = std::move(layout);
+    payload->vertexShader = vertex;
+    payload->fragmentShader = fragment;
+    payload->cache = std::move(cache);
+    payload->desc = desc;
+    payload->desc.vertexShader = nullptr;
+    payload->desc.fragmentShader = nullptr;
+    payload->desc.layout = nullptr;
+    payload->desc.cache = nullptr;
+    payload->native = std::move(native);
     runtime.update_stats([](BackendStats& stats) { ++stats.pipelinesCreated; });
     return runtime.allocate(ObjectKind::pipeline, std::move(payload));
 }
 
 [[nodiscard]] Result<Handle> foundation_create_compute_pipeline(
     Runtime& runtime, Handle deviceHandle, const ComputePipelineDesc& desc) {
-    if (!runtime.resolve<DevicePayload>(ObjectKind::device, deviceHandle)) {
+    const auto device = runtime.resolve<DevicePayload>(ObjectKind::device,
+                                                       deviceHandle);
+    if (!device) {
         return invalid_object("device");
     }
-    if (!runtime.config.logicalResources) {
+    if (!device->adapter.pipelines.compute) {
         return unsupported(runtime, "compute pipeline creation");
     }
     if (desc.computeShader == nullptr || !desc.computeShader->valid()) {
@@ -1595,9 +2469,119 @@ struct Factory {
         return Status::failure(StatusCode::invalid_argument,
                                "compute pipeline requires a compute shader");
     }
+    std::shared_ptr<PipelineLayoutPayload> layout;
+    if (desc.layout != nullptr) {
+        layout = runtime.resolve<PipelineLayoutPayload>(
+            ObjectKind::pipeline_layout, desc.layout->id().value);
+        if (!layout) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "compute pipeline layout is foreign");
+        }
+    }
+    for (const auto& binding : shader->desc.reflection) {
+        if (!layout) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "compute pipeline layout misses shader group");
+        }
+        const auto group = std::find_if(
+            layout->layouts.begin(), layout->layouts.end(),
+            [&](const auto& value) {
+                return value->desc.group == binding.group;
+            });
+        if (group == layout->layouts.end()) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "compute pipeline layout misses shader group");
+        }
+        const auto* entry = find_layout_entry(**group, binding.binding);
+        const auto compatible =
+            entry != nullptr &&
+            ((binding.type == ResourceBindingType::buffer &&
+              (entry->type == BindingType::uniform_buffer ||
+               entry->type == BindingType::storage_buffer)) ||
+             (binding.type == ResourceBindingType::texture &&
+              (entry->type == BindingType::sampled_texture ||
+               entry->type == BindingType::storage_texture)) ||
+             (binding.type == ResourceBindingType::sampler &&
+              entry->type == BindingType::sampler));
+        if (!compatible || entry->arrayCount < binding.arrayCount ||
+            entry->minimumBufferSize < binding.minimumSize ||
+            !has_stage(entry->visibility, ShaderStageMask::compute)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "compute pipeline layout mismatches reflection");
+        }
+    }
+    if (!push_constant_layout_matches(layout, shader) ||
+        !specialization_values_match(desc.specializationConstants, shader)) {
+        return Status::failure(
+            StatusCode::invalid_argument,
+            "compute pipeline constants do not match shader reflection");
+    }
+    const auto all_zero = [](Extent3D extent) {
+        return extent.width == 0 && extent.height == 0 && extent.depth == 0;
+    };
+    const auto any_zero = [](Extent3D extent) {
+        return extent.width == 0 || extent.height == 0 || extent.depth == 0;
+    };
+    ComputePipelineDesc normalized = desc;
+    if (all_zero(normalized.requiredWorkgroupSize)) {
+        normalized.requiredWorkgroupSize = shader->desc.requiredWorkgroupSize;
+    } else if (any_zero(normalized.requiredWorkgroupSize) ||
+               normalized.requiredWorkgroupSize !=
+                   shader->desc.requiredWorkgroupSize) {
+        return Status::failure(
+            StatusCode::invalid_argument,
+            "compute pipeline required workgroup size mismatches the shader");
+    }
+    if (all_zero(normalized.preferredWorkgroupSize)) {
+        normalized.preferredWorkgroupSize =
+            shader->desc.preferredWorkgroupSize;
+    }
+    const auto maxSize = device->adapter.pipelines.maxComputeWorkgroupSize;
+    const auto invocations =
+        static_cast<std::uint64_t>(normalized.requiredWorkgroupSize.width) *
+        normalized.requiredWorkgroupSize.height *
+        normalized.requiredWorkgroupSize.depth;
+    if (any_zero(normalized.preferredWorkgroupSize) ||
+        normalized.requiredWorkgroupSize.width > maxSize.width ||
+        normalized.requiredWorkgroupSize.height > maxSize.height ||
+        normalized.requiredWorkgroupSize.depth > maxSize.depth ||
+        invocations > device->adapter.pipelines.maxComputeInvocations) {
+        return Status::failure(StatusCode::unsupported,
+                               "compute workgroup metadata exceeds device limits");
+    }
+    std::shared_ptr<PipelineCachePayload> cache;
+    if (desc.cache != nullptr) {
+        cache = runtime.resolve<PipelineCachePayload>(
+            ObjectKind::pipeline_cache, desc.cache->id().value);
+        if (!cache) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "compute pipeline cache is foreign");
+        }
+    }
+    std::shared_ptr<void> native;
+    if (!runtime.config.logicalResources) {
+        if (runtime.config.createComputePipeline == nullptr) {
+            return unsupported(runtime, "compute pipeline creation");
+        }
+        auto result =
+            runtime.config.createComputePipeline(normalized, shader->native);
+        if (!result.ok()) {
+            return result.status();
+        }
+        native = std::move(result).value();
+    }
     auto payload = std::make_shared<ComputePipelinePayload>();
     payload->reflection = PipelineReflection{merge_reflection(shader)};
-    payload->preferredWorkgroupSize = desc.preferredWorkgroupSize;
+    payload->layout = std::move(layout);
+    payload->computeShader = shader;
+    payload->cache = std::move(cache);
+    payload->desc = normalized;
+    payload->desc.computeShader = nullptr;
+    payload->desc.layout = nullptr;
+    payload->desc.cache = nullptr;
+    payload->preferredWorkgroupSize = normalized.preferredWorkgroupSize;
+    payload->requiredWorkgroupSize = normalized.requiredWorkgroupSize;
+    payload->native = std::move(native);
     runtime.update_stats([](BackendStats& stats) { ++stats.pipelinesCreated; });
     return runtime.allocate(ObjectKind::compute_pipeline, std::move(payload));
 }
@@ -1754,6 +2738,7 @@ struct Factory {
     std::lock_guard queueLock{queue->submitMutex};
     std::vector<std::shared_ptr<CommandListPayload>> lists;
     std::vector<TransferCommand> transfers;
+    std::vector<NativeCommand> nativeCommands;
     lists.reserve(commandLists.size());
     for (const auto handle : commandLists) {
         auto list = runtime.resolve<CommandListPayload>(ObjectKind::command_list,
@@ -1772,6 +2757,8 @@ struct Factory {
         }
         transfers.insert(transfers.end(), list->transfers.begin(),
                          list->transfers.end());
+        nativeCommands.insert(nativeCommands.end(), list->nativeCommands.begin(),
+                              list->nativeCommands.end());
         lists.push_back(std::move(list));
     }
     if (runtime.config.logicalResources) {
@@ -1789,7 +2776,8 @@ struct Factory {
         for (const auto& transfer : transfers) {
             nativeTransfers.push_back(make_native_transfer(transfer));
         }
-        if (auto status = runtime.config.nativeSubmit(nativeTransfers);
+        if (auto status = runtime.config.nativeSubmit(nativeTransfers,
+                                                      nativeCommands);
             !status.ok()) {
             return status;
         }
@@ -1799,6 +2787,9 @@ struct Factory {
         list->state = CommandListState::submitted;
         list->retained.clear();
         list->transfers.clear();
+        list->nativeCommands.clear();
+        list->graphicsPipeline.reset();
+        list->computePipeline.reset();
     }
     if (fenceHandle != 0) {
         const auto fence = runtime.resolve<FencePayload>(ObjectKind::fence,
@@ -1860,6 +2851,13 @@ const BackendDispatch kFoundationDispatch{
     &foundation_create_texture_view,
     &foundation_import_buffer,
     &foundation_import_texture,
+    &foundation_create_sampler,
+    &foundation_create_bind_group_layout,
+    &foundation_create_descriptor_arena,
+    &foundation_create_bind_group,
+    &foundation_create_bindless_table,
+    &foundation_create_pipeline_layout,
+    &foundation_create_pipeline_cache,
     &foundation_create_shader,
     &foundation_create_pipeline,
     &foundation_create_compute_pipeline,
@@ -1955,6 +2953,12 @@ TRUFFLE_DEFINE_OBJECT_LIFETIME(Buffer)
 TRUFFLE_DEFINE_OBJECT_LIFETIME(BufferView)
 TRUFFLE_DEFINE_OBJECT_LIFETIME(Texture)
 TRUFFLE_DEFINE_OBJECT_LIFETIME(TextureView)
+TRUFFLE_DEFINE_OBJECT_LIFETIME(Sampler)
+TRUFFLE_DEFINE_OBJECT_LIFETIME(BindGroupLayout)
+TRUFFLE_DEFINE_OBJECT_LIFETIME(DescriptorArena)
+TRUFFLE_DEFINE_OBJECT_LIFETIME(BindlessTable)
+TRUFFLE_DEFINE_OBJECT_LIFETIME(PipelineLayout)
+TRUFFLE_DEFINE_OBJECT_LIFETIME(PipelineCache)
 TRUFFLE_DEFINE_OBJECT_LIFETIME(Shader)
 TRUFFLE_DEFINE_OBJECT_LIFETIME(Pipeline)
 TRUFFLE_DEFINE_OBJECT_LIFETIME(ComputePipeline)
@@ -1964,6 +2968,27 @@ TRUFFLE_DEFINE_OBJECT_LIFETIME(QueryPool)
 TRUFFLE_DEFINE_OBJECT_LIFETIME(Surface)
 
 #undef TRUFFLE_DEFINE_OBJECT_LIFETIME
+
+BindGroup::BindGroup() noexcept = default;
+BindGroup::~BindGroup() = default;
+BindGroup::BindGroup(BindGroup&&) noexcept = default;
+BindGroup& BindGroup::operator=(BindGroup&&) noexcept = default;
+BindGroup::BindGroup(std::unique_ptr<detail::ObjectState> state) noexcept
+    : state_(std::move(state)) {}
+
+bool BindGroup::valid() const noexcept {
+    const auto value = detail::payload<detail::BindGroupPayload>(
+        state_, detail::ObjectKind::bind_group);
+    if (!value || !value->arena) {
+        return false;
+    }
+    std::lock_guard lock{value->arena->mutex};
+    return value->arenaEpoch == value->arena->epoch;
+}
+
+ObjectId BindGroup::id() const noexcept {
+    return valid() ? detail::state_id(state_) : ObjectId{};
+}
 
 BackendKind Instance::backend() const noexcept {
     return valid() ? state_->runtime->config.kind : BackendKind::null_validation;
@@ -2141,6 +3166,140 @@ Result<MemoryBudget> Device::memory_budget(MemoryDomain domain) const {
     return device->memory->budget(domain);
 }
 
+Result<Sampler> Device::create_sampler(const SamplerDesc& desc) const {
+    if (!valid()) {
+        return detail::invalid_object("device");
+    }
+    auto handle = state_->runtime->dispatch->create_sampler(
+        *state_->runtime, state_->handle, desc);
+    if (!handle.ok()) {
+        return handle.status();
+    }
+    return detail::Factory::sampler(state_->runtime, handle.value());
+}
+
+Result<BindGroupLayout> Device::create_bind_group_layout(
+    const BindGroupLayoutDesc& desc) const {
+    if (!valid()) {
+        return detail::invalid_object("device");
+    }
+    for (const auto& entry : desc.entries) {
+        if (entry.immutableSampler != nullptr &&
+            (!entry.immutableSampler->valid() ||
+             entry.immutableSampler->state_->runtime.get() !=
+                 state_->runtime.get())) {
+            return Status::failure(
+                StatusCode::invalid_argument,
+                "immutable samplers must belong to the device runtime");
+        }
+    }
+    auto handle = state_->runtime->dispatch->create_bind_group_layout(
+        *state_->runtime, state_->handle, desc);
+    if (!handle.ok()) {
+        return handle.status();
+    }
+    return detail::Factory::bind_group_layout(state_->runtime, handle.value());
+}
+
+Result<DescriptorArena> Device::create_descriptor_arena(
+    const DescriptorArenaDesc& desc) const {
+    if (!valid()) {
+        return detail::invalid_object("device");
+    }
+    auto handle = state_->runtime->dispatch->create_descriptor_arena(
+        *state_->runtime, state_->handle, desc);
+    if (!handle.ok()) {
+        return handle.status();
+    }
+    return detail::Factory::descriptor_arena(state_->runtime, handle.value());
+}
+
+Result<BindGroup> Device::create_bind_group(const BindGroupDesc& desc) const {
+    if (!valid() || desc.layout == nullptr || desc.arena == nullptr ||
+        !desc.layout->valid() || !desc.arena->valid() ||
+        desc.layout->state_->runtime.get() != state_->runtime.get() ||
+        desc.arena->state_->runtime.get() != state_->runtime.get()) {
+        return Status::failure(
+            StatusCode::invalid_argument,
+            "bind-group layout and arena must belong to the device runtime");
+    }
+    for (const auto& entry : desc.entries) {
+        const auto foreignBuffer =
+            entry.buffer != nullptr &&
+            (!entry.buffer->valid() ||
+             entry.buffer->state_->runtime.get() != state_->runtime.get());
+        const auto foreignTextureView =
+            entry.textureView != nullptr &&
+            (!entry.textureView->valid() ||
+             entry.textureView->state_->runtime.get() != state_->runtime.get());
+        const auto foreignSampler =
+            entry.sampler != nullptr &&
+            (!entry.sampler->valid() ||
+             entry.sampler->state_->runtime.get() != state_->runtime.get());
+        if (foreignBuffer || foreignTextureView || foreignSampler) {
+            return Status::failure(
+                StatusCode::invalid_argument,
+                "bind-group resources must belong to the device runtime");
+        }
+    }
+    auto handle = state_->runtime->dispatch->create_bind_group(
+        *state_->runtime, state_->handle, desc);
+    if (!handle.ok()) {
+        return handle.status();
+    }
+    return detail::Factory::bind_group(state_->runtime, handle.value());
+}
+
+Result<BindlessTable> Device::create_bindless_table(
+    const BindlessTableDesc& desc) const {
+    if (!valid() || desc.layout == nullptr || !desc.layout->valid() ||
+        desc.layout->state_->runtime.get() != state_->runtime.get()) {
+        return Status::failure(
+            StatusCode::invalid_argument,
+            "bindless table layout must belong to the device runtime");
+    }
+    auto handle = state_->runtime->dispatch->create_bindless_table(
+        *state_->runtime, state_->handle, desc);
+    if (!handle.ok()) {
+        return handle.status();
+    }
+    return detail::Factory::bindless_table(state_->runtime, handle.value());
+}
+
+Result<PipelineLayout> Device::create_pipeline_layout(
+    const PipelineLayoutDesc& desc) const {
+    if (!valid()) {
+        return detail::invalid_object("device");
+    }
+    for (const auto* layout : desc.bindGroupLayouts) {
+        if (layout == nullptr || !layout->valid() ||
+            layout->state_->runtime.get() != state_->runtime.get()) {
+            return Status::failure(
+                StatusCode::invalid_argument,
+                "pipeline bind-group layouts must belong to the device runtime");
+        }
+    }
+    auto handle = state_->runtime->dispatch->create_pipeline_layout(
+        *state_->runtime, state_->handle, desc);
+    if (!handle.ok()) {
+        return handle.status();
+    }
+    return detail::Factory::pipeline_layout(state_->runtime, handle.value());
+}
+
+Result<PipelineCache> Device::create_pipeline_cache(
+    const PipelineCacheDesc& desc) const {
+    if (!valid()) {
+        return detail::invalid_object("device");
+    }
+    auto handle = state_->runtime->dispatch->create_pipeline_cache(
+        *state_->runtime, state_->handle, desc);
+    if (!handle.ok()) {
+        return handle.status();
+    }
+    return detail::Factory::pipeline_cache(state_->runtime, handle.value());
+}
+
 Result<Shader> Device::create_shader(const ShaderDesc& desc) const {
     if (!valid()) {
         return detail::invalid_object("device");
@@ -2165,14 +3324,34 @@ Result<Shader> Device::create_shader(const ShaderPackage& package,
     }
     const auto* variant = selected.value();
     try {
-        return create_shader({
-            .stage = variant->stage,
-            .format = variant->format,
-            .entryPoint = variant->entryPoint,
-            .code = variant->code,
-            .reflection = variant->reflection.bindings,
-            .debugName = package.desc().name + ":" + variant->entryPoint,
-        });
+        ShaderDesc desc;
+        desc.stage = variant->stage;
+        desc.format = variant->format;
+        desc.entryPoint = variant->entryPoint;
+        desc.code = variant->code;
+        desc.reflection = variant->reflection.bindings;
+        desc.pushConstants = variant->reflection.pushConstants;
+        desc.specializationConstants =
+            variant->reflection.specializationConstants;
+        desc.requiredWorkgroupSize =
+            variant->reflection.requiredWorkgroupSize;
+        desc.preferredWorkgroupSize =
+            variant->reflection.preferredWorkgroupSize;
+        desc.debugName = package.desc().name + ":" + variant->entryPoint;
+        for (const auto& remap : package.desc().remaps) {
+            if (remap.target == target && remap.stage == stage) {
+                desc.bindingMap.push_back({
+                    .stage = remap.stage,
+                    .group = remap.group,
+                    .binding = remap.binding,
+                    .arrayElement = remap.arrayElement,
+                    .nativeGroup = remap.nativeGroup,
+                    .nativeBinding = remap.nativeBinding,
+                    .nativeArrayElement = remap.nativeArrayElement,
+                });
+            }
+        }
+        return create_shader(desc);
     } catch (const std::bad_alloc&) {
         return Status::failure(StatusCode::out_of_memory,
                                "shader package variant allocation failed");
@@ -2193,6 +3372,16 @@ Result<Pipeline> Device::create_pipeline(const PipelineDesc& desc) const {
         return Status::failure(StatusCode::invalid_argument,
                                "pipeline shaders must belong to the device runtime");
     }
+    if ((desc.layout != nullptr &&
+         (!desc.layout->valid() ||
+          desc.layout->state_->runtime.get() != state_->runtime.get())) ||
+        (desc.cache != nullptr &&
+         (!desc.cache->valid() ||
+          desc.cache->state_->runtime.get() != state_->runtime.get()))) {
+        return Status::failure(
+            StatusCode::invalid_argument,
+            "graphics pipeline layout and cache must belong to the device runtime");
+    }
     auto handle = state_->runtime->dispatch->create_pipeline(
         *state_->runtime, state_->handle, desc);
     if (!handle.ok()) {
@@ -2212,6 +3401,16 @@ Result<ComputePipeline> Device::create_compute_pipeline(
         return Status::failure(
             StatusCode::invalid_argument,
             "compute pipeline shader must belong to the device runtime");
+    }
+    if ((desc.layout != nullptr &&
+         (!desc.layout->valid() ||
+          desc.layout->state_->runtime.get() != state_->runtime.get())) ||
+        (desc.cache != nullptr &&
+         (!desc.cache->valid() ||
+          desc.cache->state_->runtime.get() != state_->runtime.get()))) {
+        return Status::failure(
+            StatusCode::invalid_argument,
+            "compute pipeline layout and cache must belong to the device runtime");
     }
     auto handle = state_->runtime->dispatch->create_compute_pipeline(
         *state_->runtime, state_->handle, desc);
@@ -2573,6 +3772,63 @@ ObjectId TextureView::texture_id() const noexcept {
     return value ? ObjectId{value->textureHandle} : ObjectId{};
 }
 
+SamplerDesc Sampler::desc() const {
+    const auto value = detail::payload<detail::SamplerPayload>(
+        state_, detail::ObjectKind::sampler);
+    return value ? value->desc : SamplerDesc{};
+}
+
+DescriptorArenaDesc DescriptorArena::desc() const {
+    const auto value = detail::payload<detail::DescriptorArenaPayload>(
+        state_, detail::ObjectKind::descriptor_arena);
+    return value ? value->desc : DescriptorArenaDesc{};
+}
+
+std::uint64_t DescriptorArena::epoch() const noexcept {
+    const auto value = detail::payload<detail::DescriptorArenaPayload>(
+        state_, detail::ObjectKind::descriptor_arena);
+    if (!value) {
+        return 0;
+    }
+    std::lock_guard lock{value->mutex};
+    return value->epoch;
+}
+
+Status DescriptorArena::reset() {
+    const auto value = detail::payload<detail::DescriptorArenaPayload>(
+        state_, detail::ObjectKind::descriptor_arena);
+    if (!value) {
+        return detail::invalid_object("descriptor arena");
+    }
+    std::lock_guard lock{value->mutex};
+    if (value->owner != std::this_thread::get_id()) {
+        return Status::failure(StatusCode::invalid_state,
+                               "descriptor arena is owned by another thread");
+    }
+    ++value->epoch;
+    if (value->epoch == 0) {
+        value->epoch = 1;
+    }
+    value->allocatedBindGroups = 0;
+    value->allocatedDescriptors = 0;
+    return Status::success();
+}
+
+ObjectId BindGroup::layout_id() const noexcept {
+    const auto value = detail::payload<detail::BindGroupPayload>(
+        state_, detail::ObjectKind::bind_group);
+    return value && valid() ? ObjectId{value->layoutHandle} : ObjectId{};
+}
+
+Result<std::vector<std::byte>> PipelineCache::data() const {
+    const auto value = detail::payload<detail::PipelineCachePayload>(
+        state_, detail::ObjectKind::pipeline_cache);
+    if (!value) {
+        return detail::invalid_object("pipeline cache");
+    }
+    return value->data;
+}
+
 ShaderStage Shader::stage() const {
     const auto value = detail::payload<detail::ShaderPayload>(
         state_, detail::ObjectKind::shader);
@@ -2665,6 +3921,14 @@ Status CommandList::begin() {
     value->state = CommandListState::recording;
     value->graphicsPipelineBound = false;
     value->computePipelineBound = false;
+    value->indexBufferBound = false;
+    value->viewportSet = true;
+    value->scissorSet = true;
+    value->blendConstantSet = true;
+    value->stencilReferenceSet = true;
+    value->depthBiasSet = true;
+    value->graphicsPipeline.reset();
+    value->computePipeline.reset();
     return Status::success();
 }
 
@@ -2702,8 +3966,20 @@ Status CommandList::reset() {
     value->owner = {};
     value->retained.clear();
     value->transfers.clear();
+    value->nativeCommands.clear();
     value->graphicsPipelineBound = false;
     value->computePipelineBound = false;
+    value->indexBufferBound = false;
+    value->viewportSet = true;
+    value->scissorSet = true;
+    value->blendConstantSet = true;
+    value->stencilReferenceSet = true;
+    value->depthBiasSet = true;
+    value->graphicsPipeline.reset();
+    value->computePipeline.reset();
+    value->renderColorFormats.clear();
+    value->renderDepthStencilFormat = TextureFormat::unknown;
+    value->renderSampleCount = 1;
     return Status::success();
 }
 
@@ -2723,11 +3999,19 @@ Result<RenderEncoder> CommandList::begin_rendering(const RenderPassDesc& desc) {
         return Status::failure(StatusCode::invalid_argument,
                                "render extent must be non-zero");
     }
-    std::vector<std::shared_ptr<void>> attachments;
-    attachments.reserve(desc.colorAttachments.size());
+    detail::NativeCommand command;
+    command.kind = detail::NativeCommandKind::begin_render;
+    command.extent = desc.extent;
+    command.colorAttachments.reserve(desc.colorAttachments.size());
+    value->renderColorFormats.clear();
+    value->renderColorFormats.reserve(desc.colorAttachments.size());
+    value->renderDepthStencilFormat = TextureFormat::unknown;
+    value->renderSampleCount = 1;
+    bool sampleCountSet = false;
     for (const auto& attachment : desc.colorAttachments) {
         if (attachment.texture == nullptr) {
-            continue;
+            return Status::failure(StatusCode::invalid_argument,
+                                   "render color attachment is null");
         }
         if (!attachment.texture->valid() ||
             attachment.texture->state_->runtime.get() != state_->runtime.get()) {
@@ -2735,17 +4019,102 @@ Result<RenderEncoder> CommandList::begin_rendering(const RenderPassDesc& desc) {
                 StatusCode::invalid_argument,
                 "render attachments must belong to the command-list runtime");
         }
-        auto retained = state_->runtime->retain(
+        auto texture = state_->runtime->resolve<detail::TexturePayload>(
             detail::ObjectKind::texture, attachment.texture->state_->handle);
-        if (!retained) {
-            return detail::invalid_object("render attachment");
+        if (!texture ||
+            !has_usage(texture->desc.usage, TextureUsage::color_attachment) ||
+            desc.extent.width > texture->desc.extent.width ||
+            desc.extent.height > texture->desc.extent.height) {
+            return Status::failure(
+                StatusCode::invalid_argument,
+                "render color attachment usage or extent is invalid");
         }
-        attachments.push_back(std::move(retained));
+        if (sampleCountSet && value->renderSampleCount != texture->desc.sampleCount) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "render attachments have unequal sample counts");
+        }
+        value->renderSampleCount = texture->desc.sampleCount;
+        sampleCountSet = true;
+        detail::NativeRenderAttachment nativeAttachment{
+            .texture = texture->native,
+            .loadOp = attachment.loadOp,
+            .storeOp = attachment.storeOp,
+            .clear = attachment.clear,
+        };
+        value->retained.push_back(texture);
+        value->renderColorFormats.push_back(texture->desc.format);
+        if (attachment.resolveTexture != nullptr) {
+            if (!attachment.resolveTexture->valid() ||
+                attachment.resolveTexture->state_->runtime.get() !=
+                    state_->runtime.get()) {
+                return Status::failure(
+                    StatusCode::invalid_argument,
+                    "resolve attachment belongs to another runtime");
+            }
+            auto resolve = state_->runtime->resolve<detail::TexturePayload>(
+                detail::ObjectKind::texture,
+                attachment.resolveTexture->state_->handle);
+            if (!resolve || texture->desc.sampleCount <= 1 ||
+                resolve->desc.sampleCount != 1 ||
+                resolve->desc.format != texture->desc.format ||
+                !has_usage(resolve->desc.usage,
+                           TextureUsage::color_attachment) ||
+                desc.extent.width > resolve->desc.extent.width ||
+                desc.extent.height > resolve->desc.extent.height) {
+                return Status::failure(StatusCode::invalid_argument,
+                                       "resolve attachment is incompatible");
+            }
+            nativeAttachment.resolveTexture = resolve->native;
+            value->retained.push_back(std::move(resolve));
+        }
+        command.colorAttachments.push_back(std::move(nativeAttachment));
     }
-    value->retained.insert(value->retained.end(), attachments.begin(),
-                           attachments.end());
+    if (desc.depthStencilAttachment.texture != nullptr) {
+        auto* attachment = desc.depthStencilAttachment.texture;
+        if (!attachment->valid() ||
+            attachment->state_->runtime.get() != state_->runtime.get()) {
+            return Status::failure(
+                StatusCode::invalid_argument,
+                "depth-stencil attachment belongs to another runtime");
+        }
+        auto texture = state_->runtime->resolve<detail::TexturePayload>(
+            detail::ObjectKind::texture, attachment->state_->handle);
+        if (!texture ||
+            !has_usage(texture->desc.usage,
+                       TextureUsage::depth_stencil_attachment) ||
+            desc.extent.width > texture->desc.extent.width ||
+            desc.extent.height > texture->desc.extent.height ||
+            (sampleCountSet &&
+             value->renderSampleCount != texture->desc.sampleCount)) {
+            return Status::failure(
+                StatusCode::invalid_argument,
+                "depth-stencil attachment usage, extent, or samples are invalid");
+        }
+        value->renderSampleCount = texture->desc.sampleCount;
+        value->renderDepthStencilFormat = texture->desc.format;
+        const auto& depth = desc.depthStencilAttachment;
+        command.depthStencilAttachment = {
+            .texture = texture->native,
+            .depthLoadOp = depth.depthLoadOp,
+            .depthStoreOp = depth.depthStoreOp,
+            .clearDepth = depth.clearDepth,
+            .stencilLoadOp = depth.stencilLoadOp,
+            .stencilStoreOp = depth.stencilStoreOp,
+            .clearStencil = depth.clearStencil,
+        };
+        value->retained.push_back(std::move(texture));
+    }
+    if (value->renderColorFormats.empty() &&
+        value->renderDepthStencilFormat == TextureFormat::unknown &&
+        !state_->runtime->config.logicalResources) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "native render pass requires an attachment");
+    }
+    value->nativeCommands.push_back(std::move(command));
     value->activeEncoder = 1;
     value->graphicsPipelineBound = false;
+    value->indexBufferBound = false;
+    value->graphicsPipeline.reset();
     return RenderEncoder{*this};
 }
 
@@ -2763,6 +4132,10 @@ Result<ComputeEncoder> CommandList::begin_compute() {
     }
     value->activeEncoder = 2;
     value->computePipelineBound = false;
+    value->computePipeline.reset();
+    value->nativeCommands.push_back({
+        .kind = detail::NativeCommandKind::begin_compute,
+    });
     return ComputeEncoder{*this};
 }
 
@@ -2801,14 +4174,47 @@ Status CommandList::encoder_command(std::uint32_t opcode, ObjectId object,
     }
     switch (opcode) {
     case 1: {
-        auto retained = state_->runtime->retain(detail::ObjectKind::pipeline,
-                                                object.value);
-        if (!retained || value->activeEncoder != 1) {
+        auto pipeline = state_->runtime->resolve<detail::PipelinePayload>(
+            detail::ObjectKind::pipeline, object.value);
+        if (!pipeline || value->activeEncoder != 1) {
             return Status::failure(StatusCode::invalid_argument,
                                    "graphics pipeline is invalid for encoder");
         }
-        value->retained.push_back(std::move(retained));
+        if (pipeline->desc.colorTargets.size() !=
+                value->renderColorFormats.size() ||
+            pipeline->desc.multisample.sampleCount != value->renderSampleCount ||
+            pipeline->desc.depthStencil.format !=
+                value->renderDepthStencilFormat) {
+            return Status::failure(
+                StatusCode::invalid_argument,
+                "graphics pipeline attachments do not match the render pass");
+        }
+        for (std::size_t index = 0; index < value->renderColorFormats.size();
+             ++index) {
+            if (pipeline->desc.colorTargets[index].format !=
+                value->renderColorFormats[index]) {
+                return Status::failure(
+                    StatusCode::invalid_argument,
+                    "graphics pipeline color format does not match render pass");
+            }
+        }
+        value->retained.push_back(pipeline);
         value->graphicsPipelineBound = true;
+        value->graphicsPipeline = pipeline;
+        value->viewportSet = !has_dynamic_state(
+            pipeline->desc.dynamicState, DynamicState::viewport);
+        value->scissorSet = !has_dynamic_state(
+            pipeline->desc.dynamicState, DynamicState::scissor);
+        value->blendConstantSet = !has_dynamic_state(
+            pipeline->desc.dynamicState, DynamicState::blend_constant);
+        value->stencilReferenceSet = !has_dynamic_state(
+            pipeline->desc.dynamicState, DynamicState::stencil_reference);
+        value->depthBiasSet = !has_dynamic_state(
+            pipeline->desc.dynamicState, DynamicState::depth_bias);
+        value->nativeCommands.push_back({
+            .kind = detail::NativeCommandKind::bind_graphics_pipeline,
+            .object = pipeline->native,
+        });
         break;
     }
     case 2:
@@ -2816,23 +4222,78 @@ Status CommandList::encoder_command(std::uint32_t opcode, ObjectId object,
     case 5:
     case 7:
     case 8: {
-        auto retained = state_->runtime->retain(detail::ObjectKind::buffer,
-                                                object.value);
-        if (!retained) {
+        auto buffer = state_->runtime->resolve<detail::BufferPayload>(
+            detail::ObjectKind::buffer, object.value);
+        if (!buffer) {
             return detail::invalid_object("buffer");
         }
-        value->retained.push_back(std::move(retained));
+        detail::NativeCommand command;
+        command.object = buffer->native;
+        if (opcode == 2) {
+            if (arg1 >= buffer->desc.size || value->activeEncoder != 1 ||
+                !has_usage(buffer->desc.usage, BufferUsage::vertex)) {
+                return Status::failure(StatusCode::invalid_argument,
+                                       "vertex buffer usage is invalid");
+            }
+            command.kind = detail::NativeCommandKind::bind_vertex_buffer;
+            command.arguments[0] = arg0;
+            command.arguments[1] = arg1;
+        } else if (opcode == 3) {
+            if (arg1 >= buffer->desc.size || value->activeEncoder != 1 ||
+                !has_usage(buffer->desc.usage, BufferUsage::uniform)) {
+                return Status::failure(StatusCode::invalid_argument,
+                                       "uniform buffer usage is invalid");
+            }
+            command.kind = detail::NativeCommandKind::bind_uniform_buffer;
+            command.arguments[0] = arg0;
+            command.arguments[1] = arg1;
+        } else if (opcode == 5 && value->activeEncoder == 1) {
+            if (arg0 >= buffer->desc.size ||
+                !has_usage(buffer->desc.usage, BufferUsage::index)) {
+                return Status::failure(StatusCode::invalid_argument,
+                                       "index buffer usage is invalid");
+            }
+            command.kind = detail::NativeCommandKind::bind_index_buffer;
+            command.arguments[0] = arg0;
+            command.arguments[1] = arg1;
+            value->indexBufferBound = true;
+        } else if (opcode == 5 && value->activeEncoder == 2) {
+            if (arg1 >= buffer->desc.size ||
+                !has_usage(buffer->desc.usage, BufferUsage::storage)) {
+                return Status::failure(StatusCode::invalid_argument,
+                                       "storage buffer usage is invalid");
+            }
+            command.kind = detail::NativeCommandKind::bind_storage_buffer;
+            command.arguments[0] = arg0;
+            command.arguments[1] = arg1;
+        } else {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "buffer command is invalid for encoder");
+        }
+        value->retained.push_back(buffer);
+        value->nativeCommands.push_back(std::move(command));
         break;
     }
     case 4: {
-        auto retained = state_->runtime->retain(
+        auto pipeline = state_->runtime->resolve<detail::ComputePipelinePayload>(
             detail::ObjectKind::compute_pipeline, object.value);
-        if (!retained || value->activeEncoder != 2) {
+        if (!pipeline || value->activeEncoder != 2) {
             return Status::failure(StatusCode::invalid_argument,
                                    "compute pipeline is invalid for encoder");
         }
-        value->retained.push_back(std::move(retained));
+        value->retained.push_back(pipeline);
         value->computePipelineBound = true;
+        value->computePipeline = pipeline;
+        value->nativeCommands.push_back({
+            .kind = detail::NativeCommandKind::bind_compute_pipeline,
+            .object = pipeline->native,
+            .arguments = {pipeline->requiredWorkgroupSize.width,
+                          pipeline->requiredWorkgroupSize.height,
+                          pipeline->requiredWorkgroupSize.depth,
+                          pipeline->preferredWorkgroupSize.width,
+                          pipeline->preferredWorkgroupSize.height,
+                          pipeline->preferredWorkgroupSize.depth},
+        });
         break;
     }
     case 6:
@@ -2843,6 +4304,10 @@ Status CommandList::encoder_command(std::uint32_t opcode, ObjectId object,
         }
         state_->runtime->update_stats(
             [](BackendStats& stats) { ++stats.drawsRecorded; });
+        value->nativeCommands.push_back({
+            .kind = detail::NativeCommandKind::draw,
+            .arguments = {arg0, arg1},
+        });
         break;
     case 9:
         if (value->activeEncoder != 2 || !value->computePipelineBound ||
@@ -2852,6 +4317,10 @@ Status CommandList::encoder_command(std::uint32_t opcode, ObjectId object,
         }
         state_->runtime->update_stats(
             [](BackendStats& stats) { ++stats.dispatchesRecorded; });
+        value->nativeCommands.push_back({
+            .kind = detail::NativeCommandKind::dispatch,
+            .arguments = {arg0, arg1, 1},
+        });
         break;
     default:
         return Status::failure(StatusCode::invalid_argument,
@@ -2871,6 +4340,15 @@ Status CommandList::end_encoder(std::uint32_t encoderKind) {
         value->activeEncoder != encoderKind) {
         return Status::failure(StatusCode::invalid_state,
                                "encoder end does not match active encoder");
+    }
+    if (encoderKind == 1) {
+        value->nativeCommands.push_back({
+            .kind = detail::NativeCommandKind::end_render,
+        });
+    } else if (encoderKind == 2) {
+        value->nativeCommands.push_back({
+            .kind = detail::NativeCommandKind::end_compute,
+        });
     }
     value->activeEncoder = 0;
     return Status::success();
@@ -2963,15 +4441,449 @@ Status RenderEncoder::bind_index_buffer(Buffer& buffer, std::size_t offset,
                                   static_cast<std::uint64_t>(format));
 }
 
+namespace detail {
+
+[[nodiscard]] Status record_bind_group(
+    ObjectState& state, std::uint32_t encoderKind, std::uint32_t group,
+    Handle bindGroupHandle, std::span<const std::uint32_t> dynamicOffsets) {
+    const auto list = state.runtime->resolve<CommandListPayload>(
+        ObjectKind::command_list, state.handle);
+    const auto bindGroup = state.runtime->resolve<BindGroupPayload>(
+        ObjectKind::bind_group, bindGroupHandle);
+    if (!list || !bindGroup || !bindGroup->arena || !bindGroup->layout) {
+        return invalid_object("bind group");
+    }
+    std::lock_guard listLock{list->mutex};
+    if (list->owner != std::this_thread::get_id() ||
+        list->state != CommandListState::recording ||
+        list->activeEncoder != encoderKind) {
+        return Status::failure(StatusCode::invalid_state,
+                               "bind group requires an active owned encoder");
+    }
+    {
+        std::lock_guard arenaLock{bindGroup->arena->mutex};
+        if (bindGroup->arenaEpoch != bindGroup->arena->epoch) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "bind group was retired by an arena reset");
+        }
+    }
+    const auto pipelineLayout =
+        encoderKind == 1 && list->graphicsPipeline
+            ? list->graphicsPipeline->layout
+            : encoderKind == 2 && list->computePipeline
+                  ? list->computePipeline->layout
+                  : std::shared_ptr<PipelineLayoutPayload>{};
+    if (!pipelineLayout || group != bindGroup->layout->desc.group) {
+        return Status::failure(StatusCode::invalid_state,
+                               "bind group requires a compatible bound pipeline");
+    }
+    const auto expectedLayout = std::find_if(
+        pipelineLayout->layoutHandles.begin(), pipelineLayout->layoutHandles.end(),
+        [&](Handle handle) { return handle == bindGroup->layoutHandle; });
+    if (expectedLayout == pipelineLayout->layoutHandles.end()) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "bind group layout does not match pipeline layout");
+    }
+
+    std::vector<const BoundResource*> ordered;
+    ordered.reserve(bindGroup->resources.size());
+    for (const auto& resource : bindGroup->resources) {
+        ordered.push_back(&resource);
+    }
+    std::sort(ordered.begin(), ordered.end(), [](const auto* lhs, const auto* rhs) {
+        return std::pair{lhs->entry.binding, lhs->entry.arrayElement} <
+               std::pair{rhs->entry.binding, rhs->entry.arrayElement};
+    });
+    std::size_t expectedDynamicOffsets = 0;
+    for (const auto* resource : ordered) {
+        const auto* layoutEntry =
+            find_layout_entry(*bindGroup->layout, resource->entry.binding);
+        if (layoutEntry != nullptr && layoutEntry->dynamicOffset) {
+            ++expectedDynamicOffsets;
+        }
+    }
+    if (dynamicOffsets.size() != expectedDynamicOffsets) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "bind group dynamic-offset count is invalid");
+    }
+
+    NativeCommand command;
+    command.kind = NativeCommandKind::bind_group;
+    command.arguments[0] = group;
+    command.bindings.reserve(bindGroup->resources.size() +
+                             bindGroup->layout->immutableSamplers.size());
+    std::size_t dynamicIndex = 0;
+    for (const auto* resource : ordered) {
+        const auto* layoutEntry =
+            find_layout_entry(*bindGroup->layout, resource->entry.binding);
+        if (layoutEntry == nullptr) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "bind group layout entry disappeared");
+        }
+        std::size_t effectiveOffset = resource->entry.offset;
+        if (layoutEntry->dynamicOffset) {
+            const auto dynamicOffset = dynamicOffsets[dynamicIndex++];
+            const auto alignment =
+                layoutEntry->type == BindingType::uniform_buffer
+                    ? state.runtime->config.bindingCapabilities
+                          .minUniformBufferOffsetAlignment
+                    : state.runtime->config.bindingCapabilities
+                          .minStorageBufferOffsetAlignment;
+            if (alignment == 0 || dynamicOffset % alignment != 0 ||
+                effectiveOffset >
+                    std::numeric_limits<std::size_t>::max() - dynamicOffset) {
+                return Status::failure(StatusCode::invalid_argument,
+                                       "dynamic buffer offset is misaligned");
+            }
+            effectiveOffset += dynamicOffset;
+            if (!resource->buffer ||
+                !buffer_range_valid(*resource->buffer, effectiveOffset,
+                                    resource->entry.size)) {
+                return Status::failure(StatusCode::invalid_argument,
+                                       "dynamic buffer offset exceeds allocation");
+            }
+        }
+        NativeBindingResource native{
+            .group = group,
+            .binding = resource->entry.binding,
+            .arrayElement = resource->entry.arrayElement,
+            .type = resource->type,
+            .visibility = layoutEntry->visibility,
+            .offset = effectiveOffset,
+            .size = resource->entry.size,
+        };
+        if (resource->buffer) {
+            native.resource = resource->buffer->native;
+        } else if (resource->textureView) {
+            native.resource = resource->textureView->native;
+        } else if (resource->sampler) {
+            native.resource = resource->sampler->native;
+        }
+        command.bindings.push_back(std::move(native));
+    }
+    for (const auto& [binding, sampler] :
+         bindGroup->layout->immutableSamplers) {
+        const auto* entry = find_layout_entry(*bindGroup->layout, binding);
+        if (entry == nullptr || !sampler) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "immutable sampler mapping is incomplete");
+        }
+        command.bindings.push_back({
+            .group = group,
+            .binding = binding,
+            .type = BindingType::sampler,
+            .visibility = entry->visibility,
+            .resource = sampler->native,
+        });
+    }
+    list->retained.push_back(bindGroup);
+    list->nativeCommands.push_back(std::move(command));
+    return Status::success();
+}
+
+[[nodiscard]] bool push_constant_range_covers(
+    const PipelineLayoutPayload& layout, ShaderStageMask stages,
+    std::uint32_t offset, std::size_t size) {
+    const auto end = static_cast<std::uint64_t>(offset) + size;
+    for (const auto stage : {ShaderStage::vertex, ShaderStage::fragment,
+                             ShaderStage::compute}) {
+        const auto mask = shader_stage_mask(stage);
+        if (!has_stage(stages, mask)) {
+            continue;
+        }
+        const auto found = std::find_if(
+            layout.desc.pushConstants.begin(), layout.desc.pushConstants.end(),
+            [&](const PushConstantRange& range) {
+                return range.stage == stage && range.offset <= offset &&
+                       end <= static_cast<std::uint64_t>(range.offset) +
+                                  range.size;
+            });
+        if (found == layout.desc.pushConstants.end()) {
+            return false;
+        }
+    }
+    return true;
+}
+
+[[nodiscard]] Status record_push_constants(
+    ObjectState& state, std::uint32_t encoderKind, ShaderStageMask stages,
+    std::uint32_t offset, std::span<const std::byte> data) {
+    const auto list = state.runtime->resolve<CommandListPayload>(
+        ObjectKind::command_list, state.handle);
+    if (!list) {
+        return invalid_object("command list");
+    }
+    std::lock_guard lock{list->mutex};
+    if (list->owner != std::this_thread::get_id() ||
+        list->state != CommandListState::recording ||
+        list->activeEncoder != encoderKind || data.empty() ||
+        stages == ShaderStageMask::none || offset % 4 != 0 ||
+        data.size() % 4 != 0) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "push-constant command is invalid");
+    }
+    const auto layout =
+        encoderKind == 1 && list->graphicsPipeline
+            ? list->graphicsPipeline->layout
+            : encoderKind == 2 && list->computePipeline
+                  ? list->computePipeline->layout
+                  : std::shared_ptr<PipelineLayoutPayload>{};
+    if (!layout || !push_constant_range_covers(*layout, stages, offset,
+                                               data.size())) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "push constants exceed pipeline layout ranges");
+    }
+    NativeCommand command;
+    command.kind = NativeCommandKind::push_constants;
+    command.arguments[0] = static_cast<std::uint32_t>(stages);
+    command.arguments[1] = offset;
+    command.bytes.assign(data.begin(), data.end());
+    list->nativeCommands.push_back(std::move(command));
+    return Status::success();
+}
+
+[[nodiscard]] Status record_draw(ObjectState& state, NativeCommand command,
+                                 bool indexed) {
+    const auto list = state.runtime->resolve<CommandListPayload>(
+        ObjectKind::command_list, state.handle);
+    if (!list) {
+        return invalid_object("command list");
+    }
+    std::lock_guard lock{list->mutex};
+    if (list->owner != std::this_thread::get_id() ||
+        list->state != CommandListState::recording || list->activeEncoder != 1 ||
+        !list->graphicsPipelineBound ||
+        (indexed && !list->indexBufferBound) || command.arguments[0] == 0 ||
+        command.arguments[1] == 0 || !list->viewportSet || !list->scissorSet ||
+        !list->blendConstantSet || !list->stencilReferenceSet ||
+        !list->depthBiasSet) {
+        return Status::failure(StatusCode::invalid_state,
+                               "draw requires complete bound state and non-zero counts");
+    }
+    list->nativeCommands.push_back(std::move(command));
+    state.runtime->update_stats(
+        [](BackendStats& stats) { ++stats.drawsRecorded; });
+    return Status::success();
+}
+
+[[nodiscard]] Status record_dispatch(ObjectState& state,
+                                     NativeCommand command) {
+    const auto list = state.runtime->resolve<CommandListPayload>(
+        ObjectKind::command_list, state.handle);
+    if (!list) {
+        return invalid_object("command list");
+    }
+    std::lock_guard lock{list->mutex};
+    if (list->owner != std::this_thread::get_id() ||
+        list->state != CommandListState::recording || list->activeEncoder != 2 ||
+        !list->computePipelineBound || command.arguments[0] == 0 ||
+        command.arguments[1] == 0 || command.arguments[2] == 0) {
+        return Status::failure(
+            StatusCode::invalid_state,
+            "dispatch requires a bound pipeline and non-zero group counts");
+    }
+    list->nativeCommands.push_back(std::move(command));
+    state.runtime->update_stats(
+        [](BackendStats& stats) { ++stats.dispatchesRecorded; });
+    return Status::success();
+}
+
+} // namespace detail
+
+Status RenderEncoder::bind_group(
+    std::uint32_t group, BindGroup& bindGroup,
+    std::span<const std::uint32_t> dynamicOffsets) {
+    if (!active_ || list_ == nullptr || !bindGroup.valid() ||
+        bindGroup.state_->runtime.get() != list_->state_->runtime.get()) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "bind group belongs to another runtime or is stale");
+    }
+    return detail::record_bind_group(*list_->state_, 1, group,
+                                     bindGroup.state_->handle, dynamicOffsets);
+}
+
+Status RenderEncoder::push_constants(ShaderStageMask stages,
+                                     std::uint32_t offset,
+                                     std::span<const std::byte> data) {
+    if (!active_ || list_ == nullptr ||
+        has_stage(stages, ShaderStageMask::compute)) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "render push-constant stages are invalid");
+    }
+    return detail::record_push_constants(*list_->state_, 1, stages, offset,
+                                         data);
+}
+
+Status RenderEncoder::set_viewports(std::uint32_t first,
+                                    std::span<const Viewport> viewports) {
+    if (!active_ || list_ == nullptr || viewports.empty()) {
+        return detail::invalid_object("render encoder");
+    }
+    const auto list = detail::payload<detail::CommandListPayload>(
+        list_->state_, detail::ObjectKind::command_list);
+    if (!list) {
+        return detail::invalid_object("command list");
+    }
+    std::lock_guard lock{list->mutex};
+    if (list->owner != std::this_thread::get_id() || list->activeEncoder != 1 ||
+        !list->graphicsPipeline ||
+        !has_dynamic_state(list->graphicsPipeline->desc.dynamicState,
+                           DynamicState::viewport) ||
+        static_cast<std::uint64_t>(first) + viewports.size() >
+            list_->state_->runtime->config.pipelineCapabilities.maxViewports) {
+        return Status::failure(StatusCode::invalid_state,
+                               "dynamic viewports are unavailable for this pipeline");
+    }
+    for (const auto& viewport : viewports) {
+        if (viewport.width <= 0.0F || viewport.height <= 0.0F ||
+            viewport.minimumDepth < 0.0F || viewport.maximumDepth > 1.0F ||
+            viewport.minimumDepth > viewport.maximumDepth) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "viewport dimensions or depth range are invalid");
+        }
+    }
+    detail::NativeCommand command;
+    command.kind = detail::NativeCommandKind::set_viewports;
+    command.arguments[0] = first;
+    command.viewports.assign(viewports.begin(), viewports.end());
+    list->nativeCommands.push_back(std::move(command));
+    list->viewportSet = list->viewportSet || first == 0;
+    return Status::success();
+}
+
+Status RenderEncoder::set_scissors(std::uint32_t first,
+                                   std::span<const ScissorRect> scissors) {
+    if (!active_ || list_ == nullptr || scissors.empty()) {
+        return detail::invalid_object("render encoder");
+    }
+    const auto list = detail::payload<detail::CommandListPayload>(
+        list_->state_, detail::ObjectKind::command_list);
+    if (!list) {
+        return detail::invalid_object("command list");
+    }
+    std::lock_guard lock{list->mutex};
+    if (list->owner != std::this_thread::get_id() || list->activeEncoder != 1 ||
+        !list->graphicsPipeline ||
+        !has_dynamic_state(list->graphicsPipeline->desc.dynamicState,
+                           DynamicState::scissor) ||
+        static_cast<std::uint64_t>(first) + scissors.size() >
+            list_->state_->runtime->config.pipelineCapabilities.maxViewports) {
+        return Status::failure(StatusCode::invalid_state,
+                               "dynamic scissors are unavailable for this pipeline");
+    }
+    for (const auto& scissor : scissors) {
+        if (scissor.x < 0 || scissor.y < 0 || scissor.width == 0 ||
+            scissor.height == 0) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "scissor rectangle is invalid");
+        }
+    }
+    detail::NativeCommand command;
+    command.kind = detail::NativeCommandKind::set_scissors;
+    command.arguments[0] = first;
+    command.scissors.assign(scissors.begin(), scissors.end());
+    list->nativeCommands.push_back(std::move(command));
+    list->scissorSet = list->scissorSet || first == 0;
+    return Status::success();
+}
+
+Status RenderEncoder::set_blend_constant(
+    const std::array<float, 4>& color) {
+    if (!active_ || list_ == nullptr ||
+        !std::all_of(color.begin(), color.end(),
+                     [](float component) { return std::isfinite(component); })) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "blend constant is invalid");
+    }
+    const auto list = detail::payload<detail::CommandListPayload>(
+        list_->state_, detail::ObjectKind::command_list);
+    if (!list) {
+        return detail::invalid_object("command list");
+    }
+    std::lock_guard lock{list->mutex};
+    if (list->owner != std::this_thread::get_id() || list->activeEncoder != 1 ||
+        !list->graphicsPipeline ||
+        !has_dynamic_state(list->graphicsPipeline->desc.dynamicState,
+                           DynamicState::blend_constant)) {
+        return Status::failure(StatusCode::invalid_state,
+                               "dynamic blend constant is unavailable");
+    }
+    detail::NativeCommand command;
+    command.kind = detail::NativeCommandKind::set_blend_constant;
+    const auto bytes = std::as_bytes(std::span{color});
+    command.bytes.assign(bytes.begin(), bytes.end());
+    list->nativeCommands.push_back(std::move(command));
+    list->blendConstantSet = true;
+    return Status::success();
+}
+
+Status RenderEncoder::set_stencil_reference(std::uint32_t reference) {
+    if (!active_ || list_ == nullptr) {
+        return detail::invalid_object("render encoder");
+    }
+    const auto list = detail::payload<detail::CommandListPayload>(
+        list_->state_, detail::ObjectKind::command_list);
+    if (!list) {
+        return detail::invalid_object("command list");
+    }
+    std::lock_guard lock{list->mutex};
+    if (list->owner != std::this_thread::get_id() || list->activeEncoder != 1 ||
+        !list->graphicsPipeline ||
+        !has_dynamic_state(list->graphicsPipeline->desc.dynamicState,
+                           DynamicState::stencil_reference)) {
+        return Status::failure(StatusCode::invalid_state,
+                               "dynamic stencil reference is unavailable");
+    }
+    list->nativeCommands.push_back({
+        .kind = detail::NativeCommandKind::set_stencil_reference,
+        .arguments = {reference},
+    });
+    list->stencilReferenceSet = true;
+    return Status::success();
+}
+
+Status RenderEncoder::set_depth_bias(float constantFactor, float slopeScale,
+                                     float clamp) {
+    if (!active_ || list_ == nullptr || !std::isfinite(constantFactor) ||
+        !std::isfinite(slopeScale) || !std::isfinite(clamp)) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "depth bias is invalid");
+    }
+    const auto list = detail::payload<detail::CommandListPayload>(
+        list_->state_, detail::ObjectKind::command_list);
+    if (!list) {
+        return detail::invalid_object("command list");
+    }
+    std::lock_guard lock{list->mutex};
+    if (list->owner != std::this_thread::get_id() || list->activeEncoder != 1 ||
+        !list->graphicsPipeline ||
+        !has_dynamic_state(list->graphicsPipeline->desc.dynamicState,
+                           DynamicState::depth_bias)) {
+        return Status::failure(StatusCode::invalid_state,
+                               "dynamic depth bias is unavailable");
+    }
+    detail::NativeCommand command;
+    command.kind = detail::NativeCommandKind::set_depth_bias;
+    const std::array<float, 3> values{constantFactor, slopeScale, clamp};
+    const auto bytes = std::as_bytes(std::span{values});
+    command.bytes.assign(bytes.begin(), bytes.end());
+    list->nativeCommands.push_back(std::move(command));
+    list->depthBiasSet = true;
+    return Status::success();
+}
+
 Status RenderEncoder::draw(std::uint32_t vertexCount,
                            std::uint32_t instanceCount,
                            std::uint32_t firstVertex,
                            std::uint32_t firstInstance) {
-    (void)firstVertex;
-    (void)firstInstance;
-    return active_ && list_
-               ? list_->encoder_command(6, {}, vertexCount, instanceCount)
-               : detail::invalid_object("render encoder");
+    if (!active_ || list_ == nullptr) {
+        return detail::invalid_object("render encoder");
+    }
+    return detail::record_draw(
+        *list_->state_,
+        {.kind = detail::NativeCommandKind::draw,
+         .arguments = {vertexCount, instanceCount, firstVertex, firstInstance}},
+        false);
 }
 
 Status RenderEncoder::draw_indexed(std::uint32_t indexCount,
@@ -2979,21 +4891,116 @@ Status RenderEncoder::draw_indexed(std::uint32_t indexCount,
                                    std::uint32_t firstIndex,
                                    std::int32_t vertexOffset,
                                    std::uint32_t firstInstance) {
-    (void)firstIndex;
-    (void)vertexOffset;
-    (void)firstInstance;
-    return draw(indexCount, instanceCount);
+    if (!active_ || list_ == nullptr) {
+        return detail::invalid_object("render encoder");
+    }
+    return detail::record_draw(
+        *list_->state_,
+        {.kind = detail::NativeCommandKind::draw_indexed,
+         .arguments = {indexCount, instanceCount, firstIndex,
+                       static_cast<std::uint32_t>(vertexOffset), firstInstance}},
+        true);
 }
 
 Status RenderEncoder::draw_indirect(Buffer& buffer, std::size_t offset,
-                                    bool indexed) {
-    if (auto status = bind_index_buffer(buffer, offset,
-                                        indexed ? IndexFormat::uint32
-                                                : IndexFormat::uint16);
-        !status.ok()) {
-        return status;
+                                    bool indexed, std::uint32_t drawCount,
+                                    std::uint32_t stride) {
+    if (!active_ || list_ == nullptr || !buffer.valid() ||
+        buffer.state_->runtime.get() != list_->state_->runtime.get()) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "indirect buffer belongs to another runtime");
     }
-    return draw(1, 1);
+    const auto indirect = detail::payload<detail::BufferPayload>(
+        buffer.state_, detail::ObjectKind::buffer);
+    const auto list = detail::payload<detail::CommandListPayload>(
+        list_->state_, detail::ObjectKind::command_list);
+    if (!indirect || !list) {
+        return detail::invalid_object("indirect draw resource");
+    }
+    const auto commandSize = indexed ? std::size_t{20} : std::size_t{16};
+    const auto effectiveStride = stride == 0 ? commandSize : stride;
+    std::lock_guard lock{list->mutex};
+    if (!list_->state_->runtime->config.pipelineCapabilities.indirect) {
+        return detail::unsupported(*list_->state_->runtime, "indirect drawing");
+    }
+    if (list->owner != std::this_thread::get_id() || list->activeEncoder != 1 ||
+        !list->graphicsPipelineBound || (indexed && !list->indexBufferBound) ||
+        !list->viewportSet || !list->scissorSet || !list->blendConstantSet ||
+        !list->stencilReferenceSet || !list->depthBiasSet ||
+        !has_usage(indirect->desc.usage, BufferUsage::indirect) ||
+        drawCount == 0 || offset % 4 != 0 || effectiveStride < commandSize ||
+        effectiveStride % 4 != 0 || offset > indirect->desc.size ||
+        commandSize > indirect->desc.size - offset ||
+        static_cast<std::size_t>(drawCount - 1) >
+            (indirect->desc.size - offset - commandSize) / effectiveStride) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "indirect draw range or state is invalid");
+    }
+    list->retained.push_back(indirect);
+    list->nativeCommands.push_back({
+        .kind = detail::NativeCommandKind::draw_indirect,
+        .object = indirect->native,
+        .arguments = {offset, indexed ? 1u : 0u, drawCount, effectiveStride},
+    });
+    list_->state_->runtime->update_stats(
+        [](BackendStats& stats) { ++stats.drawsRecorded; });
+    return Status::success();
+}
+
+Status RenderEncoder::draw_indirect_count(
+    Buffer& buffer, std::size_t offset, Buffer& countBuffer,
+    std::size_t countOffset, std::uint32_t maximumDrawCount,
+    std::uint32_t stride, bool indexed) {
+    if (!active_ || list_ == nullptr || !buffer.valid() ||
+        !countBuffer.valid() ||
+        buffer.state_->runtime.get() != list_->state_->runtime.get() ||
+        countBuffer.state_->runtime.get() != list_->state_->runtime.get()) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "indirect-count buffers belong to another runtime");
+    }
+    const auto indirect = detail::payload<detail::BufferPayload>(
+        buffer.state_, detail::ObjectKind::buffer);
+    const auto count = detail::payload<detail::BufferPayload>(
+        countBuffer.state_, detail::ObjectKind::buffer);
+    const auto list = detail::payload<detail::CommandListPayload>(
+        list_->state_, detail::ObjectKind::command_list);
+    if (!indirect || !count || !list) {
+        return detail::invalid_object("indirect-count draw resource");
+    }
+    const auto commandSize = indexed ? std::size_t{20} : std::size_t{16};
+    const auto effectiveStride = stride == 0 ? commandSize : stride;
+    std::lock_guard lock{list->mutex};
+    if (!list_->state_->runtime->config.pipelineCapabilities.indirectCount) {
+        return detail::unsupported(*list_->state_->runtime,
+                                   "indirect-count drawing");
+    }
+    if (list->owner != std::this_thread::get_id() || list->activeEncoder != 1 ||
+        !list->graphicsPipelineBound || (indexed && !list->indexBufferBound) ||
+        !list->viewportSet || !list->scissorSet || !list->blendConstantSet ||
+        !list->stencilReferenceSet || !list->depthBiasSet ||
+        !has_usage(indirect->desc.usage, BufferUsage::indirect) ||
+        !has_usage(count->desc.usage, BufferUsage::indirect) ||
+        maximumDrawCount == 0 || offset % 4 != 0 || countOffset % 4 != 0 ||
+        effectiveStride < commandSize || effectiveStride % 4 != 0 ||
+        !detail::buffer_range_valid(*count, countOffset, sizeof(std::uint32_t)) ||
+        offset > indirect->desc.size || commandSize > indirect->desc.size - offset ||
+        static_cast<std::size_t>(maximumDrawCount - 1) >
+            (indirect->desc.size - offset - commandSize) / effectiveStride) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "indirect-count draw range or state is invalid");
+    }
+    list->retained.push_back(indirect);
+    list->retained.push_back(count);
+    list->nativeCommands.push_back({
+        .kind = detail::NativeCommandKind::draw_indirect_count,
+        .object = indirect->native,
+        .secondaryObject = count->native,
+        .arguments = {offset, countOffset, maximumDrawCount, effectiveStride,
+                      indexed ? 1u : 0u},
+    });
+    list_->state_->runtime->update_stats(
+        [](BackendStats& stats) { ++stats.drawsRecorded; });
+    return Status::success();
 }
 
 Status RenderEncoder::end() {
@@ -3055,15 +5062,75 @@ Status ComputeEncoder::bind_storage_buffer(std::uint32_t slot, Buffer& buffer,
     return list_->encoder_command(5, buffer.id(), slot, offset);
 }
 
+Status ComputeEncoder::bind_group(
+    std::uint32_t group, BindGroup& bindGroup,
+    std::span<const std::uint32_t> dynamicOffsets) {
+    if (!active_ || list_ == nullptr || !bindGroup.valid() ||
+        bindGroup.state_->runtime.get() != list_->state_->runtime.get()) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "bind group belongs to another runtime or is stale");
+    }
+    return detail::record_bind_group(*list_->state_, 2, group,
+                                     bindGroup.state_->handle, dynamicOffsets);
+}
+
+Status ComputeEncoder::push_constants(std::uint32_t offset,
+                                      std::span<const std::byte> data) {
+    if (!active_ || list_ == nullptr) {
+        return detail::invalid_object("compute encoder");
+    }
+    return detail::record_push_constants(*list_->state_, 2,
+                                         ShaderStageMask::compute, offset,
+                                         data);
+}
+
 Status ComputeEncoder::dispatch(std::uint32_t x, std::uint32_t y,
                                 std::uint32_t z) {
-    if (z == 0) {
-        return Status::failure(StatusCode::invalid_argument,
-                               "dispatch group counts must be non-zero");
+    if (!active_ || list_ == nullptr) {
+        return detail::invalid_object("compute encoder");
     }
-    return active_ && list_
-               ? list_->encoder_command(9, {}, x, y)
-               : detail::invalid_object("compute encoder");
+    return detail::record_dispatch(
+        *list_->state_,
+        {.kind = detail::NativeCommandKind::dispatch,
+         .arguments = {x, y, z}});
+}
+
+Status ComputeEncoder::dispatch_indirect(Buffer& buffer, std::size_t offset) {
+    if (!active_ || list_ == nullptr || !buffer.valid() ||
+        buffer.state_->runtime.get() != list_->state_->runtime.get()) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "dispatch-indirect buffer belongs to another runtime");
+    }
+    const auto indirect = detail::payload<detail::BufferPayload>(
+        buffer.state_, detail::ObjectKind::buffer);
+    const auto list = detail::payload<detail::CommandListPayload>(
+        list_->state_, detail::ObjectKind::command_list);
+    if (!indirect || !list) {
+        return detail::invalid_object("dispatch-indirect resource");
+    }
+    std::lock_guard lock{list->mutex};
+    if (!list_->state_->runtime->config.pipelineCapabilities.indirect) {
+        return detail::unsupported(*list_->state_->runtime,
+                                   "indirect dispatch");
+    }
+    if (list->owner != std::this_thread::get_id() || list->activeEncoder != 2 ||
+        !list->computePipelineBound ||
+        !has_usage(indirect->desc.usage, BufferUsage::indirect) ||
+        offset % 4 != 0 ||
+        !detail::buffer_range_valid(*indirect, offset,
+                                    3 * sizeof(std::uint32_t))) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "dispatch-indirect range or state is invalid");
+    }
+    list->retained.push_back(indirect);
+    list->nativeCommands.push_back({
+        .kind = detail::NativeCommandKind::dispatch_indirect,
+        .object = indirect->native,
+        .arguments = {offset},
+    });
+    list_->state_->runtime->update_stats(
+        [](BackendStats& stats) { ++stats.dispatchesRecorded; });
+    return Status::success();
 }
 
 Status ComputeEncoder::end() {

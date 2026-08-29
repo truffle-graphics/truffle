@@ -22,7 +22,7 @@ regression can demote one pair without changing another backend or platform.
 | Implementation | Current platform | Kind | Current state | Evidence and limitation |
 |---|---|---|---|---|
 | Null validation | All CI hosts | Strict RHI 1 contract interpreter | validation-only | Generation, lifetime, state, threading, resource, synchronization, acquire, submit, and present tests; never reported as a GPU backend. |
-| Metal | macOS | Native Metal resource slice | `native_smoke` | Metal API validation runs native buffer and 2D texture allocation, view, mapped upload, buffer/texture copy, and deterministic readback proofs. Full pipeline output, synchronization, recovery, and presentation remain. |
+| Metal | macOS | Native Metal resource and pipeline slice | `native_smoke` | Metal API validation runs deterministic native resource round trips plus exact triangle, textured descriptor-array, depth/MRT/MSAA, indexed/instanced/indirect, and compute-to-render output proofs. Synchronization, recovery, presentation, and full conformance remain. |
 | Vulkan | Declared targets only | Explicitly unavailable | `source_only` | The factory returns `unsupported` and reports no adapter; no Vulkan headers, loader, device, or WSI are used yet. |
 | Direct3D | Declared targets only | Explicitly unavailable | `source_only` | The factory returns `unsupported` and reports no adapter; no D3D12/DXGI APIs or WARP execution exist yet. |
 | OpenGL | Declared targets only | Explicitly unavailable | `source_only` | The factory returns `unsupported` and reports no adapter; no GL loader, native context, or driver execution exists yet. |

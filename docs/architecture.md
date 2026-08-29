@@ -49,10 +49,10 @@ the cutover decision durable.
 - Null is a strict contract interpreter and negative-path oracle, not a GPU
   backend.
 - Metal is the only current implementation with native API calls. Its resource
-  slice allocates native buffers and selected 2D textures and proves buffer,
-  texture, and buffer-texture transfers through deterministic readback with
-  Metal API validation enabled. Unsupported shapes and operations remain
-  explicit capabilities rather than logical substitutes.
+  and pipeline slices allocate native buffers and selected 2D textures, compile
+  native shaders and pipeline state, and prove transfers plus exact graphics
+  and compute output with Metal API validation enabled. Unsupported shapes and
+  operations remain explicit capabilities rather than logical substitutes.
 - Vulkan, OpenGL, and Direct3D targets are explicitly unavailable and report no
   adapters. Their removed CPU simulators are not part of RHI 1.
 - WebGPU, OpenGL ES, and WebGL2 implementations do not yet exist.

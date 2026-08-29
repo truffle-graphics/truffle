@@ -182,6 +182,148 @@ private:
     explicit TextureView(std::unique_ptr<detail::ObjectState> state) noexcept;
     std::unique_ptr<detail::ObjectState> state_;
     friend struct detail::Factory;
+    friend class Device;
+};
+
+class Sampler {
+public:
+    Sampler() noexcept;
+    ~Sampler();
+    Sampler(Sampler&&) noexcept;
+    Sampler& operator=(Sampler&&) noexcept;
+    Sampler(const Sampler&) = delete;
+    Sampler& operator=(const Sampler&) = delete;
+
+    [[nodiscard]] bool valid() const noexcept;
+    [[nodiscard]] ObjectId id() const noexcept;
+    [[nodiscard]] SamplerDesc desc() const;
+
+private:
+    explicit Sampler(std::unique_ptr<detail::ObjectState> state) noexcept;
+    std::unique_ptr<detail::ObjectState> state_;
+    friend struct detail::Factory;
+    friend class Device;
+};
+
+class BindGroupLayout {
+public:
+    BindGroupLayout() noexcept;
+    ~BindGroupLayout();
+    BindGroupLayout(BindGroupLayout&&) noexcept;
+    BindGroupLayout& operator=(BindGroupLayout&&) noexcept;
+    BindGroupLayout(const BindGroupLayout&) = delete;
+    BindGroupLayout& operator=(const BindGroupLayout&) = delete;
+
+    [[nodiscard]] bool valid() const noexcept;
+    [[nodiscard]] ObjectId id() const noexcept;
+
+private:
+    explicit BindGroupLayout(
+        std::unique_ptr<detail::ObjectState> state) noexcept;
+    std::unique_ptr<detail::ObjectState> state_;
+    friend struct detail::Factory;
+    friend class Device;
+};
+
+class DescriptorArena {
+public:
+    DescriptorArena() noexcept;
+    ~DescriptorArena();
+    DescriptorArena(DescriptorArena&&) noexcept;
+    DescriptorArena& operator=(DescriptorArena&&) noexcept;
+    DescriptorArena(const DescriptorArena&) = delete;
+    DescriptorArena& operator=(const DescriptorArena&) = delete;
+
+    [[nodiscard]] bool valid() const noexcept;
+    [[nodiscard]] ObjectId id() const noexcept;
+    [[nodiscard]] DescriptorArenaDesc desc() const;
+    [[nodiscard]] std::uint64_t epoch() const noexcept;
+    [[nodiscard]] Status reset();
+
+private:
+    explicit DescriptorArena(
+        std::unique_ptr<detail::ObjectState> state) noexcept;
+    std::unique_ptr<detail::ObjectState> state_;
+    friend struct detail::Factory;
+    friend class Device;
+};
+
+class BindGroup {
+public:
+    BindGroup() noexcept;
+    ~BindGroup();
+    BindGroup(BindGroup&&) noexcept;
+    BindGroup& operator=(BindGroup&&) noexcept;
+    BindGroup(const BindGroup&) = delete;
+    BindGroup& operator=(const BindGroup&) = delete;
+
+    [[nodiscard]] bool valid() const noexcept;
+    [[nodiscard]] ObjectId id() const noexcept;
+    [[nodiscard]] ObjectId layout_id() const noexcept;
+
+private:
+    explicit BindGroup(std::unique_ptr<detail::ObjectState> state) noexcept;
+    std::unique_ptr<detail::ObjectState> state_;
+    friend struct detail::Factory;
+    friend class RenderEncoder;
+    friend class ComputeEncoder;
+};
+
+class BindlessTable {
+public:
+    BindlessTable() noexcept;
+    ~BindlessTable();
+    BindlessTable(BindlessTable&&) noexcept;
+    BindlessTable& operator=(BindlessTable&&) noexcept;
+    BindlessTable(const BindlessTable&) = delete;
+    BindlessTable& operator=(const BindlessTable&) = delete;
+
+    [[nodiscard]] bool valid() const noexcept;
+    [[nodiscard]] ObjectId id() const noexcept;
+
+private:
+    explicit BindlessTable(std::unique_ptr<detail::ObjectState> state) noexcept;
+    std::unique_ptr<detail::ObjectState> state_;
+    friend struct detail::Factory;
+};
+
+class PipelineLayout {
+public:
+    PipelineLayout() noexcept;
+    ~PipelineLayout();
+    PipelineLayout(PipelineLayout&&) noexcept;
+    PipelineLayout& operator=(PipelineLayout&&) noexcept;
+    PipelineLayout(const PipelineLayout&) = delete;
+    PipelineLayout& operator=(const PipelineLayout&) = delete;
+
+    [[nodiscard]] bool valid() const noexcept;
+    [[nodiscard]] ObjectId id() const noexcept;
+
+private:
+    explicit PipelineLayout(std::unique_ptr<detail::ObjectState> state) noexcept;
+    std::unique_ptr<detail::ObjectState> state_;
+    friend struct detail::Factory;
+    friend class Device;
+};
+
+class PipelineCache {
+public:
+    PipelineCache() noexcept;
+    ~PipelineCache();
+    PipelineCache(PipelineCache&&) noexcept;
+    PipelineCache& operator=(PipelineCache&&) noexcept;
+    PipelineCache(const PipelineCache&) = delete;
+    PipelineCache& operator=(const PipelineCache&) = delete;
+
+    [[nodiscard]] bool valid() const noexcept;
+    [[nodiscard]] ObjectId id() const noexcept;
+    [[nodiscard]] Result<std::vector<std::byte>> data() const;
+
+private:
+    explicit PipelineCache(std::unique_ptr<detail::ObjectState> state) noexcept;
+    std::unique_ptr<detail::ObjectState> state_;
+    friend struct detail::Factory;
+    friend class Device;
 };
 
 class Shader {
@@ -272,6 +414,20 @@ public:
     [[nodiscard]] Result<Texture> import_texture(
         const TextureDesc& desc, ExternalMemoryHandle handle) const;
     [[nodiscard]] Result<MemoryBudget> memory_budget(MemoryDomain domain) const;
+    [[nodiscard]] Result<Sampler> create_sampler(
+        const SamplerDesc& desc = {}) const;
+    [[nodiscard]] Result<BindGroupLayout> create_bind_group_layout(
+        const BindGroupLayoutDesc& desc) const;
+    [[nodiscard]] Result<DescriptorArena> create_descriptor_arena(
+        const DescriptorArenaDesc& desc = {}) const;
+    [[nodiscard]] Result<BindGroup> create_bind_group(
+        const BindGroupDesc& desc) const;
+    [[nodiscard]] Result<BindlessTable> create_bindless_table(
+        const BindlessTableDesc& desc) const;
+    [[nodiscard]] Result<PipelineLayout> create_pipeline_layout(
+        const PipelineLayoutDesc& desc) const;
+    [[nodiscard]] Result<PipelineCache> create_pipeline_cache(
+        const PipelineCacheDesc& desc = {}) const;
     [[nodiscard]] Result<Shader> create_shader(const ShaderDesc& desc) const;
     [[nodiscard]] Result<Shader> create_shader(
         const ShaderPackage& package, ShaderTarget target,
@@ -369,6 +525,22 @@ public:
     [[nodiscard]] Status bind_index_buffer(Buffer& buffer,
                                            std::size_t offset = 0,
                                            IndexFormat format = IndexFormat::uint32);
+    [[nodiscard]] Status bind_group(
+        std::uint32_t group, BindGroup& bindGroup,
+        std::span<const std::uint32_t> dynamicOffsets = {});
+    [[nodiscard]] Status push_constants(ShaderStageMask stages,
+                                        std::uint32_t offset,
+                                        std::span<const std::byte> data);
+    [[nodiscard]] Status set_viewports(std::uint32_t first,
+                                       std::span<const Viewport> viewports);
+    [[nodiscard]] Status set_scissors(std::uint32_t first,
+                                      std::span<const ScissorRect> scissors);
+    [[nodiscard]] Status set_blend_constant(
+        const std::array<float, 4>& color);
+    [[nodiscard]] Status set_stencil_reference(std::uint32_t reference);
+    [[nodiscard]] Status set_depth_bias(float constantFactor,
+                                        float slopeScale,
+                                        float clamp);
     [[nodiscard]] Status draw(std::uint32_t vertexCount,
                               std::uint32_t instanceCount = 1,
                               std::uint32_t firstVertex = 0,
@@ -379,7 +551,12 @@ public:
                                       std::int32_t vertexOffset = 0,
                                       std::uint32_t firstInstance = 0);
     [[nodiscard]] Status draw_indirect(Buffer& buffer, std::size_t offset,
-                                       bool indexed);
+                                       bool indexed, std::uint32_t drawCount = 1,
+                                       std::uint32_t stride = 0);
+    [[nodiscard]] Status draw_indirect_count(
+        Buffer& buffer, std::size_t offset, Buffer& countBuffer,
+        std::size_t countOffset, std::uint32_t maximumDrawCount,
+        std::uint32_t stride, bool indexed);
     [[nodiscard]] Status end();
 
 private:
@@ -401,8 +578,15 @@ public:
     [[nodiscard]] Status bind_pipeline(ComputePipeline& pipeline);
     [[nodiscard]] Status bind_storage_buffer(std::uint32_t slot, Buffer& buffer,
                                              std::size_t offset = 0);
+    [[nodiscard]] Status bind_group(
+        std::uint32_t group, BindGroup& bindGroup,
+        std::span<const std::uint32_t> dynamicOffsets = {});
+    [[nodiscard]] Status push_constants(std::uint32_t offset,
+                                        std::span<const std::byte> data);
     [[nodiscard]] Status dispatch(std::uint32_t x, std::uint32_t y,
                                   std::uint32_t z);
+    [[nodiscard]] Status dispatch_indirect(Buffer& buffer,
+                                           std::size_t offset);
     [[nodiscard]] Status end();
 
 private:

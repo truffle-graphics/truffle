@@ -44,13 +44,6 @@ enum class ShaderSourceLanguage : std::uint8_t {
     backend_native,
 };
 
-enum class ShaderValueType : std::uint8_t {
-    boolean,
-    sint32,
-    uint32,
-    float32,
-};
-
 enum class ShaderDiagnosticSeverity : std::uint8_t {
     info,
     warning,
@@ -64,29 +57,12 @@ struct ShaderDefine {
     bool operator==(const ShaderDefine&) const = default;
 };
 
-struct ShaderSpecializationConstant {
-    std::uint32_t id = 0;
-    std::string name;
-    ShaderValueType type = ShaderValueType::uint32;
-    std::uint32_t defaultValueBits = 0;
-
-    bool operator==(const ShaderSpecializationConstant&) const = default;
-};
-
 struct ShaderPermutation {
     std::string name;
     std::vector<ShaderDefine> defines;
     std::vector<ShaderSpecializationConstant> specializationConstants;
 
     bool operator==(const ShaderPermutation&) const = default;
-};
-
-struct PushConstantRange {
-    ShaderStage stage = ShaderStage::vertex;
-    std::uint32_t offset = 0;
-    std::uint32_t size = 0;
-
-    bool operator==(const PushConstantRange&) const = default;
 };
 
 struct ShaderInterfaceVariable {

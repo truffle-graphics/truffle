@@ -725,7 +725,7 @@ void write_reflection(Writer& writer, const ShaderReflection& value) {
            read_vector(reader, desc.requiredFeatures,
                        [](Reader& input, Feature& value) {
                            return read_enum(input, value,
-                                            Feature::external_memory);
+                                            Feature::pipeline_cache);
                        }) &&
            read_vector(reader, desc.permutations,
                        [](Reader& input, ShaderPermutation& permutation) {
