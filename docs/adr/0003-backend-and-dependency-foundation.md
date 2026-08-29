@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted
+Superseded by ADR 0011 for RHI 1. Retained as the preliminary backend-layout
+decision.
 
 ## Context
 
