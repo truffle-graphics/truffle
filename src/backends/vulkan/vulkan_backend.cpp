@@ -352,7 +352,7 @@ Result<Instance> create_vulkan_instance(const InstanceDesc& desc) {
     detail::FoundationBackendConfig config;
     config.kind = BackendKind::vulkan;
     config.platform = host_platform();
-    config.maturity = host_platform() == PlatformKind::linux
+    config.maturity = host_platform() == PlatformKind::linux_host
                           ? BackendMaturity::native_smoke
                           : BackendMaturity::source_only;
     config.adapterName = std::move(native.adapterName);

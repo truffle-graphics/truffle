@@ -18,7 +18,7 @@ Result<Instance> create_opengl_instance(const InstanceDesc& desc) {
     auto native = std::move(probe).value();
     detail::FoundationBackendConfig config;
     config.kind = BackendKind::opengl;
-    config.platform = PlatformKind::linux;
+    config.platform = PlatformKind::linux_host;
     config.maturity = BackendMaturity::native_smoke;
     config.adapterName = std::move(native.adapterName);
     config.queueKinds = {QueueKind::graphics};

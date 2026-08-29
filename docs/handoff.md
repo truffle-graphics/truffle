@@ -44,6 +44,10 @@ resource, pipeline, synchronization, WSI, and broader platform work follows.
 - CI is segmented into shared contracts, native smoke with validation, native
   presentation, strict doctor, and parity artifacts. Linux installs Mesa Vulkan,
   validation layers, EGL, desktop GL, and GLES prerequisites; Windows uses WARP.
+- The first Ubuntu run found GNU's predefined `linux` macro colliding with the
+  initial `PlatformKind` enumerator in installed consumer headers. The C++ name
+  is now `linux_host` while its serialized/public display value remains
+  `"linux"`.
 
 ## Durable Decisions
 

@@ -7,7 +7,7 @@ int main() {
     truffle::tests::verify_native_backend_smoke(
         truffle::rhi::create_vulkan_instance(),
         truffle::rhi::BackendKind::vulkan,
-        truffle::rhi::PlatformKind::linux);
+        truffle::rhi::PlatformKind::linux_host);
 #else
     auto result = truffle::rhi::create_vulkan_instance();
     if (result.ok()) {

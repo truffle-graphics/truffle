@@ -57,7 +57,7 @@ enum class PlatformKind {
     tvos,
     visionos,
     windows,
-    linux,
+    linux_host,
     android,
     web,
 };

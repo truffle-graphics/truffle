@@ -47,7 +47,7 @@ constexpr std::array support{
     BackendPlatformSupport{BackendKind::metal, PlatformKind::visionos,
                            BackendMaturity::source_only, true, source_only,
                            "target identified; no device or simulator lane yet"},
-    BackendPlatformSupport{BackendKind::vulkan, PlatformKind::linux,
+    BackendPlatformSupport{BackendKind::vulkan, PlatformKind::linux_host,
                            BackendMaturity::native_smoke, true, native_smoke,
                            "bundled headers and volk with a native loader/driver smoke lane"},
     BackendPlatformSupport{BackendKind::vulkan, PlatformKind::windows,
@@ -65,7 +65,7 @@ constexpr std::array support{
     BackendPlatformSupport{BackendKind::direct3d12, PlatformKind::windows,
                            BackendMaturity::native_smoke, true, native_smoke,
                            "Windows SDK and WARP command submission smoke lane"},
-    BackendPlatformSupport{BackendKind::opengl, PlatformKind::linux,
+    BackendPlatformSupport{BackendKind::opengl, PlatformKind::linux_host,
                            BackendMaturity::native_smoke, true, native_smoke,
                            "EGL surfaceless native clear/readback smoke lane"},
     BackendPlatformSupport{BackendKind::opengl, PlatformKind::windows,
@@ -74,7 +74,7 @@ constexpr std::array support{
     BackendPlatformSupport{BackendKind::opengl, PlatformKind::macos,
                            BackendMaturity::source_only, true, source_only,
                            "deprecated compatibility target; no native lane yet"},
-    BackendPlatformSupport{BackendKind::opengles, PlatformKind::linux,
+    BackendPlatformSupport{BackendKind::opengles, PlatformKind::linux_host,
                            BackendMaturity::native_smoke, true, native_smoke,
                            "EGL surfaceless ES 3 native clear/readback smoke lane"},
     BackendPlatformSupport{BackendKind::opengles, PlatformKind::android,
@@ -128,7 +128,7 @@ std::string_view platform_name(PlatformKind platform) noexcept {
         return "visionos";
     case PlatformKind::windows:
         return "windows";
-    case PlatformKind::linux:
+    case PlatformKind::linux_host:
         return "linux";
     case PlatformKind::android:
         return "android";
@@ -174,7 +174,7 @@ PlatformKind host_platform() noexcept {
     return PlatformKind::macos;
 #endif
 #elif defined(__linux__)
-    return PlatformKind::linux;
+    return PlatformKind::linux_host;
 #else
     return PlatformKind::all;
 #endif
