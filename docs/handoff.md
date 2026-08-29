@@ -10,14 +10,15 @@ rather than growing a historical transcript here.
 ## Current Focus
 
 Deliver issue #33's native backend/platform matrix in evidence-gated slices.
-The current branch adds Vulkan-owned buffers, host memory operations, and native
-buffer transfers; textures, pipelines, synchronization, WSI, and broader
-platform work follow.
+The current branch adds Vulkan-owned 2D textures, views, image layout tracking,
+and buffer/image transfers on top of the merged buffer work; pipelines,
+synchronization, WSI, and broader platform work follow.
 
 ## Latest Handoff
 
-- PR #43 is merged without closing issue #33. The first native matrix slice is
-  on `develop` and its package, macOS, Ubuntu, and Windows lanes are green.
+- PR #44 is merged without closing issue #33. Vulkan buffer allocation and
+  exact device-local readback are on `develop`; post-merge build run
+  `33260734421` is green on package, macOS, Ubuntu, and Windows.
 - The merged matrix slice publishes `BackendMaturity`, `PlatformKind`,
   per-dimension evidence, and the full backend/platform table through the public
   RHI. Runtime `AdapterInfo` carries its platform and maturity separately.
@@ -60,8 +61,18 @@ platform work follow.
 - Vulkan queue submission now records native buffer copies and byte-pattern
   fills. The Linux-only native test uploads deterministic bytes, copies through
   device-local memory, fills a subrange, reads the exact result back, and checks
-  mapped invalidation. Texture capabilities remain false and texture creation
-  fails explicitly in this slice.
+  mapped invalidation. PR #44's Ubuntu validation-layer lane is the native
+  evidence for this result.
+- `feat/rhi1-vulkan-textures` adds optimal-tiled, device-local Vulkan 2D images,
+  same-format image views, per-mip/layer native layout tracking, buffer-to-image,
+  image-to-buffer, and image-to-image copies. Supported uncompressed color and
+  depth formats are checked against the physical device before allocation;
+  compressed formats, multisampling, non-device-local images, and presentation
+  images still fail explicitly.
+- The pending Linux texture proof uses padded 64-byte rows for an 8x4 RGBA8
+  image, copies buffer -> image -> image -> buffer, and compares the complete
+  readback including untouched padding. Color image transfers are the only
+  image-transfer capability proposed in this slice.
 
 ## Durable Decisions
 
@@ -120,21 +131,21 @@ cmake --build build/gcc-rhi33 -j 8
 ctest --test-dir build/gcc-rhi33 --output-on-failure  # 30/30
 ```
 
-Clang and GCC warning-as-error builds pass locally with the Vulkan buffer slice,
+Clang and GCC warning-as-error builds pass locally with the Vulkan texture slice,
 as do the 34-test segmented shared suite and Metal native smoke. GitHub run
 `33259668349` passes the preceding package, macOS Metal, Ubuntu
 Vulkan/EGL, and Windows D3D12/WARP with strict doctor enabled. The local sandbox
 does not expose a Metal device to strict doctor, so GitHub's macOS runner is the
-live-device gate. Linux CI remains the acceptance gate for the new exact Vulkan
-buffer readback. `truffle_format_check` remains unavailable because CMake does
+live-device gate. Linux CI remains the acceptance gate for the new padded-row
+Vulkan texture readback. `truffle_format_check` remains unavailable because CMake does
 not discover `clang-format` on this host's `PATH`; `git diff --check` passes.
 
 ## Next Resume Steps
 
-1. Publish the Vulkan buffer slice and require Ubuntu validation-layer evidence
-   for exact device-local readback before merging it into `develop`.
-2. Continue #33 with Vulkan textures and image transfers, then add equivalent
-   D3D12 and GL/GLES resources before shaders/pipelines and presentation.
+1. Publish the Vulkan texture slice and require Ubuntu validation-layer evidence
+   for exact padded-row image readback before merging it into `develop`.
+2. Continue #33 with equivalent D3D12 and GL/GLES resources before native
+   shaders/pipelines and presentation.
 3. Keep WebGPU/WebGL2 and every unexecuted mobile/Apple/Vulkan platform at
    `source_only`; keep native slices at `native_smoke` until shared native
    contracts and presentation evidence exist.
@@ -147,10 +158,12 @@ not discover `clang-format` on this host's `PATH`; `git diff --check` passes.
   tracking; aliased heap allocations are not implemented.
 - Physical Metal device-removal evidence is not available in macOS CI; the
   private fault hook validates public loss-state behavior only.
-- Vulkan buffer copies/fills currently follow Vulkan's four-byte transfer
-  alignment. Texture, shader, synchronization, WSI, and presentation capability
-  flags stay false until matching native evidence exists. D3D12/EGL still prove
-  initialization and a narrow smoke workload only.
+- Vulkan buffer copies/fills and buffer-image offsets currently follow Vulkan's
+  four-byte transfer alignment. The texture slice is limited to device-local,
+  single-sample 2D images and color transfers; host-visible images, compressed
+  copies, clears, resolves, blits, shaders, WSI, and presentation remain false
+  or explicitly unsupported. D3D12/EGL still prove initialization and a narrow
+  smoke workload only.
 - Linux EGL context destruction is thread-sensitive. The synchronous matrix
   slice serializes and restores the context; asynchronous GL work needs a
   deliberate context-ownership model.

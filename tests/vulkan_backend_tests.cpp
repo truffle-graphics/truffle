@@ -6,6 +6,7 @@
 #include <array>
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
 
 namespace {
 
@@ -26,7 +27,9 @@ void verify_vulkan_buffers() {
     assert(info.resources.bufferViews);
     assert(info.resources.bufferCopy);
     assert(info.resources.bufferFill);
-    assert(!info.resources.textureCopy);
+    assert(info.resources.textureViews);
+    assert(info.resources.bufferTextureCopy);
+    assert(info.resources.textureCopy);
 
     auto deviceResult = adapter.request_device({
         .requiredFeatures = {rhi::Feature::transfer,
@@ -75,6 +78,48 @@ void verify_vulkan_buffers() {
     assert(upload.write(0, expected).ok());
     assert(upload.unmap().ok());
 
+    constexpr std::uint32_t textureWidth = 8;
+    constexpr std::uint32_t textureHeight = 4;
+    constexpr std::size_t textureRowPitch = 64;
+    constexpr std::size_t textureBytes = textureRowPitch * textureHeight;
+    auto textureUploadResult = device.create_buffer({
+        .size = textureBytes,
+        .usage = rhi::BufferUsage::copy_source,
+        .memory = rhi::MemoryDomain::upload,
+    });
+    auto textureReadbackResult = device.create_buffer({
+        .size = textureBytes,
+        .usage = rhi::BufferUsage::copy_destination,
+        .memory = rhi::MemoryDomain::readback,
+    });
+    const rhi::TextureDesc textureDesc{
+        .extent = {textureWidth, textureHeight, 1},
+        .format = rhi::TextureFormat::rgba8_unorm,
+        .usage = rhi::TextureUsage::copy_source |
+                 rhi::TextureUsage::copy_destination,
+    };
+    auto sourceTextureResult = device.create_texture(textureDesc);
+    auto destinationTextureResult = device.create_texture(textureDesc);
+    assert(textureUploadResult.ok() && textureReadbackResult.ok() &&
+           sourceTextureResult.ok() && destinationTextureResult.ok());
+    auto textureUpload = std::move(textureUploadResult).value();
+    auto textureReadback = std::move(textureReadbackResult).value();
+    auto sourceTexture = std::move(sourceTextureResult).value();
+    auto destinationTexture = std::move(destinationTextureResult).value();
+    auto textureView = device.create_texture_view(sourceTexture);
+    assert(textureView.ok());
+
+    std::array<std::byte, textureBytes> expectedPixels{};
+    for (std::size_t row = 0; row < textureHeight; ++row) {
+        for (std::size_t columnByte = 0; columnByte < textureWidth * 4u;
+             ++columnByte) {
+            const auto index = row * textureRowPitch + columnByte;
+            expectedPixels[index] =
+                std::byte{static_cast<unsigned char>((index * 29u) ^ 0x3cu)};
+        }
+    }
+    assert(textureUpload.write(0, expectedPixels).ok());
+
     auto poolResult = device.create_command_pool(rhi::QueueKind::graphics);
     assert(poolResult.ok());
     auto pool = std::move(poolResult).value();
@@ -88,6 +133,28 @@ void verify_vulkan_buffers() {
     assert(encoder.copy_buffer(upload, 0, deviceLocal, 0, byteCount).ok());
     assert(encoder.copy_buffer(deviceLocal, 0, readback, 0, byteCount).ok());
     assert(encoder.fill_buffer(readback, 32, 16, std::byte{0x7f}).ok());
+    assert(encoder.fill_buffer(textureReadback, 0, textureBytes,
+                               std::byte{0})
+               .ok());
+    const rhi::TextureRegion wholeTexture{
+        .subresource = {.aspect = rhi::TextureAspect::color},
+        .extent = {textureWidth, textureHeight, 1},
+    };
+    const rhi::BufferTextureCopyRegion textureRegion{
+        .layout = {.bytesPerRow = textureRowPitch,
+                   .rowsPerImage = textureHeight},
+        .texture = wholeTexture,
+    };
+    assert(encoder.copy_buffer_to_texture(textureUpload, sourceTexture,
+                                          textureRegion)
+               .ok());
+    assert(encoder.copy_texture(sourceTexture, destinationTexture,
+                                {.source = wholeTexture,
+                                 .destination = wholeTexture})
+               .ok());
+    assert(encoder.copy_texture_to_buffer(destinationTexture, textureReadback,
+                                          textureRegion)
+               .ok());
     assert(encoder.end().ok());
     assert(list.end().ok());
 
@@ -108,8 +175,13 @@ void verify_vulkan_buffers() {
     assert(std::ranges::equal(mappedResult.value(), expected));
     assert(readback.unmap().ok());
 
+    std::array<std::byte, textureBytes> outputPixels{};
+    assert(textureReadback.read(0, outputPixels).ok());
+    assert(outputPixels == expectedPixels);
+
     auto unsupportedTexture = device.create_texture({
-        .extent = {4, 4, 1},
+        .dimension = rhi::TextureDimension::d3,
+        .extent = {4, 4, 4},
         .usage = rhi::TextureUsage::copy_source,
     });
     assert(!unsupportedTexture.ok());
