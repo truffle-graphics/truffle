@@ -1,9 +1,13 @@
 # Vulkan Backend
 
-This target exposes the RHI 1 Vulkan factory, which currently returns
-`unsupported` and reports no adapter. It does not include Vulkan headers, load
-Vulkan, create a Vulkan device, or use WSI. Shared logical validation belongs to
-the Null backend rather than a simulated Vulkan adapter.
+This target privately compiles pinned Vulkan-Headers and volk. The factory
+loads a native runtime, enables `VK_LAYER_KHRONOS_validation` when requested and
+available, handles portability enumeration/subset extensions, discovers a real
+graphics adapter, creates a device/queue, and submits a native command buffer
+before exposing the RHI adapter.
 
-Issue #33 replaces this path with native Vulkan implementation. See
-`docs/rhi1/support-matrix.md` for the maturity gates.
+The current Linux lane is `native_smoke`. It exposes no resource, shader,
+pipeline, synchronization, WSI, or presentation capabilities yet. Other
+platforms remain `source_only`, including Apple until a pinned MoltenVK group
+and execution lane exist. Shared logical validation belongs to Null and is
+never used to simulate Vulkan behavior.

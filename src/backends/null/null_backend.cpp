@@ -9,6 +9,8 @@ Result<Instance> create_null_instance(const InstanceDesc& desc) {
         desc,
             {
                 .kind = BackendKind::null_validation,
+                .platform = PlatformKind::all,
+                .maturity = BackendMaturity::validation_only,
                 .adapterName = "Truffle Null validation",
                 .queueKinds = {QueueKind::graphics, QueueKind::compute,
                                QueueKind::transfer},
@@ -69,6 +71,7 @@ Result<Instance> create_null_instance(const InstanceDesc& desc) {
             .validationOnly = true,
             .presentation = true,
             .logicalResources = true,
+            .nativeContext = {},
         });
 }
 

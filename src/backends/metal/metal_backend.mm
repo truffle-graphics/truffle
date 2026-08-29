@@ -1652,6 +1652,7 @@ struct MetalFormat {
 }
 
 [[nodiscard]] Status submit_metal_commands(
+    const std::shared_ptr<void>&,
     std::span<const detail::NativeCommand> commands,
     std::span<const detail::NativeSemaphorePoint> waits,
     std::span<const detail::NativeSemaphorePoint> signals) {
@@ -2211,6 +2212,8 @@ Result<Instance> create_metal_instance(const InstanceDesc& desc) {
             desc,
             {
                 .kind = BackendKind::metal,
+                .platform = PlatformKind::macos,
+                .maturity = BackendMaturity::native_smoke,
                 .adapterName = name != nullptr ? name : "Metal adapter",
                 .queueKinds = {QueueKind::graphics, QueueKind::compute,
                                QueueKind::transfer},
@@ -2273,6 +2276,7 @@ Result<Instance> create_metal_instance(const InstanceDesc& desc) {
                 .validationOnly = false,
                 .presentation = true,
                 .logicalResources = false,
+                .nativeContext = {},
                 .createBuffer = &create_metal_buffer,
                 .mapBuffer = &map_metal_buffer,
                 .unmapBuffer = &unmap_metal_buffer,

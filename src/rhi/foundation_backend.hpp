@@ -119,6 +119,8 @@ struct NativeSwapchainImage {
 
 struct FoundationBackendConfig {
     BackendKind kind = BackendKind::null_validation;
+    PlatformKind platform = PlatformKind::all;
+    BackendMaturity maturity = BackendMaturity::source_only;
     std::string adapterName;
     std::vector<QueueKind> queueKinds;
     std::vector<Feature> supportedFeatures;
@@ -132,6 +134,7 @@ struct FoundationBackendConfig {
     bool validationOnly = false;
     bool presentation = false;
     bool logicalResources = false;
+    std::shared_ptr<void> nativeContext;
     Result<std::shared_ptr<void>> (*createBuffer)(const BufferDesc&) = nullptr;
     Result<std::span<std::byte>> (*mapBuffer)(
         const std::shared_ptr<void>&) = nullptr;
@@ -170,7 +173,8 @@ struct FoundationBackendConfig {
     Status (*resizeSwapchain)(const std::shared_ptr<void>&, Extent2D) = nullptr;
     Status (*presentSwapchain)(const std::shared_ptr<void>&, std::uint32_t,
                                std::span<const NativeSemaphorePoint>) = nullptr;
-    Status (*nativeSubmit)(std::span<const NativeCommand>,
+    Status (*nativeSubmit)(const std::shared_ptr<void>&,
+                           std::span<const NativeCommand>,
                            std::span<const NativeSemaphorePoint>,
                            std::span<const NativeSemaphorePoint>) = nullptr;
 };

@@ -25,6 +25,10 @@ if(TRUFFLE_BUILD_SHADERC)
     add_subdirectory(tools/shaderc)
 endif()
 
+if(TRUFFLE_BUILD_RHI_DOCTOR)
+    add_subdirectory(tools/rhi-doctor)
+endif()
+
 if(TRUFFLE_BUILD_EXAMPLES)
     add_subdirectory(examples)
 endif()

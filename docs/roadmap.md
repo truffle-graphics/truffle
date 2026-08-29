@@ -86,15 +86,25 @@ multi-queue ownership. Metal maps semaphores to shared events and passes
 validation-enabled native `CAMetalLayer` acquire/render/present, resize,
 suboptimal, out-of-date, and surface-loss proofs.
 
-## Phase 5: Native Backend And Platform Matrix — Pending
+## Phase 5: Native Backend And Platform Matrix — In Progress
 
 Tracked by #33.
 
-- Metal across the declared Apple targets.
-- Vulkan on Windows, Linux, Android, and Apple through MoltenVK.
-- D3D12 on Windows with WARP validation.
-- WebGPU on wasm32 through Emdawnwebgpu.
-- OpenGL 4.5, OpenGL ES 3.1/EGL, and WebGL2 compatibility implementations.
+- [x] Publish backend/platform maturity and per-evidence dimensions through the
+  public API and strict JSON doctor; keep Null validation-only.
+- [x] Pin Vulkan-Headers and volk privately and add Linux native
+  instance/device/queue/command-buffer smoke.
+- [x] Add Windows SDK D3D12 WARP device/command-list smoke.
+- [x] Add Linux surfaceless EGL OpenGL/OpenGL ES deterministic clear/readback
+  smoke.
+- [ ] Complete Metal across the declared Apple targets.
+- [ ] Complete Vulkan resources, pipelines, synchronization, WSI, Windows,
+  Android, and Apple MoltenVK lanes.
+- [ ] Complete D3D12 resources, pipelines, synchronization, and DXGI
+  presentation.
+- [ ] Complete WebGPU on wasm32 through pinned Emdawnwebgpu.
+- [ ] Complete OpenGL/OpenGL ES resource and presentation paths plus WebGL2
+  browser execution.
 
 Every backend-platform pair advances from `source_only` through `supported`
 only when it meets the published evidence gate. Unsupported features fail

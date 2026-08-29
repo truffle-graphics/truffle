@@ -1370,6 +1370,8 @@ struct Factory {
     AdapterInfo info;
     info.name = runtime.config.adapterName;
     info.backend = runtime.config.kind;
+    info.platform = runtime.config.platform;
+    info.maturity = runtime.config.maturity;
     info.native = runtime.config.native;
     info.validationOnly = runtime.config.validationOnly;
     info.presentation = runtime.config.presentation;
@@ -3043,7 +3045,8 @@ struct Factory {
                 ++transferCount;
             }
         }
-        if (auto status = runtime.config.nativeSubmit(nativeCommands, nativeWaits,
+        if (auto status = runtime.config.nativeSubmit(runtime.config.nativeContext,
+                                                      nativeCommands, nativeWaits,
                                                       nativeSignals);
             !status.ok()) {
             if (status.code == StatusCode::device_lost) {

@@ -28,8 +28,7 @@ Current evidence is narrower than the old roadmap claimed:
 
 - Null implements the RHI 1 foundation as a strict validation backend, not a
   GPU backend.
-- Metal is the only implementation that currently calls a native graphics API;
-  it discovers a native device and passes deterministic resource readback plus
+- Metal discovers a native device and passes deterministic resource readback plus
   triangle, textured binding, depth/MRT/MSAA, indexed/instanced/indirect, and
   compute-to-render proofs with Metal API validation enabled. Native shared
   events and `CAMetalLayer` tests also prove ordered submission, timeline
@@ -37,15 +36,22 @@ Current evidence is narrower than the old roadmap claimed:
   paths. Its macOS maturity remains `native_smoke`; host-window integration,
   physical device-removal evidence, broader Apple-platform execution, and full
   native conformance remain.
-- Vulkan, OpenGL, and Direct3D backend targets explicitly return `unsupported`
-  and report no adapters. Their previous CPU simulators have been removed; the
-  future native implementations remain `source_only`.
+- The first #33 matrix slice gives Linux Vulkan a pinned private headers/volk
+  loader path and native command-buffer smoke; Windows D3D12 a Windows-SDK WARP
+  device/command-list smoke; and Linux OpenGL/OpenGL ES surfaceless EGL
+  clear/readback smoke. These adapters report only the capabilities they
+  implement, so resource, pipeline, synchronization, and presentation work
+  remains unsupported rather than simulated.
 - ShaderPackage 1.0 is a deterministic compiler-free runtime contract with a
   canonical manifest/blob container, cross-target reflection validation,
   capability gates, and native-override selection. Optional
   `truffle-shaderc` assembles precompiled or native variants without fetching
   or linking a compiler toolchain.
-- WebGPU, OpenGL ES, and WebGL2 targets are planned but not implemented.
+- WebGPU and WebGL2 now have explicit source-only targets; WebGL2 contains an
+  Emscripten browser-context path but has no browser execution evidence yet.
+- The public support table and `truffle-rhi-doctor` expose matrix maturity and
+  live initialization independently. Null is always validation-only and never
+  a GPU backend.
 - The package, macOS, Ubuntu, and Windows warning-clean CI baseline was restored
   by PR #36.
 
@@ -96,5 +102,6 @@ consumer selects concrete loading, upload, and backend behavior.
 
 ## Next Meaningful Direction
 
-Implement native backend and platform breadth under issue #33 while preserving
-the evidence-based maturity boundary for Metal and unavailable named backends.
+Continue issue #33 from the native initialization matrix into backend-owned
+resources, shaders, synchronization, WSI/presentation, and platform lanes;
+promote no pair beyond its recorded evidence.

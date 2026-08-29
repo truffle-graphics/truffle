@@ -6,6 +6,12 @@ resource, shader-package, binding, pipeline, synchronization, and presentation
 slices tracked by issues #28-#32 are implemented. Native backend breadth and
 advanced capability work remain in progress.
 
+`AdapterInfo` includes the backend/platform pair and its evidence-based
+maturity. `backend_platform_support()` exposes the full repository matrix even
+when a backend target is not linked. That table is repository evidence, not a
+runtime availability promise; factories expose adapters only after native
+initialization succeeds. `truffle-rhi-doctor` emits both views as JSON.
+
 ## Ownership And Object Model
 
 - `Instance` owns backend discovery, validation configuration, debug callbacks,

@@ -24,6 +24,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Install Linux example prerequisites
         if: runner.os == 'Linux'
@@ -38,6 +40,11 @@ jobs:
             libxinerama-dev \
             libxkbcommon-dev \
             libxrandr-dev \
+            libegl1-mesa-dev \
+            libgl1-mesa-dev \
+            libgles2-mesa-dev \
+            mesa-vulkan-drivers \
+            vulkan-validationlayers \
             wayland-protocols
 
       - name: Configure
@@ -46,15 +53,22 @@ jobs:
       - name: Build
         run: cmake --build --preset ci
 
-      - name: Test
-        if: runner.os != 'macOS'
-        run: ctest --preset ci
+      - name: Run shared contract tests
+        run: ctest --preset ci -LE "native-smoke|presentation|validation"
 
-      - name: Test with Metal API validation
+      - name: Run native smoke with API validation
+        env:
+          MTL_DEBUG_LAYER: 1
+        run: ctest --preset ci -L native-smoke
+
+      - name: Run native presentation proof
         if: runner.os == 'macOS'
         env:
           MTL_DEBUG_LAYER: 1
-        run: ctest --preset ci
+        run: ctest --preset ci -L presentation
+
+      - name: Run strict RHI doctor
+        run: ./build/ci/tools/rhi-doctor/truffle-rhi-doctor${{ runner.os == 'Windows' && '.exe' || '' }} --strict --json build/ci/rhi-doctor.json
 
       - name: Generate backend parity report
         run: cmake -DTRUFFLE_BUILD_DIR="${{ github.workspace }}/build/ci" -DTRUFFLE_REPORT_OUT="${{ github.workspace }}/build/ci/parity-matrix.md" -P cmake/GenerateParityReport.cmake
@@ -67,6 +81,7 @@ jobs:
             build/ci/parity-matrix.md
             build/ci/parity-matrix.json
             build/ci/rhi-parity-report.json
+            build/ci/rhi-doctor.json
             build/ci/*.parity.log
           if-no-files-found: error
 
@@ -81,6 +96,7 @@ jobs:
         run: |
           cmake -S . -B build/package \
             -DTRUFFLE_INSTALL=ON \
+            -DTRUFFLE_BUILD_RHI_DOCTOR=OFF \
             -DTRUFFLE_BUILD_TESTS=OFF \
             -DTRUFFLE_BUILD_EXAMPLES=OFF
 
