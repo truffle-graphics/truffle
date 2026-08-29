@@ -25,8 +25,13 @@ set(_tracked_tests
     truffle_rhi_contract_tests
     truffle_vulkan_tests
     truffle_opengl_tests
+    truffle_opengles_tests
     truffle_direct3d_tests
     truffle_metal_tests
+    truffle_metal_presentation_tests
+    truffle_webgpu_tests
+    truffle_webgl2_tests
+    truffle_backend_support_tests
 )
 
 get_filename_component(_report_dir "${TRUFFLE_REPORT_OUT}" DIRECTORY)

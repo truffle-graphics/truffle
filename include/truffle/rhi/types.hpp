@@ -49,6 +49,28 @@ enum class BackendKind {
     webgl2,
 };
 
+enum class PlatformKind {
+    all,
+    macos,
+    ios,
+    ipados,
+    tvos,
+    visionos,
+    windows,
+    linux_host,
+    android,
+    web,
+};
+
+enum class BackendMaturity {
+    source_only,
+    cross_compiles,
+    native_smoke,
+    conformant,
+    supported,
+    validation_only,
+};
+
 enum class QueueKind { graphics, compute, transfer };
 
 enum class Feature {
@@ -537,6 +559,8 @@ struct InstanceDesc {
 struct AdapterInfo {
     std::string name;
     BackendKind backend = BackendKind::null_validation;
+    PlatformKind platform = PlatformKind::all;
+    BackendMaturity maturity = BackendMaturity::source_only;
     bool native = false;
     bool validationOnly = false;
     bool presentation = false;

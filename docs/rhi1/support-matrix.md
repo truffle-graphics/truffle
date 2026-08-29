@@ -23,16 +23,25 @@ regression can demote one pair without changing another backend or platform.
 |---|---|---|---|---|
 | Null validation | All CI hosts | Strict RHI 1 contract interpreter | validation-only | Generation, lifetime, state, threading, resource, synchronization, acquire, submit, and present tests; never reported as a GPU backend. |
 | Metal | macOS | Native Metal resource, pipeline, synchronization, and presentation slice | `native_smoke` | Metal API validation runs deterministic output, ordered render-to-copy, shared-event synchronization, native `CAMetalLayer` acquire/render/present plus resize/status recovery, and private out-of-date/device-loss fault proofs. A host-window loop, physical device-removal evidence, broader platform execution, and full conformance remain. |
-| Vulkan | Declared targets only | Explicitly unavailable | `source_only` | The factory returns `unsupported` and reports no adapter; no Vulkan headers, loader, device, or WSI are used yet. |
-| Direct3D | Declared targets only | Explicitly unavailable | `source_only` | The factory returns `unsupported` and reports no adapter; no D3D12/DXGI APIs or WARP execution exist yet. |
-| OpenGL | Declared targets only | Explicitly unavailable | `source_only` | The factory returns `unsupported` and reports no adapter; no GL loader, native context, or driver execution exists yet. |
-| WebGPU | None | Not implemented | planned | No backend target exists. |
-| OpenGL ES | None | Not implemented | planned | No EGL/GLES backend target exists. |
-| WebGL2 | None | Not implemented | planned | No Emscripten WebGL2 backend target exists. |
+| Vulkan | Linux | Native initialization and command-buffer smoke slice | `native_smoke` | Pinned private Vulkan-Headers/volk load the host runtime, optionally enable Khronos validation, create a real instance/device/graphics queue, and submit a native command buffer. Resources, pipelines, WSI, presentation, and conformance remain unsupported. |
+| Vulkan | Windows, Android, macOS/iOS | Native loader source with platform targets | `source_only` | No official native runtime lanes yet. Portability enumeration/subset handling is present, but MoltenVK is not bundled and no Apple claim is made. |
+| Direct3D 12 | Windows | Native Windows-SDK WARP initialization and command-list smoke slice | `native_smoke` | Creates the DXGI WARP adapter, D3D12 device/queue/fence, executes a native command list, and waits for completion. Resources, pipelines, DXGI presentation, and conformance remain unsupported. |
+| OpenGL | Linux | Native surfaceless EGL OpenGL smoke slice | `native_smoke` | Creates a real context and pbuffer, clears, reads back exact native output, and submits through `glFinish`. Resource objects and presentation remain unsupported. |
+| OpenGL | Windows, macOS | Source target | `source_only` | WGL and deprecated macOS native execution lanes are not present. |
+| OpenGL ES | Linux | Native surfaceless EGL ES 3 smoke slice | `native_smoke` | Creates a real ES context and pbuffer and proves deterministic clear/readback. Android and presentation paths remain. |
+| OpenGL ES | Android | Source target | `source_only` | No NDK/emulator execution lane yet. |
+| WebGPU | Web | Explicit unavailable factory | `source_only` | Target exists, but pinned Emdawnwebgpu and browser device execution are not present; no adapter is exposed. |
+| WebGL2 | Web | Browser context source path | `source_only` | The Emscripten path creates a WebGL2 canvas context only at runtime; no browser CI evidence exists, so no promotion is claimed. |
 
 The old named-backend CPU simulators were removed during the RHI 1 public
-cutover. Shared logical behavior belongs to Null; named factories remain
-unavailable until they have native implementations.
+cutover. Shared logical behavior belongs to Null. A native matrix adapter has
+an intentionally empty capability surface until backend-owned RHI mechanisms
+exist; unsupported work never falls back to CPU simulation.
+
+The public `backend_platform_support()` table serializes these rows, including
+separate compile, smoke, conformance, validation, and presentation evidence.
+`truffle-rhi-doctor` adds current-host build/runtime probes. Strict CI fails if
+a linked `native_smoke` host row cannot initialize its native adapter.
 
 ## Target Matrix
 

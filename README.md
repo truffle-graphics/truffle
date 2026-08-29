@@ -23,8 +23,8 @@ framework. It is not an application framework and it is not a dedicated game
 engine.
 
 The preliminary RHI has been replaced without a compatibility shim. Shared
-contract tests remain useful, but only Metal currently calls a native graphics
-API:
+contract tests remain useful, while native maturity is reported independently
+for each backend/platform pair:
 
 - `truffle_core` owns shared status, configuration, and handle primitives.
 - `truffle_assets` defines declarative asset, material-operation, texture,
@@ -43,9 +43,17 @@ API:
   `CAMetalLayer` presentation. Validation-enabled exact resource, triangle,
   textured, depth/MRT/MSAA, indirect, compute-to-render, mixed-ordering, and
   acquire/present proofs reach `native_smoke` on macOS.
-- `truffle_backend_vulkan`, `truffle_backend_opengl`, and
-  `truffle_backend_direct3d` expose explicit unavailable factories until their
-  native implementations land; they report no simulated adapters.
+- `truffle_backend_vulkan` uses pinned private Vulkan headers and volk. Linux
+  initializes a real loader/device/graphics queue and submits a native command
+  buffer before exposing an adapter.
+- `truffle_backend_direct3d` initializes the Windows SDK D3D12 WARP device and
+  executes a native command list before exposing an adapter.
+- `truffle_backend_opengl` and `truffle_backend_opengles` use Linux surfaceless
+  EGL contexts and deterministic clear/readback smoke proofs. These matrix
+  slices intentionally expose no resource or pipeline capabilities yet.
+- WebGPU remains an explicit `source_only` factory. WebGL2 has a browser-native
+  context path when built with Emscripten but remains `source_only` until its
+  browser CI evidence exists. Neither exposes a simulated adapter.
 - `ShaderPackage` provides a deterministic compiler-free runtime container with
   normalized cross-target reflection and native-variant selection. The optional
   `truffle-shaderc` target assembles and inspects packages without adding a
@@ -71,6 +79,7 @@ Prerequisites:
 - CMake 3.23 or newer.
 - A C++20-capable toolchain.
 - Ninja when using the checked-in CMake presets.
+- Checked-out optional backend dependencies (`git submodule update --init`).
 - A C compiler and the native window-system development dependencies needed by
   the copied GLFW source when examples are enabled.
 
@@ -83,6 +92,11 @@ ctest --preset dev
 The checked-in presets build the optional `truffle-shaderc` package assembler.
 Other consumers can opt in with `-DTRUFFLE_BUILD_SHADERC=ON`; the runtime RHI
 never gains a compiler dependency.
+
+`truffle-rhi-doctor --strict --json <path>` records the declared matrix and the
+adapters that actually initialized on the current host. Strict mode fails when
+a built backend with a `native_smoke` host claim cannot expose its native
+adapter. Null is reported separately as validation-only.
 
 See `docs/charter.md`, `docs/architecture.md`, `docs/roadmap.md`, and
 `docs/rhi1/` for the current boundaries, replacement sequence, and backend
@@ -104,8 +118,10 @@ The current package exports `Truffle::Core`, `Truffle::Assets`,
 `Truffle::Diagnostics`. Additional backend exports
 (`Truffle::BackendMetal`, `Truffle::BackendVulkan`, `Truffle::BackendOpenGL`,
 `Truffle::BackendDirect3D`) are available when their corresponding CMake
-options are enabled. Except for Metal, those optional backend exports currently
-return `unsupported`; their presence is not a native support claim.
+options are enabled. OpenGL ES, WebGPU, and WebGL2 are exported as
+`Truffle::BackendOpenGLES`, `Truffle::BackendWebGPU`, and
+`Truffle::BackendWebGL2`. Target presence is never itself a support claim; use
+the public backend/platform matrix and the RHI doctor evidence.
 
 See `docs/distribution.md` for package generation, install verification, and
 release workflow guidance.

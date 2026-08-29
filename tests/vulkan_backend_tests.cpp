@@ -1,10 +1,25 @@
 #include "truffle/rhi/vulkan_backend.hpp"
 
-#include <cassert>
+#include "native_backend_smoke.hpp"
 
 int main() {
-    const auto result = truffle::rhi::create_vulkan_instance();
-    assert(!result.ok());
-    assert(result.status().code == truffle::core::StatusCode::unsupported);
+#if defined(__linux__) && !defined(__ANDROID__)
+    truffle::tests::verify_native_backend_smoke(
+        truffle::rhi::create_vulkan_instance(),
+        truffle::rhi::BackendKind::vulkan,
+        truffle::rhi::PlatformKind::linux_host);
+#else
+    auto result = truffle::rhi::create_vulkan_instance();
+    if (result.ok()) {
+        auto instance = std::move(result).value();
+        auto adapter = instance.adapter(0);
+        assert(adapter.ok());
+        assert(adapter.value().info().native);
+        assert(adapter.value().info().backend ==
+               truffle::rhi::BackendKind::vulkan);
+    } else {
+        truffle::tests::verify_unavailable_backend(result);
+    }
+#endif
     return 0;
 }

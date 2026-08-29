@@ -1,9 +1,11 @@
 # Direct3D 12 Backend
 
-This target exposes the RHI 1 Direct3D 12 factory, which currently returns
-`unsupported` and reports no adapter. It does not include D3D12/DXGI headers or
-create a native device. Shared logical validation belongs to the Null backend
-rather than a simulated D3D12 adapter.
+On Windows this target uses only the Windows SDK to create the DXGI WARP
+adapter, D3D12 device, direct queue, fence, allocator, and native command list.
+The factory waits for that command list before exposing an adapter. The debug
+layer is enabled when requested and installed.
 
-Issue #33 replaces this path with native D3D12 implementation. See
-`docs/rhi1/support-matrix.md` for the maturity gates.
+This is a `native_smoke` matrix slice, not a complete backend. Resource,
+pipeline, synchronization, DXGI surface/swapchain, and presentation
+capabilities remain unsupported. Non-Windows builds keep the explicit
+unavailable factory so no simulated D3D12 adapter can appear.

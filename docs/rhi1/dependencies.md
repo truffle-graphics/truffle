@@ -32,8 +32,11 @@ as an unused framework.
 ### Native backends
 
 - Metal uses the Apple SDK's Metal, QuartzCore, and Foundation frameworks.
-- Vulkan may use pinned Vulkan headers/loader integration and Vulkan Memory
-  Allocator; MoltenVK is an Apple-only optional portability dependency.
+- Vulkan currently compiles `Vulkan-Headers` `vulkan-sdk-1.4.350.1` and volk
+  `1.4.350` directly into `truffle_backend_vulkan`; both are pinned Git
+  submodules and remain private to that target. The host supplies only the
+  native loader/driver runtime. Vulkan Memory Allocator and MoltenVK remain
+  future backend-private groups and are not added before their paths exist.
 - D3D12 uses the Windows SDK and DXGI; D3D12 Memory Allocator and an optional
   pinned Agility SDK runtime are backend-local.
 - WebGPU uses pinned Emdawnwebgpu/Dawn components only when that backend is
@@ -75,7 +78,11 @@ require:
 - driver/runtime packages needed for native Linux Vulkan, GL, GLES, and EGL
   execution.
 
-Configure diagnostics and the future RHI doctor command must distinguish a
+Configure diagnostics and the RHI doctor command distinguish a
 missing SDK, a missing checked-out submodule, and an incompatible expert system
 package. No diagnostic may download or mutate the machine without a separate,
 explicit apply step.
+
+The RHI doctor is now implemented. Missing bundled Vulkan source fails at
+configure with the exact submodule command; missing loaders, devices, SDKs, or
+contexts are reported as runtime probe status in its JSON output.

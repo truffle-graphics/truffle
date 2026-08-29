@@ -48,17 +48,25 @@ the cutover decision durable.
 
 - Null is a strict contract interpreter and negative-path oracle, not a GPU
   backend.
-- Metal is the only current implementation with native API calls. Its resource
-  and pipeline slices allocate native buffers and selected 2D textures, compile
+- Metal's resource and pipeline slices allocate native buffers and selected 2D textures, compile
   native shaders and pipeline state, and prove transfers plus exact graphics
   and compute output with Metal API validation enabled. It also maps timeline
   semaphores to shared events and owns graphics-side `CAMetalLayer` acquisition
   and presentation while the host retains window/lifecycle ownership.
   Unsupported shapes and operations remain explicit capabilities rather than
   logical substitutes.
-- Vulkan, OpenGL, and Direct3D targets are explicitly unavailable and report no
-  adapters. Their removed CPU simulators are not part of RHI 1.
-- WebGPU, OpenGL ES, and WebGL2 implementations do not yet exist.
+- Linux Vulkan, Windows D3D12 WARP, and Linux EGL OpenGL/OpenGL ES expose an
+  adapter only after real native initialization and command or clear/readback
+  smoke succeeds. These are narrow matrix foundations: they advertise a
+  graphics queue but no resource, shader, pipeline, synchronization, or
+  presentation capabilities yet.
+- WebGPU and WebGL2 have explicit source targets. WebGPU remains unavailable;
+  WebGL2 has an Emscripten context path but no browser evidence, so both remain
+  `source_only` in repository maturity.
+- `backend_platform_support()` publishes repository evidence separately from
+  runtime adapter discovery. `truffle-rhi-doctor` serializes both views and
+  enforces current-host native claims in strict CI lanes. Null is marked
+  validation-only and never classified as a GPU backend.
 
 Maturity is tracked per backend-platform pair in
 [the support matrix](rhi1/support-matrix.md). Capability support and maturity
@@ -132,6 +140,12 @@ backends and shader tools acquire only their own pinned dependencies. Checked-
 out bundled source is the default; configure never downloads source. Platform
 SDKs are explicit prerequisites, and expert system-package mode is deliberate
 rather than an implicit fallback.
+
+The Vulkan target compiles pinned Vulkan-Headers and volk source directly into
+its own static library. Neither headers nor loader shim appear in
+`Truffle::RHI` or disabled-backend consumer requirements. D3D12 uses only the
+Windows SDK; EGL/GL development packages are discovered only by enabled Linux
+GL-family targets.
 
 The complete policy and dependency groups are in
 [the RHI 1 dependency specification](rhi1/dependencies.md).

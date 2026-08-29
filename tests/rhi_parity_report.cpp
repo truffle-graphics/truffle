@@ -9,8 +9,17 @@
 #ifdef TRUFFLE_HAS_OPENGL_BACKEND
 #include "truffle/rhi/opengl_backend.hpp"
 #endif
+#ifdef TRUFFLE_HAS_OPENGLES_BACKEND
+#include "truffle/rhi/opengles_backend.hpp"
+#endif
 #ifdef TRUFFLE_HAS_VULKAN_BACKEND
 #include "truffle/rhi/vulkan_backend.hpp"
+#endif
+#ifdef TRUFFLE_HAS_WEBGPU_BACKEND
+#include "truffle/rhi/webgpu_backend.hpp"
+#endif
+#ifdef TRUFFLE_HAS_WEBGL2_BACKEND
+#include "truffle/rhi/webgl2_backend.hpp"
 #endif
 
 #include <fstream>
@@ -30,6 +39,23 @@ struct Report {
     bool native = false;
     bool validationOnly = false;
 };
+
+template <typename Factory>
+[[nodiscard]] Report native_report(std::string name, Factory&& factory) {
+    auto result = std::forward<Factory>(factory)();
+    if (!result.ok()) {
+        return {std::move(name), "native", "source_only", false, false, false};
+    }
+    auto instance = std::move(result).value();
+    auto adapter = instance.adapter(0);
+    if (!adapter.ok()) {
+        return {std::move(name), "native", "source_only", false, false, false};
+    }
+    const auto& info = adapter.value().info();
+    return {std::move(name), "native",
+            std::string{truffle::rhi::maturity_name(info.maturity)}, true,
+            info.native, info.validationOnly};
+}
 
 void write_report(std::ostream& output, const std::vector<Report>& reports) {
     output << "{\n  \"reports\": [\n";
@@ -67,30 +93,39 @@ int main(int argc, char** argv) {
                        nullAdapter.value().info().validationOnly});
 
 #ifdef TRUFFLE_HAS_METAL_BACKEND
-    auto metalResult = rhi::create_metal_instance();
-    if (metalResult.ok()) {
-        auto metal = std::move(metalResult).value();
-        auto adapter = metal.adapter(0);
-        reports.push_back({"metal", "native",
-                           adapter.ok() ? "native_smoke" : "cross_compiles",
-                           adapter.ok(),
-                           adapter.ok() && adapter.value().info().native, false});
-    } else {
-        reports.push_back(
-            {"metal", "native", "cross_compiles", false, false, false});
-    }
+    reports.push_back(native_report("metal", [] {
+        return rhi::create_metal_instance();
+    }));
 #endif
 #ifdef TRUFFLE_HAS_VULKAN_BACKEND
-    reports.push_back({"vulkan", "unavailable", "source_only",
-                       rhi::create_vulkan_instance().ok(), false, false});
+    reports.push_back(native_report("vulkan", [] {
+        return rhi::create_vulkan_instance();
+    }));
 #endif
 #ifdef TRUFFLE_HAS_OPENGL_BACKEND
-    reports.push_back({"opengl", "unavailable", "source_only",
-                       rhi::create_opengl_instance().ok(), false, false});
+    reports.push_back(native_report("opengl", [] {
+        return rhi::create_opengl_instance();
+    }));
 #endif
 #ifdef TRUFFLE_HAS_DIRECT3D_BACKEND
-    reports.push_back({"direct3d12", "unavailable", "source_only",
-                       rhi::create_direct3d12_instance().ok(), false, false});
+    reports.push_back(native_report("direct3d12", [] {
+        return rhi::create_direct3d12_instance();
+    }));
+#endif
+#ifdef TRUFFLE_HAS_OPENGLES_BACKEND
+    reports.push_back(native_report("opengles", [] {
+        return rhi::create_opengles_instance();
+    }));
+#endif
+#ifdef TRUFFLE_HAS_WEBGPU_BACKEND
+    reports.push_back(native_report("webgpu", [] {
+        return rhi::create_webgpu_instance();
+    }));
+#endif
+#ifdef TRUFFLE_HAS_WEBGL2_BACKEND
+    reports.push_back(native_report("webgl2", [] {
+        return rhi::create_webgl2_instance();
+    }));
 #endif
 
     write_report(std::cout, reports);

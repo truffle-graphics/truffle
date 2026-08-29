@@ -17,6 +17,18 @@ if(TRUFFLE_BUILD_BACKEND_OPENGL)
     add_subdirectory(opengl)
 endif()
 
+if(TRUFFLE_BUILD_BACKEND_OPENGLES)
+    add_subdirectory(opengles)
+endif()
+
+if(TRUFFLE_BUILD_BACKEND_WEBGPU)
+    add_subdirectory(webgpu)
+endif()
+
+if(TRUFFLE_BUILD_BACKEND_WEBGL2)
+    add_subdirectory(webgl2)
+endif()
+
 if(TRUFFLE_BUILD_BACKEND_DIRECT3D)
     add_subdirectory(direct3d)
 endif()
