@@ -22,8 +22,23 @@ Result<Instance> create_opengles_instance(const InstanceDesc& desc) {
     config.maturity = BackendMaturity::native_smoke;
     config.adapterName = std::move(native.adapterName);
     config.queueKinds = {QueueKind::graphics};
+    config.supportedFeatures = {Feature::transfer};
+    config.resourceCapabilities = {
+        .bufferViews = true,
+        .textureViews = false,
+        .hostCoherent = true,
+        .bufferCopy = true,
+        .bufferFill = true,
+    };
     config.native = true;
     config.nativeContext = std::move(native.context);
+    config.createBuffer = &detail::egl_probe::create_buffer;
+    config.mapBuffer = &detail::egl_probe::map_buffer;
+    config.unmapBuffer = &detail::egl_probe::unmap_buffer;
+    config.flushBuffer = &detail::egl_probe::flush_buffer;
+    config.invalidateBuffer = &detail::egl_probe::buffer_range;
+    config.writeBuffer = &detail::egl_probe::write_buffer;
+    config.readBuffer = &detail::egl_probe::read_buffer;
     config.nativeSubmit = &detail::egl_probe::submit;
     return detail::create_foundation_instance(desc, std::move(config));
 #else

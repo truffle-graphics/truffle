@@ -4,7 +4,7 @@
 
 int main() {
 #ifdef TRUFFLE_EXPECT_EGL_OPENGL
-    truffle::tests::verify_native_backend_smoke(
+    truffle::tests::verify_native_buffer_backend(
         truffle::rhi::create_opengl_instance(),
         truffle::rhi::BackendKind::opengl,
         truffle::rhi::PlatformKind::linux_host);

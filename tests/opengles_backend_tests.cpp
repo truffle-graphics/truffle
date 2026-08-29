@@ -4,7 +4,7 @@
 
 int main() {
 #ifdef TRUFFLE_EXPECT_EGL_OPENGLES
-    truffle::tests::verify_native_backend_smoke(
+    truffle::tests::verify_native_buffer_backend(
         truffle::rhi::create_opengles_instance(),
         truffle::rhi::BackendKind::opengles,
         truffle::rhi::PlatformKind::linux_host);
