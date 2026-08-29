@@ -47,6 +47,13 @@ jobs:
         run: cmake --build --preset ci
 
       - name: Test
+        if: runner.os != 'macOS'
+        run: ctest --preset ci
+
+      - name: Test with Metal API validation
+        if: runner.os == 'macOS'
+        env:
+          MTL_DEBUG_LAYER: 1
         run: ctest --preset ci
 
       - name: Generate backend parity report

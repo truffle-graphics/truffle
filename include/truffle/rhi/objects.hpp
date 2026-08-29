@@ -25,6 +25,8 @@ class CommandList;
 class RenderEncoder;
 class ComputeEncoder;
 class CopyEncoder;
+class BufferView;
+class TextureView;
 class Fence;
 class Semaphore;
 class QueryPool;
@@ -88,9 +90,16 @@ public:
     [[nodiscard]] BufferDesc desc() const;
     [[nodiscard]] Result<std::span<std::byte>> map();
     [[nodiscard]] Status unmap();
+    [[nodiscard]] bool mapped() const noexcept;
+    [[nodiscard]] Status flush(std::size_t offset = 0,
+                               std::size_t size = whole_size);
+    [[nodiscard]] Status invalidate(std::size_t offset = 0,
+                                    std::size_t size = whole_size);
     [[nodiscard]] Status write(std::size_t offset,
                                std::span<const std::byte> data);
     [[nodiscard]] Status read(std::size_t offset, std::span<std::byte> data) const;
+    [[nodiscard]] MemoryRequirements memory_requirements() const noexcept;
+    [[nodiscard]] Result<ExternalMemoryHandle> export_memory() const;
 
 private:
     explicit Buffer(std::unique_ptr<detail::ObjectState> state) noexcept;
@@ -99,6 +108,27 @@ private:
     friend class RenderEncoder;
     friend class ComputeEncoder;
     friend class CopyEncoder;
+    friend class Device;
+};
+
+class BufferView {
+public:
+    BufferView() noexcept;
+    ~BufferView();
+    BufferView(BufferView&&) noexcept;
+    BufferView& operator=(BufferView&&) noexcept;
+    BufferView(const BufferView&) = delete;
+    BufferView& operator=(const BufferView&) = delete;
+
+    [[nodiscard]] bool valid() const noexcept;
+    [[nodiscard]] ObjectId id() const noexcept;
+    [[nodiscard]] BufferViewDesc desc() const;
+    [[nodiscard]] ObjectId buffer_id() const noexcept;
+
+private:
+    explicit BufferView(std::unique_ptr<detail::ObjectState> state) noexcept;
+    std::unique_ptr<detail::ObjectState> state_;
+    friend struct detail::Factory;
 };
 
 class Texture {
@@ -113,12 +143,42 @@ public:
     [[nodiscard]] bool valid() const noexcept;
     [[nodiscard]] ObjectId id() const noexcept;
     [[nodiscard]] TextureDesc desc() const;
+    [[nodiscard]] Status write(const TextureRegion& region,
+                               std::span<const std::byte> data,
+                               const TextureDataLayout& layout = {});
+    [[nodiscard]] Status read(const TextureRegion& region,
+                              std::span<std::byte> data,
+                              const TextureDataLayout& layout = {}) const;
+    [[nodiscard]] MemoryRequirements memory_requirements() const noexcept;
+    [[nodiscard]] Result<ExternalMemoryHandle> export_memory() const;
 
 private:
     explicit Texture(std::unique_ptr<detail::ObjectState> state) noexcept;
     std::unique_ptr<detail::ObjectState> state_;
     friend struct detail::Factory;
     friend class CommandList;
+    friend class CopyEncoder;
+    friend class Device;
+};
+
+class TextureView {
+public:
+    TextureView() noexcept;
+    ~TextureView();
+    TextureView(TextureView&&) noexcept;
+    TextureView& operator=(TextureView&&) noexcept;
+    TextureView(const TextureView&) = delete;
+    TextureView& operator=(const TextureView&) = delete;
+
+    [[nodiscard]] bool valid() const noexcept;
+    [[nodiscard]] ObjectId id() const noexcept;
+    [[nodiscard]] TextureViewDesc desc() const;
+    [[nodiscard]] ObjectId texture_id() const noexcept;
+
+private:
+    explicit TextureView(std::unique_ptr<detail::ObjectState> state) noexcept;
+    std::unique_ptr<detail::ObjectState> state_;
+    friend struct detail::Factory;
 };
 
 class Shader {
@@ -200,6 +260,15 @@ public:
     [[nodiscard]] Result<CommandPool> create_command_pool(QueueKind kind) const;
     [[nodiscard]] Result<Buffer> create_buffer(const BufferDesc& desc) const;
     [[nodiscard]] Result<Texture> create_texture(const TextureDesc& desc) const;
+    [[nodiscard]] Result<BufferView> create_buffer_view(
+        Buffer& buffer, const BufferViewDesc& desc = {}) const;
+    [[nodiscard]] Result<TextureView> create_texture_view(
+        Texture& texture, const TextureViewDesc& desc = {}) const;
+    [[nodiscard]] Result<Buffer> import_buffer(
+        const BufferDesc& desc, ExternalMemoryHandle handle) const;
+    [[nodiscard]] Result<Texture> import_texture(
+        const TextureDesc& desc, ExternalMemoryHandle handle) const;
+    [[nodiscard]] Result<MemoryBudget> memory_budget(MemoryDomain domain) const;
     [[nodiscard]] Result<Shader> create_shader(const ShaderDesc& desc) const;
     [[nodiscard]] Result<Pipeline> create_pipeline(const PipelineDesc& desc) const;
     [[nodiscard]] Result<ComputePipeline> create_compute_pipeline(
@@ -349,8 +418,25 @@ public:
                                      Buffer& destination,
                                      std::size_t destinationOffset,
                                      std::size_t size);
+    [[nodiscard]] Status copy_buffer(Buffer& source, Buffer& destination,
+                                     const BufferCopyRegion& region);
     [[nodiscard]] Status fill_buffer(Buffer& destination, std::size_t offset,
                                      std::size_t size, std::byte value);
+    [[nodiscard]] Status copy_buffer_to_texture(
+        Buffer& source, Texture& destination,
+        const BufferTextureCopyRegion& region);
+    [[nodiscard]] Status copy_texture_to_buffer(
+        Texture& source, Buffer& destination,
+        const BufferTextureCopyRegion& region);
+    [[nodiscard]] Status copy_texture(Texture& source, Texture& destination,
+                                      const TextureCopyRegion& region);
+    [[nodiscard]] Status clear_texture(Texture& texture,
+                                       const TextureRegion& region,
+                                       const ClearValue& value = {});
+    [[nodiscard]] Status resolve_texture(Texture& source, Texture& destination,
+                                         const TextureCopyRegion& region);
+    [[nodiscard]] Status blit_texture(Texture& source, Texture& destination,
+                                      const TextureBlitRegion& region);
     [[nodiscard]] Status end();
 
 private:

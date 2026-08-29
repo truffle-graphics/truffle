@@ -111,6 +111,7 @@ never encoded into a command list.
 
 ## Related Specifications
 
+- [Resources, memory, views, and transfers](resources.md)
 - [Backend and platform maturity](support-matrix.md)
 - [Dependency policy](dependencies.md)
 - [Shader package direction](shader-package.md)

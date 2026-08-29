@@ -37,9 +37,10 @@ API:
   synchronization, and presentation foundation.
 - `truffle_backend_null` strictly validates RHI 1 lifetime and state without a
   GPU dependency.
-- `truffle_backend_metal` discovers a native Metal device and submits native
-  command buffers. Resource and presentation slices remain pending, and its
-  accepted maturity is still `cross_compiles` on macOS.
+- `truffle_backend_metal` implements native buffer and selected 2D texture
+  allocation, views, mapping/coherence, copy/fill, upload, and readback. Its
+  validation-enabled deterministic resource proofs reach `native_smoke` on
+  macOS; pipelines and presentation remain pending.
 - `truffle_backend_vulkan`, `truffle_backend_opengl`, and
   `truffle_backend_direct3d` expose explicit unavailable factories until their
   native implementations land; they report no simulated adapters.

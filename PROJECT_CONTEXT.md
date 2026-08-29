@@ -29,10 +29,9 @@ Current evidence is narrower than the old roadmap claimed:
 - Null implements the RHI 1 foundation as a strict validation backend, not a
   GPU backend.
 - Metal is the only implementation that currently calls a native graphics API;
-  the current slice discovers a native device and submits empty native command
-  buffers but does not yet create native resources. Its accepted maturity
-  remains `cross_compiles` on macOS until a recorded validation-enabled native
-  smoke result satisfies the next gate.
+  it discovers a native device and passes buffer and texture upload/copy/
+  readback proofs with Metal API validation enabled. Its macOS maturity is
+  `native_smoke`; full native conformance and presentation remain.
 - Vulkan, OpenGL, and Direct3D backend targets explicitly return `unsupported`
   and report no adapters. Their previous CPU simulators have been removed; the
   future native implementations remain `source_only`.
@@ -87,5 +86,5 @@ consumer selects concrete loading, upload, and backend behavior.
 
 ## Next Meaningful Direction
 
-Complete resources, memory, views, and transfer semantics under issue #29,
-proving each implemented backend slice with deterministic data evidence.
+Complete immutable bindings, shader packages, pipeline layouts, and graphics/
+compute pipeline contracts under issues #30 and #32.

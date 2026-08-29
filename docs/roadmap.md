@@ -37,15 +37,20 @@ Exit: RHI 1 is the sole exported graphics API; Null proves foundation lifetime,
 state, and threading behavior; Metal uses the same foundation over native
 device/command submission; named unimplemented backends report no adapters.
 
-## Phase 2: Resources, Memory, Views, And Transfers — Pending
+## Phase 2: Resources, Memory, Views, And Transfers — Complete
 
 Tracked by #29.
 
-- Implement complete buffer/texture dimensions, formats, subresources, views,
+- [x] Implement complete buffer/texture dimensions, formats, subresources, views,
   memory domains, mapping/flush/invalidate, external sharing where supported,
   memory budgets, caller allocators, upload/readback, copy/fill/clear/resolve,
   and blit commands.
-- Require deterministic native readback or output evidence per backend slice.
+- [x] Require deterministic native readback or output evidence per backend slice.
+
+Exit: Null validates the full contract, including accurate unsupported paths and
+deferred retirement. Metal passes validation-enabled native buffer, texture, and
+buffer-texture round trips; unsupported shapes and operations are capability
+reported. Other named backends still expose no adapter.
 
 ## Phase 3: Bindings, Shaders, And Pipelines — Pending
 

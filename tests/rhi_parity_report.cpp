@@ -71,7 +71,9 @@ int main(int argc, char** argv) {
     if (metalResult.ok()) {
         auto metal = std::move(metalResult).value();
         auto adapter = metal.adapter(0);
-        reports.push_back({"metal", "native", "cross_compiles", adapter.ok(),
+        reports.push_back({"metal", "native",
+                           adapter.ok() ? "native_smoke" : "cross_compiles",
+                           adapter.ok(),
                            adapter.ok() && adapter.value().info().native, false});
     } else {
         reports.push_back(
