@@ -573,7 +573,7 @@ struct MetalSwapchainResource {
 }
 
 [[nodiscard]] Result<std::shared_ptr<void>> create_metal_buffer(
-    const BufferDesc& desc) {
+    const std::shared_ptr<void>&, const BufferDesc& desc) {
     @autoreleasepool {
         const auto device = system_device();
         if (device == nil) {
@@ -1134,7 +1134,7 @@ struct MetalFormat {
 }
 
 [[nodiscard]] Result<std::shared_ptr<void>> create_metal_texture(
-    const TextureDesc& desc) {
+    const std::shared_ptr<void>&, const TextureDesc& desc) {
     @autoreleasepool {
         const auto device = system_device();
         if (device == nil) {

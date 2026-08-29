@@ -1508,7 +1508,8 @@ struct Factory {
         if (runtime.config.createBuffer == nullptr) {
             return unsupported(runtime, "buffer creation");
         }
-        auto nativeResult = runtime.config.createBuffer(desc);
+        auto nativeResult =
+            runtime.config.createBuffer(runtime.config.nativeContext, desc);
         if (!nativeResult.ok()) {
             return nativeResult.status();
         }
@@ -1600,7 +1601,8 @@ struct Factory {
         if (runtime.config.createTexture == nullptr) {
             return unsupported(runtime, "texture creation");
         }
-        auto nativeResult = runtime.config.createTexture(desc);
+        auto nativeResult =
+            runtime.config.createTexture(runtime.config.nativeContext, desc);
         if (!nativeResult.ok()) {
             return nativeResult.status();
         }

@@ -44,8 +44,51 @@ struct VulkanContext {
     VkDevice device = VK_NULL_HANDLE;
     VkQueue queue = VK_NULL_HANDLE;
     std::uint32_t queueFamily = 0;
+    VkPhysicalDeviceProperties properties{};
+    VkPhysicalDeviceMemoryProperties memoryProperties{};
     VolkInstanceTable instanceTable{};
     VolkDeviceTable deviceTable{};
+    std::mutex mutex;
+};
+
+struct VulkanBufferResource {
+    VulkanBufferResource(std::shared_ptr<VulkanContext> contextValue,
+                         VkBuffer bufferValue, VkDeviceMemory memoryValue,
+                         VkDeviceSize allocationSizeValue,
+                         std::size_t logicalSizeValue, bool hostVisibleValue,
+                         bool hostCoherentValue, void* mappedValue)
+        : context(std::move(contextValue)), buffer(bufferValue),
+          memory(memoryValue), allocationSize(allocationSizeValue),
+          logicalSize(logicalSizeValue), hostVisible(hostVisibleValue),
+          hostCoherent(hostCoherentValue), mapped(mappedValue) {}
+
+    ~VulkanBufferResource() {
+        if (!context || context->device == VK_NULL_HANDLE) {
+            return;
+        }
+        std::lock_guard contextLock{context->mutex};
+        std::lock_guard resourceLock{mutex};
+        if (mapped != nullptr) {
+            context->deviceTable.vkUnmapMemory(context->device, memory);
+            mapped = nullptr;
+        }
+        if (buffer != VK_NULL_HANDLE) {
+            context->deviceTable.vkDestroyBuffer(context->device, buffer,
+                                                  nullptr);
+        }
+        if (memory != VK_NULL_HANDLE) {
+            context->deviceTable.vkFreeMemory(context->device, memory, nullptr);
+        }
+    }
+
+    std::shared_ptr<VulkanContext> context;
+    VkBuffer buffer = VK_NULL_HANDLE;
+    VkDeviceMemory memory = VK_NULL_HANDLE;
+    VkDeviceSize allocationSize = 0;
+    std::size_t logicalSize = 0;
+    bool hostVisible = false;
+    bool hostCoherent = false;
+    void* mapped = nullptr;
     std::mutex mutex;
 };
 
@@ -53,9 +96,488 @@ struct VulkanProbe {
     std::shared_ptr<VulkanContext> context;
     std::string adapterName;
     std::size_t deviceLocalBudget = 1024u * 1024u * 1024u;
+    bool hostCoherent = false;
 };
 
-[[nodiscard]] Status submit_empty_command_buffer(VulkanContext& context) {
+[[nodiscard]] VkBufferUsageFlags vulkan_buffer_usage(BufferUsage usage) {
+    VkBufferUsageFlags native = 0;
+    if (has_usage(usage, BufferUsage::vertex)) {
+        native |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    }
+    if (has_usage(usage, BufferUsage::index)) {
+        native |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+    }
+    if (has_usage(usage, BufferUsage::uniform)) {
+        native |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    }
+    if (has_usage(usage, BufferUsage::storage)) {
+        native |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+    }
+    if (has_usage(usage, BufferUsage::indirect)) {
+        native |= VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+    }
+    if (has_usage(usage, BufferUsage::copy_source)) {
+        native |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    }
+    if (has_usage(usage, BufferUsage::copy_destination)) {
+        native |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    }
+    return native;
+}
+
+[[nodiscard]] Result<std::uint32_t> find_memory_type(
+    const VulkanContext& context, std::uint32_t allowedTypes,
+    VkMemoryPropertyFlags required, VkMemoryPropertyFlags preferred) {
+    for (std::uint32_t index = 0;
+         index < context.memoryProperties.memoryTypeCount; ++index) {
+        const auto flags =
+            context.memoryProperties.memoryTypes[index].propertyFlags;
+        if ((allowedTypes & (1u << index)) != 0 &&
+            (flags & required) == required &&
+            (flags & preferred) == preferred) {
+            return index;
+        }
+    }
+    for (std::uint32_t index = 0;
+         index < context.memoryProperties.memoryTypeCount; ++index) {
+        const auto flags =
+            context.memoryProperties.memoryTypes[index].propertyFlags;
+        if ((allowedTypes & (1u << index)) != 0 &&
+            (flags & required) == required) {
+            return index;
+        }
+    }
+    return Status::failure(StatusCode::unsupported,
+                           "Vulkan found no compatible memory type");
+}
+
+[[nodiscard]] Result<std::shared_ptr<void>> create_vulkan_buffer(
+    const std::shared_ptr<void>& nativeContext, const BufferDesc& desc) {
+    const auto context = std::static_pointer_cast<VulkanContext>(nativeContext);
+    if (!context || context->device == VK_NULL_HANDLE) {
+        return Status::failure(StatusCode::device_lost,
+                               "the Vulkan native context is unavailable");
+    }
+    if (desc.memory == MemoryDomain::external || desc.shareable) {
+        return Status::failure(
+            StatusCode::unsupported,
+            "Vulkan external buffer memory is not implemented");
+    }
+
+    const auto usage = vulkan_buffer_usage(desc.usage);
+    if (usage == 0) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "Vulkan buffer usage is empty");
+    }
+    const VkBufferCreateInfo bufferInfo{
+        .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .size = static_cast<VkDeviceSize>(desc.size),
+        .usage = usage,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .queueFamilyIndexCount = 0,
+        .pQueueFamilyIndices = nullptr,
+    };
+
+    VkBuffer buffer = VK_NULL_HANDLE;
+    VkDeviceMemory memory = VK_NULL_HANDLE;
+    VkMemoryRequirements requirements{};
+    bool hostVisible = false;
+    bool hostCoherent = false;
+    void* mapped = nullptr;
+    std::lock_guard lock{context->mutex};
+    auto result = context->deviceTable.vkCreateBuffer(
+        context->device, &bufferInfo, nullptr, &buffer);
+    if (result != VK_SUCCESS) {
+        return vulkan_failure(StatusCode::out_of_memory,
+                              "Vulkan buffer creation failed", result);
+    }
+    context->deviceTable.vkGetBufferMemoryRequirements(context->device, buffer,
+                                                        &requirements);
+
+    VkMemoryPropertyFlags required = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    VkMemoryPropertyFlags preferred = 0;
+    if (desc.memory == MemoryDomain::upload ||
+        desc.memory == MemoryDomain::readback) {
+        required = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+        preferred = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        if (desc.memory == MemoryDomain::readback) {
+            preferred |= VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+        }
+    }
+    auto memoryType = find_memory_type(*context, requirements.memoryTypeBits,
+                                       required, preferred);
+    if (!memoryType.ok()) {
+        context->deviceTable.vkDestroyBuffer(context->device, buffer, nullptr);
+        return memoryType.status();
+    }
+    const auto memoryFlags =
+        context->memoryProperties.memoryTypes[memoryType.value()].propertyFlags;
+    hostVisible = (memoryFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0;
+    hostCoherent = (memoryFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0;
+    const VkMemoryAllocateInfo allocationInfo{
+        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .pNext = nullptr,
+        .allocationSize = requirements.size,
+        .memoryTypeIndex = memoryType.value(),
+    };
+    result = context->deviceTable.vkAllocateMemory(
+        context->device, &allocationInfo, nullptr, &memory);
+    if (result == VK_SUCCESS) {
+        result = context->deviceTable.vkBindBufferMemory(
+            context->device, buffer, memory, 0);
+    }
+    if (result == VK_SUCCESS && desc.mappedAtCreation) {
+        result = context->deviceTable.vkMapMemory(
+            context->device, memory, 0, requirements.size, 0, &mapped);
+    }
+    if (result != VK_SUCCESS) {
+        if (mapped != nullptr) {
+            context->deviceTable.vkUnmapMemory(context->device, memory);
+        }
+        context->deviceTable.vkDestroyBuffer(context->device, buffer, nullptr);
+        if (memory != VK_NULL_HANDLE) {
+            context->deviceTable.vkFreeMemory(context->device, memory, nullptr);
+        }
+        return vulkan_failure(
+            result == VK_ERROR_OUT_OF_DEVICE_MEMORY ||
+                    result == VK_ERROR_OUT_OF_HOST_MEMORY
+                ? StatusCode::out_of_memory
+                : StatusCode::backend_error,
+            "Vulkan buffer memory allocation failed", result);
+    }
+
+    try {
+        return std::static_pointer_cast<void>(
+            std::make_shared<VulkanBufferResource>(
+                context, buffer, memory, requirements.size, desc.size,
+                hostVisible, hostCoherent, mapped));
+    } catch (const std::bad_alloc&) {
+        if (mapped != nullptr) {
+            context->deviceTable.vkUnmapMemory(context->device, memory);
+        }
+        context->deviceTable.vkDestroyBuffer(context->device, buffer, nullptr);
+        context->deviceTable.vkFreeMemory(context->device, memory, nullptr);
+        return Status::failure(StatusCode::out_of_memory,
+                               "Vulkan buffer resource allocation failed");
+    }
+}
+
+[[nodiscard]] Status flush_vulkan_memory(VulkanBufferResource& resource) {
+    if (resource.hostCoherent) {
+        return Status::success();
+    }
+    const VkMappedMemoryRange range{
+        .sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
+        .pNext = nullptr,
+        .memory = resource.memory,
+        .offset = 0,
+        .size = VK_WHOLE_SIZE,
+    };
+    const auto result = resource.context->deviceTable.vkFlushMappedMemoryRanges(
+        resource.context->device, 1, &range);
+    return result == VK_SUCCESS
+               ? Status::success()
+               : vulkan_failure(StatusCode::backend_error,
+                                "Vulkan buffer flush failed", result);
+}
+
+[[nodiscard]] Status invalidate_vulkan_memory(VulkanBufferResource& resource) {
+    if (resource.hostCoherent) {
+        return Status::success();
+    }
+    const VkMappedMemoryRange range{
+        .sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
+        .pNext = nullptr,
+        .memory = resource.memory,
+        .offset = 0,
+        .size = VK_WHOLE_SIZE,
+    };
+    const auto result =
+        resource.context->deviceTable.vkInvalidateMappedMemoryRanges(
+            resource.context->device, 1, &range);
+    return result == VK_SUCCESS
+               ? Status::success()
+               : vulkan_failure(StatusCode::backend_error,
+                                "Vulkan buffer invalidation failed", result);
+}
+
+[[nodiscard]] Status ensure_vulkan_buffer_mapped(
+    VulkanBufferResource& resource) {
+    if (!resource.hostVisible) {
+        return Status::failure(StatusCode::unsupported,
+                               "device-local Vulkan buffers are not host "
+                               "mappable");
+    }
+    if (resource.mapped != nullptr) {
+        return Status::success();
+    }
+    const auto result = resource.context->deviceTable.vkMapMemory(
+        resource.context->device, resource.memory, 0, resource.allocationSize,
+        0, &resource.mapped);
+    return result == VK_SUCCESS
+               ? Status::success()
+               : vulkan_failure(StatusCode::backend_error,
+                                "Vulkan buffer mapping failed", result);
+}
+
+[[nodiscard]] Result<std::span<std::byte>> map_vulkan_buffer(
+    const std::shared_ptr<void>& nativeResource) {
+    const auto resource =
+        std::static_pointer_cast<VulkanBufferResource>(nativeResource);
+    if (!resource) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "Vulkan buffer resource is invalid");
+    }
+    std::lock_guard lock{resource->mutex};
+    if (auto status = ensure_vulkan_buffer_mapped(*resource); !status.ok()) {
+        return status;
+    }
+    return std::span<std::byte>{static_cast<std::byte*>(resource->mapped),
+                                resource->logicalSize};
+}
+
+[[nodiscard]] Status unmap_vulkan_buffer(
+    const std::shared_ptr<void>& nativeResource) {
+    const auto resource =
+        std::static_pointer_cast<VulkanBufferResource>(nativeResource);
+    if (!resource) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "Vulkan buffer resource is invalid");
+    }
+    std::lock_guard lock{resource->mutex};
+    if (resource->mapped == nullptr) {
+        return Status::failure(StatusCode::invalid_state,
+                               "Vulkan buffer is not mapped");
+    }
+    resource->context->deviceTable.vkUnmapMemory(resource->context->device,
+                                                  resource->memory);
+    resource->mapped = nullptr;
+    return Status::success();
+}
+
+[[nodiscard]] Status flush_vulkan_buffer(
+    const std::shared_ptr<void>& nativeResource, std::size_t offset,
+    std::size_t size) {
+    const auto resource =
+        std::static_pointer_cast<VulkanBufferResource>(nativeResource);
+    if (!resource || offset > resource->logicalSize ||
+        size > resource->logicalSize - offset) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "Vulkan buffer flush range is invalid");
+    }
+    std::lock_guard lock{resource->mutex};
+    const bool temporary = resource->mapped == nullptr;
+    if (auto status = ensure_vulkan_buffer_mapped(*resource); !status.ok()) {
+        return status;
+    }
+    auto status = flush_vulkan_memory(*resource);
+    if (temporary) {
+        resource->context->deviceTable.vkUnmapMemory(resource->context->device,
+                                                      resource->memory);
+        resource->mapped = nullptr;
+    }
+    return status;
+}
+
+[[nodiscard]] Status invalidate_vulkan_buffer(
+    const std::shared_ptr<void>& nativeResource, std::size_t offset,
+    std::size_t size) {
+    const auto resource =
+        std::static_pointer_cast<VulkanBufferResource>(nativeResource);
+    if (!resource || offset > resource->logicalSize ||
+        size > resource->logicalSize - offset) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "Vulkan buffer invalidate range is invalid");
+    }
+    std::lock_guard lock{resource->mutex};
+    const bool temporary = resource->mapped == nullptr;
+    if (auto status = ensure_vulkan_buffer_mapped(*resource); !status.ok()) {
+        return status;
+    }
+    auto status = invalidate_vulkan_memory(*resource);
+    if (temporary) {
+        resource->context->deviceTable.vkUnmapMemory(resource->context->device,
+                                                      resource->memory);
+        resource->mapped = nullptr;
+    }
+    return status;
+}
+
+[[nodiscard]] Status write_vulkan_buffer(
+    const std::shared_ptr<void>& nativeResource, std::size_t offset,
+    std::span<const std::byte> data) {
+    const auto resource =
+        std::static_pointer_cast<VulkanBufferResource>(nativeResource);
+    if (!resource || offset > resource->logicalSize ||
+        data.size() > resource->logicalSize - offset) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "Vulkan buffer write exceeds allocation");
+    }
+    std::lock_guard lock{resource->mutex};
+    const bool temporary = resource->mapped == nullptr;
+    if (auto status = ensure_vulkan_buffer_mapped(*resource); !status.ok()) {
+        return status;
+    }
+    std::memcpy(static_cast<std::byte*>(resource->mapped) + offset, data.data(),
+                data.size());
+    auto status = flush_vulkan_memory(*resource);
+    if (temporary) {
+        resource->context->deviceTable.vkUnmapMemory(resource->context->device,
+                                                      resource->memory);
+        resource->mapped = nullptr;
+    }
+    return status;
+}
+
+[[nodiscard]] Status read_vulkan_buffer(
+    const std::shared_ptr<void>& nativeResource, std::size_t offset,
+    std::span<std::byte> data) {
+    const auto resource =
+        std::static_pointer_cast<VulkanBufferResource>(nativeResource);
+    if (!resource || offset > resource->logicalSize ||
+        data.size() > resource->logicalSize - offset) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "Vulkan buffer read exceeds allocation");
+    }
+    std::lock_guard lock{resource->mutex};
+    const bool temporary = resource->mapped == nullptr;
+    if (auto status = ensure_vulkan_buffer_mapped(*resource); !status.ok()) {
+        return status;
+    }
+    auto status = invalidate_vulkan_memory(*resource);
+    if (status.ok()) {
+        std::memcpy(data.data(),
+                    static_cast<const std::byte*>(resource->mapped) + offset,
+                    data.size());
+    }
+    if (temporary) {
+        resource->context->deviceTable.vkUnmapMemory(resource->context->device,
+                                                      resource->memory);
+        resource->mapped = nullptr;
+    }
+    return status;
+}
+
+[[nodiscard]] Status record_vulkan_commands(
+    VulkanContext& context, VkCommandBuffer commandBuffer,
+    std::span<const detail::NativeCommand> commands) {
+    bool recordedTransfer = false;
+    const auto memory_barrier = [&](VkPipelineStageFlags sourceStages,
+                                    VkAccessFlags sourceAccess,
+                                    VkPipelineStageFlags destinationStages,
+                                    VkAccessFlags destinationAccess) {
+        const VkMemoryBarrier barrier{
+            .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
+            .pNext = nullptr,
+            .srcAccessMask = sourceAccess,
+            .dstAccessMask = destinationAccess,
+        };
+        context.deviceTable.vkCmdPipelineBarrier(
+            commandBuffer, sourceStages, destinationStages, 0, 1, &barrier, 0,
+            nullptr, 0, nullptr);
+    };
+    for (const auto& command : commands) {
+        if (command.kind == detail::NativeCommandKind::barrier) {
+            continue;
+        }
+        if (command.kind != detail::NativeCommandKind::transfer) {
+            return Status::failure(
+                StatusCode::unsupported,
+                "the Vulkan resource slice supports transfer command lists only");
+        }
+        const auto& transfer = command.transfer;
+        if (recordedTransfer) {
+            memory_barrier(VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_ACCESS_TRANSFER_WRITE_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_ACCESS_TRANSFER_READ_BIT |
+                               VK_ACCESS_TRANSFER_WRITE_BIT);
+        } else {
+            memory_barrier(VK_PIPELINE_STAGE_HOST_BIT,
+                           VK_ACCESS_HOST_WRITE_BIT,
+                           VK_PIPELINE_STAGE_TRANSFER_BIT,
+                           VK_ACCESS_TRANSFER_READ_BIT |
+                               VK_ACCESS_TRANSFER_WRITE_BIT);
+            recordedTransfer = true;
+        }
+        switch (transfer.kind) {
+        case detail::NativeTransferKind::copy_buffer: {
+            const auto source =
+                std::static_pointer_cast<VulkanBufferResource>(transfer.source);
+            const auto destination =
+                std::static_pointer_cast<VulkanBufferResource>(
+                    transfer.destination);
+            if (!source || !destination || source->buffer == VK_NULL_HANDLE ||
+                destination->buffer == VK_NULL_HANDLE) {
+                return Status::failure(StatusCode::invalid_argument,
+                                       "Vulkan buffer copy resources are invalid");
+            }
+            if ((transfer.buffer.sourceOffset & 3u) != 0 ||
+                (transfer.buffer.destinationOffset & 3u) != 0 ||
+                (transfer.buffer.size & 3u) != 0) {
+                return Status::failure(
+                    StatusCode::invalid_argument,
+                    "Vulkan buffer copy offsets and size must be four-byte aligned");
+            }
+            const VkBufferCopy region{
+                .srcOffset =
+                    static_cast<VkDeviceSize>(transfer.buffer.sourceOffset),
+                .dstOffset = static_cast<VkDeviceSize>(
+                    transfer.buffer.destinationOffset),
+                .size = static_cast<VkDeviceSize>(transfer.buffer.size),
+            };
+            context.deviceTable.vkCmdCopyBuffer(commandBuffer, source->buffer,
+                                                 destination->buffer, 1,
+                                                 &region);
+            break;
+        }
+        case detail::NativeTransferKind::fill_buffer: {
+            const auto destination =
+                std::static_pointer_cast<VulkanBufferResource>(
+                    transfer.destination);
+            if (!destination || destination->buffer == VK_NULL_HANDLE) {
+                return Status::failure(StatusCode::invalid_argument,
+                                       "Vulkan buffer fill resource is invalid");
+            }
+            if ((transfer.buffer.destinationOffset & 3u) != 0 ||
+                (transfer.buffer.size & 3u) != 0) {
+                return Status::failure(
+                    StatusCode::invalid_argument,
+                    "Vulkan buffer fill offset and size must be four-byte aligned");
+            }
+            const auto byte =
+                static_cast<std::uint32_t>(std::to_integer<std::uint8_t>(
+                    transfer.fillValue));
+            const auto pattern = byte * 0x01010101u;
+            context.deviceTable.vkCmdFillBuffer(
+                commandBuffer, destination->buffer,
+                static_cast<VkDeviceSize>(transfer.buffer.destinationOffset),
+                static_cast<VkDeviceSize>(transfer.buffer.size), pattern);
+            break;
+        }
+        case detail::NativeTransferKind::copy_buffer_to_texture:
+        case detail::NativeTransferKind::copy_texture_to_buffer:
+        case detail::NativeTransferKind::copy_texture:
+        case detail::NativeTransferKind::clear_texture:
+        case detail::NativeTransferKind::resolve_texture:
+        case detail::NativeTransferKind::blit_texture:
+            return Status::failure(
+                StatusCode::unsupported,
+                "Vulkan texture transfers are not implemented in this resource slice");
+        }
+    }
+    if (recordedTransfer) {
+        memory_barrier(VK_PIPELINE_STAGE_TRANSFER_BIT,
+                       VK_ACCESS_TRANSFER_WRITE_BIT,
+                       VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
+    }
+    return Status::success();
+}
+
+[[nodiscard]] Status submit_vulkan_command_buffer(
+    VulkanContext& context, std::span<const detail::NativeCommand> commands) {
     VkCommandPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     poolInfo.queueFamilyIndex = context.queueFamily;
@@ -83,6 +605,15 @@ struct VulkanProbe {
                                                           &beginInfo);
     }
     if (result == VK_SUCCESS) {
+        if (auto status = record_vulkan_commands(context, commandBuffer,
+                                                 commands);
+            !status.ok()) {
+            context.deviceTable.vkDestroyCommandPool(context.device, pool,
+                                                      nullptr);
+            return status;
+        }
+    }
+    if (result == VK_SUCCESS) {
         result = context.deviceTable.vkEndCommandBuffer(commandBuffer);
     }
     if (result == VK_SUCCESS) {
@@ -99,13 +630,13 @@ struct VulkanProbe {
     context.deviceTable.vkDestroyCommandPool(context.device, pool, nullptr);
     if (result == VK_ERROR_DEVICE_LOST) {
         return vulkan_failure(StatusCode::device_lost,
-                              "Vulkan lost the device during smoke submission",
+                              "Vulkan lost the device during command submission",
                               result);
     }
     return result == VK_SUCCESS
                ? Status::success()
                : vulkan_failure(StatusCode::backend_error,
-                                "Vulkan native smoke submission failed", result);
+                                "Vulkan native command submission failed", result);
 }
 
 [[nodiscard]] Result<VulkanProbe> initialize_vulkan(const InstanceDesc& desc) {
@@ -294,30 +825,43 @@ struct VulkanProbe {
     context->deviceTable.vkGetDeviceQueue(context->device, context->queueFamily,
                                           0, &context->queue);
 
-    if (auto status = submit_empty_command_buffer(*context); !status.ok()) {
+    if (auto status = submit_vulkan_command_buffer(*context, {}); !status.ok()) {
         return status;
     }
 
-    VkPhysicalDeviceProperties properties{};
     context->instanceTable.vkGetPhysicalDeviceProperties(
-        context->physicalDevice, &properties);
-    VkPhysicalDeviceMemoryProperties memory{};
+        context->physicalDevice, &context->properties);
     context->instanceTable.vkGetPhysicalDeviceMemoryProperties(
-        context->physicalDevice, &memory);
+        context->physicalDevice, &context->memoryProperties);
     VkDeviceSize deviceLocalBudget = 0;
-    for (std::uint32_t index = 0; index < memory.memoryHeapCount; ++index) {
-        if ((memory.memoryHeaps[index].flags &
+    for (std::uint32_t index = 0;
+         index < context->memoryProperties.memoryHeapCount; ++index) {
+        if ((context->memoryProperties.memoryHeaps[index].flags &
              VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) != 0) {
-            deviceLocalBudget += memory.memoryHeaps[index].size;
+            deviceLocalBudget +=
+                context->memoryProperties.memoryHeaps[index].size;
+        }
+    }
+    bool hostCoherent = false;
+    for (std::uint32_t index = 0;
+         index < context->memoryProperties.memoryTypeCount; ++index) {
+        constexpr auto required = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+                                  VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        if ((context->memoryProperties.memoryTypes[index].propertyFlags &
+             required) == required) {
+            hostCoherent = true;
+            break;
         }
     }
 
+    const std::string adapterName = context->properties.deviceName;
     return VulkanProbe{
         .context = std::move(context),
-        .adapterName = properties.deviceName,
+        .adapterName = adapterName,
         .deviceLocalBudget = deviceLocalBudget != 0
                                  ? static_cast<std::size_t>(deviceLocalBudget)
                                  : 1024u * 1024u * 1024u,
+        .hostCoherent = hostCoherent,
     };
 }
 
@@ -326,10 +870,10 @@ struct VulkanProbe {
     std::span<const detail::NativeCommand> commands,
     std::span<const detail::NativeSemaphorePoint> waits,
     std::span<const detail::NativeSemaphorePoint> signals) {
-    if (!commands.empty() || !waits.empty() || !signals.empty()) {
+    if (!waits.empty() || !signals.empty()) {
         return Status::failure(
             StatusCode::unsupported,
-            "the Vulkan matrix slice currently supports empty native smoke submissions only");
+            "Vulkan timeline semaphore submission is not implemented");
     }
     const auto context = std::static_pointer_cast<VulkanContext>(nativeContext);
     if (!context || context->device == VK_NULL_HANDLE ||
@@ -338,7 +882,7 @@ struct VulkanProbe {
                                "the Vulkan native context is unavailable");
     }
     std::lock_guard lock{context->mutex};
-    return submit_empty_command_buffer(*context);
+    return submit_vulkan_command_buffer(*context, commands);
 }
 
 } // namespace
@@ -357,9 +901,32 @@ Result<Instance> create_vulkan_instance(const InstanceDesc& desc) {
                           : BackendMaturity::source_only;
     config.adapterName = std::move(native.adapterName);
     config.queueKinds = {QueueKind::graphics};
+    config.supportedFeatures = {Feature::transfer, Feature::memory_budget};
+    config.resourceCapabilities = {
+        .bufferViews = true,
+        .textureViews = false,
+        .hostCoherent = native.hostCoherent,
+        .bufferCopy = true,
+        .bufferFill = true,
+        .bufferTextureCopy = false,
+        .textureCopy = false,
+        .textureClear = false,
+        .textureResolve = false,
+        .textureBlitNearest = false,
+        .textureBlitLinear = false,
+        .externalImport = false,
+        .externalExport = false,
+    };
     config.deviceLocalBudgetBytes = native.deviceLocalBudget;
     config.native = true;
     config.nativeContext = std::move(native.context);
+    config.createBuffer = &create_vulkan_buffer;
+    config.mapBuffer = &map_vulkan_buffer;
+    config.unmapBuffer = &unmap_vulkan_buffer;
+    config.flushBuffer = &flush_vulkan_buffer;
+    config.invalidateBuffer = &invalidate_vulkan_buffer;
+    config.writeBuffer = &write_vulkan_buffer;
+    config.readBuffer = &read_vulkan_buffer;
     config.nativeSubmit = &submit_vulkan_commands;
     return detail::create_foundation_instance(desc, std::move(config));
 }
