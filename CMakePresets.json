@@ -21,6 +21,7 @@
         "TRUFFLE_BUILD_BACKEND_DIRECT3D": "ON",
         "TRUFFLE_BUILD_EXAMPLES": "ON",
         "TRUFFLE_BUILD_TESTS": "ON",
+        "TRUFFLE_BUILD_SHADERC": "ON",
         "TRUFFLE_INSTALL": "ON"
       }
     },

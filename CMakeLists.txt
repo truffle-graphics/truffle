@@ -21,6 +21,10 @@ find_package(Threads REQUIRED)
 
 add_subdirectory(src)
 
+if(TRUFFLE_BUILD_SHADERC)
+    add_subdirectory(tools/shaderc)
+endif()
+
 if(TRUFFLE_BUILD_EXAMPLES)
     add_subdirectory(examples)
 endif()

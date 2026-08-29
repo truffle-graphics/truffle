@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <memory>
 #include <span>
+#include <string_view>
 
 namespace truffle::rhi {
 
@@ -33,6 +34,8 @@ class QueryPool;
 class Surface;
 class Swapchain;
 class UploadRing;
+class ShaderPackage;
+enum class ShaderTarget : std::uint8_t;
 
 class Instance {
 public:
@@ -270,6 +273,10 @@ public:
         const TextureDesc& desc, ExternalMemoryHandle handle) const;
     [[nodiscard]] Result<MemoryBudget> memory_budget(MemoryDomain domain) const;
     [[nodiscard]] Result<Shader> create_shader(const ShaderDesc& desc) const;
+    [[nodiscard]] Result<Shader> create_shader(
+        const ShaderPackage& package, ShaderTarget target,
+        std::string_view entryPoint, ShaderStage stage,
+        std::string_view permutation = {}) const;
     [[nodiscard]] Result<Pipeline> create_pipeline(const PipelineDesc& desc) const;
     [[nodiscard]] Result<ComputePipeline> create_compute_pipeline(
         const ComputePipelineDesc& desc) const;

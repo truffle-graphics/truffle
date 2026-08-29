@@ -17,6 +17,9 @@ Current baseline:
   deterministic upload/copy/readback proofs at `native_smoke` on macOS.
 - Explicitly unavailable Vulkan, OpenGL, and Direct3D targets that report no
   simulated adapters until their native implementations land.
+- Deterministic ShaderPackage 1.0 creation/loading with normalized cross-target
+  reflection, capability gates, native-variant precedence, and an optional
+  dependency-free package assembly and inspection tool.
 - Renderer flow that currently proves ECS extraction while reserving non-ECS and
   high-throughput render-data lanes for later rendering work.
 - Declarative asset, material-operation, geometry-stream, and group/tag
@@ -36,4 +39,4 @@ Current baseline:
 - Installable CMake targets plus presets and CI paths for the current foundation.
 
 See `docs/rhi1/` for the replacement contract, dependency policy, shader
-package direction, target matrix, and evidence-based maturity gates.
+package contract, target matrix, and evidence-based maturity gates.

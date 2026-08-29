@@ -9,8 +9,8 @@ rather than growing a historical transcript here.
 
 ## Current Focus
 
-Finish the Phase 2 resources, memory, views, and transfers PR for issue #29,
-then begin immutable bindings and shader/pipeline contracts under #30 and #32.
+Finish the deterministic ShaderPackage and optional package-tool PR for issue
+#32, then begin immutable bindings and graphics/compute pipelines under #30.
 
 ## Latest Handoff
 
@@ -36,6 +36,24 @@ then begin immutable bindings and shader/pipeline contracts under #30 and #32.
   view, and a GPU fill. The live reporter classified Metal as `native_smoke`.
 - The macOS CI test step now sets `MTL_DEBUG_LAYER=1`; hosts without a Metal
   adapter retain the explicit unavailable/skip path rather than simulating one.
+- Merged PR #39 into `develop` after package, macOS, Ubuntu, and Windows passed;
+  issue #29 was closed explicitly because `develop` is not GitHub's default
+  branch.
+- On `feat/rhi1-shader-package` for #32, implemented ShaderPackage schema 1.0 as
+  a canonical little-endian manifest/blob container with bounded decoding,
+  per-section integrity hashes, capability gating, source/compiler provenance,
+  logical remaps, normalized reflection, and deterministic variant selection.
+- Native overrides win over precompiled and generated variants. Reflection
+  disagreement across targets rejects package creation; generated Metal and
+  WGSL routes remain disabled unless explicitly opted into as experimental.
+- `Device::create_shader` can consume an exact package target variant without a
+  compiler. Optional `truffle-shaderc` assembles, appends, and inspects
+  multi-target package files while adding no runtime or configure-time download.
+- PR #40's first Ubuntu and Windows builds caught GCC/MinGW
+  `-Wmissing-field-initializers` diagnostics in tool-only fixture construction;
+  the follow-up uses explicit default construction and field assignment. macOS
+  and package jobs were already green, and the cross-platform rerun passed on
+  macOS, Ubuntu, and Windows.
 
 ## Durable Decisions
 
@@ -55,6 +73,9 @@ then begin immutable bindings and shader/pipeline contracts under #30 and #32.
   performs no network fetches. Platform SDKs remain explicit prerequisites.
 - Backend/platform maturity and feature support are separate and evidence-based.
 - The Simple RHI remains deferred.
+- ShaderPackage serialization is canonical and versioned. Source-to-target
+  compiler adapters remain separate optional targets and must introduce their
+  pinned submodules only with an implemented route.
 
 ## Validation
 
@@ -91,12 +112,29 @@ access succeeds and reports Metal as available native `native_smoke`. The
 package archive builds and `git diff --check` passes. `truffle_format_check`
 cannot run because `clang-format` is not installed on this host.
 
+Issue #32 validation on macOS Apple Silicon:
+
+```text
+cmake --preset ci
+cmake --build --preset ci
+MTL_DEBUG_LAYER=1 ctest --preset ci --output-on-failure  # 30/30
+ctest --test-dir build/ci -R truffle_shader --output-on-failure  # 3/3
+cmake --build --preset ci --target package
+git diff --check
+```
+
+The package tests prove byte-identical canonical output, positive and negative
+reflection equivalence, capability mismatch, corruption and trailing-data
+rejection, native override precedence, experimental target gates, and
+package-to-Null shader creation. The tool self-test plus file smoke assembles,
+appends, and inspects a two-target package.
+
 ## Next Resume Steps
 
-1. Open and merge the #29 PR after package, macOS, Ubuntu, and Windows Build
-   jobs pass; close #29 if GitHub does not auto-close it.
-2. Start #30 and #32 from fresh `develop`, keeping immutable bindings and shader
-   packages/pipelines separated at their public ownership seam.
+1. Open and merge the #32 PR after package, macOS, Ubuntu, and Windows Build
+   jobs pass; close #32 explicitly if needed.
+2. Start #30 from fresh `develop`: immutable ordinary bindings first, then
+   pipeline layouts/state and command coverage.
 3. Preserve deterministic Null semantics and require native backend evidence for
    every new pipeline or binding capability claimed.
 
@@ -110,3 +148,5 @@ cannot run because `clang-format` is not installed on this host.
   their package presence must not be described as backend support.
 - Native SDK and toolchain versions must be pinned when each dependency-bearing
   target is introduced, rather than guessed in advance.
+- The dependency-free package tool does not compile Slang/HLSL/GLSL/WGSL/MSL;
+  it records their provenance beside externally produced target variants.

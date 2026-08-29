@@ -122,6 +122,21 @@ add_executable(truffle_core_contract_tests core_contract_tests.cpp)
 target_link_libraries(truffle_core_contract_tests PRIVATE truffle_rhi)
 add_test(NAME truffle_core_contract_tests COMMAND truffle_core_contract_tests)
 
+add_executable(truffle_shader_package_tests shader_package_tests.cpp)
+target_link_libraries(truffle_shader_package_tests PRIVATE truffle_backend_null)
+add_test(NAME truffle_shader_package_tests COMMAND truffle_shader_package_tests)
+
+if(TRUFFLE_BUILD_SHADERC)
+    add_test(NAME truffle_shaderc_self_test COMMAND truffle-shaderc --self-test)
+    add_test(
+        NAME truffle_shaderc_package_smoke
+        COMMAND
+            "${CMAKE_COMMAND}"
+            "-DTRUFFLE_SHADERC=$<TARGET_FILE:truffle-shaderc>"
+            "-DTRUFFLE_SHADERC_TEST_DIR=${PROJECT_BINARY_DIR}/shaderc-smoke"
+            -P "${PROJECT_SOURCE_DIR}/cmake/ShadercSmoke.cmake")
+endif()
+
 add_executable(truffle_performance_sanity_tests performance_sanity_tests.cpp)
 target_link_libraries(truffle_performance_sanity_tests PRIVATE truffle_backend_null)
 add_test(NAME truffle_performance_sanity_tests COMMAND truffle_performance_sanity_tests)

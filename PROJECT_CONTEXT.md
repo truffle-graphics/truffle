@@ -35,6 +35,11 @@ Current evidence is narrower than the old roadmap claimed:
 - Vulkan, OpenGL, and Direct3D backend targets explicitly return `unsupported`
   and report no adapters. Their previous CPU simulators have been removed; the
   future native implementations remain `source_only`.
+- ShaderPackage 1.0 is a deterministic compiler-free runtime contract with a
+  canonical manifest/blob container, cross-target reflection validation,
+  capability gates, and native-override selection. Optional
+  `truffle-shaderc` assembles precompiled or native variants without fetching
+  or linking a compiler toolchain.
 - WebGPU, OpenGL ES, and WebGL2 targets are planned but not implemented.
 - The package, macOS, Ubuntu, and Windows warning-clean CI baseline was restored
   by PR #36.
@@ -77,7 +82,7 @@ consumer selects concrete loading, upload, and backend behavior.
 
 - `README.md` contains build and consumption guidance.
 - `docs/architecture.md` defines module and host boundaries.
-- `docs/rhi1/` defines the RHI 1 contract, dependencies, shader direction, and
+- `docs/rhi1/` defines the RHI 1 contract, dependencies, shader packages, and
   maturity matrix.
 - `docs/roadmap.md` is the active issue-aligned program sequence.
 - `docs/adr/0011-rhi-1-replacement-contract.md` records the breaking decision.
@@ -86,5 +91,6 @@ consumer selects concrete loading, upload, and backend behavior.
 
 ## Next Meaningful Direction
 
-Complete immutable bindings, shader packages, pipeline layouts, and graphics/
-compute pipeline contracts under issues #30 and #32.
+Complete immutable bindings, pipeline layouts, and graphics/compute pipeline
+contracts under issue #30, then connect package variants to each native backend
+as those pipeline implementations land.

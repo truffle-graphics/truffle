@@ -114,5 +114,6 @@ never encoded into a command list.
 - [Resources, memory, views, and transfers](resources.md)
 - [Backend and platform maturity](support-matrix.md)
 - [Dependency policy](dependencies.md)
-- [Shader package direction](shader-package.md)
+- [Shader package contract](shader-package.md)
+- [ShaderPackage 1.0 binary format](shader-package-format.md)
 - [ADR 0011](../adr/0011-rhi-1-replacement-contract.md)

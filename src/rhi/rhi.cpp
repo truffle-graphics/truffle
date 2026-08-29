@@ -2153,6 +2153,32 @@ Result<Shader> Device::create_shader(const ShaderDesc& desc) const {
     return detail::Factory::shader(state_->runtime, handle.value());
 }
 
+Result<Shader> Device::create_shader(const ShaderPackage& package,
+                                     ShaderTarget target,
+                                     std::string_view entryPoint,
+                                     ShaderStage stage,
+                                     std::string_view permutation) const {
+    const auto selected =
+        package.select_variant(target, entryPoint, stage, permutation);
+    if (!selected.ok()) {
+        return selected.status();
+    }
+    const auto* variant = selected.value();
+    try {
+        return create_shader({
+            .stage = variant->stage,
+            .format = variant->format,
+            .entryPoint = variant->entryPoint,
+            .code = variant->code,
+            .reflection = variant->reflection.bindings,
+            .debugName = package.desc().name + ":" + variant->entryPoint,
+        });
+    } catch (const std::bad_alloc&) {
+        return Status::failure(StatusCode::out_of_memory,
+                               "shader package variant allocation failed");
+    }
+}
+
 Result<Pipeline> Device::create_pipeline(const PipelineDesc& desc) const {
     if (!valid()) {
         return detail::invalid_object("device");

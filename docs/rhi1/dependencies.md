@@ -43,10 +43,13 @@ as an unused framework.
 
 ### Shader tooling
 
-The optional `truffle-shaderc` host tool may use pinned Slang, DXC, glslang,
-SPIR-V Tools, SPIRV-Cross, and Tint components. Runtime packages do not acquire
-the whole compiler toolchain. Runtime source compilation is an explicit
-optional feature; production packages prefer offline variants.
+The optional dependency-free `truffle-shaderc` assembly target consumes
+precompiled or backend-native variants without a compiler library. Future
+source-to-target routes may use pinned Slang, DXC, glslang, SPIR-V Tools,
+SPIRV-Cross, and Tint submodules, enabled individually. No compiler submodule is
+introduced before its route exists, and configure never downloads it. Runtime
+packages do not acquire the compiler toolchain. Runtime source compilation is
+an explicit optional feature; production packages prefer offline variants.
 
 ### Validation and tests
 
