@@ -87,6 +87,10 @@ platform work follow.
   targets; fills use transient upload buffers, preserving arbitrary byte ranges.
   Both Linux profiles share one exact upload -> device-local -> readback test
   with an unaligned fill and mapped verification.
+- PR #47's first Ubuntu run reached both native profiles and found that a
+  mapped-at-creation upload flush inherited the most recent global GL target
+  binding. The write path now rebinds its owning buffer before explicit flush;
+  native acceptance is pending the rerun.
 
 ## Durable Decisions
 

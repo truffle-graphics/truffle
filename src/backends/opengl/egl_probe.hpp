@@ -271,6 +271,7 @@ struct BufferResource {
     }
     std::memcpy(static_cast<std::byte*>(resource->mapped) + offset, data.data(),
                 data.size());
+    glBindBuffer(resource->mappedTarget, resource->name);
     glFlushMappedBufferRange(resource->mappedTarget,
                              static_cast<GLintptr>(offset),
                              static_cast<GLsizeiptr>(data.size()));
