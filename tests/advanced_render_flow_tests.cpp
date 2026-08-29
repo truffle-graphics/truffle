@@ -1,4 +1,5 @@
 #include "test_support.hpp"
+#include "rhi_test_utils.hpp"
 
 #include "truffle/render/frame_graph.hpp"
 #include "truffle/render/renderer.hpp"
@@ -6,29 +7,26 @@
 #include "truffle/rhi/null_backend.hpp"
 
 int main() {
-    auto backend = truffle::rhi::create_null_backend();
-    auto deviceResult = backend->create_device({});
-    TRUFFLE_CHECK(deviceResult.ok());
-    auto device = std::move(deviceResult).value();
+    auto context = truffle::tests::make_null_context();
 
-    auto shaderResult = device->create_shader({
+    auto shaderResult = context.device.create_shader({
         .stage = truffle::rhi::ShaderStage::compute,
-        .bytecode = {std::byte{0x42}},
+        .code = {std::byte{0x42}},
     });
     TRUFFLE_CHECK(shaderResult.ok());
     auto shader = std::move(shaderResult).value();
 
-    truffle::render::TransformComputePass pass(*device, shader.get());
+    truffle::render::TransformComputePass pass(context.device, &shader);
 
-    auto localBufferResult = device->create_buffer({
+    auto localBufferResult = context.device.create_buffer({
         .size = 4096,
         .usage = truffle::rhi::BufferUsage::storage,
     });
-    auto parentBufferResult = device->create_buffer({
+    auto parentBufferResult = context.device.create_buffer({
         .size = 4096,
         .usage = truffle::rhi::BufferUsage::storage,
     });
-    auto outputBufferResult = device->create_buffer({
+    auto outputBufferResult = context.device.create_buffer({
         .size = 4096,
         .usage = truffle::rhi::BufferUsage::storage,
     });
@@ -41,9 +39,9 @@ int main() {
     auto outputBuffer = std::move(outputBufferResult).value();
 
     truffle::render::TransformComputePassDesc computeDesc{
-        .localTransformBuffer = localBuffer.get(),
-        .parentIndexBuffer = parentBuffer.get(),
-        .outTransformBuffer = outputBuffer.get(),
+        .localTransformBuffer = &localBuffer,
+        .parentIndexBuffer = &parentBuffer,
+        .outTransformBuffer = &outputBuffer,
         .nodeCount = 64,
     };
 
@@ -77,7 +75,7 @@ int main() {
                       .access = truffle::render::ResourceAccess::Read,
                   }).ok());
 
-    truffle::render::Renderer renderer(*device);
+    truffle::render::Renderer renderer(context.device);
     TRUFFLE_CHECK(renderer.render(graph).ok());
 
     const auto& stats = renderer.last_frame_stats();
@@ -86,8 +84,9 @@ int main() {
     TRUFFLE_CHECK(stats.renderBatchesExecuted == 2);
     TRUFFLE_CHECK(!stats.presented);
 
-    TRUFFLE_CHECK(backend->stats().drawsRecorded == 3);
-    TRUFFLE_CHECK(backend->stats().submissions == 1);
+    TRUFFLE_CHECK(context.instance.stats().drawsRecorded == 2);
+    TRUFFLE_CHECK(context.instance.stats().dispatchesRecorded == 1);
+    TRUFFLE_CHECK(context.instance.stats().submissions == 1);
 
     return 0;
 }

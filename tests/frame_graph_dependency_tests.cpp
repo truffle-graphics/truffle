@@ -1,4 +1,5 @@
 #include "test_support.hpp"
+#include "rhi_test_utils.hpp"
 
 #include "truffle/render/frame_graph.hpp"
 #include "truffle/render/renderer.hpp"
@@ -18,12 +19,8 @@ std::unique_ptr<truffle::render::RenderPassNode> make_empty_render_node() {
 } // namespace
 
 int main() {
-    auto backend = truffle::rhi::create_null_backend();
-    auto deviceResult = backend->create_device({});
-    TRUFFLE_CHECK(deviceResult.ok());
-    auto device = std::move(deviceResult).value();
-
-    truffle::render::Renderer renderer{*device};
+    auto context = truffle::tests::make_null_context();
+    truffle::render::Renderer renderer{context.device};
 
     {
         truffle::render::FrameGraph graph;

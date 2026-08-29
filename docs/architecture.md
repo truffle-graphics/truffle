@@ -27,9 +27,9 @@ consumer proofs under `examples` and `tests`.
 
 ## RHI 1 Replacement
 
-The current `include/truffle/rhi/rhi.hpp` and its interfaces are preliminary.
-RHI 1 replaces them without a compatibility facade. The replacement splits the
-public API into focused headers while retaining one umbrella include.
+RHI 1 replaced the preliminary public virtual interfaces without a
+compatibility facade. The public API is split across focused headers, with
+`include/truffle/rhi/rhi.hpp` retained only as an umbrella include.
 
 Primary RHI 1 families are `Instance`, `Adapter`, `Device`, `Queue`,
 `CommandPool`, `CommandList`, scoped render/compute/copy encoders, resources and
@@ -48,11 +48,11 @@ the cutover decision durable.
 
 - Null is a strict contract interpreter and negative-path oracle, not a GPU
   backend.
-- Metal is the only current implementation with native API calls. It creates
-  Metal resources and submits Metal work, but lacks the accepted output and
-  presentation suite required for `conformant` or `supported`.
-- Vulkan, OpenGL, and Direct3D are presently headless CPU contract simulators.
-  Their shared state-machine tests do not demonstrate native driver execution.
+- Metal is the only current implementation with native API calls. It discovers
+  a Metal device and submits empty native command buffers, while logical
+  resource creation remains explicitly unsupported pending #29.
+- Vulkan, OpenGL, and Direct3D targets are explicitly unavailable and report no
+  adapters. Their removed CPU simulators are not part of RHI 1.
 - WebGPU, OpenGL ES, and WebGL2 implementations do not yet exist.
 
 Maturity is tracked per backend-platform pair in

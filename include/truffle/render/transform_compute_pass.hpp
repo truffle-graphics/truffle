@@ -10,13 +10,13 @@
 namespace truffle::render {
 
 struct TransformComputePassDesc {
-    rhi::IBuffer* localTransformBuffer = nullptr;
+    rhi::Buffer* localTransformBuffer = nullptr;
     std::size_t   localTransformOffset = 0;
 
-    rhi::IBuffer* parentIndexBuffer = nullptr;
+    rhi::Buffer* parentIndexBuffer = nullptr;
     std::size_t   parentIndexOffset = 0;
 
-    rhi::IBuffer* outTransformBuffer = nullptr;
+    rhi::Buffer* outTransformBuffer = nullptr;
     std::size_t   outTransformOffset = 0;
 
     std::uint32_t nodeCount = 0;
@@ -24,14 +24,14 @@ struct TransformComputePassDesc {
 
 class TransformComputePass {
 public:
-    explicit TransformComputePass(rhi::IDevice& device, rhi::IShader* computeShader);
+    explicit TransformComputePass(rhi::Device& device, rhi::Shader* computeShader);
 
-    [[nodiscard]] core::Status dispatch(rhi::ICommandBuffer& cmd,
+    [[nodiscard]] core::Status dispatch(rhi::CommandList& cmd,
                                         const TransformComputePassDesc& desc);
 
 private:
-    rhi::IDevice* device_ = nullptr;
-    std::unique_ptr<rhi::IComputePipeline> pipeline_;
+    rhi::Device*          device_ = nullptr;
+    rhi::ComputePipeline pipeline_;
 };
 
 } // namespace truffle::render

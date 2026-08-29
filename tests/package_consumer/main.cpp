@@ -35,12 +35,17 @@ int main() {
         truffle::asset_render::plan_render_batch(mesh, material, planning);
     if (!plannedBatch.ok()) return 1;
 
-    auto backend = truffle::rhi::create_null_backend();
-    auto deviceResult = backend->create_device({});
+    auto instanceResult = truffle::rhi::create_null_instance();
+    if (!instanceResult.ok()) return 1;
+    auto instance = std::move(instanceResult).value();
+    auto adapterResult = instance.adapter(0);
+    if (!adapterResult.ok()) return 1;
+    auto rhiAdapter = std::move(adapterResult).value();
+    auto deviceResult = rhiAdapter.request_device();
     if (!deviceResult.ok()) return 1;
     auto device = std::move(deviceResult).value();
 
-    auto ringResult = device->create_upload_ring(2, 256 * 1024);
+    auto ringResult = device.create_upload_ring(2, 256 * 1024);
     if (!ringResult.ok()) return 1;
     auto ring = std::move(ringResult).value();
 
@@ -50,7 +55,7 @@ int main() {
     world.emplace<truffle::render::MeshRenderer>(e);
 
     truffle::scene::SceneAdapter adapter;
-    auto frame = adapter.extract(world, *ring);
+    auto frame = adapter.extract(world, ring);
     if (frame.meshBatches.size() != 1) return 1;
 
     auto summary = truffle::diagnostics::summarize_render_batch(

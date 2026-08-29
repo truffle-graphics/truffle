@@ -86,7 +86,7 @@ struct InstanceLayout {
 // ---------------------------------------------------------------------------
 
 struct BufferView {
-    rhi::IBuffer* buffer = nullptr;
+    rhi::Buffer* buffer = nullptr;
     std::size_t   offset = 0;
     std::size_t   size   = 0;
 };

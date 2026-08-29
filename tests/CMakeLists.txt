@@ -31,7 +31,7 @@ target_link_libraries(truffle_frame_graph_dependency_tests PRIVATE truffle_backe
 add_test(NAME truffle_frame_graph_dependency_tests COMMAND truffle_frame_graph_dependency_tests)
 
 add_executable(truffle_diagnostics_tests diagnostics_tests.cpp)
-target_link_libraries(truffle_diagnostics_tests PRIVATE truffle_diagnostics)
+target_link_libraries(truffle_diagnostics_tests PRIVATE truffle_diagnostics truffle_backend_null)
 add_test(NAME truffle_diagnostics_tests COMMAND truffle_diagnostics_tests)
 
 add_executable(truffle_frame_ring_tests frame_ring_tests.cpp)

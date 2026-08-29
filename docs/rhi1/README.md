@@ -1,8 +1,9 @@
 # Truffle RHI 1
 
 RHI 1 is the breaking replacement for Truffle's preliminary graphics API. It
-is the only backend-facing graphics contract. The current source tree remains
-in transition until the public cutover tracked by issue #28 is merged.
+is the only backend-facing graphics contract. The public object and dispatch
+cutover tracked by issue #28 is complete; later capability slices remain in
+progress and return `unsupported` where they are not implemented.
 
 ## Ownership And Object Model
 
@@ -98,8 +99,8 @@ RHI 1 owns mechanism rather than renderer policy:
   wait/signal semaphore values.
 
 Descriptor caching, admission, quota, eviction, recovery, and materialization
-policy belongs above RHI. The preliminary policy engine will not survive the
-cutover.
+policy belongs above RHI. The preliminary policy engine was deleted during the
+public cutover.
 
 ## Presentation Boundary
 

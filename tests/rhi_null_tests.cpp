@@ -1,175 +1,169 @@
-#include "test_support.hpp"
-#include "truffle/rhi/null_backend.hpp"
+#include "rhi_test_utils.hpp"
+
+#include <array>
+#include <atomic>
+#include <cassert>
+#include <chrono>
+#include <cstddef>
+#include <thread>
+#include <type_traits>
+#include <vector>
 
 int main() {
-    auto backend = truffle::rhi::create_null_backend();
-    TRUFFLE_CHECK(backend->enumerate_adapters().size() == 1);
+    using namespace truffle;
+    static_assert(!std::is_copy_constructible_v<rhi::Buffer>);
+    static_assert(std::is_nothrow_move_constructible_v<rhi::Buffer>);
 
-    auto deviceResult = backend->create_device({});
-    TRUFFLE_CHECK(deviceResult.ok());
-    auto device = std::move(deviceResult).value();
+    auto context = tests::make_null_context();
+    assert(context.instance.backend() == rhi::BackendKind::null_validation);
+    assert(context.instance.adapter_count() == 1);
+    assert(context.adapter.info().validationOnly);
+    assert(!context.adapter.info().native);
 
-    TRUFFLE_CHECK(!device->create_buffer({}).ok());
-    auto bufferResult = device->create_buffer({
-        .size = 1024,
-        .usage = truffle::rhi::BufferUsage::vertex,
-        .debugName = "vertex data",
-    });
-    TRUFFLE_CHECK(bufferResult.ok());
+    auto buffer = tests::make_buffer(
+        context.device, 64,
+        rhi::BufferUsage::vertex | rhi::BufferUsage::copy_destination);
+    const auto originalId = buffer.id();
+    std::array<std::byte, 4> input{
+        std::byte{1}, std::byte{2}, std::byte{3}, std::byte{4}};
+    assert(buffer.write(8, input).ok());
+    std::array<std::byte, 4> output{};
+    assert(buffer.read(8, output).ok());
+    assert(output == input);
+    auto movedBuffer = std::move(buffer);
+    assert(!buffer.valid());
+    assert(movedBuffer.valid());
+    assert(movedBuffer.id() == originalId);
 
-    auto surfaceResult = device->create_surface({
-        .native = {.kind = truffle::rhi::NativeSurfaceKind::headless},
-        .initialExtent = {640, 480},
-    });
-    TRUFFLE_CHECK(surfaceResult.ok());
-    auto surface = std::move(surfaceResult).value();
-
-    auto swapchainResult = device->create_swapchain(
-        *surface, {.extent = {640, 480}, .framesInFlight = 2});
-    TRUFFLE_CHECK(swapchainResult.ok());
-    auto swapchain = std::move(swapchainResult).value();
-    TRUFFLE_CHECK(swapchain->resize({1280, 720}).ok());
-
-    // Verify swapchain acquire
-    auto* drawable = swapchain->acquire_next_texture();
-    TRUFFLE_CHECK(drawable != nullptr);
-    TRUFFLE_CHECK(drawable->desc().extent.width == 1280);
-    TRUFFLE_CHECK(drawable->desc().extent.height == 720);
-    TRUFFLE_CHECK(!swapchain->resize({0, 720}).ok());
-
-    // Full enriched command sequence
-    auto commandBuffer = device->create_command_buffer();
-    TRUFFLE_CHECK(commandBuffer->begin().ok());
-
-    truffle::rhi::RenderPassDesc passDesc;
-    passDesc.extent                  = {640, 480};
-    passDesc.colorAttachment.texture = drawable;
-    TRUFFLE_CHECK(commandBuffer->begin_render_pass(passDesc).ok());
-
-    auto pipelineResult = device->create_pipeline({.debugName = "test_pipeline"});
-    TRUFFLE_CHECK(pipelineResult.ok());
+    auto pipelineResult = context.device.create_pipeline({});
+    assert(pipelineResult.ok());
     auto pipeline = std::move(pipelineResult).value();
-    TRUFFLE_CHECK(pipeline->reflection() == nullptr);
-    TRUFFLE_CHECK(commandBuffer->bind_pipeline(*pipeline).ok());
+    auto poolResult = context.device.create_command_pool(rhi::QueueKind::graphics);
+    assert(poolResult.ok());
+    auto pool = std::move(poolResult).value();
+    auto listResult = pool.allocate();
+    assert(listResult.ok());
+    auto list = std::move(listResult).value();
+    assert(list.state() == rhi::CommandListState::initial);
+    assert(!list.end().ok());
+    assert(list.begin().ok());
+    auto encoderResult = list.begin_rendering({.extent = {16, 16}});
+    assert(encoderResult.ok());
+    auto encoder = std::move(encoderResult).value();
+    assert(!encoder.draw(3).ok());
+    assert(encoder.bind_pipeline(pipeline).ok());
+    assert(encoder.bind_vertex_buffer(0, movedBuffer).ok());
+    assert(encoder.draw(3, 2).ok());
+    assert(encoder.end().ok());
 
-    auto computePipelineResult = device->create_compute_pipeline({
-        .debugName = "test_compute_pipeline",
+    // Recorded commands retain their payload even after the public owner dies.
+    movedBuffer = {};
+    assert(!movedBuffer.valid());
+    auto replacementBuffer = tests::make_buffer(
+        context.device, 64,
+        rhi::BufferUsage::vertex | rhi::BufferUsage::copy_destination);
+    assert(replacementBuffer.id() != originalId);
+    assert(list.end().ok());
+
+    auto fenceResult = context.device.create_fence();
+    assert(fenceResult.ok());
+    auto fence = std::move(fenceResult).value();
+    auto queueResult = context.device.queue(rhi::QueueKind::graphics);
+    assert(queueResult.ok());
+    auto queue = std::move(queueResult).value();
+    std::array<rhi::CommandList*, 1> lists{&list};
+    assert(queue.submit(lists, &fence, 7).ok());
+    assert(list.state() == rhi::CommandListState::submitted);
+    assert(fence.wait(7, std::chrono::milliseconds{1}).ok());
+
+    auto surfaceResult = context.device.create_surface({
+        .native = {},
+        .initialExtent = {64, 32},
     });
-    TRUFFLE_CHECK(computePipelineResult.ok());
-    auto computePipeline = std::move(computePipelineResult).value();
-    TRUFFLE_CHECK(computePipeline->reflection() == nullptr);
+    assert(surfaceResult.ok());
+    auto surface = std::move(surfaceResult).value();
+    auto swapchainResult = context.device.create_swapchain(
+        surface, {.extent = {64, 32}, .imageCount = 3});
+    assert(swapchainResult.ok());
+    auto swapchain = std::move(swapchainResult).value();
+    const auto acquired = swapchain.acquire_next_image();
+    assert(acquired.ok());
+    assert(!swapchain.acquire_next_image().ok());
+    assert(queue.present(swapchain, acquired.imageIndex).ok());
+    assert(swapchain.resize({128, 64}).ok());
 
-    auto vbResult = device->create_buffer({
-        .size = 256,
-        .usage = truffle::rhi::BufferUsage::vertex,
-        .debugName = "vb",
-    });
-    TRUFFLE_CHECK(vbResult.ok());
-    auto vb = std::move(vbResult).value();
-    TRUFFLE_CHECK(commandBuffer->bind_vertex_buffer(0, *vb).ok());
-    TRUFFLE_CHECK(commandBuffer->set_viewport(0, 0, 640, 480).ok());
-    TRUFFLE_CHECK(commandBuffer->set_scissor(0, 0, 640, 480).ok());
-    TRUFFLE_CHECK(commandBuffer->draw(3).ok());
+    auto ringResult = context.device.create_upload_ring(2, 256);
+    assert(ringResult.ok());
+    auto ring = std::move(ringResult).value();
+    auto allocation = ring.allocate(32, 16);
+    assert(allocation.valid());
+    assert(allocation.offset == 0);
+    assert(ring.advance().ok());
+    assert(ring.allocate(256).valid());
+    assert(!ring.allocate(1).valid());
 
-    TRUFFLE_CHECK(commandBuffer->end_render_pass().ok());
-    TRUFFLE_CHECK(commandBuffer->end().ok());
-
-    auto fence = device->create_fence({});
-    TRUFFLE_CHECK(device->queue(truffle::rhi::QueueKind::graphics)
-                      .submit(*commandBuffer, fence.get())
-                      .ok());
-    TRUFFLE_CHECK(fence->signaled());
-
-    // --- Indexed draw ---
-    auto ibResult = device->create_buffer({
-        .size = 128,
-        .usage = truffle::rhi::BufferUsage::index,
-        .debugName = "ib",
-    });
-    TRUFFLE_CHECK(ibResult.ok());
-    auto ib = std::move(ibResult).value();
-
-    auto cmdIdx = device->create_command_buffer();
-    TRUFFLE_CHECK(cmdIdx->begin().ok());
-    truffle::rhi::RenderPassDesc passIdx;
-    passIdx.extent                  = {640, 480};
-    passIdx.colorAttachment.texture = drawable;
-    TRUFFLE_CHECK(cmdIdx->begin_render_pass(passIdx).ok());
-    TRUFFLE_CHECK(cmdIdx->bind_pipeline(*pipeline).ok());
-    TRUFFLE_CHECK(
-        cmdIdx->bind_index_buffer(*ib, 0, truffle::rhi::IndexFormat::uint16).ok());
-    TRUFFLE_CHECK(cmdIdx->draw_indexed(6).ok());
-    TRUFFLE_CHECK(cmdIdx->draw_indexed_instanced(6, 2).ok());
-
-    auto indirectBufResult = device->create_buffer({
-        .size = 16,
-        .usage = truffle::rhi::BufferUsage::indirect,
-        .debugName = "indirect",
-    });
-    TRUFFLE_CHECK(indirectBufResult.ok());
-    auto indirectBuf = std::move(indirectBufResult).value();
-    TRUFFLE_CHECK(cmdIdx->draw_indirect(*indirectBuf, 0).ok());
-    TRUFFLE_CHECK(cmdIdx->draw_indexed_indirect(*indirectBuf, 0).ok());
-
-    TRUFFLE_CHECK(cmdIdx->end_render_pass().ok());
-    TRUFFLE_CHECK(cmdIdx->end().ok());
-    TRUFFLE_CHECK(device->queue(truffle::rhi::QueueKind::graphics)
-                      .submit(*cmdIdx)
-                      .ok());
-
-    {
-        auto computeCmd = device->create_command_buffer();
-        TRUFFLE_CHECK(computeCmd->begin().ok());
-        TRUFFLE_CHECK(computeCmd->bind_compute_pipeline(*computePipeline).ok());
-        TRUFFLE_CHECK(computeCmd->dispatch_compute(1, 1, 1).ok());
-        TRUFFLE_CHECK(computeCmd->end().ok());
+    // Resource creation is device-thread-safe, while command pools retain
+    // explicit thread ownership.
+    std::atomic<std::uint32_t> created{0};
+    std::vector<std::thread> workers;
+    workers.reserve(4);
+    for (std::uint32_t worker = 0; worker < 4; ++worker) {
+        workers.emplace_back([&context, &created] {
+            auto concurrentBuffer = context.device.create_buffer({
+                .size = 16,
+                .usage = rhi::BufferUsage::storage,
+            });
+            if (concurrentBuffer.ok()) {
+                ++created;
+            }
+        });
     }
-    auto recycledCmd = device->create_command_buffer();
-    TRUFFLE_CHECK(recycledCmd->begin().ok());
-    TRUFFLE_CHECK(!recycledCmd->dispatch_compute(1, 1, 1).ok());
-    TRUFFLE_CHECK(recycledCmd->end().ok());
+    for (auto& worker : workers) {
+        worker.join();
+    }
+    assert(created == 4);
 
-    // Strict null validation catches command-lifecycle and encoder mistakes.
-    auto invalidCmd = device->create_command_buffer();
-    TRUFFLE_CHECK(!invalidCmd->draw(3).ok());
-    TRUFFLE_CHECK(invalidCmd->begin().ok());
-    TRUFFLE_CHECK(!invalidCmd->draw(3).ok());
+    rhi::StatusCode crossThreadCode = rhi::StatusCode::ok;
+    std::thread foreignPoolUser{[&pool, &crossThreadCode] {
+        const auto foreignList = pool.allocate();
+        crossThreadCode = foreignList.status().code;
+    }};
+    foreignPoolUser.join();
+    assert(crossThreadCode == rhi::StatusCode::invalid_state);
 
-    truffle::rhi::RenderPassDesc invalidPass;
-    invalidPass.extent = {0, 480};
-    TRUFFLE_CHECK(!invalidCmd->begin_render_pass(invalidPass).ok());
+    auto foreignContext = tests::make_null_context();
+    auto foreignBuffer = tests::make_buffer(
+        foreignContext.device, 64, rhi::BufferUsage::vertex);
+    assert(list.reset().ok());
+    assert(list.begin().ok());
+    auto foreignEncoderResult = list.begin_rendering({.extent = {8, 8}});
+    assert(foreignEncoderResult.ok());
+    auto foreignEncoder = std::move(foreignEncoderResult).value();
+    assert(foreignEncoder.bind_pipeline(pipeline).ok());
+    const auto foreignBind = foreignEncoder.bind_vertex_buffer(0, foreignBuffer);
+    assert(foreignBind.code == rhi::StatusCode::invalid_argument);
+    assert(foreignEncoder.end().ok());
+    assert(list.end().ok());
 
-    truffle::rhi::RenderPassDesc strictPass;
-    strictPass.extent                  = {640, 480};
-    strictPass.colorAttachment.texture = drawable;
-    TRUFFLE_CHECK(invalidCmd->begin_render_pass(strictPass).ok());
-    TRUFFLE_CHECK(!invalidCmd->begin_render_pass(strictPass).ok());
-    TRUFFLE_CHECK(!invalidCmd->dispatch_compute(1, 1, 1).ok());
-    TRUFFLE_CHECK(!invalidCmd->end().ok());
-    TRUFFLE_CHECK(invalidCmd->end_render_pass().ok());
-    TRUFFLE_CHECK(!invalidCmd->end_render_pass().ok());
-    TRUFFLE_CHECK(invalidCmd->end().ok());
+    std::vector<std::byte> shaderCode{std::byte{1}};
+    auto foreignShaderResult = foreignContext.device.create_shader({
+        .stage = rhi::ShaderStage::compute,
+        .code = shaderCode,
+    });
+    assert(foreignShaderResult.ok());
+    auto foreignShader = std::move(foreignShaderResult).value();
+    const auto foreignPipeline = context.device.create_compute_pipeline({
+        .computeShader = &foreignShader,
+    });
+    assert(!foreignPipeline.ok());
+    assert(foreignPipeline.status().code == rhi::StatusCode::invalid_argument);
 
-    auto presentCmd = device->create_command_buffer();
-    TRUFFLE_CHECK(presentCmd->begin().ok());
-    TRUFFLE_CHECK(swapchain->schedule_present(*presentCmd).ok());
-    TRUFFLE_CHECK(presentCmd->end().ok());
-    TRUFFLE_CHECK(!swapchain->schedule_present(*presentCmd).ok());
-
-    auto debugCmd = device->create_command_buffer();
-    TRUFFLE_CHECK(debugCmd->begin().ok());
-    TRUFFLE_CHECK(debugCmd->push_debug_label({.name = "null debug scope"}).ok());
-    TRUFFLE_CHECK(debugCmd->insert_debug_marker({.name = "null marker"}).ok());
-    TRUFFLE_CHECK(debugCmd->pop_debug_label().ok());
-    TRUFFLE_CHECK(debugCmd->end().ok());
-
-    const auto stats = backend->stats();
-    TRUFFLE_CHECK(stats.buffersCreated == 4); // original vb + new vb + ib + indirect
-    TRUFFLE_CHECK(stats.surfacesCreated == 1);
-    TRUFFLE_CHECK(stats.swapchainsCreated == 1);
-    TRUFFLE_CHECK(stats.drawsRecorded == 6); // five graphics draws + one compute dispatch
-    TRUFFLE_CHECK(stats.submissions == 2);
-    TRUFFLE_CHECK(stats.debugLabelsPushed == 1);
-    TRUFFLE_CHECK(stats.debugMarkersInserted == 1);
+    const auto stats = context.instance.stats();
+    assert(stats.devicesCreated == 1);
+    assert(stats.commandPoolsCreated == 1);
+    assert(stats.commandListsCreated == 1);
+    assert(stats.drawsRecorded == 1);
+    assert(stats.submissions == 1);
+    assert(stats.presentations == 1);
     return 0;
 }

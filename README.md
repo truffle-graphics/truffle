@@ -22,9 +22,9 @@ flow, and GPU abstraction without forcing them into a game engine or application
 framework. It is not an application framework and it is not a dedicated game
 engine.
 
-The current implementation line is replacing the preliminary RHI without a
-compatibility shim. Shared contract tests remain useful, but only Metal
-currently calls a native graphics API:
+The preliminary RHI has been replaced without a compatibility shim. Shared
+contract tests remain useful, but only Metal currently calls a native graphics
+API:
 
 - `truffle_core` owns shared status, configuration, and handle primitives.
 - `truffle_assets` defines declarative asset, material-operation, texture,
@@ -33,15 +33,16 @@ currently calls a native graphics API:
 - `truffle_asset_render` turns declared asset streams into metadata-only render
   layout and batch plans without owning buffers, uploads, shaders, or backends.
 - `truffle_ecs` provides a general-purpose ECS world.
-- `truffle_rhi` currently contains the preliminary backend-neutral GPU and
-  presentation contracts being replaced by RHI 1.
-- `truffle_backend_null` validates RHI flow without a GPU dependency.
-- `truffle_backend_metal` is the preliminary native Metal implementation and is
-  currently classified `cross_compiles` on macOS pending accepted
-  validation-enabled native smoke evidence.
+- `truffle_rhi` contains the modular RHI 1 object, dispatch, command,
+  synchronization, and presentation foundation.
+- `truffle_backend_null` strictly validates RHI 1 lifetime and state without a
+  GPU dependency.
+- `truffle_backend_metal` discovers a native Metal device and submits native
+  command buffers. Resource and presentation slices remain pending, and its
+  accepted maturity is still `cross_compiles` on macOS.
 - `truffle_backend_vulkan`, `truffle_backend_opengl`, and
-  `truffle_backend_direct3d` currently build headless contract simulators, not
-  native implementations of those APIs.
+  `truffle_backend_direct3d` expose explicit unavailable factories until their
+  native implementations land; they report no simulated adapters.
 - `truffle_render` starts the independently consumable rendering layer above RHI.
 - `truffle_diagnostics` provides opt-in asset/render/frame/asset-render-plan/
   debug-overlay inspection helpers and bundle reports without adding diagnostics
@@ -86,14 +87,14 @@ find_package(Truffle CONFIG REQUIRED)
 target_link_libraries(my_tool PRIVATE Truffle::RHI Truffle::Render)
 ```
 
-The current preliminary package exports `Truffle::Core`, `Truffle::Assets`,
+The current package exports `Truffle::Core`, `Truffle::Assets`,
 `Truffle::AssetRender`, `Truffle::ECS`, `Truffle::RHI`,
 `Truffle::BackendNull`, `Truffle::Render`, `Truffle::Scene`, and
 `Truffle::Diagnostics`. Additional backend exports
 (`Truffle::BackendMetal`, `Truffle::BackendVulkan`, `Truffle::BackendOpenGL`,
 `Truffle::BackendDirect3D`) are available when their corresponding CMake
 options are enabled. Except for Metal, those optional backend exports currently
-refer to contract simulators; they are not native support claims.
+return `unsupported`; their presence is not a native support claim.
 
 See `docs/distribution.md` for package generation, install verification, and
 release workflow guidance.

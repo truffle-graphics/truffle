@@ -21,21 +21,21 @@ struct RendererFrameStats {
 
 class Renderer {
 public:
-    explicit Renderer(rhi::IDevice& device, IPipelineCache* cache = nullptr);
+    explicit Renderer(rhi::Device& device, IPipelineCache* cache = nullptr);
 
     // Render batches. Pass a swapchain for presentation-capable paths;
     // omit (or pass nullptr) for headless and null-backend testing.
     // Render a full frame graph. Pass a swapchain for presentation-capable paths;
     // omit (or pass nullptr) for headless and null-backend testing.
     [[nodiscard]] core::Status render(const FrameGraph& graph,
-                                      rhi::ISwapchain* swapchain = nullptr);
+                                      rhi::Swapchain* swapchain = nullptr);
 
     [[nodiscard]] const RendererFrameStats& last_frame_stats() const noexcept {
         return lastFrameStats_;
     }
 
 private:
-    rhi::IDevice*       device_ = nullptr;
+    rhi::Device*        device_ = nullptr;
     IPipelineCache*     cache_  = nullptr;
     std::unique_ptr<NullPipelineCache> defaultCache_;
     RendererFrameStats  lastFrameStats_{};
