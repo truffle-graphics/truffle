@@ -52,7 +52,8 @@ Finish the deterministic ShaderPackage and optional package-tool PR for issue
 - PR #40's first Ubuntu and Windows builds caught GCC/MinGW
   `-Wmissing-field-initializers` diagnostics in tool-only fixture construction;
   the follow-up uses explicit default construction and field assignment. macOS
-  and package jobs were already green; the cross-platform rerun is pending.
+  and package jobs were already green, and the cross-platform rerun passed on
+  macOS, Ubuntu, and Windows.
 
 ## Durable Decisions
 
