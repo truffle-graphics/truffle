@@ -1,12 +1,13 @@
 # AGENTS.md
 
-This repository follows the Doctrine baseline. Truffle's local repository docs
-govern project-specific scope and workflow; the Doctrine snapshot provides
-ecosystem defaults.
+Truffle uses portable repository guidance. Local project documents govern
+project-specific scope and workflow; the Doctrine snapshot provides
+contributor-neutral defaults.
 
 ## Agent Operating Rules
 
 1. Read repository guidance first:
+   - `PROJECT_CONTEXT.md`
    - `AI_CONTEXT.md`
    - `README.md`
    - `CONTRIBUTING.md`

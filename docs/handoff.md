@@ -17,6 +17,18 @@ Low-level graphics foundation hardening before new higher-level renderer,
 scene, or ECS work. Current scope is core/RHI/backend contract depth,
 validation, diagnostics, and backend parity.
 
+## Latest Handoff
+
+- Added portable `AGENTS.md`, `CLAUDE.md`, and `PROJECT_CONTEXT.md` guidance so
+  fresh agent sessions can recover Truffle's architecture and working rules.
+- Refreshed the public Doctrine snapshot without overwriting repository-local
+  instructions or context.
+- Truffle's documentation-only context branch does not change C++ sources.
+  Current GitHub Actions Linux and Windows builds fail on unchanged `develop`
+  RHI compilation errors: a non-`constexpr` descriptor-budget call from a
+  `constexpr` function, plus warning-as-error missing initializers. Resolve
+  those engine failures separately before promoting this documentation branch.
+
 ## Current Work Status
 
 - **Phase 1 to 4** are marked strictly Complete. Refer to `docs/roadmap.md` for historical feature deliverables.

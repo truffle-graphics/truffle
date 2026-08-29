@@ -1,7 +1,7 @@
 # Doctrine Export Policy
 
 Status: Stable  
-Last Reviewed: 2026-06-04
+Last Reviewed: 2026-08-20
 
 ## Purpose
 
@@ -32,12 +32,19 @@ The default bootstrap tools may export:
 - `repo-management.md`
 - `templates/repo-visibility-note-template.md`
 - `templates/doctrine-change-record-template.md`
+- `templates/project-context-template.md`
+- `templates/CLAUDE.md`
 
 ## Non-Exported Identity Overlay
 
-Identity-specific files, account naming ladders, and maintainer-local preferences are source doctrine or private overlay material.
+Identity-specific files, account naming ladders, and maintainer-local preferences belong only in a private maintainer overlay.
 
-They must not be copied into public templates or generated repositories by default. If a downstream repository needs such material, document that decision locally and keep it out of reusable public template baselines unless it is contributor-neutral.
+They must not be committed to public doctrine, copied into public templates, or generated into downstream repositories by default. If a downstream repository needs such material, document that decision locally and keep it out of reusable public template baselines unless it is contributor-neutral.
+
+User-level agent configuration is a local integration concern, not a Doctrine
+export. Public Doctrine may provide contributor-neutral project instruction and
+context templates, but it must not require a private account, repository, or
+tool configuration path.
 
 ## Contamination Guard
 
