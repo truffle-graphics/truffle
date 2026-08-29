@@ -2,6 +2,7 @@ option(TRUFFLE_BUILD_TESTS "Build Truffle contract tests" ${PROJECT_IS_TOP_LEVEL
 option(TRUFFLE_BUILD_EXAMPLES "Build Truffle examples" ${PROJECT_IS_TOP_LEVEL})
 option(TRUFFLE_INSTALL "Add Truffle install and package export rules" ${PROJECT_IS_TOP_LEVEL})
 option(TRUFFLE_WARNINGS_AS_ERRORS "Treat Truffle target warnings as errors" OFF)
+option(TRUFFLE_BUILD_SHADERC "Build the optional truffle-shaderc package tool" OFF)
 
 option(TRUFFLE_BUILD_BACKEND_NULL    "Build the Truffle null validation backend" ON)
 option(TRUFFLE_BUILD_BACKEND_VULKAN  "Build the Vulkan RHI 1 target (currently unavailable)" OFF)

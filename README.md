@@ -44,6 +44,10 @@ API:
 - `truffle_backend_vulkan`, `truffle_backend_opengl`, and
   `truffle_backend_direct3d` expose explicit unavailable factories until their
   native implementations land; they report no simulated adapters.
+- `ShaderPackage` provides a deterministic compiler-free runtime container with
+  normalized cross-target reflection and native-variant selection. The optional
+  `truffle-shaderc` target assembles and inspects packages without adding a
+  compiler dependency to RHI consumers.
 - `truffle_render` starts the independently consumable rendering layer above RHI.
 - `truffle_diagnostics` provides opt-in asset/render/frame/asset-render-plan/
   debug-overlay inspection helpers and bundle reports without adding diagnostics
@@ -73,6 +77,10 @@ cmake --preset dev
 cmake --build --preset dev
 ctest --preset dev
 ```
+
+The checked-in presets build the optional `truffle-shaderc` package assembler.
+Other consumers can opt in with `-DTRUFFLE_BUILD_SHADERC=ON`; the runtime RHI
+never gains a compiler dependency.
 
 See `docs/charter.md`, `docs/architecture.md`, `docs/roadmap.md`, and
 `docs/rhi1/` for the current boundaries, replacement sequence, and backend

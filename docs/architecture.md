@@ -136,11 +136,12 @@ The complete policy and dependency groups are in
 ## Shader Boundary
 
 RHI consumes a format-neutral `ShaderPackage`. The optional host-side
-`truffle-shaderc` tool can produce multi-target packages from several authoring
-languages and precompiled formats. Runtime compilation is optional, and target
+`truffle-shaderc` tool assembles and appends precompiled or backend-native
+variants into deterministic multi-target packages while recording authoring
+language and compiler provenance. Runtime compilation is optional, and target
 variants must agree on normalized reflection.
 
-See [the shader package direction](rhi1/shader-package.md).
+See [the shader package contract](rhi1/shader-package.md).
 
 ## Deferred Surfaces
 

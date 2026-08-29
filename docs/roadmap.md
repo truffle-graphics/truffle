@@ -60,8 +60,9 @@ Tracked by #30 and #32.
   offsets, specialization constants, optional push constants and bindless
   tables, pipeline layouts/caches, full graphics state, and compute workgroup
   requirements.
-- Introduce `ShaderPackage` and optional `truffle-shaderc`; validate reflection
-  equivalence across selected target variants.
+- [x] Introduce deterministic `ShaderPackage` 1.0 and optional dependency-free
+  `truffle-shaderc`; validate reflection equivalence across selected target
+  variants and gate experimental Metal/WGSL generation.
 
 ## Phase 4: Explicit Synchronization And Presentation — Pending
 
