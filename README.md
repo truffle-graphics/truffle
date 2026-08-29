@@ -39,9 +39,10 @@ API:
   GPU dependency.
 - `truffle_backend_metal` implements native buffer and selected 2D texture
   allocation, views, mapping/coherence, copy/fill, upload, readback, immutable
-  bindings, and graphics/compute pipelines. Validation-enabled exact resource,
-  triangle, textured, depth/MRT/MSAA, indirect, and compute-to-render proofs
-  reach `native_smoke` on macOS; synchronization and presentation remain.
+  bindings, graphics/compute pipelines, shared-event synchronization, and
+  `CAMetalLayer` presentation. Validation-enabled exact resource, triangle,
+  textured, depth/MRT/MSAA, indirect, compute-to-render, mixed-ordering, and
+  acquire/present proofs reach `native_smoke` on macOS.
 - `truffle_backend_vulkan`, `truffle_backend_opengl`, and
   `truffle_backend_direct3d` expose explicit unavailable factories until their
   native implementations land; they report no simulated adapters.

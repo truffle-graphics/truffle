@@ -57,6 +57,13 @@ if(TRUFFLE_BUILD_BACKEND_METAL)
     add_executable(truffle_metal_tests metal_backend_tests.cpp)
     target_link_libraries(truffle_metal_tests PRIVATE truffle_backend_metal truffle_render)
     add_test(NAME truffle_metal_tests COMMAND truffle_metal_tests)
+    add_executable(truffle_metal_presentation_tests metal_presentation_tests.mm)
+    target_link_libraries(truffle_metal_presentation_tests
+                          PRIVATE truffle_backend_metal "-framework QuartzCore")
+    target_include_directories(truffle_metal_presentation_tests
+                               PRIVATE "${PROJECT_SOURCE_DIR}/src/backends/metal")
+    add_test(NAME truffle_metal_presentation_tests
+             COMMAND truffle_metal_presentation_tests)
 endif()
 
 if(TRUFFLE_BUILD_BACKEND_VULKAN)

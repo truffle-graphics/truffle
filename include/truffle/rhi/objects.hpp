@@ -108,6 +108,7 @@ private:
     explicit Buffer(std::unique_ptr<detail::ObjectState> state) noexcept;
     std::unique_ptr<detail::ObjectState> state_;
     friend struct detail::Factory;
+    friend class CommandList;
     friend class RenderEncoder;
     friend class ComputeEncoder;
     friend class CopyEncoder;
@@ -491,6 +492,7 @@ public:
     [[nodiscard]] Result<RenderEncoder> begin_rendering(const RenderPassDesc& desc);
     [[nodiscard]] Result<ComputeEncoder> begin_compute();
     [[nodiscard]] Result<CopyEncoder> begin_copy();
+    [[nodiscard]] Status barrier(const BarrierBatch& batch);
 
 private:
     explicit CommandList(std::unique_ptr<detail::ObjectState> state) noexcept;
@@ -649,9 +651,11 @@ public:
     [[nodiscard]] bool valid() const noexcept;
     [[nodiscard]] ObjectId id() const noexcept;
     [[nodiscard]] QueueKind kind() const;
+    [[nodiscard]] Status submit(const QueueSubmitDesc& desc);
     [[nodiscard]] Status submit(std::span<CommandList* const> commandLists,
                                 Fence* signalFence = nullptr,
                                 std::uint64_t signalValue = 0);
+    [[nodiscard]] Status present(const QueuePresentDesc& desc);
     [[nodiscard]] Status present(Swapchain& swapchain,
                                  std::uint32_t imageIndex);
 
@@ -700,6 +704,7 @@ private:
     explicit Semaphore(std::unique_ptr<detail::ObjectState> state) noexcept;
     std::unique_ptr<detail::ObjectState> state_;
     friend struct detail::Factory;
+    friend class Queue;
 };
 
 class QueryPool {
@@ -749,7 +754,8 @@ struct AcquireResult {
     std::uint64_t availableValue = 0;
 
     [[nodiscard]] bool ok() const noexcept {
-        return status.ok() && image != nullptr;
+        return (status.ok() || status.code == StatusCode::suboptimal) &&
+               image != nullptr;
     }
 };
 

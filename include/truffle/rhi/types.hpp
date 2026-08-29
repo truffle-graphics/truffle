@@ -3,6 +3,7 @@
 #include "truffle/rhi/status.hpp"
 
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -25,6 +26,10 @@ class BindlessTable;
 class DescriptorArena;
 class PipelineLayout;
 class PipelineCache;
+class CommandList;
+class Fence;
+class Semaphore;
+class Swapchain;
 
 struct ObjectId {
     std::uint64_t value = 0;
@@ -297,6 +302,88 @@ enum class SamplerAddressMode { clamp_to_edge, repeat, mirror_repeat };
 enum class LoadOp { load, clear, dont_care };
 enum class StoreOp { store, dont_care };
 enum class PresentMode { fifo, mailbox, immediate };
+enum class PipelineStage : std::uint64_t {
+    none = 0,
+    top = 1ull << 0u,
+    draw_indirect = 1ull << 1u,
+    vertex_input = 1ull << 2u,
+    vertex_shader = 1ull << 3u,
+    fragment_shader = 1ull << 4u,
+    early_fragment_tests = 1ull << 5u,
+    late_fragment_tests = 1ull << 6u,
+    color_attachment_output = 1ull << 7u,
+    compute_shader = 1ull << 8u,
+    copy = 1ull << 9u,
+    bottom = 1ull << 10u,
+    host = 1ull << 11u,
+    all_graphics = draw_indirect | vertex_input | vertex_shader |
+                   fragment_shader | early_fragment_tests |
+                   late_fragment_tests | color_attachment_output,
+    all_commands = all_graphics | compute_shader | copy,
+};
+
+[[nodiscard]] constexpr PipelineStage operator|(PipelineStage lhs,
+                                                 PipelineStage rhs) noexcept {
+    return static_cast<PipelineStage>(static_cast<std::uint64_t>(lhs) |
+                                      static_cast<std::uint64_t>(rhs));
+}
+
+[[nodiscard]] constexpr PipelineStage operator&(PipelineStage lhs,
+                                                 PipelineStage rhs) noexcept {
+    return static_cast<PipelineStage>(static_cast<std::uint64_t>(lhs) &
+                                      static_cast<std::uint64_t>(rhs));
+}
+
+[[nodiscard]] constexpr bool has_pipeline_stage(
+    PipelineStage value, PipelineStage required) noexcept {
+    return (value & required) == required;
+}
+
+enum class Access : std::uint64_t {
+    none = 0,
+    indirect_read = 1ull << 0u,
+    index_read = 1ull << 1u,
+    vertex_attribute_read = 1ull << 2u,
+    uniform_read = 1ull << 3u,
+    shader_read = 1ull << 4u,
+    shader_write = 1ull << 5u,
+    color_attachment_read = 1ull << 6u,
+    color_attachment_write = 1ull << 7u,
+    depth_stencil_read = 1ull << 8u,
+    depth_stencil_write = 1ull << 9u,
+    transfer_read = 1ull << 10u,
+    transfer_write = 1ull << 11u,
+    host_read = 1ull << 12u,
+    host_write = 1ull << 13u,
+    memory_read = 1ull << 14u,
+    memory_write = 1ull << 15u,
+};
+
+[[nodiscard]] constexpr Access operator|(Access lhs, Access rhs) noexcept {
+    return static_cast<Access>(static_cast<std::uint64_t>(lhs) |
+                               static_cast<std::uint64_t>(rhs));
+}
+
+[[nodiscard]] constexpr Access operator&(Access lhs, Access rhs) noexcept {
+    return static_cast<Access>(static_cast<std::uint64_t>(lhs) &
+                               static_cast<std::uint64_t>(rhs));
+}
+
+[[nodiscard]] constexpr bool has_access(Access value, Access required) noexcept {
+    return (value & required) == required;
+}
+
+enum class TextureLayout {
+    undefined,
+    general,
+    color_attachment,
+    depth_stencil_attachment,
+    depth_stencil_read_only,
+    shader_read_only,
+    transfer_source,
+    transfer_destination,
+    present,
+};
 enum class Filter { nearest, linear };
 enum class CommandListState { initial, recording, executable, submitted, invalid };
 enum class ExternalHandleType {
@@ -855,6 +942,74 @@ struct FenceDesc {
 struct SemaphoreDesc {
     std::uint64_t initialValue = 0;
     std::string debugName;
+};
+
+struct BufferBarrier {
+    Buffer* buffer = nullptr;
+    std::size_t offset = 0;
+    std::size_t size = whole_size;
+    PipelineStage sourceStages = PipelineStage::top;
+    PipelineStage destinationStages = PipelineStage::bottom;
+    Access sourceAccess = Access::none;
+    Access destinationAccess = Access::none;
+    bool transferOwnership = false;
+    QueueKind sourceQueue = QueueKind::graphics;
+    QueueKind destinationQueue = QueueKind::graphics;
+};
+
+struct TextureBarrier {
+    Texture* texture = nullptr;
+    TextureSubresourceRange range;
+    TextureLayout oldLayout = TextureLayout::undefined;
+    TextureLayout newLayout = TextureLayout::general;
+    PipelineStage sourceStages = PipelineStage::top;
+    PipelineStage destinationStages = PipelineStage::bottom;
+    Access sourceAccess = Access::none;
+    Access destinationAccess = Access::none;
+    bool transferOwnership = false;
+    QueueKind sourceQueue = QueueKind::graphics;
+    QueueKind destinationQueue = QueueKind::graphics;
+};
+
+struct AliasingBarrier {
+    Buffer* beforeBuffer = nullptr;
+    Texture* beforeTexture = nullptr;
+    Buffer* afterBuffer = nullptr;
+    Texture* afterTexture = nullptr;
+    PipelineStage sourceStages = PipelineStage::all_commands;
+    PipelineStage destinationStages = PipelineStage::all_commands;
+};
+
+struct BarrierBatch {
+    std::vector<BufferBarrier> buffers;
+    std::vector<TextureBarrier> textures;
+    std::vector<AliasingBarrier> aliasing;
+};
+
+struct SemaphoreWait {
+    Semaphore* semaphore = nullptr;
+    std::uint64_t value = 0;
+    PipelineStage stages = PipelineStage::all_commands;
+};
+
+struct SemaphoreSignal {
+    Semaphore* semaphore = nullptr;
+    std::uint64_t value = 0;
+};
+
+struct QueueSubmitDesc {
+    std::span<CommandList* const> commandLists;
+    std::span<const SemaphoreWait> waits;
+    std::span<const SemaphoreSignal> signals;
+    Fence* signalFence = nullptr;
+    std::uint64_t signalFenceValue = 0;
+    std::chrono::nanoseconds waitTimeout = std::chrono::nanoseconds::max();
+};
+
+struct QueuePresentDesc {
+    Swapchain* swapchain = nullptr;
+    std::uint32_t imageIndex = 0;
+    std::span<const SemaphoreWait> waits;
 };
 
 enum class QueryType { timestamp, occlusion, pipeline_statistics };

@@ -1,12 +1,15 @@
 #import <Metal/Metal.h>
+#import <QuartzCore/CAMetalLayer.h>
 #import <dispatch/dispatch.h>
 
 #include "truffle/rhi/metal_backend.hpp"
 
 #include "foundation_backend.hpp"
+#include "metal_backend_test.hpp"
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -16,6 +19,22 @@
 #include <string>
 
 namespace truffle::rhi {
+namespace detail {
+
+std::atomic<bool> gMetalDeviceLossForTesting{false};
+std::atomic<MetalAcquireFault> gMetalAcquireFaultForTesting{
+    MetalAcquireFault::none};
+
+void set_metal_device_loss_for_testing(bool enabled) noexcept {
+    gMetalDeviceLossForTesting.store(enabled);
+}
+
+void set_metal_acquire_fault_for_testing(MetalAcquireFault fault) noexcept {
+    gMetalAcquireFaultForTesting.store(fault);
+}
+
+} // namespace detail
+
 namespace {
 
 struct MetalBufferResource {
@@ -127,6 +146,36 @@ struct MetalComputePipelineResource {
     std::vector<ShaderBindingMap> bindingMap;
 };
 
+struct MetalSemaphoreResource {
+    explicit MetalSemaphoreResource(id<MTLSharedEvent> eventValue)
+        : event(eventValue) {}
+    ~MetalSemaphoreResource() { [event release]; }
+
+    id<MTLSharedEvent> event = nil;
+};
+
+struct MetalSurfaceResource {
+    explicit MetalSurfaceResource(CAMetalLayer* layerValue)
+        : layer([layerValue retain]) {}
+    ~MetalSurfaceResource() { [layer release]; }
+
+    CAMetalLayer* layer = nil;
+};
+
+struct MetalSwapchainResource {
+    MetalSwapchainResource(std::shared_ptr<MetalSurfaceResource> surfaceValue,
+                           SwapchainDesc descValue)
+        : surface(std::move(surfaceValue)), desc(std::move(descValue)) {}
+    ~MetalSwapchainResource() { [drawable release]; }
+
+    std::shared_ptr<MetalSurfaceResource> surface;
+    SwapchainDesc desc;
+    id<CAMetalDrawable> drawable = nil;
+    std::uint32_t imageIndex = 0;
+    std::uint32_t nextImage = 0;
+    std::mutex mutex;
+};
+
 [[nodiscard]] id<MTLDevice> system_device() {
     static std::once_flag once;
     static id<MTLDevice> device = nil;
@@ -150,6 +199,13 @@ struct MetalComputePipelineResource {
     return error != nil && error.localizedDescription != nil
                ? std::string{error.localizedDescription.UTF8String}
                : std::move(fallback);
+}
+
+[[nodiscard]] StatusCode metal_command_status_code(NSError* error) {
+    return error != nil &&
+                   error.code == MTLCommandBufferErrorDeviceRemoved
+               ? StatusCode::device_lost
+               : StatusCode::backend_error;
 }
 
 [[nodiscard]] MTLCompareFunction metal_compare(CompareOp operation) {
@@ -663,6 +719,206 @@ struct MetalFormat {
         return {MTLPixelFormatDepth32Float_Stencil8, 8};
     default:
         return {};
+    }
+}
+
+[[nodiscard]] Result<std::shared_ptr<void>> create_metal_surface(
+    const SurfaceDesc& desc) {
+    @autoreleasepool {
+        if (desc.native.kind != NativeSurfaceKind::cocoa_layer ||
+            desc.native.handle == nullptr) {
+            return Status::failure(
+                StatusCode::unsupported,
+                "Metal surfaces require a CAMetalLayer native handle");
+        }
+        CAMetalLayer* layer = (__bridge CAMetalLayer*)desc.native.handle;
+        if (layer == nil || ![layer isKindOfClass:[CAMetalLayer class]]) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Metal surface handle is not a CAMetalLayer");
+        }
+        return std::static_pointer_cast<void>(
+            std::make_shared<MetalSurfaceResource>(layer));
+    }
+}
+
+[[nodiscard]] Result<std::shared_ptr<void>> create_metal_swapchain(
+    const std::shared_ptr<void>& nativeSurface, const SwapchainDesc& desc) {
+    @autoreleasepool {
+        const auto surface =
+            std::static_pointer_cast<MetalSurfaceResource>(nativeSurface);
+        const auto device = system_device();
+        const auto format = metal_format(desc.format);
+        if (!surface || surface->layer == nil) {
+            return Status::failure(StatusCode::surface_lost,
+                                   "Metal surface is no longer available");
+        }
+        if (device == nil) {
+            return Status::failure(StatusCode::device_lost,
+                                   "Metal device is no longer available");
+        }
+        if (format.format == MTLPixelFormatInvalid ||
+            (desc.format != TextureFormat::bgra8_unorm &&
+             desc.format != TextureFormat::bgra8_srgb &&
+             desc.format != TextureFormat::rgba16_float)) {
+            return Status::failure(
+                StatusCode::unsupported,
+                "Metal swapchain format is not CAMetalLayer-compatible");
+        }
+        surface->layer.device = device;
+        surface->layer.pixelFormat = format.format;
+        surface->layer.drawableSize =
+            CGSizeMake(desc.extent.width, desc.extent.height);
+        surface->layer.maximumDrawableCount =
+            static_cast<NSUInteger>(std::clamp(desc.imageCount, 2u, 3u));
+        surface->layer.displaySyncEnabled =
+            desc.presentMode != PresentMode::immediate;
+        surface->layer.allowsNextDrawableTimeout = YES;
+        surface->layer.framebufferOnly = NO;
+        return std::static_pointer_cast<void>(
+            std::make_shared<MetalSwapchainResource>(surface, desc));
+    }
+}
+
+[[nodiscard]] Result<detail::NativeSwapchainImage> acquire_metal_swapchain(
+    const std::shared_ptr<void>& nativeSwapchain) {
+    @autoreleasepool {
+        if (detail::gMetalAcquireFaultForTesting.load() ==
+            detail::MetalAcquireFault::out_of_date) {
+            return Status::failure(StatusCode::out_of_date,
+                                   "injected Metal out-of-date swapchain");
+        }
+        const auto swapchain =
+            std::static_pointer_cast<MetalSwapchainResource>(nativeSwapchain);
+        if (!swapchain || !swapchain->surface ||
+            swapchain->surface->layer == nil) {
+            return Status::failure(StatusCode::surface_lost,
+                                   "Metal surface is no longer available");
+        }
+        std::lock_guard lock{swapchain->mutex};
+        if (swapchain->drawable != nil) {
+            return Status::failure(
+                StatusCode::invalid_state,
+                "Metal swapchain already has an acquired drawable");
+        }
+        const auto drawableSize = swapchain->surface->layer.drawableSize;
+        if (drawableSize.width <= 0.0 || drawableSize.height <= 0.0) {
+            return Status::failure(StatusCode::out_of_date,
+                                   "Metal layer has a zero drawable extent");
+        }
+        if (swapchain->surface->layer.device == nil) {
+            return Status::failure(StatusCode::surface_lost,
+                                   "Metal layer is detached from its device");
+        }
+        id<CAMetalDrawable> drawable = [swapchain->surface->layer nextDrawable];
+        if (drawable == nil) {
+            return Status::failure(StatusCode::timeout,
+                                   "Metal drawable acquisition timed out");
+        }
+        swapchain->drawable = [drawable retain];
+        swapchain->imageIndex =
+            swapchain->nextImage++ % swapchain->desc.imageCount;
+        const auto width = static_cast<std::uint32_t>(drawable.texture.width);
+        const auto height = static_cast<std::uint32_t>(drawable.texture.height);
+        const auto format = metal_format(swapchain->desc.format);
+        TextureDesc textureDesc{
+            .extent = {width, height, 1},
+            .format = swapchain->desc.format,
+            .usage = TextureUsage::color_attachment | TextureUsage::present,
+            .debugName = swapchain->desc.debugName + " drawable",
+        };
+        detail::NativeSwapchainImage result;
+        result.texture = std::static_pointer_cast<void>(
+            std::make_shared<MetalTextureResource>(
+                [drawable.texture retain], std::move(textureDesc),
+                format.bytesPerPixel));
+        result.imageIndex = swapchain->imageIndex;
+        result.extent = {width, height};
+        result.status = width == swapchain->desc.extent.width &&
+                                height == swapchain->desc.extent.height
+                            ? Status::success()
+                            : Status::failure(
+                                  StatusCode::suboptimal,
+                                  "Metal drawable extent differs from swapchain extent");
+        return result;
+    }
+}
+
+[[nodiscard]] Status resize_metal_swapchain(
+    const std::shared_ptr<void>& nativeSwapchain, Extent2D extent) {
+    @autoreleasepool {
+        const auto swapchain =
+            std::static_pointer_cast<MetalSwapchainResource>(nativeSwapchain);
+        if (!swapchain || !swapchain->surface ||
+            swapchain->surface->layer == nil) {
+            return Status::failure(StatusCode::surface_lost,
+                                   "Metal surface is no longer available");
+        }
+        std::lock_guard lock{swapchain->mutex};
+        if (swapchain->drawable != nil) {
+            return Status::failure(
+                StatusCode::invalid_state,
+                "Metal swapchain cannot resize an acquired drawable");
+        }
+        swapchain->surface->layer.drawableSize =
+            CGSizeMake(extent.width, extent.height);
+        swapchain->desc.extent = extent;
+        return Status::success();
+    }
+}
+
+[[nodiscard]] Status present_metal_swapchain(
+    const std::shared_ptr<void>& nativeSwapchain, std::uint32_t imageIndex,
+    std::span<const detail::NativeSemaphorePoint> waits) {
+    @autoreleasepool {
+        const auto swapchain =
+            std::static_pointer_cast<MetalSwapchainResource>(nativeSwapchain);
+        if (!swapchain || !swapchain->surface ||
+            swapchain->surface->layer == nil) {
+            return Status::failure(StatusCode::surface_lost,
+                                   "Metal surface is no longer available");
+        }
+        std::lock_guard lock{swapchain->mutex};
+        if (swapchain->drawable == nil || imageIndex != swapchain->imageIndex) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "Metal presentation image is not acquired");
+        }
+        const auto device = system_device();
+        if (device == nil) {
+            return Status::failure(StatusCode::device_lost,
+                                   "Metal device is no longer available");
+        }
+        id<MTLCommandQueue> queue = [device newCommandQueue];
+        id<MTLCommandBuffer> command = [queue commandBuffer];
+        if (queue == nil || command == nil) {
+            [queue release];
+            return metal_failure(StatusCode::backend_error,
+                                 "Metal presentation command creation failed");
+        }
+        for (const auto& wait : waits) {
+            const auto semaphore =
+                std::static_pointer_cast<MetalSemaphoreResource>(wait.semaphore);
+            if (!semaphore || semaphore->event == nil) {
+                [queue release];
+                return Status::failure(StatusCode::invalid_argument,
+                                       "Metal present semaphore is invalid");
+            }
+            [command encodeWaitForEvent:semaphore->event value:wait.value];
+        }
+        [command presentDrawable:swapchain->drawable];
+        [command commit];
+        [command waitUntilCompleted];
+        const auto commandStatus = command.status;
+        const auto error = command.error;
+        [swapchain->drawable release];
+        swapchain->drawable = nil;
+        [queue release];
+        if (commandStatus == MTLCommandBufferStatusError) {
+            return metal_failure(metal_command_status_code(error),
+                                 metal_error_message(
+                                     error, "Metal presentation failed"),
+                                 error.code);
+        }
+        return Status::success();
     }
 }
 
@@ -1373,10 +1629,37 @@ struct MetalFormat {
     return descriptor;
 }
 
-[[nodiscard]] Status submit_metal_commands(
-    std::span<const detail::NativeTransfer> transfers,
-    std::span<const detail::NativeCommand> commands) {
+[[nodiscard]] Result<std::shared_ptr<void>> create_metal_semaphore(
+    const SemaphoreDesc& desc) {
     @autoreleasepool {
+        const auto device = system_device();
+        if (device == nil) {
+            return Status::failure(StatusCode::device_lost,
+                                   "Metal device is no longer available");
+        }
+        id<MTLSharedEvent> event = [device newSharedEvent];
+        if (event == nil) {
+            return metal_failure(StatusCode::backend_error,
+                                 "Metal shared-event creation failed");
+        }
+        event.signaledValue = desc.initialValue;
+        if (!desc.debugName.empty()) {
+            event.label = [NSString stringWithUTF8String:desc.debugName.c_str()];
+        }
+        return std::static_pointer_cast<void>(
+            std::make_shared<MetalSemaphoreResource>(event));
+    }
+}
+
+[[nodiscard]] Status submit_metal_commands(
+    std::span<const detail::NativeCommand> commands,
+    std::span<const detail::NativeSemaphorePoint> waits,
+    std::span<const detail::NativeSemaphorePoint> signals) {
+    @autoreleasepool {
+        if (detail::gMetalDeviceLossForTesting.load()) {
+            return Status::failure(StatusCode::device_lost,
+                                   "injected Metal device loss");
+        }
         const auto device = system_device();
         if (device == nil) {
             return Status::failure(StatusCode::unavailable,
@@ -1393,22 +1676,15 @@ struct MetalFormat {
             return metal_failure(StatusCode::backend_error,
                                  "Metal command buffer creation failed");
         }
-        if (!transfers.empty()) {
-            id<MTLBlitCommandEncoder> encoder = [command blitCommandEncoder];
-            if (encoder == nil) {
+        for (const auto& wait : waits) {
+            const auto semaphore =
+                std::static_pointer_cast<MetalSemaphoreResource>(wait.semaphore);
+            if (!semaphore || semaphore->event == nil) {
                 [queue release];
-                return metal_failure(StatusCode::backend_error,
-                                     "Metal blit encoder creation failed");
+                return Status::failure(StatusCode::invalid_argument,
+                                       "Metal wait semaphore is invalid");
             }
-            for (const auto& transfer : transfers) {
-                if (auto status = encode_metal_transfer(encoder, transfer);
-                    !status.ok()) {
-                    [encoder endEncoding];
-                    [queue release];
-                    return status;
-                }
-            }
-            [encoder endEncoding];
+            [command encodeWaitForEvent:semaphore->event value:wait.value];
         }
 
         id<MTLRenderCommandEncoder> render = nil;
@@ -1441,6 +1717,33 @@ struct MetalFormat {
 
         for (const auto& encoded : commands) {
             switch (encoded.kind) {
+            case detail::NativeCommandKind::transfer: {
+                if (render != nil || compute != nil) {
+                    return fail(Status::failure(
+                        StatusCode::invalid_state,
+                        "Metal transfer commands cannot overlap an encoder"));
+                }
+                id<MTLBlitCommandEncoder> blit =
+                    [command blitCommandEncoder];
+                if (blit == nil) {
+                    return fail(metal_failure(
+                        StatusCode::backend_error,
+                        "Metal blit encoder creation failed"));
+                }
+                const auto status = encode_metal_transfer(blit, encoded.transfer);
+                [blit endEncoding];
+                if (!status.ok()) {
+                    return fail(status);
+                }
+                break;
+            }
+            case detail::NativeCommandKind::barrier:
+                if (render != nil || compute != nil) {
+                    return fail(Status::failure(
+                        StatusCode::invalid_state,
+                        "Metal barriers require an encoder boundary"));
+                }
+                break;
             case detail::NativeCommandKind::begin_render: {
                 if (render != nil || compute != nil) {
                     return fail(Status::failure(
@@ -1866,6 +2169,16 @@ struct MetalFormat {
             return fail(Status::failure(StatusCode::invalid_state,
                                         "Metal command encoder was not ended"));
         }
+        for (const auto& signal : signals) {
+            const auto semaphore = std::static_pointer_cast<MetalSemaphoreResource>(
+                signal.semaphore);
+            if (!semaphore || semaphore->event == nil) {
+                [queue release];
+                return Status::failure(StatusCode::invalid_argument,
+                                       "Metal signal semaphore is invalid");
+            }
+            [command encodeSignalEvent:semaphore->event value:signal.value];
+        }
         [command commit];
         [command waitUntilCompleted];
         const auto commandStatus = command.status;
@@ -1875,7 +2188,7 @@ struct MetalFormat {
             const auto message = error.localizedDescription != nil
                                      ? std::string{error.localizedDescription.UTF8String}
                                      : std::string{"Metal command submission failed"};
-            return metal_failure(StatusCode::backend_error, message,
+            return metal_failure(metal_command_status_code(error), message,
                                  error.code);
         }
     }
@@ -1902,7 +2215,8 @@ Result<Instance> create_metal_instance(const InstanceDesc& desc) {
                 .queueKinds = {QueueKind::graphics, QueueKind::compute,
                                QueueKind::transfer},
                 .supportedFeatures = {
-                    Feature::compute, Feature::transfer, Feature::memory_budget,
+                    Feature::presentation, Feature::compute, Feature::transfer,
+                    Feature::memory_budget,
                     Feature::descriptor_arrays, Feature::dynamic_offsets,
                     Feature::push_constants},
                 .resourceCapabilities = {
@@ -1957,7 +2271,7 @@ Result<Instance> create_metal_instance(const InstanceDesc& desc) {
                     deviceBudget != 0 ? deviceBudget : 1024u * 1024u * 1024u,
                 .native = true,
                 .validationOnly = false,
-                .presentation = false,
+                .presentation = true,
                 .logicalResources = false,
                 .createBuffer = &create_metal_buffer,
                 .mapBuffer = &map_metal_buffer,
@@ -1974,6 +2288,12 @@ Result<Instance> create_metal_instance(const InstanceDesc& desc) {
                 .createShader = &create_metal_shader,
                 .createPipeline = &create_metal_pipeline,
                 .createComputePipeline = &create_metal_compute_pipeline,
+                .createSemaphore = &create_metal_semaphore,
+                .createSurface = &create_metal_surface,
+                .createSwapchain = &create_metal_swapchain,
+                .acquireSwapchain = &acquire_metal_swapchain,
+                .resizeSwapchain = &resize_metal_swapchain,
+                .presentSwapchain = &present_metal_swapchain,
                 .nativeSubmit = &submit_metal_commands,
             });
     }

@@ -126,7 +126,7 @@ int main() {
     auto adapter = std::move(adapterResult).value();
     assert(adapter.info().native);
     assert(!adapter.info().validationOnly);
-    assert(!adapter.info().presentation);
+    assert(adapter.info().presentation);
     assert(adapter.info().resources.bufferCopy);
     assert(adapter.info().resources.bufferTextureCopy);
     assert(adapter.info().resources.textureCopy);
@@ -159,9 +159,11 @@ int main() {
 
     auto computeQueueProof = device.queue(rhi::QueueKind::compute);
     assert(computeQueueProof.ok());
-    auto unsupportedFence = device.create_fence();
-    assert(!unsupportedFence.ok());
-    assert(unsupportedFence.status().code == core::StatusCode::unsupported);
+    auto nativeFenceResult = device.create_fence();
+    auto nativeSemaphoreResult = device.create_semaphore();
+    assert(nativeFenceResult.ok() && nativeSemaphoreResult.ok());
+    auto nativeFence = std::move(nativeFenceResult).value();
+    auto nativeSemaphore = std::move(nativeSemaphoreResult).value();
 
     constexpr std::size_t byteCount = 64;
     auto uploadResult = device.create_buffer({
@@ -455,6 +457,99 @@ fragment float4 buffer_fragment(VertexOutput input [[stage_in]],
     const std::array<std::byte, 4> expectedRed{
         std::byte{255}, std::byte{0}, std::byte{0}, std::byte{255}};
     assert(redPixel == expectedRed);
+
+    // A render pass followed by a copy in the same command list must preserve
+    // that exact order. The old split transfer/command arrays copied first.
+    auto orderedReadbackResult = device.create_buffer({
+        .size = 256 * 16,
+        .usage = rhi::BufferUsage::copy_destination,
+        .memory = rhi::MemoryDomain::readback,
+    });
+    assert(orderedReadbackResult.ok());
+    auto orderedReadback = std::move(orderedReadbackResult).value();
+    auto orderedListResult = graphicsPool.allocate();
+    assert(orderedListResult.ok());
+    auto orderedList = std::move(orderedListResult).value();
+    assert(orderedList.begin().ok());
+    rhi::BarrierBatch renderBarrier;
+    renderBarrier.textures.push_back({
+        .texture = &triangleTarget,
+        .oldLayout = rhi::TextureLayout::undefined,
+        .newLayout = rhi::TextureLayout::color_attachment,
+        .destinationStages = rhi::PipelineStage::color_attachment_output,
+        .destinationAccess = rhi::Access::color_attachment_write,
+    });
+    assert(orderedList.barrier(renderBarrier).ok());
+    auto clearResult = orderedList.begin_rendering({
+        .extent = {16, 16},
+        .colorAttachments = {{.texture = &triangleTarget,
+                              .clear = {0.0F, 1.0F, 0.0F, 1.0F}}},
+    });
+    assert(clearResult.ok());
+    auto clear = std::move(clearResult).value();
+    assert(clear.end().ok());
+    rhi::BarrierBatch copyBarrier;
+    copyBarrier.textures.push_back({
+        .texture = &triangleTarget,
+        .oldLayout = rhi::TextureLayout::color_attachment,
+        .newLayout = rhi::TextureLayout::transfer_source,
+        .sourceStages = rhi::PipelineStage::color_attachment_output,
+        .destinationStages = rhi::PipelineStage::copy,
+        .sourceAccess = rhi::Access::color_attachment_write,
+        .destinationAccess = rhi::Access::transfer_read,
+    });
+    assert(orderedList.barrier(copyBarrier).ok());
+    auto orderedCopyResult = orderedList.begin_copy();
+    assert(orderedCopyResult.ok());
+    auto orderedCopy = std::move(orderedCopyResult).value();
+    assert(orderedCopy
+               .copy_texture_to_buffer(
+                   triangleTarget, orderedReadback,
+                   {.layout = {.bytesPerRow = 256, .rowsPerImage = 16},
+                    .texture = {.extent = {16, 16, 1}}})
+               .ok());
+    assert(orderedCopy.end().ok());
+    assert(orderedList.end().ok());
+    auto graphicsQueueResult = device.queue(rhi::QueueKind::graphics);
+    assert(graphicsQueueResult.ok());
+    auto graphicsQueue = std::move(graphicsQueueResult).value();
+    std::array<rhi::CommandList*, 1> orderedLists{&orderedList};
+    const std::array<rhi::SemaphoreSignal, 1> orderedSignals{{
+        {.semaphore = &nativeSemaphore, .value = 3},
+    }};
+    assert(graphicsQueue
+               .submit({.commandLists = orderedLists,
+                        .signals = orderedSignals,
+                        .signalFence = &nativeFence,
+                        .signalFenceValue = 3})
+               .ok());
+    assert(nativeSemaphore.value() == 3);
+    assert(nativeFence.completed_value() == 3);
+    std::array<std::byte, 4> orderedPixel{};
+    assert(orderedReadback.read(8 * 256 + 8 * 4, orderedPixel).ok());
+    const std::array<std::byte, 4> expectedGreen{
+        std::byte{0}, std::byte{255}, std::byte{0}, std::byte{255}};
+    assert(orderedPixel == expectedGreen);
+    auto crossQueueListResult = pool.allocate();
+    assert(crossQueueListResult.ok());
+    auto crossQueueList = std::move(crossQueueListResult).value();
+    assert(crossQueueList.begin().ok());
+    assert(crossQueueList.end().ok());
+    std::array<rhi::CommandList*, 1> crossQueueLists{&crossQueueList};
+    const std::array<rhi::SemaphoreWait, 1> crossQueueWaits{{
+        {.semaphore = &nativeSemaphore,
+         .value = 3,
+         .stages = rhi::PipelineStage::copy},
+    }};
+    const std::array<rhi::SemaphoreSignal, 1> crossQueueSignals{{
+        {.semaphore = &nativeSemaphore, .value = 4},
+    }};
+    assert(queue
+               .submit({.commandLists = crossQueueLists,
+                        .waits = crossQueueWaits,
+                        .signals = crossQueueSignals})
+               .ok());
+    assert(nativeSemaphore.value() == 4);
 
     auto texture0 = device.create_texture({
         .extent = {1, 1, 1},

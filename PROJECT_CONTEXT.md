@@ -22,8 +22,7 @@ asset workflow.
 The repository is replacing its preliminary RHI with **Truffle RHI 1** under
 milestone `Truffle RHI 1` and tracking issue #25. The breaking public object and
 dispatch cutover plus the resource, ShaderPackage, binding, and graphics/compute
-pipeline slices are complete. Explicit synchronization and presentation remain
-in progress.
+pipeline, explicit synchronization, and presentation slices are complete.
 
 Current evidence is narrower than the old roadmap claimed:
 
@@ -32,8 +31,11 @@ Current evidence is narrower than the old roadmap claimed:
 - Metal is the only implementation that currently calls a native graphics API;
   it discovers a native device and passes deterministic resource readback plus
   triangle, textured binding, depth/MRT/MSAA, indexed/instanced/indirect, and
-  compute-to-render proofs with Metal API validation enabled. Its macOS
-  maturity is `native_smoke`; synchronization, recovery, presentation, and full
+  compute-to-render proofs with Metal API validation enabled. Native shared
+  events and `CAMetalLayer` tests also prove ordered submission, timeline
+  synchronization, acquisition, presentation, resize, and recoverable status
+  paths. Its macOS maturity remains `native_smoke`; host-window integration,
+  physical device-removal evidence, broader Apple-platform execution, and full
   native conformance remain.
 - Vulkan, OpenGL, and Direct3D backend targets explicitly return `unsupported`
   and report no adapters. Their previous CPU simulators have been removed; the
@@ -94,6 +96,5 @@ consumer selects concrete loading, upload, and backend behavior.
 
 ## Next Meaningful Direction
 
-Implement explicit synchronization and presentation under issue #31 while
-preserving capability-accurate behavior for Metal and unavailable named
-backends.
+Implement native backend and platform breadth under issue #33 while preserving
+the evidence-based maturity boundary for Metal and unavailable named backends.
