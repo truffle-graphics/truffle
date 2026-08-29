@@ -1966,8 +1966,8 @@ int main() {
                 .bindingIndex = 0,
                 .type = truffle::rhi::BindingResourceType::sampler,
                 .visibility = truffle::rhi::ShaderStageFlags::fragment,
-                .groupIndex = 1,
                 .arrayCount = 2,
+                .groupIndex = 1,
             },
         },
     };
@@ -1984,8 +1984,8 @@ int main() {
                 .bindingIndex = 0,
                 .type = truffle::rhi::BindingResourceType::sampler,
                 .visibility = truffle::rhi::ShaderStageFlags::fragment,
-                .groupIndex = 2,
                 .arrayCount = 2,
+                .groupIndex = 2,
             },
         },
     };
