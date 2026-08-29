@@ -121,9 +121,12 @@ int main() {
         assert(queue.present(swapchain, suboptimal.imageIndex).ok());
 
         // A zero-sized layer is out of date; resize is the recovery operation.
-        layer.drawableSize = CGSizeMake(0, 0);
+        rhi::detail::set_metal_acquire_fault_for_testing(
+            rhi::detail::MetalAcquireFault::out_of_date);
         const auto outOfDate = swapchain.acquire_next_image();
         assert(outOfDate.status.code == rhi::StatusCode::out_of_date);
+        rhi::detail::set_metal_acquire_fault_for_testing(
+            rhi::detail::MetalAcquireFault::none);
         assert(swapchain.resize({48, 36}).ok());
         auto resized = swapchain.acquire_next_image();
         assert(resized.ok());

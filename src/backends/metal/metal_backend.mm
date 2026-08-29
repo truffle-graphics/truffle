@@ -22,9 +22,15 @@ namespace truffle::rhi {
 namespace detail {
 
 std::atomic<bool> gMetalDeviceLossForTesting{false};
+std::atomic<MetalAcquireFault> gMetalAcquireFaultForTesting{
+    MetalAcquireFault::none};
 
 void set_metal_device_loss_for_testing(bool enabled) noexcept {
     gMetalDeviceLossForTesting.store(enabled);
+}
+
+void set_metal_acquire_fault_for_testing(MetalAcquireFault fault) noexcept {
+    gMetalAcquireFaultForTesting.store(fault);
 }
 
 } // namespace detail
@@ -776,6 +782,11 @@ struct MetalFormat {
 [[nodiscard]] Result<detail::NativeSwapchainImage> acquire_metal_swapchain(
     const std::shared_ptr<void>& nativeSwapchain) {
     @autoreleasepool {
+        if (detail::gMetalAcquireFaultForTesting.load() ==
+            detail::MetalAcquireFault::out_of_date) {
+            return Status::failure(StatusCode::out_of_date,
+                                   "injected Metal out-of-date swapchain");
+        }
         const auto swapchain =
             std::static_pointer_cast<MetalSwapchainResource>(nativeSwapchain);
         if (!swapchain || !swapchain->surface ||

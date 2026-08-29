@@ -59,5 +59,6 @@ suboptimal acquisition, resize recovery, `out_of_date`, and surface-loss
 recreation. The
 surface test uses a real `CAMetalLayer` without claiming ownership of a native
 application window or event loop. A private, non-installed fault hook validates
-device-loss propagation and fresh-device recovery without pretending that CI
-physically removed the GPU.
+the nondeterministic out-of-date acquisition and device-loss propagation paths,
+then exercises real resize and fresh-device recovery without pretending that CI
+physically resized the layer to zero or removed the GPU.

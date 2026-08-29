@@ -37,6 +37,10 @@ then begin native backend/platform breadth under issue #33.
 - A private, non-installed Metal fault hook proves `device_lost` propagation,
   rejection of further work on the lost device, and recovery through a fresh
   device without claiming physical GPU removal.
+- PR #42's first macOS runner showed that assigning a zero `drawableSize` is not
+  deterministic across `CAMetalLayer` implementations. The native test now
+  injects only the otherwise-unreliable `out_of_date` acquisition result through
+  the same private hook, then proves resize recovery through the real layer.
 - Renderer swapchain flow now records present/color transitions, waits on the
   acquisition point, signals rendering completion, and passes that wait to
   queue presentation.
