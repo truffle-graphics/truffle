@@ -28,9 +28,11 @@ validation, diagnostics, and backend parity.
   renderer pipeline setup to default-construct descriptors before assigning
   selected fields.
 - Corrected declaration-order initializer warnings in the core and shared RHI
-  contract tests. The warnings-as-errors `ci` preset now builds locally and all
-  26 tests pass on macOS Apple Silicon; Linux and Windows GitHub validation is
-  pending the issue #26 pull request.
+  contract tests. The warnings-as-errors `ci` preset builds locally and all 26
+  tests pass on macOS Apple Silicon. Pull request #36 passes the package,
+  macOS, Ubuntu, and Windows build jobs; its separate companion-task router
+  fails before dispatch because the configured GitHub agent token receives a
+  `401 Bad credentials` response.
 - Added portable `AGENTS.md`, `CLAUDE.md`, and `PROJECT_CONTEXT.md` guidance so
   fresh agent sessions can recover Truffle's architecture and working rules.
 - Refreshed the public Doctrine snapshot without overwriting repository-local
