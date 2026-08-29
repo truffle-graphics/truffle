@@ -23,11 +23,14 @@ validation, diagnostics, and backend parity.
   fresh agent sessions can recover Truffle's architecture and working rules.
 - Refreshed the public Doctrine snapshot without overwriting repository-local
   instructions or context.
-- Truffle's documentation-only context branch does not change C++ sources.
-  Current GitHub Actions Linux and Windows builds fail on unchanged `develop`
-  RHI compilation errors: a non-`constexpr` descriptor-budget call from a
-  `constexpr` function, plus warning-as-error missing initializers. Resolve
-  those engine failures separately before promoting this documentation branch.
+- Aligned the remaining root and snapshot guidance with Doctrine v0.4.0,
+  including repository-authority, public-source-boundary, and metadata-scope
+  clarifications.
+- These documentation-only changes do not alter C++ sources. Current GitHub
+  Actions Linux and Windows builds fail on unchanged `develop` RHI compilation
+  errors: a non-`constexpr` descriptor-budget call from a `constexpr` function,
+  plus warning-as-error missing initializers. Resolve those engine failures
+  separately from documentation maintenance.
 
 ## Current Work Status
 

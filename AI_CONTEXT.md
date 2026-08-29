@@ -21,7 +21,11 @@ is not copied into public templates or generated repositories.
 Use root `AGENTS.md` for repository operating rules and root
 `PROJECT_CONTEXT.md` for durable project intent, architecture, constraints, and
 current direction. Read the project context when it exists; it is created from
-actual project evidence, never from invented details.
+an actual project brief or repository evidence, never from invented details.
+
+Tool-specific global guidance may add personal working preferences locally.
+Repository instructions and explicit project constraints remain authoritative
+for committed work.
 
 ## Authorship and Identity
 

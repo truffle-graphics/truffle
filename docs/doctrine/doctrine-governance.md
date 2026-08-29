@@ -1,7 +1,7 @@
 # Doctrine Governance
 
 Status: Draft  
-Last Reviewed: 2026-08-20
+Last Reviewed: 2026-08-29
 
 ## Purpose
 
@@ -86,7 +86,12 @@ Store deviations in the corresponding Doctrine Change Record.
 
 ## Metadata Requirement
 
-Every doctrine markdown file must include:
+Every normative doctrine document must include:
 
 - `Status: Draft | Stable | Deprecated`
 - `Last Reviewed: YYYY-MM-DD`
+
+Normative doctrine documents define reusable rules or standards. Templates,
+change records, security policies, and tool readmes are supporting artifacts:
+they follow their own documented formats. Change records use their required
+`Status` and `Date` fields instead.
