@@ -1,4 +1,5 @@
 add_library(truffle_backend_metal STATIC metal_backend.mm)
+target_include_directories(truffle_backend_metal PRIVATE "${PROJECT_SOURCE_DIR}/src/rhi")
 target_link_libraries(truffle_backend_metal
     PUBLIC  truffle_rhi
     PRIVATE "-framework Metal"

@@ -5,17 +5,19 @@ embeddable contracts, independently linkable modules, and validation paths so
 consumers can choose an application host, windowing policy, simulation model,
 and asset workflow independently.
 
-Current preliminary baseline:
+Current baseline:
 
 - General ECS entity, component, query, and system execution primitives.
-- Backend-neutral preliminary RHI contracts for device, resource, surface,
-  swapchain, command, queue, fence, and capability flow. These are being
-  replaced by the breaking RHI 1 contract.
-- Null backend used to validate contracts without a production GPU backend.
-- Native Metal implementation at `cross_compiles` on macOS, pending accepted
+- Modular RHI 1 move-only objects backed by opaque generation-checked handles
+  and private dispatch tables, with explicit command, synchronization, surface,
+  and presentation foundations.
+- Strict Null validation of object lifetime, command state, resource retention,
+  thread ownership, acquisition, submission, and presentation flow.
+- Native Metal device discovery and command-buffer submission at
+  `cross_compiles` on macOS, pending resource slices and accepted
   validation-enabled native smoke evidence.
-- Headless Vulkan, OpenGL, and Direct3D contract simulators that do not yet call
-  their named graphics APIs.
+- Explicitly unavailable Vulkan, OpenGL, and Direct3D targets that report no
+  simulated adapters until their native implementations land.
 - Renderer flow that currently proves ECS extraction while reserving non-ECS and
   high-throughput render-data lanes for later rendering work.
 - Declarative asset, material-operation, geometry-stream, and group/tag

@@ -25,7 +25,7 @@ render::InstanceLayout make_transform_layout() {
 } // namespace
 
 SceneFrame SceneAdapter::extract(ecs::World& world,
-                                  rhi::IFrameUploadRing& ring) const {
+                                  rhi::UploadRing& ring) const {
     SceneFrame frame;
 
     // --- Cameras ---
@@ -63,7 +63,7 @@ SceneFrame SceneAdapter::extract(ecs::World& world,
     if (meshCount > 0) {
         auto alloc = ring.allocate(meshCount * kTransformBytes);
         if (alloc.valid()) {
-            auto* dst = static_cast<float*>(alloc.mappedPtr);
+            auto* dst = static_cast<float*>(alloc.mapped);
 
             world.each<render::Transform, render::MeshRenderer>(
                 [&](ecs::Entity, render::Transform& t, render::MeshRenderer&) {

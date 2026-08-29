@@ -1,4 +1,5 @@
 add_library(truffle_backend_vulkan STATIC vulkan_backend.cpp)
+target_include_directories(truffle_backend_vulkan PRIVATE "${PROJECT_SOURCE_DIR}/src/rhi")
 target_link_libraries(truffle_backend_vulkan PUBLIC truffle_rhi)
 truffle_configure_target(truffle_backend_vulkan BackendVulkan)
 add_library(Truffle::BackendVulkan ALIAS truffle_backend_vulkan)

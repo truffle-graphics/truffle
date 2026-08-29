@@ -13,12 +13,12 @@ namespace truffle::render {
 // ---------------------------------------------------------------------------
 
 struct ShaderBinding {
-    rhi::IShader* vertexShader   = nullptr;
-    rhi::IShader* fragmentShader = nullptr;
+    rhi::Shader* vertexShader   = nullptr;
+    rhi::Shader* fragmentShader = nullptr;
 };
 
 // ---------------------------------------------------------------------------
-// IPipelineCache — maps (InstanceLayout, MaterialId) → IPipeline
+// IPipelineCache — maps (InstanceLayout, MaterialId) → Pipeline
 // ---------------------------------------------------------------------------
 
 class IPipelineCache {
@@ -32,7 +32,7 @@ public:
 
     // Returns a matching pipeline or creates one.
     // variantHash can be used to bucket pipelines driven by shader variants.
-    [[nodiscard]] virtual rhi::IPipeline* get_or_create(
+    [[nodiscard]] virtual rhi::Pipeline* get_or_create(
         const InstanceLayout& layout, MaterialId material,
         std::size_t variantHash = 0) = 0;
 
@@ -48,12 +48,12 @@ public:
 
 class NullPipelineCache final : public IPipelineCache {
 public:
-    explicit NullPipelineCache(rhi::IDevice& device);
+    explicit NullPipelineCache(rhi::Device& device);
 
     void register_shaders(MaterialId /*material*/,
                           const ShaderBinding& /*shaders*/) override {}
 
-    [[nodiscard]] rhi::IPipeline* get_or_create(
+    [[nodiscard]] rhi::Pipeline* get_or_create(
         const InstanceLayout& layout, MaterialId material,
         std::size_t variantHash = 0) override;
 
@@ -61,8 +61,8 @@ public:
     void invalidate_all() override {}
 
 private:
-    rhi::IDevice*                   device_   = nullptr;
-    std::unique_ptr<rhi::IPipeline> pipeline_;
+    rhi::Device*   device_ = nullptr;
+    rhi::Pipeline pipeline_;
 };
 
 // ---------------------------------------------------------------------------
@@ -72,14 +72,14 @@ private:
 
 class PipelineCache final : public IPipelineCache {
 public:
-    explicit PipelineCache(rhi::IDevice& device,
+    explicit PipelineCache(rhi::Device& device,
                            rhi::TextureFormat colorFormat =
                                rhi::TextureFormat::bgra8_unorm);
 
     void register_shaders(MaterialId material,
                           const ShaderBinding& shaders) override;
 
-    [[nodiscard]] rhi::IPipeline* get_or_create(
+    [[nodiscard]] rhi::Pipeline* get_or_create(
         const InstanceLayout& layout, MaterialId material,
         std::size_t variantHash = 0) override;
 
@@ -101,10 +101,10 @@ private:
         }
     };
 
-    rhi::IDevice*    device_;
+    rhi::Device*       device_;
     rhi::TextureFormat colorFormat_;
     std::unordered_map<MaterialId, ShaderBinding>                          shaders_;
-    std::unordered_map<CacheKey, std::unique_ptr<rhi::IPipeline>, CacheKeyHash> pipelines_;
+    std::unordered_map<CacheKey, rhi::Pipeline, CacheKeyHash> pipelines_;
 };
 
 } // namespace truffle::render

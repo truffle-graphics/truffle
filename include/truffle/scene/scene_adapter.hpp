@@ -42,7 +42,7 @@ struct SceneFrame {
 };
 
 // ---------------------------------------------------------------------------
-// SceneAdapter — ECS → SceneFrame via IFrameUploadRing
+// SceneAdapter — ECS → SceneFrame via UploadRing
 //
 // Writes transform data directly into ring-allocated upload memory.
 // No per-entity intermediate copy; callers own the ring's lifetime.
@@ -51,7 +51,7 @@ struct SceneFrame {
 class SceneAdapter {
 public:
     [[nodiscard]] SceneFrame extract(ecs::World& world,
-                                     rhi::IFrameUploadRing& ring) const;
+                                     rhi::UploadRing& ring) const;
 };
 
 } // namespace truffle::scene

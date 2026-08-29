@@ -21,18 +21,18 @@ regression can demote one pair without changing another backend or platform.
 
 | Implementation | Current platform | Kind | Current state | Evidence and limitation |
 |---|---|---|---|---|
-| Null validation | All CI hosts | Strict contract interpreter | validation-only | Shared state-machine and error-contract tests; never reported as a GPU backend. |
-| Metal | macOS | Native Metal | `cross_compiles` | Compiles and links the native SDK and runs Metal tests, but no accepted record yet proves the validation-enabled smoke gate. |
-| Vulkan | Portable C++ CI hosts | Headless contract simulator | `source_only` for native Vulkan | Compiles without Vulkan headers, loader, device, or WSI; shared contract success is not native evidence. |
-| Direct3D | Portable C++ CI hosts | Headless contract simulator | `source_only` for native D3D12 | Compiles without D3D12/DXGI APIs; it is not evidence for Windows GPU or WARP execution. |
-| OpenGL | Portable C++ CI hosts | Headless contract simulator | `source_only` for native OpenGL | Compiles without a GL loader or context; it is not driver execution evidence. |
+| Null validation | All CI hosts | Strict RHI 1 contract interpreter | validation-only | Generation, lifetime, state, threading, resource, synchronization, acquire, submit, and present tests; never reported as a GPU backend. |
+| Metal | macOS | Native Metal foundation | `cross_compiles` | Uses the native SDK for device discovery and empty command-buffer submission. Native resources, output, presentation, and an accepted validation-enabled smoke record remain. |
+| Vulkan | Declared targets only | Explicitly unavailable | `source_only` | The factory returns `unsupported` and reports no adapter; no Vulkan headers, loader, device, or WSI are used yet. |
+| Direct3D | Declared targets only | Explicitly unavailable | `source_only` | The factory returns `unsupported` and reports no adapter; no D3D12/DXGI APIs or WARP execution exist yet. |
+| OpenGL | Declared targets only | Explicitly unavailable | `source_only` | The factory returns `unsupported` and reports no adapter; no GL loader, native context, or driver execution exists yet. |
 | WebGPU | None | Not implemented | planned | No backend target exists. |
 | OpenGL ES | None | Not implemented | planned | No EGL/GLES backend target exists. |
 | WebGL2 | None | Not implemented | planned | No Emscripten WebGL2 backend target exists. |
 
-The simulator sources are temporary transition aids. They must either become
-strict Null-backed fixtures or be replaced by native backend code; they cannot
-be promoted in their current form.
+The old named-backend CPU simulators were removed during the RHI 1 public
+cutover. Shared logical behavior belongs to Null; named factories remain
+unavailable until they have native implementations.
 
 ## Target Matrix
 

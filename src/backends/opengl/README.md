@@ -1,12 +1,9 @@
-# OpenGL Contract Simulator
+# OpenGL Backend
 
-This directory owns the OpenGL contract backend implementation used to validate
-backend-neutral RHI behavior across queue, command-buffer state, resource,
-surface/swapchain, upload-ring, and reflection-backed pipeline paths.
-
-The implementation is intentionally headless and contract-focused. It does not
-load OpenGL or create a native context, so CI exercises only the preliminary
-shared contract. It is not evidence of driver execution.
+This target exposes the RHI 1 OpenGL factory, which currently returns
+`unsupported` and reports no adapter. It does not load OpenGL or create a native
+context. Shared logical validation belongs to the Null backend rather than a
+simulated OpenGL adapter.
 
 Issue #33 replaces this path with native profile-specific implementation. See
 `docs/rhi1/support-matrix.md` for the maturity gates.

@@ -1,4 +1,5 @@
 #include "test_support.hpp"
+#include "rhi_test_utils.hpp"
 #include "truffle/render/renderer.hpp"
 #include "truffle/render/frame_graph.hpp"
 #include "truffle/rhi/null_backend.hpp"
@@ -6,12 +7,9 @@
 
 int main() {
     // --- Setup backend, device, and upload ring ---
-    auto backend = truffle::rhi::create_null_backend();
-    auto deviceResult = backend->create_device({});
-    TRUFFLE_CHECK(deviceResult.ok());
-    auto device = std::move(deviceResult).value();
+    auto context = truffle::tests::make_null_context();
 
-    auto ringResult = device->create_upload_ring(2, 1024 * 1024);
+    auto ringResult = context.device.create_upload_ring(2, 1024 * 1024);
     TRUFFLE_CHECK(ringResult.ok());
     auto ring = std::move(ringResult).value();
 
@@ -38,7 +36,7 @@ int main() {
 
     // --- Extract via SceneAdapter ---
     truffle::scene::SceneAdapter adapter;
-    auto frame = adapter.extract(world, *ring);
+    auto frame = adapter.extract(world, ring);
 
     TRUFFLE_CHECK(frame.cameras.size() == 1);
     TRUFFLE_CHECK(frame.lights.size() == 1);
@@ -53,9 +51,9 @@ int main() {
     TRUFFLE_CHECK(batch.bindings[0].size == 3 * 64);
 
     // --- Render the extracted batches ---
-    TRUFFLE_CHECK(truffle::render::Renderer{*device}.render([&]() { truffle::render::FrameGraph fg; fg.add_node(std::make_unique<truffle::render::RenderPassNode>(true, frame.meshBatches)); return fg; }()).ok());
-    TRUFFLE_CHECK(backend->stats().drawsRecorded == 1);
-    TRUFFLE_CHECK(backend->stats().submissions == 1);
+    TRUFFLE_CHECK(truffle::render::Renderer{context.device}.render([&]() { truffle::render::FrameGraph fg; fg.add_node(std::make_unique<truffle::render::RenderPassNode>(true, frame.meshBatches)); return fg; }()).ok());
+    TRUFFLE_CHECK(context.instance.stats().drawsRecorded == 1);
+    TRUFFLE_CHECK(context.instance.stats().submissions == 1);
 
     return 0;
 }

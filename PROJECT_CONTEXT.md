@@ -20,18 +20,22 @@ asset workflow.
 ## Current State
 
 The repository is replacing its preliminary RHI with **Truffle RHI 1** under
-milestone `Truffle RHI 1` and tracking issue #25. The preliminary API remains in
-the tree only until the breaking public cutover.
+milestone `Truffle RHI 1` and tracking issue #25. The breaking public object and
+dispatch cutover is complete; capability slices beyond the foundation remain in
+progress.
 
 Current evidence is narrower than the old roadmap claimed:
 
-- Null is a strict validation backend, not a GPU backend.
+- Null implements the RHI 1 foundation as a strict validation backend, not a
+  GPU backend.
 - Metal is the only implementation that currently calls a native graphics API;
-  its accepted maturity remains `cross_compiles` on macOS until a recorded
-  validation-enabled native smoke result satisfies the next gate.
-- Vulkan, OpenGL, and Direct3D currently provide portable, headless contract
-  simulators. They do not use the named native APIs and remain `source_only`
-  for native-backend maturity.
+  the current slice discovers a native device and submits empty native command
+  buffers but does not yet create native resources. Its accepted maturity
+  remains `cross_compiles` on macOS until a recorded validation-enabled native
+  smoke result satisfies the next gate.
+- Vulkan, OpenGL, and Direct3D backend targets explicitly return `unsupported`
+  and report no adapters. Their previous CPU simulators have been removed; the
+  future native implementations remain `source_only`.
 - WebGPU, OpenGL ES, and WebGL2 targets are planned but not implemented.
 - The package, macOS, Ubuntu, and Windows warning-clean CI baseline was restored
   by PR #36.
@@ -83,5 +87,5 @@ consumer selects concrete loading, upload, and backend behavior.
 
 ## Next Meaningful Direction
 
-Replace the public object and dispatch foundation under issue #28 before adding
-resource, binding, synchronization, or presentation capability slices.
+Complete resources, memory, views, and transfer semantics under issue #29,
+proving each implemented backend slice with deterministic data evidence.

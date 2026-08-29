@@ -21,17 +21,21 @@ support. They are historical inputs, not the current delivery gates.
 Exit: repository documentation makes the native/simulator distinction
 consistently and no phase is promoted without its required evidence.
 
-## Phase 1: Public Object And Dispatch Foundation — Pending
+## Phase 1: Public Object And Dispatch Foundation — Complete
 
 Tracked by #28.
 
-- Replace the preliminary monolithic interface with focused headers and an
+- [x] Replace the preliminary monolithic interface with focused headers and an
   umbrella include.
-- Add portable `Status`/`Result<T>` outcomes and optional backend diagnostics.
-- Implement `Instance`, adapter discovery, feature-negotiated `Device`, queues,
+- [x] Add portable `Status`/`Result<T>` outcomes and optional backend diagnostics.
+- [x] Implement `Instance`, adapter discovery, feature-negotiated `Device`, queues,
   opaque generation-checked handles, dispatch, and strict Null semantics.
-- Migrate all in-tree consumers and delete the preliminary public API and
+- [x] Migrate all in-tree consumers and delete the preliminary public API and
   descriptor policy engine in the same breaking cutover.
+
+Exit: RHI 1 is the sole exported graphics API; Null proves foundation lifetime,
+state, and threading behavior; Metal uses the same foundation over native
+device/command submission; named unimplemented backends report no adapters.
 
 ## Phase 2: Resources, Memory, Views, And Transfers — Pending
 

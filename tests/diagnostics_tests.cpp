@@ -1,4 +1,5 @@
 #include "test_support.hpp"
+#include "rhi_test_utils.hpp"
 #include "truffle/diagnostics/diagnostics.hpp"
 #include "truffle/rhi/rhi.hpp"
 
@@ -6,22 +7,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-
-namespace {
-
-class TestBuffer final : public truffle::rhi::IBuffer {
-public:
-    explicit TestBuffer(truffle::rhi::BufferDesc desc) : desc_(std::move(desc)) {}
-
-    [[nodiscard]] const truffle::rhi::BufferDesc& desc() const noexcept override {
-        return desc_;
-    }
-
-private:
-    truffle::rhi::BufferDesc desc_;
-};
-
-} // namespace
 
 int main() {
     using namespace truffle;
@@ -233,11 +218,15 @@ int main() {
     TRUFFLE_CHECK(overlayReport.find("pickTargets=1") != std::string::npos);
     TRUFFLE_CHECK(overlayReport.find("group 15") != std::string::npos);
 
-    TestBuffer instanceBuffer{{
+    auto rhiContext = tests::make_null_context();
+    auto instanceBufferResult = rhiContext.device.create_buffer({
         .size = 32'000'000,
         .usage = rhi::BufferUsage::vertex,
+        .memory = rhi::MemoryDomain::upload,
         .debugName = "dense_detection_instances",
-    }};
+    });
+    TRUFFLE_CHECK(instanceBufferResult.ok());
+    auto instanceBuffer = std::move(instanceBufferResult).value();
 
     render::RenderBatch batch;
     batch.instanceCount = 1'000'000;

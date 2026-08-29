@@ -2,11 +2,9 @@
 
 #include "truffle/rhi/rhi.hpp"
 
-#include <memory>
-
 namespace truffle::rhi {
 
-// Creates an uninitialized backend stub for Vulkan testing boundaries.
-[[nodiscard]] std::unique_ptr<IBackend> create_vulkan_backend();
+[[nodiscard]] Result<Instance> create_vulkan_instance(
+    const InstanceDesc& desc = {});
 
 } // namespace truffle::rhi

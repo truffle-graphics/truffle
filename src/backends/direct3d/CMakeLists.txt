@@ -1,4 +1,5 @@
 add_library(truffle_backend_direct3d STATIC direct3d_backend.cpp)
+target_include_directories(truffle_backend_direct3d PRIVATE "${PROJECT_SOURCE_DIR}/src/rhi")
 target_link_libraries(truffle_backend_direct3d PUBLIC truffle_rhi)
 truffle_configure_target(truffle_backend_direct3d BackendDirect3D)
 add_library(Truffle::BackendDirect3D ALIAS truffle_backend_direct3d)

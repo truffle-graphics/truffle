@@ -1,275 +1,273 @@
 #include "truffle/render/pipeline_cache.hpp"
 #include "truffle/render/renderer.hpp"
-#include "truffle/rhi/shader_reflection.hpp"
 
 #include <array>
-#include <memory>
 #include <string>
 
 namespace truffle::render {
-
 namespace {
 
 core::Status validate_render_batch_bindings(const RenderBatch& batch,
-                                            const rhi::IPipeline& pipeline) {
-    const auto* reflection = pipeline.reflection();
-    if (!reflection) {
+                                            const rhi::Pipeline& pipeline) {
+    if (pipeline.reflection().bindings().empty()) {
         return core::Status::success();
     }
-
     constexpr std::size_t kBindingSlots = RenderBatch::kMaxBindings + 1;
-    std::array<bool, kBindingSlots> expectedBufferBindings{};
-    for (std::size_t i = 0; i < reflection->get_binding_count(); ++i) {
-        const auto& binding = reflection->get_binding_info(i);
-        if (binding.type == rhi::ResourceBindingType::Buffer &&
-            (binding.stage == rhi::ShaderStage::vertex ||
-             binding.stage == rhi::ShaderStage::fragment)) {
-            if (binding.bindingIndex >= kBindingSlots) {
-                return core::Status::failure(
-                    core::StatusCode::invalid_argument,
-                    "Renderer: pipeline reflection binding index exceeds supported range");
-            }
-            expectedBufferBindings[binding.bindingIndex] = true;
+    std::array<bool, kBindingSlots> expected{};
+    for (const auto& binding : pipeline.reflection().bindings()) {
+        if (binding.type != rhi::ResourceBindingType::buffer ||
+            (binding.stage != rhi::ShaderStage::vertex &&
+             binding.stage != rhi::ShaderStage::fragment)) {
+            continue;
         }
-    }
-
-    std::array<bool, kBindingSlots> providedBufferBindings{};
-    for (std::uint32_t i = 0; i < RenderBatch::kMaxBindings; ++i) {
-        if (batch.bindings[i].buffer) {
-            providedBufferBindings[i] = true;
-        }
-    }
-
-    constexpr std::uint32_t kUniformBinding = RenderBatch::kMaxBindings;
-    if (batch.uniformBuffer.buffer) {
-        providedBufferBindings[kUniformBinding] = true;
-    }
-
-    for (std::size_t i = 0; i < kBindingSlots; ++i) {
-        if (expectedBufferBindings[i] && !providedBufferBindings[i]) {
+        if (binding.group != 0 || binding.binding >= kBindingSlots) {
             return core::Status::failure(
                 core::StatusCode::invalid_argument,
-                "Renderer: missing buffer binding required by pipeline reflection");
+                "Renderer: reflected buffer binding exceeds the direct binding lane");
         }
+        expected[binding.binding] = true;
     }
 
-    for (std::size_t i = 0; i < kBindingSlots; ++i) {
-        if (providedBufferBindings[i] && !expectedBufferBindings[i]) {
+    std::array<bool, kBindingSlots> provided{};
+    for (std::uint32_t index = 0; index < RenderBatch::kMaxBindings; ++index) {
+        provided[index] = batch.bindings[index].buffer != nullptr;
+    }
+    provided[RenderBatch::kMaxBindings] = batch.uniformBuffer.buffer != nullptr;
+
+    for (std::size_t index = 0; index < kBindingSlots; ++index) {
+        if (expected[index] != provided[index]) {
             return core::Status::failure(
                 core::StatusCode::invalid_argument,
-                "Renderer: unexpected buffer binding not declared by pipeline reflection");
+                expected[index]
+                    ? "Renderer: missing reflected buffer binding"
+                    : "Renderer: unexpected buffer binding");
         }
     }
-
     return core::Status::success();
 }
 
 } // namespace
 
-// ---------------------------------------------------------------------------
-// NullPipelineCache
-// ---------------------------------------------------------------------------
+NullPipelineCache::NullPipelineCache(rhi::Device& device) : device_(&device) {}
 
-NullPipelineCache::NullPipelineCache(rhi::IDevice& device) : device_(&device) {}
-
-rhi::IPipeline* NullPipelineCache::get_or_create(const InstanceLayout& /*layout*/,
-                                              MaterialId /*material*/,
-                                              std::size_t /*variantHash*/) {
-    if (!pipeline_) {
-        rhi::PipelineDesc desc;
-        desc.debugName = "null_pipeline";
-        auto result = device_->create_pipeline(desc);
-        if (result.ok()) {
-            pipeline_ = std::move(result).value();
+rhi::Pipeline* NullPipelineCache::get_or_create(const InstanceLayout&,
+                                                MaterialId,
+                                                std::size_t) {
+    if (!pipeline_.valid()) {
+        auto result = device_->create_pipeline(
+            rhi::PipelineDesc{.debugName = "null pipeline"});
+        if (!result.ok()) {
+            return nullptr;
         }
+        pipeline_ = std::move(result).value();
     }
-    return pipeline_.get();
+    return &pipeline_;
 }
 
-// ---------------------------------------------------------------------------
-// PipelineCache
-// ---------------------------------------------------------------------------
-
-PipelineCache::PipelineCache(rhi::IDevice& device, rhi::TextureFormat colorFormat)
+PipelineCache::PipelineCache(rhi::Device& device, rhi::TextureFormat colorFormat)
     : device_(&device), colorFormat_(colorFormat) {}
 
-void PipelineCache::register_shaders(MaterialId material, const ShaderBinding& shaders) {
+void PipelineCache::register_shaders(MaterialId material,
+                                     const ShaderBinding& shaders) {
     shaders_[material] = shaders;
 }
 
-rhi::IPipeline* PipelineCache::get_or_create(const InstanceLayout& layout,
-                                              MaterialId material,
-                                              std::size_t variantHash) {
+rhi::Pipeline* PipelineCache::get_or_create(const InstanceLayout& layout,
+                                            MaterialId material,
+                                            std::size_t variantHash) {
     const CacheKey key{layout.hash(), material, variantHash};
-    if (auto it = pipelines_.find(key); it != pipelines_.end()) {
-        return it->second.get();
+    if (const auto found = pipelines_.find(key); found != pipelines_.end()) {
+        return &found->second;
     }
-
-    auto sit = shaders_.find(material);
-    if (sit == shaders_.end()) {
-        return nullptr; // no shaders registered for this material
+    const auto shaders = shaders_.find(material);
+    if (shaders == shaders_.end()) {
+        return nullptr;
     }
-    const auto& sb = sit->second;
-
-    const std::string debugName =
-        "pipeline_mat" + std::to_string(static_cast<std::uint64_t>(material));
-    rhi::PipelineDesc desc;
-    desc.debugName = debugName;
-    desc.vertexShader = sb.vertexShader;
-    desc.fragmentShader = sb.fragmentShader;
-    desc.colorFormat = colorFormat_;
-    auto result = device_->create_pipeline(desc);
+    auto result = device_->create_pipeline(rhi::PipelineDesc{
+        .vertexShader = shaders->second.vertexShader,
+        .fragmentShader = shaders->second.fragmentShader,
+        .colorFormat = colorFormat_,
+        .debugName = "pipeline material " + std::to_string(material),
+    });
     if (!result.ok()) {
         return nullptr;
     }
-    auto& ptr = pipelines_[key];
-    ptr = std::move(result).value();
-    return ptr.get();
+    const auto [inserted, added] =
+        pipelines_.emplace(key, std::move(result).value());
+    (void)added;
+    return &inserted->second;
 }
 
 void PipelineCache::invalidate(MaterialId material) {
-    for (auto it = pipelines_.begin(); it != pipelines_.end(); ) {
-        if (it->first.material == material) {
-            it = pipelines_.erase(it);
+    for (auto current = pipelines_.begin(); current != pipelines_.end();) {
+        if (current->first.material == material) {
+            current = pipelines_.erase(current);
         } else {
-            ++it;
+            ++current;
         }
     }
 }
 
-void PipelineCache::invalidate_all() {
-    pipelines_.clear();
-}
+void PipelineCache::invalidate_all() { pipelines_.clear(); }
 
-// ---------------------------------------------------------------------------
-// Renderer
-// ---------------------------------------------------------------------------
-
-Renderer::Renderer(rhi::IDevice& device, IPipelineCache* cache)
+Renderer::Renderer(rhi::Device& device, IPipelineCache* cache)
     : device_(&device), cache_(cache) {
-    if (!cache_) {
+    if (cache_ == nullptr) {
         defaultCache_ = std::make_unique<NullPipelineCache>(device);
         cache_ = defaultCache_.get();
     }
 }
 
-core::Status Renderer::render(const FrameGraph& graph, rhi::ISwapchain* swapchain) {
+core::Status Renderer::render(const FrameGraph& graph, rhi::Swapchain* swapchain) {
     lastFrameStats_ = {};
-
-    const auto executionOrder = graph.resolve_execution_order();
-    if (!executionOrder.ok()) {
-        return executionOrder.status();
+    const auto order = graph.resolve_execution_order();
+    if (!order.ok()) {
+        return order.status();
     }
 
-    auto cmd = device_->create_command_buffer();
-    if (const auto s = cmd->begin(); !s.ok()) {
-        return s;
+    auto poolResult = device_->create_command_pool(rhi::QueueKind::graphics);
+    if (!poolResult.ok()) {
+        return poolResult.status();
+    }
+    auto pool = std::move(poolResult).value();
+    auto listResult = pool.allocate();
+    if (!listResult.ok()) {
+        return listResult.status();
+    }
+    auto list = std::move(listResult).value();
+    if (auto status = list.begin(); !status.ok()) {
+        return status;
     }
 
-    rhi::ITexture* swapchainDrawable = nullptr;
-    bool swapchainAcquired = false;
+    rhi::AcquireResult acquired;
+    bool hasAcquiredImage = false;
 
-    for (const auto nodeId : executionOrder.value()) {
-        const auto* nodePtr = graph.node(nodeId);
-        if (!nodePtr) {
+    for (const auto nodeId : order.value()) {
+        const auto* node = graph.node(nodeId);
+        if (node == nullptr) {
             return core::Status::failure(
                 core::StatusCode::invalid_argument,
-                "Renderer: frame graph referenced an unknown node id");
+                "Renderer: execution order referenced an unknown node");
         }
-
-        if (nodePtr->kind() == FrameGraphNodeKind::Compute) {
-            auto* node = static_cast<const ComputePassNode*>(nodePtr);
-            if (const auto s = node->pass()->dispatch(*cmd, node->desc()); !s.ok()) {
-                return s;
+        if (node->kind() == FrameGraphNodeKind::Compute) {
+            const auto* compute = static_cast<const ComputePassNode*>(node);
+            if (auto status = compute->pass()->dispatch(list, compute->desc());
+                !status.ok()) {
+                return status;
             }
             ++lastFrameStats_.computeNodesExecuted;
-        } else if (nodePtr->kind() == FrameGraphNodeKind::Render) {
-            auto* node = static_cast<const RenderPassNode*>(nodePtr);
-            ++lastFrameStats_.renderNodesExecuted;
-            lastFrameStats_.renderBatchesExecuted +=
-                static_cast<std::uint32_t>(node->batches().size());
-            
-            rhi::RenderPassDesc passDesc;
-            if (node->uses_swapchain()) {
-                if (!swapchainAcquired && swapchain) {
-                    swapchainDrawable = swapchain->acquire_next_texture();
-                    swapchainAcquired = true;
+            continue;
+        }
+
+        const auto* render = static_cast<const RenderPassNode*>(node);
+        rhi::RenderPassDesc pass;
+        if (render->uses_swapchain()) {
+            if (swapchain != nullptr && !hasAcquiredImage) {
+                acquired = swapchain->acquire_next_image();
+                if (!acquired.ok()) {
+                    return acquired.status;
                 }
-                if (swapchain) {
-                    passDesc.extent = swapchain->desc().extent;
-                    passDesc.colorAttachment.texture = swapchainDrawable;
-                    passDesc.colorAttachment.loadOp = rhi::LoadOp::clear;
-                    passDesc.colorAttachment.storeOp = rhi::StoreOp::store;
-                } else {
-                    passDesc.extent = {1, 1}; // headless / null-backend
-                }
-            } else if (node->explicit_desc()) {
-                passDesc = *node->explicit_desc();
+                hasAcquiredImage = true;
             }
-
-            if (const auto s = cmd->begin_render_pass(passDesc); !s.ok()) {
-                return s;
+            if (swapchain != nullptr) {
+                pass.extent = swapchain->desc().extent;
+                pass.colorAttachments.push_back({.texture = acquired.image});
             }
+        } else if (render->explicit_desc() != nullptr) {
+            pass = *render->explicit_desc();
+        }
 
-            for (const auto& batch : node->batches()) {
-                auto* pipeline = cache_->get_or_create(
-                    batch.layout, batch.material, batch.variantHash);
-                if (!pipeline) {
-                    return core::Status::failure(
-                        core::StatusCode::invalid_state,
-                        "Renderer: no graphics pipeline available for render batch");
-                }
-                if (const auto s = cmd->bind_pipeline(*pipeline); !s.ok()) {
-                    return s;
-                }
-                if (const auto s = validate_render_batch_bindings(batch, *pipeline);
-                    !s.ok()) {
-                    return s;
-                }
+        auto encoderResult = list.begin_rendering(pass);
+        if (!encoderResult.ok()) {
+            return encoderResult.status();
+        }
+        auto encoder = std::move(encoderResult).value();
+        ++lastFrameStats_.renderNodesExecuted;
 
-                for (std::uint32_t i = 0; i < RenderBatch::kMaxBindings; ++i) {
-                    if (batch.bindings[i].buffer) {
-                        (void)cmd->bind_vertex_buffer(
-                            i, *batch.bindings[i].buffer, batch.bindings[i].offset);
+        for (const auto& batch : render->batches()) {
+            auto* pipeline = cache_->get_or_create(
+                batch.layout, batch.material, batch.variantHash);
+            if (pipeline == nullptr) {
+                return core::Status::failure(
+                    core::StatusCode::invalid_state,
+                    "Renderer: no graphics pipeline is available");
+            }
+            if (auto status = encoder.bind_pipeline(*pipeline); !status.ok()) {
+                return status;
+            }
+            if (auto status = validate_render_batch_bindings(batch, *pipeline);
+                !status.ok()) {
+                return status;
+            }
+            for (std::uint32_t index = 0; index < RenderBatch::kMaxBindings;
+                 ++index) {
+                if (batch.bindings[index].buffer != nullptr) {
+                    if (auto status = encoder.bind_vertex_buffer(
+                            index, *batch.bindings[index].buffer,
+                            batch.bindings[index].offset);
+                        !status.ok()) {
+                        return status;
                     }
                 }
-
-                if (batch.uniformBuffer.buffer) {
-                    constexpr std::uint32_t kUniformBinding = RenderBatch::kMaxBindings;
-                    (void)cmd->bind_uniform_buffer(
-                        kUniformBinding, *batch.uniformBuffer.buffer,
+            }
+            if (batch.uniformBuffer.buffer != nullptr) {
+                if (auto status = encoder.bind_uniform_buffer(
+                        RenderBatch::kMaxBindings, *batch.uniformBuffer.buffer,
                         batch.uniformBuffer.offset);
-                }
-
-                if (batch.kind == DrawKind::Indirect && batch.indirectBuffer.buffer) {
-                    if (const auto s = cmd->draw_indirect(*batch.indirectBuffer.buffer, batch.indirectBuffer.offset); !s.ok()) return s;
-                } else if (batch.kind == DrawKind::IndirectIndexed && batch.indirectBuffer.buffer && batch.indexBuffer.buffer) {
-                    (void)cmd->bind_index_buffer(*batch.indexBuffer.buffer, batch.indexBuffer.offset, batch.indexFormat);
-                    if (const auto s = cmd->draw_indexed_indirect(*batch.indirectBuffer.buffer, batch.indirectBuffer.offset); !s.ok()) return s;
-                } else if (batch.kind == DrawKind::Indexed && batch.indexBuffer.buffer) {
-                    (void)cmd->bind_index_buffer(*batch.indexBuffer.buffer, batch.indexBuffer.offset, batch.indexFormat);
-                    if (const auto s = cmd->draw_indexed_instanced(batch.vertexCount, batch.instanceCount); !s.ok()) return s;
-                } else {
-                    if (const auto s = cmd->draw_instanced(batch.vertexCount, batch.instanceCount); !s.ok()) return s;
+                    !status.ok()) {
+                    return status;
                 }
             }
 
-            if (const auto s = cmd->end_render_pass(); !s.ok()) {
-                return s;
+            core::Status status;
+            if ((batch.kind == DrawKind::Indirect ||
+                 batch.kind == DrawKind::IndirectIndexed) &&
+                batch.indirectBuffer.buffer != nullptr) {
+                status = encoder.draw_indirect(
+                    *batch.indirectBuffer.buffer, batch.indirectBuffer.offset,
+                    batch.kind == DrawKind::IndirectIndexed);
+            } else if (batch.kind == DrawKind::Indexed &&
+                       batch.indexBuffer.buffer != nullptr) {
+                status = encoder.bind_index_buffer(
+                    *batch.indexBuffer.buffer, batch.indexBuffer.offset,
+                    batch.indexFormat);
+                if (status.ok()) {
+                    status = encoder.draw_indexed(batch.vertexCount,
+                                                  batch.instanceCount);
+                }
+            } else {
+                status = encoder.draw(batch.vertexCount, batch.instanceCount);
             }
+            if (!status.ok()) {
+                return status;
+            }
+            ++lastFrameStats_.renderBatchesExecuted;
+        }
+        if (auto status = encoder.end(); !status.ok()) {
+            return status;
         }
     }
 
-    if (swapchainAcquired && swapchain) {
-        if (const auto s = swapchain->schedule_present(*cmd); !s.ok()) {
-            return s;
+    if (auto status = list.end(); !status.ok()) {
+        return status;
+    }
+    auto queueResult = device_->queue(rhi::QueueKind::graphics);
+    if (!queueResult.ok()) {
+        return queueResult.status();
+    }
+    auto queue = std::move(queueResult).value();
+    std::array<rhi::CommandList*, 1> lists{&list};
+    if (auto status = queue.submit(lists); !status.ok()) {
+        return status;
+    }
+    if (hasAcquiredImage) {
+        if (auto status = queue.present(*swapchain, acquired.imageIndex);
+            !status.ok()) {
+            return status;
         }
         lastFrameStats_.presented = true;
     }
-    if (const auto s = cmd->end(); !s.ok()) {
-        return s;
-    }
-    return device_->queue(rhi::QueueKind::graphics).submit(*cmd);
+    return core::Status::success();
 }
 
 } // namespace truffle::render

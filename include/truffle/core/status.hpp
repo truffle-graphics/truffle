@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
@@ -13,12 +14,26 @@ enum class StatusCode {
     unavailable,
     invalid_state,
     timeout,
+    suboptimal,
+    out_of_date,
+    surface_lost,
+    device_lost,
+    out_of_memory,
+    backend_validation_failed,
     backend_error,
+};
+
+struct StatusDetail {
+    std::string domain;
+    std::int64_t nativeCode = 0;
+    std::string objectLabel;
+    std::string message;
 };
 
 struct Status {
     StatusCode code = StatusCode::ok;
     std::string message;
+    std::optional<StatusDetail> detail;
 
     [[nodiscard]] constexpr bool ok() const noexcept {
         return code == StatusCode::ok;
@@ -29,7 +44,12 @@ struct Status {
     }
 
     [[nodiscard]] static Status failure(StatusCode code, std::string message) {
-        return Status{code, std::move(message)};
+        return Status{code, std::move(message), std::nullopt};
+    }
+
+    [[nodiscard]] static Status failure(StatusCode code, std::string message,
+                                        StatusDetail detail) {
+        return Status{code, std::move(message), std::move(detail)};
     }
 };
 

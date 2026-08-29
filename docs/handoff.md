@@ -9,27 +9,34 @@ rather than growing a historical transcript here.
 
 ## Current Focus
 
-RHI 1 Phase 1: breaking public object and dispatch cutover under issue #28.
+RHI 1 Phase 2: resources, memory, views, and transfers under issue #29, after
+the completed public foundation cutover in #28.
 
 ## Latest Handoff
 
-- Created milestone `Truffle RHI 1`, parent issue #25, and issue-scoped work
-  items #26-#35.
-- Merged PR #36 into `develop` and closed #26. The package, macOS, Ubuntu, and
-  Windows warning-clean Build jobs passed.
+- Merged PRs #36 and #37 into `develop`, closing the warning-clean baseline and
+  RHI 1 contract/truth reset in #26 and #27.
 - The separate companion-task router still fails before dispatch because its
   configured GitHub agent token receives `401 Bad credentials`. This is a
   repository-automation credential problem, not an engine validation failure.
-- On `docs/rhi1-contract` for #27, added ADR 0011 plus RHI 1 ownership,
-  threading, lifetime, outcome, dependency, shader-package, and evidence-based
-  maturity specifications.
-- Reclassified the current backend evidence: Null is validation-only; Metal is
-  `cross_compiles` on macOS pending accepted validation-enabled smoke evidence;
-  Vulkan, Direct3D, and OpenGL are contract simulators and only `source_only`
-  for their future native implementations.
-- Replaced the old completion ladder with the issue-aligned RHI 1 roadmap.
-- PR #37 passes the package, macOS, Ubuntu, and Windows Build jobs and completes
-  issue #27's Phase 0 truth reset.
+- On `feat/rhi1-foundation` for #28, replaced the exported virtual RHI with
+  focused RHI 1 headers and move-only RAII wrappers over private,
+  generation-checked object handles and dispatch tables.
+- Migrated render, scene, examples, diagnostics, package consumers, and tests to
+  the sole new API. Deleted the preliminary descriptor admission/recovery
+  policy engine rather than carrying it forward.
+- Null now proves foundation object lifetime, stale-handle rejection,
+  cross-runtime rejection, command retention/state, resource-creation
+  concurrency, command-pool thread ownership, synchronization, swapchain, and
+  presentation flow.
+- Metal uses the same foundation for native device discovery and empty native
+  command-buffer submission. It reports only graphics submission capability;
+  resources, synchronization, compute, and presentation remain explicitly
+  unsupported.
+- Removed simulated Vulkan, OpenGL, and Direct3D adapters. Their named factories
+  now return `unsupported` until native implementations land.
+- Added the system thread link requirement to the build and installed CMake
+  package contract.
 
 ## Durable Decisions
 
@@ -61,7 +68,7 @@ ctest --preset ci --output-on-failure  # 26/26
 GitHub Build: package, macOS, Ubuntu, Windows passed
 ```
 
-Issue #27 validation on macOS Apple Silicon:
+Issue #28 validation on macOS Apple Silicon:
 
 ```text
 cmake --preset ci
@@ -75,24 +82,28 @@ python3 -m json.tool build/ci/rhi-parity-report.json
 git diff --check
 ```
 
-All passed. New relative documentation link targets were inspected locally;
-the repository currently has no automated Markdown link-check command.
-
-PR #37 GitHub Build also passed package, macOS, Ubuntu, and Windows jobs.
+All 26 tests pass with warnings-as-errors, including the installed package
+consumer and all enabled backend contracts. Generated parity JSON reports Null
+as validation-only, Metal as `cross_compiles` but unavailable on this host, and
+Vulkan/OpenGL/Direct3D as unavailable `source_only` targets. `git diff --check`
+passes. `truffle_format_check` cannot run because `clang-format` is not installed
+on this host.
 
 ## Next Resume Steps
 
-1. Start #28 from fresh `develop`.
-2. Implement the object/dispatch foundation and migrate in-tree consumers in a
-   single breaking public cutover.
-3. Delete the preliminary descriptor policy engine instead of adapting it to
-   the new dispatch layer.
+1. Merge #28 after the package, macOS, Ubuntu, and Windows Build jobs pass.
+2. Start #29 from fresh `develop`.
+3. Expand resources and transfers vertically: typed views/subresources, memory
+   domains and mapping coherence, caller allocation, copy/fill/clear/resolve/
+   blit, upload/readback, and deterministic data evidence in Null and Metal.
 
 ## Open Risks
 
 - The companion-task GitHub credential must be repaired outside the engine
   codebase; retries with the same credential will continue to fail.
-- The current public header and simulator backends remain until #28/#33; their
-  presence must not be described as RHI 1 completion.
+- Metal resource and presentation capability remains intentionally unavailable;
+  empty native submission is not enough to advance its maturity.
+- Vulkan, OpenGL, and Direct3D targets are factories without native adapters;
+  their package presence must not be described as backend support.
 - Native SDK and toolchain versions must be pinned when each dependency-bearing
   target is introduced, rather than guessed in advance.
