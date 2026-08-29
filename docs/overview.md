@@ -13,9 +13,8 @@ Current baseline:
   and presentation foundations.
 - Strict Null validation of object lifetime, command state, resource retention,
   thread ownership, acquisition, submission, and presentation flow.
-- Native Metal device discovery and command-buffer submission at
-  `cross_compiles` on macOS, pending resource slices and accepted
-  validation-enabled native smoke evidence.
+- Native Metal buffers and selected 2D textures with validation-enabled
+  deterministic upload/copy/readback proofs at `native_smoke` on macOS.
 - Explicitly unavailable Vulkan, OpenGL, and Direct3D targets that report no
   simulated adapters until their native implementations land.
 - Renderer flow that currently proves ECS extraction while reserving non-ECS and

@@ -9,34 +9,33 @@ rather than growing a historical transcript here.
 
 ## Current Focus
 
-RHI 1 Phase 2: resources, memory, views, and transfers under issue #29, after
-the completed public foundation cutover in #28.
+Finish the Phase 2 resources, memory, views, and transfers PR for issue #29,
+then begin immutable bindings and shader/pipeline contracts under #30 and #32.
 
 ## Latest Handoff
 
-- Merged PRs #36 and #37 into `develop`, closing the warning-clean baseline and
-  RHI 1 contract/truth reset in #26 and #27.
+- Merged PRs #36, #37, and #38 into `develop`, closing the warning-clean
+  baseline, RHI 1 contract/truth reset, and public foundation cutover in
+  #26–#28.
 - The separate companion-task router still fails before dispatch because its
   configured GitHub agent token receives `401 Bad credentials`. This is a
   repository-automation credential problem, not an engine validation failure.
-- On `feat/rhi1-foundation` for #28, replaced the exported virtual RHI with
-  focused RHI 1 headers and move-only RAII wrappers over private,
-  generation-checked object handles and dispatch tables.
-- Migrated render, scene, examples, diagnostics, package consumers, and tests to
-  the sole new API. Deleted the preliminary descriptor admission/recovery
-  policy engine rather than carrying it forward.
-- Null now proves foundation object lifetime, stale-handle rejection,
-  cross-runtime rejection, command retention/state, resource-creation
-  concurrency, command-pool thread ownership, synchronization, swapchain, and
-  presentation flow.
-- Metal uses the same foundation for native device discovery and empty native
-  command-buffer submission. It reports only graphics submission capability;
-  resources, synchronization, compute, and presentation remain explicitly
-  unsupported.
-- Removed simulated Vulkan, OpenGL, and Direct3D adapters. Their named factories
-  now return `unsupported` until native implementations land.
-- Added the system thread link requirement to the build and installed CMake
-  package contract.
+- On `feat/rhi1-resources` for #29, added the complete public resource contract:
+  buffer and texture dimensions/formats/usages, subresources and typed views,
+  mapping/coherence, memory requirements and budgets, caller allocation hooks,
+  external-memory handles, and copy/fill/clear/resolve/blit commands.
+- Null now executes and validates the full resource/transfer contract, including
+  mip, array, cube, 3D, block-compressed, lifetime-retention, out-of-memory, and
+  accurate unsupported paths.
+- Metal now allocates native buffers and selected single-layer 2D textures,
+  creates compatible native texture views, maps coherent host-visible memory,
+  and executes buffer, texture, and buffer-texture transfers with native
+  command encoders. Unsupported shapes and operations are capability-reported.
+- A host-hardware run with Metal API validation exercised exact buffer and
+  texture roundtrips, padded-row buffer/texture copies, a format-reinterpreting
+  view, and a GPU fill. The live reporter classified Metal as `native_smoke`.
+- The macOS CI test step now sets `MTL_DEBUG_LAYER=1`; hosts without a Metal
+  adapter retain the explicit unavailable/skip path rather than simulating one.
 
 ## Durable Decisions
 
@@ -68,41 +67,45 @@ ctest --preset ci --output-on-failure  # 26/26
 GitHub Build: package, macOS, Ubuntu, Windows passed
 ```
 
-Issue #28 validation on macOS Apple Silicon:
+Issue #29 validation on macOS Apple Silicon:
 
 ```text
 cmake --preset ci
 cmake --build --preset ci
-ctest --preset ci --output-on-failure  # 26/26
+MTL_DEBUG_LAYER=1 ctest --preset ci --output-on-failure  # 27/27
+MTL_DEBUG_LAYER=1 build/ci/tests/truffle_metal_tests      # host GPU access
+build/ci/tests/truffle_rhi_parity_report <output.json>    # host GPU access
 cmake -DTRUFFLE_BUILD_DIR=<build/ci> \
       -DTRUFFLE_REPORT_OUT=<parity-matrix.md> \
       -P cmake/GenerateParityReport.cmake
-python3 -m json.tool build/ci/parity-matrix.json
-python3 -m json.tool build/ci/rhi-parity-report.json
+cmake --build --preset ci --target package
 git diff --check
 ```
 
-All 26 tests pass with warnings-as-errors, including the installed package
-consumer and all enabled backend contracts. Generated parity JSON reports Null
-as validation-only, Metal as `cross_compiles` but unavailable on this host, and
-Vulkan/OpenGL/Direct3D as unavailable `source_only` targets. `git diff --check`
-passes. `truffle_format_check` cannot run because `clang-format` is not installed
-on this host.
+All 27 tests pass with warnings-as-errors, including the new exhaustive Null
+resource suite, installed package consumer, and all enabled backend contracts.
+The restricted test environment cannot discover the host GPU, so its generated
+parity artifact conservatively records Metal as unavailable `cross_compiles`.
+Running the same validation-enabled Metal binary and reporter with host hardware
+access succeeds and reports Metal as available native `native_smoke`. The
+package archive builds and `git diff --check` passes. `truffle_format_check`
+cannot run because `clang-format` is not installed on this host.
 
 ## Next Resume Steps
 
-1. Merge #28 after the package, macOS, Ubuntu, and Windows Build jobs pass.
-2. Start #29 from fresh `develop`.
-3. Expand resources and transfers vertically: typed views/subresources, memory
-   domains and mapping coherence, caller allocation, copy/fill/clear/resolve/
-   blit, upload/readback, and deterministic data evidence in Null and Metal.
+1. Open and merge the #29 PR after package, macOS, Ubuntu, and Windows Build
+   jobs pass; close #29 if GitHub does not auto-close it.
+2. Start #30 and #32 from fresh `develop`, keeping immutable bindings and shader
+   packages/pipelines separated at their public ownership seam.
+3. Preserve deterministic Null semantics and require native backend evidence for
+   every new pipeline or binding capability claimed.
 
 ## Open Risks
 
 - The companion-task GitHub credential must be repaired outside the engine
   codebase; retries with the same credential will continue to fail.
-- Metal resource and presentation capability remains intentionally unavailable;
-  empty native submission is not enough to advance its maturity.
+- Metal supports only the documented resource subset; texture clear/resolve/
+  blit, pipelines, synchronization, recovery, and presentation remain pending.
 - Vulkan, OpenGL, and Direct3D targets are factories without native adapters;
   their package presence must not be described as backend support.
 - Native SDK and toolchain versions must be pinned when each dependency-bearing
