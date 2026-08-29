@@ -5,6 +5,7 @@
 
 #include <memory>
 #include <unordered_map>
+#include <vector>
 
 namespace truffle::render {
 
@@ -30,6 +31,11 @@ public:
     virtual void register_shaders(MaterialId material,
                                   const ShaderBinding& shaders) = 0;
 
+    // Select the attachment state that pipelines returned for the next pass
+    // must match.
+    [[nodiscard]] virtual core::Status prepare_render_pass(
+        const rhi::RenderPassDesc& pass) = 0;
+
     // Returns a matching pipeline or creates one.
     // variantHash can be used to bucket pipelines driven by shader variants.
     [[nodiscard]] virtual rhi::Pipeline* get_or_create(
@@ -53,16 +59,22 @@ public:
     void register_shaders(MaterialId /*material*/,
                           const ShaderBinding& /*shaders*/) override {}
 
+    [[nodiscard]] core::Status prepare_render_pass(
+        const rhi::RenderPassDesc& pass) override;
+
     [[nodiscard]] rhi::Pipeline* get_or_create(
         const InstanceLayout& layout, MaterialId material,
         std::size_t variantHash = 0) override;
 
     void invalidate(MaterialId /*material*/) override {}
-    void invalidate_all() override {}
+    void invalidate_all() override { pipeline_ = {}; }
 
 private:
     rhi::Device*   device_ = nullptr;
     rhi::Pipeline pipeline_;
+    std::vector<rhi::TextureFormat> colorFormats_;
+    rhi::TextureFormat depthStencilFormat_ = rhi::TextureFormat::unknown;
+    std::uint32_t sampleCount_ = 1;
 };
 
 // ---------------------------------------------------------------------------
@@ -78,6 +90,9 @@ public:
 
     void register_shaders(MaterialId material,
                           const ShaderBinding& shaders) override;
+
+    [[nodiscard]] core::Status prepare_render_pass(
+        const rhi::RenderPassDesc& pass) override;
 
     [[nodiscard]] rhi::Pipeline* get_or_create(
         const InstanceLayout& layout, MaterialId material,

@@ -50,10 +50,10 @@ TransformComputePass::TransformComputePass(rhi::Device& device,
     if (computeShader == nullptr) {
         return;
     }
-    auto result = device_->create_compute_pipeline({
-        .computeShader = computeShader,
-        .debugName = "TransformComputePass",
-    });
+    rhi::ComputePipelineDesc pipelineDesc;
+    pipelineDesc.computeShader = computeShader;
+    pipelineDesc.debugName = "TransformComputePass";
+    auto result = device_->create_compute_pipeline(pipelineDesc);
     if (result.ok()) {
         pipeline_ = std::move(result).value();
     }

@@ -2,6 +2,7 @@
 
 #include "truffle/rhi/status.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -17,6 +18,13 @@ class BufferView;
 class Texture;
 class TextureView;
 class Shader;
+class Sampler;
+class BindGroupLayout;
+class BindGroup;
+class BindlessTable;
+class DescriptorArena;
+class PipelineLayout;
+class PipelineCache;
 
 struct ObjectId {
     std::uint64_t value = 0;
@@ -45,6 +53,12 @@ enum class Feature {
     timestamp_queries,
     memory_budget,
     external_memory,
+    descriptor_arrays,
+    dynamic_offsets,
+    push_constants,
+    bindless_descriptors,
+    indirect_count,
+    pipeline_cache,
 };
 
 enum class BufferUsage : std::uint32_t {
@@ -150,13 +164,136 @@ enum class TextureFormat {
     bc3_rgba_srgb,
 };
 enum class ShaderStage { vertex, fragment, compute };
+enum class ShaderStageMask : std::uint32_t {
+    none = 0,
+    vertex = 1u << 0u,
+    fragment = 1u << 1u,
+    compute = 1u << 2u,
+    all_graphics = (1u << 0u) | (1u << 1u),
+    all = (1u << 0u) | (1u << 1u) | (1u << 2u),
+};
+
+[[nodiscard]] constexpr ShaderStageMask operator|(ShaderStageMask lhs,
+                                                   ShaderStageMask rhs) noexcept {
+    return static_cast<ShaderStageMask>(static_cast<std::uint32_t>(lhs) |
+                                        static_cast<std::uint32_t>(rhs));
+}
+
+[[nodiscard]] constexpr ShaderStageMask operator&(ShaderStageMask lhs,
+                                                   ShaderStageMask rhs) noexcept {
+    return static_cast<ShaderStageMask>(static_cast<std::uint32_t>(lhs) &
+                                        static_cast<std::uint32_t>(rhs));
+}
+
+[[nodiscard]] constexpr bool has_stage(ShaderStageMask value,
+                                       ShaderStageMask required) noexcept {
+    return (value & required) == required;
+}
+
+[[nodiscard]] constexpr ShaderStageMask shader_stage_mask(
+    ShaderStage stage) noexcept {
+    switch (stage) {
+    case ShaderStage::vertex:
+        return ShaderStageMask::vertex;
+    case ShaderStage::fragment:
+        return ShaderStageMask::fragment;
+    case ShaderStage::compute:
+        return ShaderStageMask::compute;
+    }
+    return ShaderStageMask::none;
+}
 enum class ShaderByteFormat {
     native_source,
     spirv,
     dxil,
     metal_library,
 };
-enum class PrimitiveTopology { triangle_list, triangle_strip, line_list, point_list };
+enum class ShaderValueType : std::uint8_t {
+    boolean,
+    sint32,
+    uint32,
+    float32,
+};
+enum class PrimitiveTopology {
+    triangle_list,
+    triangle_strip,
+    line_list,
+    point_list,
+    patch_list,
+};
+enum class PolygonMode { fill, line, point };
+enum class CullMode { none, front, back };
+enum class FrontFace { counter_clockwise, clockwise };
+enum class CompareOp {
+    never,
+    less,
+    equal,
+    less_equal,
+    greater,
+    not_equal,
+    greater_equal,
+    always,
+};
+enum class StencilOp {
+    keep,
+    zero,
+    replace,
+    increment_clamp,
+    decrement_clamp,
+    invert,
+    increment_wrap,
+    decrement_wrap,
+};
+enum class BlendFactor {
+    zero,
+    one,
+    source_color,
+    one_minus_source_color,
+    destination_color,
+    one_minus_destination_color,
+    source_alpha,
+    one_minus_source_alpha,
+    destination_alpha,
+    one_minus_destination_alpha,
+};
+enum class BlendOp { add, subtract, reverse_subtract, minimum, maximum };
+enum class VertexStepMode { vertex, instance };
+enum class VertexFormat {
+    float32,
+    float32x2,
+    float32x3,
+    float32x4,
+    uint32,
+    uint32x2,
+    uint32x3,
+    uint32x4,
+};
+enum class DynamicState : std::uint32_t {
+    none = 0,
+    viewport = 1u << 0u,
+    scissor = 1u << 1u,
+    blend_constant = 1u << 2u,
+    stencil_reference = 1u << 3u,
+    depth_bias = 1u << 4u,
+};
+
+[[nodiscard]] constexpr DynamicState operator|(DynamicState lhs,
+                                                DynamicState rhs) noexcept {
+    return static_cast<DynamicState>(static_cast<std::uint32_t>(lhs) |
+                                     static_cast<std::uint32_t>(rhs));
+}
+
+[[nodiscard]] constexpr DynamicState operator&(DynamicState lhs,
+                                                DynamicState rhs) noexcept {
+    return static_cast<DynamicState>(static_cast<std::uint32_t>(lhs) &
+                                     static_cast<std::uint32_t>(rhs));
+}
+
+[[nodiscard]] constexpr bool has_dynamic_state(DynamicState value,
+                                                DynamicState required) noexcept {
+    return (value & required) == required;
+}
+enum class SamplerAddressMode { clamp_to_edge, repeat, mirror_repeat };
 enum class LoadOp { load, clear, dont_care };
 enum class StoreOp { store, dont_care };
 enum class PresentMode { fifo, mailbox, immediate };
@@ -181,22 +318,49 @@ enum class NativeSurfaceKind {
 };
 
 enum class ResourceBindingType { buffer, texture, sampler };
+enum class BindingType {
+    uniform_buffer,
+    storage_buffer,
+    sampled_texture,
+    storage_texture,
+    sampler,
+};
 
 struct Extent2D {
     std::uint32_t width = 0;
     std::uint32_t height = 0;
+
+    bool operator==(const Extent2D&) const = default;
 };
 
 struct Extent3D {
     std::uint32_t width = 1;
     std::uint32_t height = 1;
     std::uint32_t depth = 1;
+
+    bool operator==(const Extent3D&) const = default;
 };
 
 struct Origin3D {
     std::uint32_t x = 0;
     std::uint32_t y = 0;
     std::uint32_t z = 0;
+};
+
+struct Viewport {
+    float x = 0.0F;
+    float y = 0.0F;
+    float width = 1.0F;
+    float height = 1.0F;
+    float minimumDepth = 0.0F;
+    float maximumDepth = 1.0F;
+};
+
+struct ScissorRect {
+    std::int32_t x = 0;
+    std::int32_t y = 0;
+    std::uint32_t width = 1;
+    std::uint32_t height = 1;
 };
 
 struct TextureSubresource {
@@ -306,6 +470,37 @@ struct AdapterInfo {
         bool externalImport = false;
         bool externalExport = false;
     } resources;
+    struct BindingCapabilities {
+        bool ordinaryBindGroups = false;
+        bool descriptorArrays = false;
+        bool dynamicOffsets = false;
+        bool immutableSamplers = false;
+        bool pushConstants = false;
+        bool bindlessTables = false;
+        bool updateAfterBind = false;
+        std::uint32_t maxBindGroups = 0;
+        std::uint32_t maxBindingsPerGroup = 0;
+        std::uint32_t maxDescriptorsPerGroup = 0;
+        std::uint32_t maxPushConstantBytes = 0;
+        std::uint32_t minUniformBufferOffsetAlignment = 1;
+        std::uint32_t minStorageBufferOffsetAlignment = 1;
+    } bindings;
+    struct PipelineCapabilities {
+        bool graphics = false;
+        bool compute = false;
+        bool multipleRenderTargets = false;
+        bool depthStencil = false;
+        bool multisample = false;
+        bool tessellation = false;
+        bool indirect = false;
+        bool indirectCount = false;
+        bool pipelineCache = false;
+        std::uint32_t maxColorAttachments = 0;
+        std::uint32_t maxVertexBuffers = 0;
+        std::uint32_t maxViewports = 0;
+        Extent3D maxComputeWorkgroupSize{0, 0, 0};
+        std::uint32_t maxComputeInvocations = 0;
+    } pipelines;
 };
 
 struct ResourceAllocatorCallbacks {
@@ -383,27 +578,215 @@ struct ExternalMemoryHandle {
     }
 };
 
+struct ShaderSpecializationConstant {
+    std::uint32_t id = 0;
+    std::string name;
+    ShaderValueType type = ShaderValueType::uint32;
+    std::uint32_t defaultValueBits = 0;
+
+    bool operator==(const ShaderSpecializationConstant&) const = default;
+};
+
+struct ShaderBindingMap {
+    ShaderStage stage = ShaderStage::vertex;
+    std::uint32_t group = 0;
+    std::uint32_t binding = 0;
+    std::uint32_t arrayElement = 0;
+    std::uint32_t nativeGroup = 0;
+    std::uint32_t nativeBinding = 0;
+    std::uint32_t nativeArrayElement = 0;
+};
+
+struct PushConstantRange {
+    ShaderStage stage = ShaderStage::vertex;
+    std::uint32_t offset = 0;
+    std::uint32_t size = 0;
+
+    bool operator==(const PushConstantRange&) const = default;
+};
+
 struct ShaderDesc {
     ShaderStage stage = ShaderStage::vertex;
     ShaderByteFormat format = ShaderByteFormat::native_source;
     std::string entryPoint = "main";
     std::vector<std::byte> code;
     std::vector<ResourceBinding> reflection;
+    std::vector<PushConstantRange> pushConstants;
+    std::vector<ShaderSpecializationConstant> specializationConstants;
+    std::vector<ShaderBindingMap> bindingMap;
+    Extent3D requiredWorkgroupSize{1, 1, 1};
+    Extent3D preferredWorkgroupSize{1, 1, 1};
     std::string debugName;
+};
+
+struct SamplerDesc {
+    Filter minFilter = Filter::nearest;
+    Filter magFilter = Filter::nearest;
+    Filter mipFilter = Filter::nearest;
+    SamplerAddressMode addressU = SamplerAddressMode::clamp_to_edge;
+    SamplerAddressMode addressV = SamplerAddressMode::clamp_to_edge;
+    SamplerAddressMode addressW = SamplerAddressMode::clamp_to_edge;
+    float lodMin = 0.0F;
+    float lodMax = 32.0F;
+    float maxAnisotropy = 1.0F;
+    CompareOp compare = CompareOp::always;
+    std::string debugName;
+};
+
+struct BindGroupLayoutEntry {
+    std::uint32_t binding = 0;
+    BindingType type = BindingType::uniform_buffer;
+    std::uint32_t arrayCount = 1;
+    ShaderStageMask visibility = ShaderStageMask::all;
+    bool dynamicOffset = false;
+    std::size_t minimumBufferSize = 0;
+    Sampler* immutableSampler = nullptr;
+};
+
+struct BindGroupLayoutDesc {
+    std::uint32_t group = 0;
+    std::vector<BindGroupLayoutEntry> entries;
+    std::string debugName;
+};
+
+struct DescriptorArenaDesc {
+    std::uint32_t maxBindGroups = 256;
+    std::uint32_t maxDescriptors = 4096;
+    bool updateAfterBind = false;
+    std::string debugName;
+};
+
+struct BindGroupEntry {
+    std::uint32_t binding = 0;
+    std::uint32_t arrayElement = 0;
+    Buffer* buffer = nullptr;
+    std::size_t offset = 0;
+    std::size_t size = whole_size;
+    TextureView* textureView = nullptr;
+    Sampler* sampler = nullptr;
+};
+
+struct BindGroupDesc {
+    BindGroupLayout* layout = nullptr;
+    DescriptorArena* arena = nullptr;
+    std::vector<BindGroupEntry> entries;
+    std::string debugName;
+};
+
+struct BindlessTableDesc {
+    BindGroupLayout* layout = nullptr;
+    std::uint32_t capacity = 0;
+    std::string debugName;
+};
+
+struct PipelineLayoutDesc {
+    std::vector<BindGroupLayout*> bindGroupLayouts;
+    std::vector<PushConstantRange> pushConstants;
+    std::string debugName;
+};
+
+struct PipelineCacheDesc {
+    std::vector<std::byte> initialData;
+    std::string debugName;
+};
+
+struct SpecializationValue {
+    std::uint32_t id = 0;
+    ShaderValueType type = ShaderValueType::uint32;
+    std::uint32_t valueBits = 0;
+};
+
+struct VertexAttributeDesc {
+    std::uint32_t location = 0;
+    VertexFormat format = VertexFormat::float32x4;
+    std::uint32_t offset = 0;
+};
+
+struct VertexBufferLayoutDesc {
+    std::uint32_t stride = 0;
+    VertexStepMode stepMode = VertexStepMode::vertex;
+    std::vector<VertexAttributeDesc> attributes;
+};
+
+struct BlendComponent {
+    BlendFactor sourceFactor = BlendFactor::one;
+    BlendFactor destinationFactor = BlendFactor::zero;
+    BlendOp operation = BlendOp::add;
+};
+
+struct BlendState {
+    bool enabled = false;
+    BlendComponent color;
+    BlendComponent alpha;
+};
+
+struct ColorTargetState {
+    TextureFormat format = TextureFormat::bgra8_unorm;
+    BlendState blend;
+    std::uint8_t writeMask = 0x0f;
+};
+
+struct StencilFaceState {
+    CompareOp compare = CompareOp::always;
+    StencilOp failOp = StencilOp::keep;
+    StencilOp depthFailOp = StencilOp::keep;
+    StencilOp passOp = StencilOp::keep;
+};
+
+struct DepthStencilState {
+    TextureFormat format = TextureFormat::unknown;
+    bool depthWriteEnabled = false;
+    CompareOp depthCompare = CompareOp::always;
+    StencilFaceState front;
+    StencilFaceState back;
+    std::uint32_t stencilReadMask = 0xffffffffu;
+    std::uint32_t stencilWriteMask = 0xffffffffu;
+};
+
+struct RasterizationState {
+    PolygonMode polygonMode = PolygonMode::fill;
+    CullMode cullMode = CullMode::none;
+    FrontFace frontFace = FrontFace::counter_clockwise;
+    bool depthClampEnabled = false;
+    float depthBias = 0.0F;
+    float depthBiasSlopeScale = 0.0F;
+    float depthBiasClamp = 0.0F;
+};
+
+struct MultisampleState {
+    std::uint32_t sampleCount = 1;
+    std::uint32_t sampleMask = 0xffffffffu;
+    bool alphaToCoverageEnabled = false;
 };
 
 struct PipelineDesc {
     Shader* vertexShader = nullptr;
     Shader* fragmentShader = nullptr;
-    TextureFormat colorFormat = TextureFormat::bgra8_unorm;
-    TextureFormat depthStencilFormat = TextureFormat::unknown;
+    PipelineLayout* layout = nullptr;
+    PipelineCache* cache = nullptr;
+    std::vector<VertexBufferLayoutDesc> vertexBuffers;
+    std::vector<ColorTargetState> colorTargets;
+    DepthStencilState depthStencil;
+    RasterizationState rasterization;
+    MultisampleState multisample;
     PrimitiveTopology topology = PrimitiveTopology::triangle_list;
+    std::uint32_t patchControlPoints = 0;
+    std::vector<Viewport> viewports;
+    std::vector<ScissorRect> scissors;
+    std::array<float, 4> blendConstant{};
+    std::uint32_t stencilReference = 0;
+    DynamicState dynamicState = DynamicState::none;
+    std::vector<SpecializationValue> specializationConstants;
     std::string debugName;
 };
 
 struct ComputePipelineDesc {
     Shader* computeShader = nullptr;
-    Extent3D preferredWorkgroupSize{64, 1, 1};
+    PipelineLayout* layout = nullptr;
+    PipelineCache* cache = nullptr;
+    Extent3D requiredWorkgroupSize{0, 0, 0};
+    Extent3D preferredWorkgroupSize{0, 0, 0};
+    std::vector<SpecializationValue> specializationConstants;
     std::string debugName;
 };
 
@@ -442,14 +825,26 @@ struct ClearValue {
 
 struct ColorAttachmentDesc {
     Texture* texture = nullptr;
+    Texture* resolveTexture = nullptr;
     LoadOp loadOp = LoadOp::clear;
     StoreOp storeOp = StoreOp::store;
     ClearColor clear{};
 };
 
+struct DepthStencilAttachmentDesc {
+    Texture* texture = nullptr;
+    LoadOp depthLoadOp = LoadOp::clear;
+    StoreOp depthStoreOp = StoreOp::store;
+    float clearDepth = 1.0F;
+    LoadOp stencilLoadOp = LoadOp::clear;
+    StoreOp stencilStoreOp = StoreOp::store;
+    std::uint32_t clearStencil = 0;
+};
+
 struct RenderPassDesc {
     Extent2D extent{1, 1};
     std::vector<ColorAttachmentDesc> colorAttachments;
+    DepthStencilAttachmentDesc depthStencilAttachment;
 };
 
 struct FenceDesc {
@@ -476,6 +871,12 @@ struct BackendStats {
     std::uint64_t bufferViewsCreated = 0;
     std::uint64_t texturesCreated = 0;
     std::uint64_t textureViewsCreated = 0;
+    std::uint64_t samplersCreated = 0;
+    std::uint64_t bindGroupLayoutsCreated = 0;
+    std::uint64_t descriptorArenasCreated = 0;
+    std::uint64_t bindGroupsCreated = 0;
+    std::uint64_t pipelineLayoutsCreated = 0;
+    std::uint64_t pipelineCachesCreated = 0;
     std::uint64_t shadersCreated = 0;
     std::uint64_t pipelinesCreated = 0;
     std::uint64_t commandPoolsCreated = 0;

@@ -52,17 +52,23 @@ deferred retirement. Metal passes validation-enabled native buffer, texture, and
 buffer-texture round trips; unsupported shapes and operations are capability
 reported. Other named backends still expose no adapter.
 
-## Phase 3: Bindings, Shaders, And Pipelines — Pending
+## Phase 3: Bindings, Shaders, And Pipelines — Complete
 
 Tracked by #30 and #32.
 
-- Implement immutable ordinary bind groups, descriptor arenas, arrays, dynamic
+- [x] Implement immutable ordinary bind groups, descriptor arenas, arrays, dynamic
   offsets, specialization constants, optional push constants and bindless
   tables, pipeline layouts/caches, full graphics state, and compute workgroup
   requirements.
 - [x] Introduce deterministic `ShaderPackage` 1.0 and optional dependency-free
   `truffle-shaderc`; validate reflection equivalence across selected target
   variants and gate experimental Metal/WGSL generation.
+
+Exit: Null validates logical identity, lifetime, reflection, state, direct and
+indirect command forms, cache behavior, and accurate optional-feature failures.
+Metal passes validation-enabled exact-output graphics and compute proofs using
+the same ShaderPackage and logical-remap contract; its unimplemented optional
+features remain capability-reported.
 
 ## Phase 4: Explicit Synchronization And Presentation — Pending
 

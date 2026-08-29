@@ -50,12 +50,62 @@ core::Status validate_render_batch_bindings(const RenderBatch& batch,
 
 NullPipelineCache::NullPipelineCache(rhi::Device& device) : device_(&device) {}
 
+core::Status NullPipelineCache::prepare_render_pass(
+    const rhi::RenderPassDesc& pass) {
+    std::vector<rhi::TextureFormat> colorFormats;
+    colorFormats.reserve(pass.colorAttachments.size());
+    std::uint32_t sampleCount = 1;
+    bool sampleCountSet = false;
+    for (const auto& attachment : pass.colorAttachments) {
+        if (attachment.texture == nullptr) {
+            return core::Status::failure(core::StatusCode::invalid_argument,
+                                         "Renderer: null color attachment");
+        }
+        const auto desc = attachment.texture->desc();
+        if (sampleCountSet && sampleCount != desc.sampleCount) {
+            return core::Status::failure(
+                core::StatusCode::invalid_argument,
+                "Renderer: attachment sample counts do not match");
+        }
+        colorFormats.push_back(desc.format);
+        sampleCount = desc.sampleCount;
+        sampleCountSet = true;
+    }
+    auto depthFormat = rhi::TextureFormat::unknown;
+    if (pass.depthStencilAttachment.texture != nullptr) {
+        const auto desc = pass.depthStencilAttachment.texture->desc();
+        depthFormat = desc.format;
+        if (sampleCountSet && sampleCount != desc.sampleCount) {
+            return core::Status::failure(
+                core::StatusCode::invalid_argument,
+                "Renderer: attachment sample counts do not match");
+        }
+        sampleCount = desc.sampleCount;
+    }
+    if (colorFormats != colorFormats_ || depthFormat != depthStencilFormat_ ||
+        sampleCount != sampleCount_) {
+        colorFormats_ = std::move(colorFormats);
+        depthStencilFormat_ = depthFormat;
+        sampleCount_ = sampleCount;
+        pipeline_ = {};
+    }
+    return core::Status::success();
+}
+
 rhi::Pipeline* NullPipelineCache::get_or_create(const InstanceLayout&,
                                                 MaterialId,
                                                 std::size_t) {
     if (!pipeline_.valid()) {
-        auto result = device_->create_pipeline(
-            rhi::PipelineDesc{.debugName = "null pipeline"});
+        rhi::PipelineDesc desc;
+        for (const auto format : colorFormats_) {
+            rhi::ColorTargetState target;
+            target.format = format;
+            desc.colorTargets.push_back(target);
+        }
+        desc.depthStencil.format = depthStencilFormat_;
+        desc.multisample.sampleCount = sampleCount_;
+        desc.debugName = "null pipeline";
+        auto result = device_->create_pipeline(desc);
         if (!result.ok()) {
             return nullptr;
         }
@@ -72,6 +122,20 @@ void PipelineCache::register_shaders(MaterialId material,
     shaders_[material] = shaders;
 }
 
+core::Status PipelineCache::prepare_render_pass(
+    const rhi::RenderPassDesc& pass) {
+    if (pass.colorAttachments.size() != 1 ||
+        pass.colorAttachments.front().texture == nullptr ||
+        pass.colorAttachments.front().texture->desc().format != colorFormat_ ||
+        pass.colorAttachments.front().texture->desc().sampleCount != 1 ||
+        pass.depthStencilAttachment.texture != nullptr) {
+        return core::Status::failure(
+            core::StatusCode::invalid_argument,
+            "Renderer: pipeline cache does not match render-pass attachments");
+    }
+    return core::Status::success();
+}
+
 rhi::Pipeline* PipelineCache::get_or_create(const InstanceLayout& layout,
                                             MaterialId material,
                                             std::size_t variantHash) {
@@ -83,12 +147,14 @@ rhi::Pipeline* PipelineCache::get_or_create(const InstanceLayout& layout,
     if (shaders == shaders_.end()) {
         return nullptr;
     }
-    auto result = device_->create_pipeline(rhi::PipelineDesc{
-        .vertexShader = shaders->second.vertexShader,
-        .fragmentShader = shaders->second.fragmentShader,
-        .colorFormat = colorFormat_,
-        .debugName = "pipeline material " + std::to_string(material),
-    });
+    rhi::PipelineDesc desc;
+    desc.vertexShader = shaders->second.vertexShader;
+    desc.fragmentShader = shaders->second.fragmentShader;
+    rhi::ColorTargetState target;
+    target.format = colorFormat_;
+    desc.colorTargets.push_back(target);
+    desc.debugName = "pipeline material " + std::to_string(material);
+    auto result = device_->create_pipeline(desc);
     if (!result.ok()) {
         return nullptr;
     }
@@ -171,10 +237,16 @@ core::Status Renderer::render(const FrameGraph& graph, rhi::Swapchain* swapchain
             }
             if (swapchain != nullptr) {
                 pass.extent = swapchain->desc().extent;
-                pass.colorAttachments.push_back({.texture = acquired.image});
+                rhi::ColorAttachmentDesc attachment;
+                attachment.texture = acquired.image;
+                pass.colorAttachments.push_back(attachment);
             }
         } else if (render->explicit_desc() != nullptr) {
             pass = *render->explicit_desc();
+        }
+
+        if (auto status = cache_->prepare_render_pass(pass); !status.ok()) {
+            return status;
         }
 
         auto encoderResult = list.begin_rendering(pass);

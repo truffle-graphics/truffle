@@ -66,10 +66,10 @@ expose that opt-in.
 - Corrupt, incompatible, capability-mismatched, and non-canonical packages fail
   with typed results.
 - `Device::create_shader(package, target, entry, stage, permutation)` consumes a
-  selected package variant without compiler linkage.
+  selected package variant without compiler linkage. The native Metal proof
+  creates MSL shaders and pipeline state from that selected package path.
 - `truffle-shaderc` self-test and file-based assemble/inspect smoke tests run in
   CI when `TRUFFLE_BUILD_SHADERC=ON`.
 
-Native Metal, Vulkan, and D3D12 execution of the same package remains a pipeline
-and backend evidence gate. Recording a target blob does not by itself advance a
-backend maturity level.
+Native execution on each additional backend remains its own evidence gate.
+Recording a target blob does not by itself advance a backend maturity level.

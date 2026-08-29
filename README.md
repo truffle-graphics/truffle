@@ -38,9 +38,10 @@ API:
 - `truffle_backend_null` strictly validates RHI 1 lifetime and state without a
   GPU dependency.
 - `truffle_backend_metal` implements native buffer and selected 2D texture
-  allocation, views, mapping/coherence, copy/fill, upload, and readback. Its
-  validation-enabled deterministic resource proofs reach `native_smoke` on
-  macOS; pipelines and presentation remain pending.
+  allocation, views, mapping/coherence, copy/fill, upload, readback, immutable
+  bindings, and graphics/compute pipelines. Validation-enabled exact resource,
+  triangle, textured, depth/MRT/MSAA, indirect, and compute-to-render proofs
+  reach `native_smoke` on macOS; synchronization and presentation remain.
 - `truffle_backend_vulkan`, `truffle_backend_opengl`, and
   `truffle_backend_direct3d` expose explicit unavailable factories until their
   native implementations land; they report no simulated adapters.

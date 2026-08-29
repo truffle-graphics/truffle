@@ -2,6 +2,7 @@
 
 #include "truffle/rhi/rhi.hpp"
 
+#include <array>
 #include <memory>
 #include <span>
 #include <string>
@@ -31,12 +32,83 @@ struct NativeTransfer {
     std::byte fillValue{};
 };
 
+enum class NativeCommandKind {
+    begin_render,
+    end_render,
+    begin_compute,
+    end_compute,
+    bind_graphics_pipeline,
+    bind_compute_pipeline,
+    bind_vertex_buffer,
+    bind_uniform_buffer,
+    bind_storage_buffer,
+    bind_index_buffer,
+    bind_group,
+    push_constants,
+    set_viewports,
+    set_scissors,
+    set_blend_constant,
+    set_stencil_reference,
+    set_depth_bias,
+    draw,
+    draw_indexed,
+    draw_indirect,
+    draw_indirect_count,
+    dispatch,
+    dispatch_indirect,
+};
+
+struct NativeRenderAttachment {
+    std::shared_ptr<void> texture;
+    std::shared_ptr<void> resolveTexture;
+    LoadOp loadOp = LoadOp::clear;
+    StoreOp storeOp = StoreOp::store;
+    ClearColor clear;
+};
+
+struct NativeDepthStencilAttachment {
+    std::shared_ptr<void> texture;
+    LoadOp depthLoadOp = LoadOp::clear;
+    StoreOp depthStoreOp = StoreOp::store;
+    float clearDepth = 1.0F;
+    LoadOp stencilLoadOp = LoadOp::clear;
+    StoreOp stencilStoreOp = StoreOp::store;
+    std::uint32_t clearStencil = 0;
+};
+
+struct NativeBindingResource {
+    std::uint32_t group = 0;
+    std::uint32_t binding = 0;
+    std::uint32_t arrayElement = 0;
+    BindingType type = BindingType::uniform_buffer;
+    ShaderStageMask visibility = ShaderStageMask::none;
+    std::shared_ptr<void> resource;
+    std::size_t offset = 0;
+    std::size_t size = 0;
+};
+
+struct NativeCommand {
+    NativeCommandKind kind = NativeCommandKind::draw;
+    Extent2D extent;
+    std::vector<NativeRenderAttachment> colorAttachments;
+    NativeDepthStencilAttachment depthStencilAttachment;
+    std::shared_ptr<void> object;
+    std::shared_ptr<void> secondaryObject;
+    std::vector<NativeBindingResource> bindings;
+    std::vector<std::byte> bytes;
+    std::vector<Viewport> viewports;
+    std::vector<ScissorRect> scissors;
+    std::array<std::uint64_t, 8> arguments{};
+};
+
 struct FoundationBackendConfig {
     BackendKind kind = BackendKind::null_validation;
     std::string adapterName;
     std::vector<QueueKind> queueKinds;
     std::vector<Feature> supportedFeatures;
     AdapterInfo::ResourceCapabilities resourceCapabilities;
+    AdapterInfo::BindingCapabilities bindingCapabilities;
+    AdapterInfo::PipelineCapabilities pipelineCapabilities;
     std::size_t uploadBudgetBytes = 256u * 1024u * 1024u;
     std::size_t readbackBudgetBytes = 256u * 1024u * 1024u;
     std::size_t deviceLocalBudgetBytes = 1024u * 1024u * 1024u;
@@ -65,7 +137,15 @@ struct FoundationBackendConfig {
     Status (*readTexture)(const std::shared_ptr<void>&, const TextureRegion&,
                           std::span<std::byte>,
                           const TextureDataLayout&) = nullptr;
-    Status (*nativeSubmit)(std::span<const NativeTransfer>) = nullptr;
+    Result<std::shared_ptr<void>> (*createSampler)(const SamplerDesc&) = nullptr;
+    Result<std::shared_ptr<void>> (*createShader)(const ShaderDesc&) = nullptr;
+    Result<std::shared_ptr<void>> (*createPipeline)(
+        const PipelineDesc&, const std::shared_ptr<void>&,
+        const std::shared_ptr<void>&) = nullptr;
+    Result<std::shared_ptr<void>> (*createComputePipeline)(
+        const ComputePipelineDesc&, const std::shared_ptr<void>&) = nullptr;
+    Status (*nativeSubmit)(std::span<const NativeTransfer>,
+                           std::span<const NativeCommand>) = nullptr;
 };
 
 [[nodiscard]] Result<Instance> create_foundation_instance(
