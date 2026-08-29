@@ -70,15 +70,21 @@ Metal passes validation-enabled exact-output graphics and compute proofs using
 the same ShaderPackage and logical-remap contract; its unimplemented optional
 features remain capability-reported.
 
-## Phase 4: Explicit Synchronization And Presentation — Pending
+## Phase 4: Explicit Synchronization And Presentation — Complete
 
 Tracked by #31.
 
-- Implement stage/access/layout barriers, subresource and aliasing barriers,
+- [x] Implement stage/access/layout barriers, subresource and aliasing barriers,
   queue ownership transfer, semaphore values, fences, and query pools.
-- Make submission accept explicit command-list and wait/signal arrays.
-- Make acquisition return image/index/status/synchronization and move
+- [x] Make submission accept explicit command-list and wait/signal arrays.
+- [x] Make acquisition return image/index/status/synchronization and move
   presentation to `Queue::present()`.
+
+Exit: one ordered command stream preserves copy/render/compute ordering. Null
+validates timeline waits, timeout retry, subresource layouts, aliasing, and
+multi-queue ownership. Metal maps semaphores to shared events and passes
+validation-enabled native `CAMetalLayer` acquire/render/present, resize,
+suboptimal, out-of-date, and surface-loss proofs.
 
 ## Phase 5: Native Backend And Platform Matrix — Pending
 

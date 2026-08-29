@@ -89,11 +89,11 @@ the validated required size rather than from a hard-coded default.
 | Backend | Implemented behavior | Explicit limitations |
 |---|---|---|
 | Null validation | Ordinary immutable groups, descriptor arrays, dynamic offsets, immutable samplers, arena epochs, pipeline layouts, push/specialization constants, complete graphics state, graphics/compute commands, indirect-count validation, and deterministic opaque cache round trips. | Bindless tables and update-after-bind return `unsupported`; Null remains a validation interpreter, not a GPU. |
-| Metal on macOS | Native samplers, MSL-source and metallib shaders, function constants, logical binding remaps, immutable groups and arrays, dynamic offsets, push constants, native graphics/compute pipeline state, direct/indexed/instanced/indirect draws, dispatch and dispatch-indirect, MRT, depth/stencil state, and MSAA resolves. | Bindless/update-after-bind, indirect-count, serialized pipeline caches, tessellation, and presentation are not advertised. |
+| Metal on macOS | Native samplers, MSL-source and metallib shaders, function constants, logical binding remaps, immutable groups and arrays, dynamic offsets, push constants, native graphics/compute pipeline state, direct/indexed/instanced/indirect draws, dispatch and dispatch-indirect, MRT, depth/stencil state, and MSAA resolves. | Bindless/update-after-bind, indirect-count, serialized pipeline caches, and tessellation are not advertised. |
 | Vulkan, D3D12, OpenGL | No adapter is exposed. | Their factories return `unsupported`; no Null pipeline is reported as native. |
 
 The validation-enabled macOS suite compares exact pixels or buffer values for a
 native triangle, descriptor-array texturing, depth-tested MRT with 4x MSAA,
 indexed/instanced/indirect drawing, and compute-to-render storage flow. These
-proofs expand Metal's native slice but do not establish synchronization,
-recovery, presentation, or full backend conformance.
+proofs expand Metal's native slice but do not establish full backend
+conformance.

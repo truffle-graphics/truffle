@@ -13,8 +13,9 @@ Current baseline:
   and presentation foundations.
 - Strict Null validation of object lifetime, command state, resource retention,
   thread ownership, acquisition, submission, and presentation flow.
-- Native Metal buffers and selected 2D textures with validation-enabled
-  deterministic upload/copy/readback proofs at `native_smoke` on macOS.
+- Native Metal buffers, selected 2D textures, shared-event synchronization, and
+  `CAMetalLayer` presentation with validation-enabled deterministic output and
+  status/recovery proofs at `native_smoke` on macOS.
 - Explicitly unavailable Vulkan, OpenGL, and Direct3D targets that report no
   simulated adapters until their native implementations land.
 - Deterministic ShaderPackage 1.0 creation/loading with normalized cross-target

@@ -9,48 +9,41 @@ rather than growing a historical transcript here.
 
 ## Current Focus
 
-Finish issue #30's immutable bindings and native graphics/compute pipeline PR,
-then begin explicit synchronization and presentation under issue #31.
+Finish issue #31's explicit synchronization and native Metal presentation PR,
+then begin native backend/platform breadth under issue #33.
 
 ## Latest Handoff
 
-- PRs #36-#40 are merged into `develop`, completing the warning-clean baseline,
-  RHI 1 foundation, resources, and deterministic ShaderPackage 1.0 slices.
-- On `feat/rhi1-bindings-pipelines` for #30, added immutable samplers, bind-group
-  layouts and groups, descriptor arenas with epoch invalidation, descriptor
-  arrays, aligned dynamic offsets, pipeline layouts, push and specialization
-  constants, optional bindless and pipeline-cache objects, and capability
-  limits.
-- Graphics pipelines now validate shader reflection and own vertex input,
-  topology, rasterization, color/blend, depth/stencil, multisample, and static or
-  dynamic state. Compute pipelines validate reflected required/preferred
-  workgroup sizes against adapter limits.
-- Render and compute encoders now retain complete direct, indexed, instanced,
-  indirect, indirect-count, and dispatch-indirect arguments. Binding uses stable
-  logical `(group, binding, arrayElement)` identity plus target-specific shader
-  remaps.
-- Null validates the complete #30 contract, including descriptor capacity and
-  lifetime, layout/reflection mismatch, command completeness, cache round-trip,
-  and explicit unsupported bindless/update-after-bind paths.
-- Metal creates native samplers, MSL functions, function constants, render and
-  compute pipeline state, and command encoders. It implements descriptor arrays,
-  dynamic offsets, immutable samplers, push constants, logical remaps, MRT,
-  depth/stencil state, MSAA resolves, indirect drawing, and indirect compute.
-- Metal API validation exact-output proofs cover ShaderPackage-to-triangle,
-  textured descriptor arrays with a dynamic uniform offset and specialization/
-  push constants, depth-tested MRT with 4x MSAA, indexed/instanced/indirect
-  drawing, and compute-to-render storage flow.
-- Metal truthfully reports bindless/update-after-bind, indirect-count,
-  serialized pipeline caches, tessellation, and presentation as unsupported.
-  Those limitations do not fall back to Null behavior.
-- Renderer pipeline preparation now matches its placeholder pipeline to the
-  current pass format, depth format, and sample count, preserving existing
-  renderer tests under the stricter attachment compatibility rules.
-- PR #41's first Ubuntu and Windows builds exposed GCC/MinGW
-  `-Wmissing-field-initializers` diagnostics for partially designated command
-  and pipeline aggregates. The follow-up uses explicit default construction and
-  field assignment; a local GCC 15 warnings-as-errors build and all 26
-  non-Metal tests pass.
+- PRs #36-#41 are merged into `develop`, completing the warning-clean baseline,
+  RHI 1 foundation, resources, ShaderPackage 1.0, immutable bindings, and native
+  graphics/compute pipeline slices.
+- On `feat/rhi1-sync-presentation` for #31, command lists now retain one ordered
+  transfer/barrier/render/compute stream. Mixed render-to-copy validation proves
+  that submission no longer moves every transfer ahead of encoder commands.
+- The public synchronization contract now has pipeline-stage/access flags,
+  texture layouts, buffer/texture subresource barriers, aliasing barriers,
+  queue-ownership transfer, timeline semaphore waits/signals, optional timeline
+  fence signals, and bounded wait timeouts.
+- Null tracks subresource layouts and queue ownership, preserves executable
+  command lists after timeout/failure, and validates multi-queue timeline,
+  aliasing, stale-layout, acquisition, presentation-wait, and resize paths.
+- Metal maps semaphores to `MTLSharedEvent`, preserves barriers at encoder
+  boundaries, accepts host-owned `CAMetalLayer` surfaces, acquires drawable
+  textures, and presents them only through a graphics queue.
+- Metal reports drawable drift as `suboptimal`, zero extent as `out_of_date`,
+  drawable exhaustion as `timeout`, detached layers as `surface_lost`, and
+  device-removal command errors as `device_lost`. A resize recovers the tested
+  out-of-date path; device loss marks the public device lost.
+- A private, non-installed Metal fault hook proves `device_lost` propagation,
+  rejection of further work on the lost device, and recovery through a fresh
+  device without claiming physical GPU removal.
+- Renderer swapchain flow now records present/color transitions, waits on the
+  acquisition point, signals rendering completion, and passes that wait to
+  queue presentation.
+- The validation-enabled macOS suite is 32/32. Dedicated Metal tests prove
+  ordered render-to-copy output, shared-event/fence completion, native
+  acquire/render/present, suboptimal acquisition, resize, out-of-date recovery,
+  surface-loss recreation, and injected device-loss recovery.
 
 ## Durable Decisions
 
@@ -83,47 +76,50 @@ then begin explicit synchronization and presentation under issue #31.
 
 ## Validation
 
-Issue #30 validation on macOS Apple Silicon:
+Issue #31 validation on macOS Apple Silicon:
 
 ```text
 cmake --preset ci
 cmake --build --preset ci -j 6
-MTL_DEBUG_LAYER=1 ctest --preset ci --output-on-failure  # 31/31
+MTL_DEBUG_LAYER=1 ctest --preset ci --output-on-failure  # 32/32
 MTL_DEBUG_LAYER=1 build/ci/tests/truffle_metal_tests
+MTL_DEBUG_LAYER=1 build/ci/tests/truffle_metal_presentation_tests
 cmake --build --preset ci --target package
 git diff --check
 
-cmake --preset ci -B /tmp/truffle-rhi30-gcc \
+cmake --preset ci -B /tmp/truffle-rhi31-gcc \
       -DCMAKE_CXX_COMPILER=/opt/homebrew/bin/g++-15 \
       -DTRUFFLE_BUILD_BACKEND_METAL=OFF \
       -DTRUFFLE_BUILD_EXAMPLES=OFF
-cmake --build /tmp/truffle-rhi30-gcc -j 6
-ctest --test-dir /tmp/truffle-rhi30-gcc --output-on-failure  # 26/26
+cmake --build /tmp/truffle-rhi31-gcc -j 6
+ctest --test-dir /tmp/truffle-rhi31-gcc --output-on-failure  # 26/26
 ```
 
-The dedicated Null binding/pipeline suite exercises the complete portable
-contract and negative paths. The validation-enabled Metal executable verifies
-exact native pixels and buffer values for all five acceptance groups listed
-above. The full suite and package archive pass with warnings-as-errors.
-`truffle_format_check` remains unavailable because `clang-format` is not
-installed on this host.
+The GCC suite passes 26/26 and the package archive builds. The Null suite
+exercises the portable synchronization and presentation
+contract and negative paths. The validation-enabled Metal executables verify
+exact native ordering and layer presentation/status behavior. The full suite
+and package archive pass with warnings-as-errors. `truffle_format_check` remains
+unavailable because `clang-format` is not installed on this host.
 
 ## Next Resume Steps
 
-1. Open the #30 PR, monitor package/macOS/Ubuntu/Windows jobs, repair any
-   compiler-specific diagnostics, merge into `develop`, and close #30 if GitHub
+1. Open the #31 PR, monitor package/macOS/Ubuntu/Windows jobs, repair any
+   compiler-specific diagnostics, merge into `develop`, and close #31 if GitHub
    does not close it automatically.
-2. Start #31 from fresh `develop` and preserve command ordering while adding
-   barriers, wait/signal values, fences, queries, acquisition, and presentation.
-3. Keep Metal at `native_smoke` until synchronization, recovery, presentation,
-   and the remaining conformance evidence are repeatable.
+2. Start #33 from fresh `develop`; keep Metal at `native_smoke` until host-window,
+   physical device-loss, broader platform, and remaining conformance evidence
+   are repeatable.
 
 ## Open Risks
 
-- Transfer commands and graphics/compute native commands currently occupy
-  separate internal streams. Issue #31 must unify ordering before mixed
-  copy/render/compute command lists can claim explicit synchronization
-  correctness.
+- Submission is currently synchronous. It gives correct completed fence values
+  but does not yet provide asynchronous queue throughput or full deferred
+  destruction.
+- Metal's barrier mapping relies on encoder boundaries and default resource
+  hazard tracking; aliased heap allocations are not implemented yet.
+- Device-removal mapping and private fault injection are tested, but physical
+  device-removal evidence is not available in the macOS CI harness.
 - Metal intentionally lacks serialized pipeline caches, indirect-count,
   bindless/update-after-bind, and tessellation in this slice.
 - Vulkan, OpenGL, and Direct3D targets are factories without native adapters;

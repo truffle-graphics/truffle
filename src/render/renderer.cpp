@@ -233,6 +233,20 @@ core::Status Renderer::render(const FrameGraph& graph, rhi::Swapchain* swapchain
                 if (!acquired.ok()) {
                     return acquired.status;
                 }
+                rhi::BarrierBatch toRender;
+                rhi::TextureBarrier barrier;
+                barrier.texture = acquired.image;
+                barrier.oldLayout = rhi::TextureLayout::present;
+                barrier.newLayout = rhi::TextureLayout::color_attachment;
+                barrier.sourceStages = rhi::PipelineStage::top;
+                barrier.destinationStages =
+                    rhi::PipelineStage::color_attachment_output;
+                barrier.destinationAccess =
+                    rhi::Access::color_attachment_write;
+                toRender.textures.push_back(barrier);
+                if (auto status = list.barrier(toRender); !status.ok()) {
+                    return status;
+                }
                 hasAcquiredImage = true;
             }
             if (swapchain != nullptr) {
@@ -320,6 +334,21 @@ core::Status Renderer::render(const FrameGraph& graph, rhi::Swapchain* swapchain
         }
     }
 
+    if (hasAcquiredImage) {
+        rhi::BarrierBatch toPresent;
+        rhi::TextureBarrier barrier;
+        barrier.texture = acquired.image;
+        barrier.oldLayout = rhi::TextureLayout::color_attachment;
+        barrier.newLayout = rhi::TextureLayout::present;
+        barrier.sourceStages =
+            rhi::PipelineStage::color_attachment_output;
+        barrier.destinationStages = rhi::PipelineStage::bottom;
+        barrier.sourceAccess = rhi::Access::color_attachment_write;
+        toPresent.textures.push_back(barrier);
+        if (auto status = list.barrier(toPresent); !status.ok()) {
+            return status;
+        }
+    }
     if (auto status = list.end(); !status.ok()) {
         return status;
     }
@@ -329,11 +358,42 @@ core::Status Renderer::render(const FrameGraph& graph, rhi::Swapchain* swapchain
     }
     auto queue = std::move(queueResult).value();
     std::array<rhi::CommandList*, 1> lists{&list};
-    if (auto status = queue.submit(lists); !status.ok()) {
+    std::array<rhi::SemaphoreWait, 1> acquireWaits{};
+    std::array<rhi::SemaphoreSignal, 1> renderSignals{};
+    rhi::Semaphore rendered;
+    if (hasAcquiredImage) {
+        auto renderedResult = device_->create_semaphore();
+        if (!renderedResult.ok()) {
+            return renderedResult.status();
+        }
+        rendered = std::move(renderedResult).value();
+        acquireWaits[0] = {.semaphore = acquired.available,
+                           .value = acquired.availableValue,
+                           .stages =
+                               rhi::PipelineStage::color_attachment_output};
+        renderSignals[0] = {.semaphore = &rendered, .value = 1};
+    }
+    if (auto status = queue.submit({
+            .commandLists = lists,
+            .waits = hasAcquiredImage
+                         ? std::span<const rhi::SemaphoreWait>{acquireWaits}
+                         : std::span<const rhi::SemaphoreWait>{},
+            .signals = hasAcquiredImage
+                           ? std::span<const rhi::SemaphoreSignal>{renderSignals}
+                           : std::span<const rhi::SemaphoreSignal>{},
+        });
+        !status.ok()) {
         return status;
     }
     if (hasAcquiredImage) {
-        if (auto status = queue.present(*swapchain, acquired.imageIndex);
+        const std::array<rhi::SemaphoreWait, 1> presentWaits{{
+            {.semaphore = &rendered,
+             .value = 1,
+             .stages = rhi::PipelineStage::bottom},
+        }};
+        if (auto status = queue.present({.swapchain = swapchain,
+                                         .imageIndex = acquired.imageIndex,
+                                         .waits = presentWaits});
             !status.ok()) {
             return status;
         }

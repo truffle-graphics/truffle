@@ -2,9 +2,9 @@
 
 RHI 1 is the breaking replacement for Truffle's preliminary graphics API. It
 is the only backend-facing graphics contract. The public object and dispatch,
-resource, shader-package, binding, and pipeline slices tracked by issues
-#28-#30 and #32 are complete. Later synchronization and presentation slices
-remain in progress and return `unsupported` where they are not implemented.
+resource, shader-package, binding, pipeline, synchronization, and presentation
+slices tracked by issues #28-#32 are implemented. Native backend breadth and
+advanced capability work remain in progress.
 
 ## Ownership And Object Model
 
@@ -76,7 +76,7 @@ RHI 1 does not use exceptions across its public boundary.
 - Operations without a value return `Status`.
 - Swapchain acquisition returns `AcquireResult`, containing image, index,
   synchronization value, and a presentation status.
-- `Queue::present()` returns `PresentResult`.
+- `Queue::present()` returns `Status`.
 
 Portable statuses include `success`, `unsupported`, `invalid_argument`,
 `invalid_state`, `suboptimal`, `out_of_date`, `surface_lost`, `device_lost`,
@@ -117,6 +117,7 @@ never encoded into a command list.
 
 - [Resources, memory, views, and transfers](resources.md)
 - [Bindings and graphics/compute pipelines](bindings-and-pipelines.md)
+- [Synchronization and presentation](synchronization-and-presentation.md)
 - [Backend and platform maturity](support-matrix.md)
 - [Dependency policy](dependencies.md)
 - [Shader package contract](shader-package.md)

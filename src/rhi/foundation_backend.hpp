@@ -33,6 +33,8 @@ struct NativeTransfer {
 };
 
 enum class NativeCommandKind {
+    transfer,
+    barrier,
     begin_render,
     end_render,
     begin_compute,
@@ -89,6 +91,7 @@ struct NativeBindingResource {
 
 struct NativeCommand {
     NativeCommandKind kind = NativeCommandKind::draw;
+    NativeTransfer transfer;
     Extent2D extent;
     std::vector<NativeRenderAttachment> colorAttachments;
     NativeDepthStencilAttachment depthStencilAttachment;
@@ -99,6 +102,19 @@ struct NativeCommand {
     std::vector<Viewport> viewports;
     std::vector<ScissorRect> scissors;
     std::array<std::uint64_t, 8> arguments{};
+};
+
+struct NativeSemaphorePoint {
+    std::shared_ptr<void> semaphore;
+    std::uint64_t value = 0;
+    PipelineStage stages = PipelineStage::all_commands;
+};
+
+struct NativeSwapchainImage {
+    std::shared_ptr<void> texture;
+    std::uint32_t imageIndex = 0;
+    Extent2D extent;
+    Status status = Status::success();
 };
 
 struct FoundationBackendConfig {
@@ -144,8 +160,19 @@ struct FoundationBackendConfig {
         const std::shared_ptr<void>&) = nullptr;
     Result<std::shared_ptr<void>> (*createComputePipeline)(
         const ComputePipelineDesc&, const std::shared_ptr<void>&) = nullptr;
-    Status (*nativeSubmit)(std::span<const NativeTransfer>,
-                           std::span<const NativeCommand>) = nullptr;
+    Result<std::shared_ptr<void>> (*createSemaphore)(
+        const SemaphoreDesc&) = nullptr;
+    Result<std::shared_ptr<void>> (*createSurface)(const SurfaceDesc&) = nullptr;
+    Result<std::shared_ptr<void>> (*createSwapchain)(
+        const std::shared_ptr<void>&, const SwapchainDesc&) = nullptr;
+    Result<NativeSwapchainImage> (*acquireSwapchain)(
+        const std::shared_ptr<void>&) = nullptr;
+    Status (*resizeSwapchain)(const std::shared_ptr<void>&, Extent2D) = nullptr;
+    Status (*presentSwapchain)(const std::shared_ptr<void>&, std::uint32_t,
+                               std::span<const NativeSemaphorePoint>) = nullptr;
+    Status (*nativeSubmit)(std::span<const NativeCommand>,
+                           std::span<const NativeSemaphorePoint>,
+                           std::span<const NativeSemaphorePoint>) = nullptr;
 };
 
 [[nodiscard]] Result<Instance> create_foundation_instance(

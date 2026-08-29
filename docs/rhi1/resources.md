@@ -58,9 +58,9 @@ their buffer offset to the layout offset.
 | Backend | Implemented resource behavior | Explicit limitations |
 |---|---|---|
 | Null validation | All declared shapes and format classes; views; budgets; allocator callbacks; mapping/coherence; all transfer families; nearest blit; deferred-retirement validation. | External import/export, linear blit, and compressed clear return `unsupported`. |
-| Metal on macOS | Native buffers; native selected single-layer 2D, multisample color, and depth/depth-stencil textures and views; shared/private memory; mapping/coherence; buffer copy/fill; texture copy; buffer-texture copy; deterministic readback; render-pass MSAA resolves. | Non-2D/array and unlisted formats, external sharing, copy-encoder texture clear/resolve/blit, and presentation remain unsupported. |
+| Metal on macOS | Native buffers; native selected single-layer 2D, multisample color, depth/depth-stencil, and swapchain textures and views; shared/private memory; mapping/coherence; buffer copy/fill; texture copy; buffer-texture copy; deterministic readback; render-pass MSAA resolves. | Non-2D/array and unlisted formats, external sharing, and copy-encoder texture clear/resolve/blit remain unsupported. |
 | Vulkan, D3D12, OpenGL | No adapter is exposed. | The backend factory returns `unsupported`; no Null-backed resource is reported as native. |
 
 The macOS test runs with `MTL_DEBUG_LAYER=1` and compares exact bytes after
 native buffer, texture, and buffer-texture round trips. This satisfies the
-`native_smoke` gate, not full backend conformance or presentation support.
+`native_smoke` gate, not full backend conformance.

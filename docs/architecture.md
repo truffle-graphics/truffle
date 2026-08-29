@@ -51,8 +51,11 @@ the cutover decision durable.
 - Metal is the only current implementation with native API calls. Its resource
   and pipeline slices allocate native buffers and selected 2D textures, compile
   native shaders and pipeline state, and prove transfers plus exact graphics
-  and compute output with Metal API validation enabled. Unsupported shapes and
-  operations remain explicit capabilities rather than logical substitutes.
+  and compute output with Metal API validation enabled. It also maps timeline
+  semaphores to shared events and owns graphics-side `CAMetalLayer` acquisition
+  and presentation while the host retains window/lifecycle ownership.
+  Unsupported shapes and operations remain explicit capabilities rather than
+  logical substitutes.
 - Vulkan, OpenGL, and Direct3D targets are explicitly unavailable and report no
   adapters. Their removed CPU simulators are not part of RHI 1.
 - WebGPU, OpenGL ES, and WebGL2 implementations do not yet exist.

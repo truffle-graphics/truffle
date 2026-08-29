@@ -67,6 +67,12 @@ enum class ObjectKind {
 
 struct Runtime;
 
+struct SemaphorePointHandle {
+    Handle semaphore = 0;
+    std::uint64_t value = 0;
+    PipelineStage stages = PipelineStage::all_commands;
+};
+
 struct BackendDispatch {
     Result<Handle> (*create_adapter)(Runtime&, std::size_t);
     Result<Handle> (*create_device)(Runtime&, Handle, const DeviceDesc&);
@@ -108,9 +114,12 @@ struct BackendDispatch {
                                        const SwapchainDesc&);
     Result<Handle> (*create_upload_ring)(Runtime&, Handle, std::uint32_t,
                                          std::size_t);
-    Status (*submit)(Runtime&, Handle, std::span<const Handle>, Handle,
-                     std::uint64_t);
-    Status (*present)(Runtime&, Handle, Handle, std::uint32_t);
+    Status (*submit)(Runtime&, Handle, std::span<const Handle>,
+                     std::span<const SemaphorePointHandle>,
+                     std::span<const SemaphorePointHandle>, Handle,
+                     std::uint64_t, std::chrono::nanoseconds);
+    Status (*present)(Runtime&, Handle, Handle, std::uint32_t,
+                      std::span<const SemaphorePointHandle>);
 };
 
 struct FormatInfo {
@@ -415,12 +424,21 @@ struct DevicePayload {
 
 struct QueuePayload {
     QueueKind kind = QueueKind::graphics;
+    std::shared_ptr<DevicePayload> device;
     std::mutex submitMutex;
 };
 
 struct CommandPoolPayload {
     QueueKind kind = QueueKind::graphics;
     std::thread::id owner;
+};
+
+struct ResourceSyncState {
+    PipelineStage stages = PipelineStage::top;
+    Access access = Access::none;
+    TextureLayout layout = TextureLayout::undefined;
+    QueueKind owner = QueueKind::graphics;
+    bool ownerSet = false;
 };
 
 struct BufferPayload {
@@ -435,6 +453,7 @@ struct BufferPayload {
     std::shared_ptr<void> native;
     std::vector<std::byte> bytes;
     bool mapped = false;
+    ResourceSyncState sync;
     mutable std::mutex mutex;
 };
 
@@ -444,11 +463,13 @@ struct TexturePayload {
                    std::shared_ptr<void> nativeValue, bool logical)
         : desc(std::move(value)), reservation(std::move(reservationValue)),
           native(std::move(nativeValue)),
-          bytes(logical ? texture_requirements(desc).size : 0) {}
+          bytes(logical ? texture_requirements(desc).size : 0),
+          sync(static_cast<std::size_t>(desc.mipLevels) * desc.arrayLayers) {}
     TextureDesc desc;
     std::shared_ptr<MemoryReservation> reservation;
     std::shared_ptr<void> native;
     std::vector<std::byte> bytes;
+    std::vector<ResourceSyncState> sync;
     mutable std::mutex mutex;
 };
 
@@ -948,8 +969,34 @@ struct CommandListPayload {
     TextureFormat renderDepthStencilFormat = TextureFormat::unknown;
     std::uint32_t renderSampleCount = 1;
     std::vector<std::shared_ptr<void>> retained;
-    std::vector<TransferCommand> transfers;
-    std::vector<NativeCommand> nativeCommands;
+    struct BufferBarrierCommand {
+        BufferBarrier desc;
+        std::shared_ptr<BufferPayload> resource;
+    };
+    struct TextureBarrierCommand {
+        TextureBarrier desc;
+        std::shared_ptr<TexturePayload> resource;
+    };
+    struct AliasingBarrierCommand {
+        AliasingBarrier desc;
+        std::shared_ptr<BufferPayload> beforeBuffer;
+        std::shared_ptr<TexturePayload> beforeTexture;
+        std::shared_ptr<BufferPayload> afterBuffer;
+        std::shared_ptr<TexturePayload> afterTexture;
+    };
+    struct BarrierCommand {
+        std::vector<BufferBarrierCommand> buffers;
+        std::vector<TextureBarrierCommand> textures;
+        std::vector<AliasingBarrierCommand> aliasing;
+    };
+    enum class OperationKind { command, transfer, barrier };
+    struct Operation {
+        OperationKind kind = OperationKind::command;
+        NativeCommand native;
+        TransferCommand transfer;
+        BarrierCommand barrier;
+    };
+    std::vector<Operation> operations;
     std::mutex mutex;
 };
 
@@ -991,8 +1038,13 @@ struct FencePayload {
 };
 
 struct SemaphorePayload {
-    explicit SemaphorePayload(std::uint64_t initial) : value(initial) {}
+    explicit SemaphorePayload(std::uint64_t initial,
+                              std::shared_ptr<void> nativeValue = {})
+        : value(initial), native(std::move(nativeValue)) {}
     std::atomic<std::uint64_t> value{0};
+    std::shared_ptr<void> native;
+    std::mutex mutex;
+    std::condition_variable changed;
 };
 
 struct QueryPoolPayload {
@@ -1001,11 +1053,15 @@ struct QueryPoolPayload {
 
 struct SurfacePayload {
     SurfaceDesc desc;
+    std::shared_ptr<DevicePayload> device;
+    std::shared_ptr<void> native;
 };
 
 struct SwapchainPayload {
     SwapchainDesc desc;
+    std::shared_ptr<DevicePayload> device;
     std::shared_ptr<TexturePayload> image;
+    std::shared_ptr<void> native;
     std::uint32_t nextImage = 0;
     bool acquired = false;
     mutable std::mutex mutex;
@@ -1377,6 +1433,7 @@ struct Factory {
     }
     auto payload = std::make_shared<QueuePayload>();
     payload->kind = kind;
+    payload->device = device;
     return runtime.allocate(ObjectKind::queue, std::move(payload));
 }
 
@@ -2592,9 +2649,6 @@ struct Factory {
     if (!runtime.resolve<DevicePayload>(ObjectKind::device, deviceHandle)) {
         return invalid_object("device");
     }
-    if (!runtime.config.logicalResources) {
-        return unsupported(runtime, "fence creation");
-    }
     return runtime.allocate(ObjectKind::fence,
                             std::make_shared<FencePayload>(desc.initialValue));
 }
@@ -2604,12 +2658,21 @@ struct Factory {
     if (!runtime.resolve<DevicePayload>(ObjectKind::device, deviceHandle)) {
         return invalid_object("device");
     }
+    std::shared_ptr<void> native;
     if (!runtime.config.logicalResources) {
-        return unsupported(runtime, "semaphore creation");
+        if (runtime.config.createSemaphore == nullptr) {
+            return unsupported(runtime, "semaphore creation");
+        }
+        auto result = runtime.config.createSemaphore(desc);
+        if (!result.ok()) {
+            return result.status();
+        }
+        native = std::move(result).value();
     }
     return runtime.allocate(
         ObjectKind::semaphore,
-        std::make_shared<SemaphorePayload>(desc.initialValue));
+        std::make_shared<SemaphorePayload>(desc.initialValue,
+                                           std::move(native)));
 }
 
 [[nodiscard]] Result<Handle> foundation_create_query_pool(
@@ -2632,7 +2695,9 @@ struct Factory {
 [[nodiscard]] Result<Handle> foundation_create_surface(Runtime& runtime,
                                                        Handle deviceHandle,
                                                        const SurfaceDesc& desc) {
-    if (!runtime.resolve<DevicePayload>(ObjectKind::device, deviceHandle)) {
+    const auto device = runtime.resolve<DevicePayload>(ObjectKind::device,
+                                                        deviceHandle);
+    if (!device) {
         return invalid_object("device");
     }
     if (!validation::is_non_zero(desc.initialExtent) ||
@@ -2643,10 +2708,23 @@ struct Factory {
     if (!runtime.config.presentation) {
         return unsupported(runtime, "surface creation");
     }
+    std::shared_ptr<void> native;
+    if (!runtime.config.logicalResources) {
+        if (runtime.config.createSurface == nullptr) {
+            return unsupported(runtime, "surface creation");
+        }
+        auto result = runtime.config.createSurface(desc);
+        if (!result.ok()) {
+            return result.status();
+        }
+        native = std::move(result).value();
+    }
+    auto payload = std::make_shared<SurfacePayload>();
+    payload->desc = desc;
+    payload->device = device;
+    payload->native = std::move(native);
     runtime.update_stats([](BackendStats& stats) { ++stats.surfacesCreated; });
-    return runtime.allocate(ObjectKind::surface,
-                            std::make_shared<SurfacePayload>(
-                                SurfacePayload{desc}));
+    return runtime.allocate(ObjectKind::surface, std::move(payload));
 }
 
 [[nodiscard]] Result<Handle> foundation_create_swapchain(
@@ -2657,7 +2735,9 @@ struct Factory {
     if (!device) {
         return invalid_object("device");
     }
-    if (!runtime.resolve<SurfacePayload>(ObjectKind::surface, surfaceHandle)) {
+    const auto surface = runtime.resolve<SurfacePayload>(ObjectKind::surface,
+                                                          surfaceHandle);
+    if (!surface) {
         return invalid_object("surface");
     }
     if (!validation::is_non_zero(desc.extent) || desc.imageCount == 0) {
@@ -2666,6 +2746,23 @@ struct Factory {
     }
     auto payload = std::make_shared<SwapchainPayload>();
     payload->desc = desc;
+    payload->device = device;
+    if (!runtime.config.logicalResources) {
+        if (runtime.config.createSwapchain == nullptr) {
+            return unsupported(runtime, "swapchain creation");
+        }
+        auto result = runtime.config.createSwapchain(surface->native, desc);
+        if (!result.ok()) {
+            if (result.status().code == StatusCode::device_lost) {
+                device->lost.store(true);
+            }
+            return result.status();
+        }
+        payload->native = std::move(result).value();
+        runtime.update_stats(
+            [](BackendStats& stats) { ++stats.swapchainsCreated; });
+        return runtime.allocate(ObjectKind::swapchain, std::move(payload));
+    }
     const TextureDesc imageDesc{
         .extent = {desc.extent.width, desc.extent.height, 1},
         .format = desc.format,
@@ -2681,6 +2778,11 @@ struct Factory {
     auto reservation = std::move(reservationResult).value();
     payload->image = std::make_shared<TexturePayload>(
         imageDesc, std::move(reservation), nullptr, true);
+    for (auto& sync : payload->image->sync) {
+        sync.layout = TextureLayout::present;
+        sync.owner = QueueKind::graphics;
+        sync.ownerSet = true;
+    }
     runtime.update_stats(
         [](BackendStats& stats) { ++stats.swapchainsCreated; });
     return runtime.allocate(ObjectKind::swapchain, std::move(payload));
@@ -2727,18 +2829,147 @@ struct Factory {
     return runtime.allocate(ObjectKind::upload_ring, std::move(payload));
 }
 
+[[nodiscard]] Status execute_barrier(
+    const CommandListPayload::BarrierCommand& command, QueueKind queueKind) {
+    for (const auto& barrier : command.buffers) {
+        auto& resource = *barrier.resource;
+        const auto size = barrier.desc.size == whole_size
+                              ? resource.desc.size - barrier.desc.offset
+                              : barrier.desc.size;
+        if (!buffer_range_valid(resource, barrier.desc.offset, size)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "buffer barrier range is invalid");
+        }
+        std::lock_guard lock{resource.mutex};
+        if (barrier.desc.transferOwnership) {
+            if (barrier.desc.sourceQueue == barrier.desc.destinationQueue ||
+                barrier.desc.sourceQueue != queueKind ||
+                (resource.sync.ownerSet &&
+                 resource.sync.owner != barrier.desc.sourceQueue)) {
+                return Status::failure(
+                    StatusCode::invalid_state,
+                    "buffer barrier queue ownership transfer is invalid");
+            }
+            resource.sync.owner = barrier.desc.destinationQueue;
+            resource.sync.ownerSet = true;
+        } else if (resource.sync.ownerSet && resource.sync.owner != queueKind) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "buffer is owned by another queue");
+        } else {
+            resource.sync.owner = queueKind;
+            resource.sync.ownerSet = true;
+        }
+        resource.sync.stages = barrier.desc.destinationStages;
+        resource.sync.access = barrier.desc.destinationAccess;
+    }
+    for (const auto& barrier : command.textures) {
+        auto& resource = *barrier.resource;
+        const auto& range = barrier.desc.range;
+        if (range.mipLevelCount == 0 || range.arrayLayerCount == 0 ||
+            range.baseMipLevel >= resource.desc.mipLevels ||
+            range.mipLevelCount >
+                resource.desc.mipLevels - range.baseMipLevel ||
+            range.baseArrayLayer >= resource.desc.arrayLayers ||
+            range.arrayLayerCount >
+                resource.desc.arrayLayers - range.baseArrayLayer ||
+            range.aspects == TextureAspect::none ||
+            !has_aspect(validation::format_aspects(resource.desc.format),
+                        range.aspects)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "texture barrier range is invalid");
+        }
+        std::lock_guard lock{resource.mutex};
+        for (std::uint32_t layer = range.baseArrayLayer;
+             layer < range.baseArrayLayer + range.arrayLayerCount; ++layer) {
+            for (std::uint32_t mip = range.baseMipLevel;
+                 mip < range.baseMipLevel + range.mipLevelCount; ++mip) {
+                auto& sync = resource.sync[static_cast<std::size_t>(layer) *
+                                               resource.desc.mipLevels +
+                                           mip];
+                if (barrier.desc.oldLayout != TextureLayout::undefined &&
+                    sync.layout != barrier.desc.oldLayout) {
+                    return Status::failure(
+                        StatusCode::invalid_state,
+                        "texture barrier old layout does not match tracked layout");
+                }
+                if (barrier.desc.transferOwnership) {
+                    if (barrier.desc.sourceQueue ==
+                            barrier.desc.destinationQueue ||
+                        barrier.desc.sourceQueue != queueKind ||
+                        (sync.ownerSet &&
+                         sync.owner != barrier.desc.sourceQueue)) {
+                        return Status::failure(
+                            StatusCode::invalid_state,
+                            "texture barrier queue ownership transfer is invalid");
+                    }
+                    sync.owner = barrier.desc.destinationQueue;
+                    sync.ownerSet = true;
+                } else if (sync.ownerSet && sync.owner != queueKind) {
+                    return Status::failure(StatusCode::invalid_state,
+                                           "texture is owned by another queue");
+                } else {
+                    sync.owner = queueKind;
+                    sync.ownerSet = true;
+                }
+                sync.layout = barrier.desc.newLayout;
+                sync.stages = barrier.desc.destinationStages;
+                sync.access = barrier.desc.destinationAccess;
+            }
+        }
+    }
+    return Status::success();
+}
+
 [[nodiscard]] Status foundation_submit(Runtime& runtime, Handle queueHandle,
                                        std::span<const Handle> commandLists,
+                                       std::span<const SemaphorePointHandle> waits,
+                                       std::span<const SemaphorePointHandle> signals,
                                        Handle fenceHandle,
-                                       std::uint64_t fenceValue) {
+                                       std::uint64_t fenceValue,
+                                       std::chrono::nanoseconds waitTimeout) {
     const auto queue = runtime.resolve<QueuePayload>(ObjectKind::queue, queueHandle);
     if (!queue) {
         return invalid_object("queue");
     }
+    if (!queue->device || queue->device->lost.load()) {
+        return Status::failure(StatusCode::device_lost,
+                               "submission device is lost");
+    }
     std::lock_guard queueLock{queue->submitMutex};
     std::vector<std::shared_ptr<CommandListPayload>> lists;
-    std::vector<TransferCommand> transfers;
-    std::vector<NativeCommand> nativeCommands;
+    std::vector<CommandListPayload::Operation> operations;
+    std::vector<std::shared_ptr<SemaphorePayload>> waitSemaphores;
+    std::vector<std::shared_ptr<SemaphorePayload>> signalSemaphores;
+    std::vector<NativeSemaphorePoint> nativeWaits;
+    std::vector<NativeSemaphorePoint> nativeSignals;
+    waitSemaphores.reserve(waits.size());
+    signalSemaphores.reserve(signals.size());
+    nativeWaits.reserve(waits.size());
+    nativeSignals.reserve(signals.size());
+    for (const auto& wait : waits) {
+        auto semaphore = runtime.resolve<SemaphorePayload>(ObjectKind::semaphore,
+                                                            wait.semaphore);
+        if (!semaphore) {
+            return invalid_object("wait semaphore");
+        }
+        waitSemaphores.push_back(semaphore);
+        nativeWaits.push_back({semaphore->native, wait.value, wait.stages});
+    }
+    for (const auto& signal : signals) {
+        auto semaphore = runtime.resolve<SemaphorePayload>(ObjectKind::semaphore,
+                                                            signal.semaphore);
+        if (!semaphore) {
+            return invalid_object("signal semaphore");
+        }
+        if (signal.value <= semaphore->value.load()) {
+            return Status::failure(
+                StatusCode::invalid_argument,
+                "timeline semaphore signal values must increase");
+        }
+        signalSemaphores.push_back(semaphore);
+        nativeSignals.push_back(
+            {semaphore->native, signal.value, PipelineStage::bottom});
+    }
     lists.reserve(commandLists.size());
     for (const auto handle : commandLists) {
         auto list = runtime.resolve<CommandListPayload>(ObjectKind::command_list,
@@ -2755,30 +2986,69 @@ struct Factory {
             return Status::failure(StatusCode::invalid_argument,
                                    "command list queue kind does not match queue");
         }
-        transfers.insert(transfers.end(), list->transfers.begin(),
-                         list->transfers.end());
-        nativeCommands.insert(nativeCommands.end(), list->nativeCommands.begin(),
-                              list->nativeCommands.end());
+        operations.insert(operations.end(), list->operations.begin(),
+                          list->operations.end());
         lists.push_back(std::move(list));
     }
+    for (std::size_t index = 0; index < waits.size(); ++index) {
+        auto& semaphore = waitSemaphores[index];
+        std::unique_lock semaphoreLock{semaphore->mutex};
+        const auto ready = [&] {
+            return semaphore->value.load() >= waits[index].value;
+        };
+        if (waitTimeout == std::chrono::nanoseconds::max()) {
+            semaphore->changed.wait(semaphoreLock, ready);
+        } else if (!semaphore->changed.wait_for(semaphoreLock, waitTimeout,
+                                                ready)) {
+            return Status::failure(StatusCode::timeout,
+                                   "queue semaphore wait timed out");
+        }
+    }
+    std::size_t transferCount = 0;
     if (runtime.config.logicalResources) {
-        for (const auto& transfer : transfers) {
-            if (auto status = execute_logical_transfer(transfer); !status.ok()) {
-                return status;
+        for (const auto& operation : operations) {
+            switch (operation.kind) {
+            case CommandListPayload::OperationKind::command:
+                break;
+            case CommandListPayload::OperationKind::transfer:
+                ++transferCount;
+                if (auto status = execute_logical_transfer(operation.transfer);
+                    !status.ok()) {
+                    return status;
+                }
+                break;
+            case CommandListPayload::OperationKind::barrier:
+                if (auto status = execute_barrier(operation.barrier, queue->kind);
+                    !status.ok()) {
+                    return status;
+                }
+                break;
             }
         }
     } else {
         if (runtime.config.nativeSubmit == nullptr) {
             return unsupported(runtime, "command submission");
         }
-        std::vector<NativeTransfer> nativeTransfers;
-        nativeTransfers.reserve(transfers.size());
-        for (const auto& transfer : transfers) {
-            nativeTransfers.push_back(make_native_transfer(transfer));
+        std::vector<NativeCommand> nativeCommands;
+        nativeCommands.reserve(operations.size());
+        for (const auto& operation : operations) {
+            if (operation.kind == CommandListPayload::OperationKind::barrier) {
+                if (auto status = execute_barrier(operation.barrier, queue->kind);
+                    !status.ok()) {
+                    return status;
+                }
+            }
+            nativeCommands.push_back(operation.native);
+            if (operation.kind == CommandListPayload::OperationKind::transfer) {
+                ++transferCount;
+            }
         }
-        if (auto status = runtime.config.nativeSubmit(nativeTransfers,
-                                                      nativeCommands);
+        if (auto status = runtime.config.nativeSubmit(nativeCommands, nativeWaits,
+                                                      nativeSignals);
             !status.ok()) {
+            if (status.code == StatusCode::device_lost) {
+                queue->device->lost.store(true);
+            }
             return status;
         }
     }
@@ -2786,10 +3056,13 @@ struct Factory {
         std::lock_guard listLock{list->mutex};
         list->state = CommandListState::submitted;
         list->retained.clear();
-        list->transfers.clear();
-        list->nativeCommands.clear();
+        list->operations.clear();
         list->graphicsPipeline.reset();
         list->computePipeline.reset();
+    }
+    for (std::size_t index = 0; index < signals.size(); ++index) {
+        signalSemaphores[index]->value.store(signals[index].value);
+        signalSemaphores[index]->changed.notify_all();
     }
     if (fenceHandle != 0) {
         const auto fence = runtime.resolve<FencePayload>(ObjectKind::fence,
@@ -2803,7 +3076,7 @@ struct Factory {
         }
         fence->changed.notify_all();
     }
-    runtime.update_stats([transferCount = transfers.size()](BackendStats& stats) {
+    runtime.update_stats([transferCount](BackendStats& stats) {
         ++stats.submissions;
         stats.transfersExecuted += transferCount;
     });
@@ -2812,12 +3085,17 @@ struct Factory {
 
 [[nodiscard]] Status foundation_present(Runtime& runtime, Handle queueHandle,
                                         Handle swapchainHandle,
-                                        std::uint32_t imageIndex) {
+                                        std::uint32_t imageIndex,
+                                        std::span<const SemaphorePointHandle> waits) {
     const auto queue = runtime.resolve<QueuePayload>(ObjectKind::queue, queueHandle);
     const auto swapchain = runtime.resolve<SwapchainPayload>(
         ObjectKind::swapchain, swapchainHandle);
     if (!queue) {
         return invalid_object("queue");
+    }
+    if (!queue->device || queue->device->lost.load()) {
+        return Status::failure(StatusCode::device_lost,
+                               "presentation device is lost");
     }
     if (!swapchain) {
         return invalid_object("swapchain");
@@ -2826,13 +3104,58 @@ struct Factory {
         return Status::failure(StatusCode::invalid_argument,
                                "presentation requires a graphics queue");
     }
-    if (!runtime.config.logicalResources) {
-        return unsupported(runtime, "presentation");
+    std::vector<NativeSemaphorePoint> nativeWaits;
+    nativeWaits.reserve(waits.size());
+    for (const auto& wait : waits) {
+        const auto semaphore = runtime.resolve<SemaphorePayload>(
+            ObjectKind::semaphore, wait.semaphore);
+        if (!semaphore) {
+            return invalid_object("present wait semaphore");
+        }
+        if (semaphore->value.load() < wait.value) {
+            return Status::failure(
+                StatusCode::invalid_state,
+                "present wait semaphore has not reached the requested value");
+        }
+        nativeWaits.push_back({semaphore->native, wait.value, wait.stages});
     }
     std::lock_guard lock{swapchain->mutex};
     if (!swapchain->acquired || imageIndex >= swapchain->desc.imageCount) {
         return Status::failure(StatusCode::invalid_state,
                                "present requires an acquired swapchain image");
+    }
+    if (!swapchain->image) {
+        return Status::failure(StatusCode::invalid_state,
+                               "present has no acquired swapchain texture");
+    }
+    {
+        std::lock_guard imageLock{swapchain->image->mutex};
+        for (const auto& sync : swapchain->image->sync) {
+            if (sync.layout != TextureLayout::present ||
+                (sync.ownerSet && sync.owner != QueueKind::graphics)) {
+                return Status::failure(
+                    StatusCode::invalid_state,
+                    "swapchain image must be graphics-owned in present layout");
+            }
+        }
+    }
+    if (!runtime.config.logicalResources) {
+        if (runtime.config.presentSwapchain == nullptr) {
+            return unsupported(runtime, "presentation");
+        }
+        const auto status = runtime.config.presentSwapchain(
+            swapchain->native, imageIndex, nativeWaits);
+        if (status.code == StatusCode::device_lost && swapchain->device) {
+            swapchain->device->lost.store(true);
+        }
+        if (status.ok() || status.code == StatusCode::suboptimal ||
+            status.code == StatusCode::out_of_date) {
+            swapchain->acquired = false;
+            swapchain->image.reset();
+            runtime.update_stats(
+                [](BackendStats& stats) { ++stats.presentations; });
+        }
+        return status;
     }
     swapchain->acquired = false;
     runtime.update_stats([](BackendStats& stats) { ++stats.presentations; });
@@ -2918,8 +3241,22 @@ Result<Instance> unavailable_backend(BackendKind kind, std::string backendName) 
             StatusCode::invalid_state,
             "transfer command requires an owned active copy encoder");
     }
-    list->transfers.push_back(std::move(command));
+    NativeCommand native;
+    native.kind = NativeCommandKind::transfer;
+    native.transfer = make_native_transfer(command);
+    CommandListPayload::Operation operation;
+    operation.kind = CommandListPayload::OperationKind::transfer;
+    operation.native = std::move(native);
+    operation.transfer = std::move(command);
+    list->operations.push_back(std::move(operation));
     return Status::success();
+}
+
+void record_native(CommandListPayload& list, NativeCommand command) {
+    CommandListPayload::Operation operation;
+    operation.kind = CommandListPayload::OperationKind::command;
+    operation.native = std::move(command);
+    list.operations.push_back(std::move(operation));
 }
 
 template <typename Payload>
@@ -3965,8 +4302,7 @@ Status CommandList::reset() {
     value->state = CommandListState::initial;
     value->owner = {};
     value->retained.clear();
-    value->transfers.clear();
-    value->nativeCommands.clear();
+    value->operations.clear();
     value->graphicsPipelineBound = false;
     value->computePipelineBound = false;
     value->indexBufferBound = false;
@@ -4109,7 +4445,7 @@ Result<RenderEncoder> CommandList::begin_rendering(const RenderPassDesc& desc) {
         return Status::failure(StatusCode::invalid_argument,
                                "native render pass requires an attachment");
     }
-    value->nativeCommands.push_back(std::move(command));
+    detail::record_native(*value, std::move(command));
     value->activeEncoder = 1;
     value->graphicsPipelineBound = false;
     value->indexBufferBound = false;
@@ -4134,7 +4470,7 @@ Result<ComputeEncoder> CommandList::begin_compute() {
     value->computePipeline.reset();
     detail::NativeCommand command;
     command.kind = detail::NativeCommandKind::begin_compute;
-    value->nativeCommands.push_back(std::move(command));
+    detail::record_native(*value, std::move(command));
     return ComputeEncoder{*this};
 }
 
@@ -4156,6 +4492,129 @@ Result<CopyEncoder> CommandList::begin_copy() {
     }
     value->activeEncoder = 3;
     return CopyEncoder{*this};
+}
+
+Status CommandList::barrier(const BarrierBatch& batch) {
+    const auto value = detail::payload<detail::CommandListPayload>(
+        state_, detail::ObjectKind::command_list);
+    if (!value) {
+        return detail::invalid_object("command list");
+    }
+    std::lock_guard lock{value->mutex};
+    if (value->owner != std::this_thread::get_id() ||
+        value->state != CommandListState::recording || value->activeEncoder != 0) {
+        return Status::failure(
+            StatusCode::invalid_state,
+            "barriers require an owned recording command list with no active encoder");
+    }
+    if (batch.buffers.empty() && batch.textures.empty() &&
+        batch.aliasing.empty()) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "barrier batch must not be empty");
+    }
+    detail::CommandListPayload::Operation operation;
+    operation.kind = detail::CommandListPayload::OperationKind::barrier;
+    operation.native.kind = detail::NativeCommandKind::barrier;
+    operation.barrier.buffers.reserve(batch.buffers.size());
+    operation.barrier.textures.reserve(batch.textures.size());
+    operation.barrier.aliasing.reserve(batch.aliasing.size());
+
+    for (auto desc : batch.buffers) {
+        if (desc.buffer == nullptr || !desc.buffer->valid() ||
+            desc.buffer->state_->runtime.get() != state_->runtime.get()) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "buffer barrier resource is invalid or foreign");
+        }
+        if (desc.sourceStages == PipelineStage::none ||
+            desc.destinationStages == PipelineStage::none ||
+            (desc.transferOwnership &&
+             desc.sourceQueue == desc.destinationQueue)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "buffer barrier stages or ownership are invalid");
+        }
+        auto resource = state_->runtime->resolve<detail::BufferPayload>(
+            detail::ObjectKind::buffer, desc.buffer->state_->handle);
+        if (!resource) {
+            return detail::invalid_object("buffer barrier resource");
+        }
+        desc.buffer = nullptr;
+        operation.barrier.buffers.push_back(
+            {.desc = desc, .resource = std::move(resource)});
+    }
+    for (auto desc : batch.textures) {
+        if (desc.texture == nullptr || !desc.texture->valid() ||
+            desc.texture->state_->runtime.get() != state_->runtime.get()) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "texture barrier resource is invalid or foreign");
+        }
+        if (desc.sourceStages == PipelineStage::none ||
+            desc.destinationStages == PipelineStage::none ||
+            desc.newLayout == TextureLayout::undefined ||
+            (desc.transferOwnership &&
+             desc.sourceQueue == desc.destinationQueue)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "texture barrier state is invalid");
+        }
+        auto resource = state_->runtime->resolve<detail::TexturePayload>(
+            detail::ObjectKind::texture, desc.texture->state_->handle);
+        if (!resource) {
+            return detail::invalid_object("texture barrier resource");
+        }
+        desc.texture = nullptr;
+        operation.barrier.textures.push_back(
+            {.desc = desc, .resource = std::move(resource)});
+    }
+    const auto resolve_alias_buffer = [&](Buffer* buffer) {
+        return buffer != nullptr && buffer->valid() &&
+                       buffer->state_->runtime.get() == state_->runtime.get()
+                   ? state_->runtime->resolve<detail::BufferPayload>(
+                         detail::ObjectKind::buffer, buffer->state_->handle)
+                   : std::shared_ptr<detail::BufferPayload>{};
+    };
+    const auto resolve_alias_texture = [&](Texture* texture) {
+        return texture != nullptr && texture->valid() &&
+                       texture->state_->runtime.get() == state_->runtime.get()
+                   ? state_->runtime->resolve<detail::TexturePayload>(
+                         detail::ObjectKind::texture, texture->state_->handle)
+                   : std::shared_ptr<detail::TexturePayload>{};
+    };
+    for (auto desc : batch.aliasing) {
+        const auto beforeCount = static_cast<unsigned>(desc.beforeBuffer != nullptr) +
+                                 static_cast<unsigned>(desc.beforeTexture != nullptr);
+        const auto afterCount = static_cast<unsigned>(desc.afterBuffer != nullptr) +
+                                static_cast<unsigned>(desc.afterTexture != nullptr);
+        if (beforeCount != 1 || afterCount != 1) {
+            return Status::failure(
+                StatusCode::invalid_argument,
+                "aliasing barriers require exactly one before and after resource");
+        }
+        detail::CommandListPayload::AliasingBarrierCommand alias;
+        alias.beforeBuffer = resolve_alias_buffer(desc.beforeBuffer);
+        alias.beforeTexture = resolve_alias_texture(desc.beforeTexture);
+        alias.afterBuffer = resolve_alias_buffer(desc.afterBuffer);
+        alias.afterTexture = resolve_alias_texture(desc.afterTexture);
+        if ((!alias.beforeBuffer && !alias.beforeTexture) ||
+            (!alias.afterBuffer && !alias.afterTexture)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "aliasing barrier resource is invalid or foreign");
+        }
+        if (desc.sourceStages == PipelineStage::none ||
+            desc.destinationStages == PipelineStage::none ||
+            (alias.beforeBuffer && alias.beforeBuffer == alias.afterBuffer) ||
+            (alias.beforeTexture &&
+             alias.beforeTexture == alias.afterTexture)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "aliasing barrier state is invalid");
+        }
+        desc.beforeBuffer = nullptr;
+        desc.beforeTexture = nullptr;
+        desc.afterBuffer = nullptr;
+        desc.afterTexture = nullptr;
+        alias.desc = desc;
+        operation.barrier.aliasing.push_back(std::move(alias));
+    }
+    value->operations.push_back(std::move(operation));
+    return Status::success();
 }
 
 Status CommandList::encoder_command(std::uint32_t opcode, ObjectId object,
@@ -4213,7 +4672,7 @@ Status CommandList::encoder_command(std::uint32_t opcode, ObjectId object,
         detail::NativeCommand command;
         command.kind = detail::NativeCommandKind::bind_graphics_pipeline;
         command.object = pipeline->native;
-        value->nativeCommands.push_back(std::move(command));
+        detail::record_native(*value, std::move(command));
         break;
     }
     case 2:
@@ -4270,7 +4729,7 @@ Status CommandList::encoder_command(std::uint32_t opcode, ObjectId object,
                                    "buffer command is invalid for encoder");
         }
         value->retained.push_back(buffer);
-        value->nativeCommands.push_back(std::move(command));
+        detail::record_native(*value, std::move(command));
         break;
     }
     case 4: {
@@ -4292,7 +4751,7 @@ Status CommandList::encoder_command(std::uint32_t opcode, ObjectId object,
                              pipeline->preferredWorkgroupSize.width,
                              pipeline->preferredWorkgroupSize.height,
                              pipeline->preferredWorkgroupSize.depth};
-        value->nativeCommands.push_back(std::move(command));
+        detail::record_native(*value, std::move(command));
         break;
     }
     case 6:
@@ -4307,7 +4766,7 @@ Status CommandList::encoder_command(std::uint32_t opcode, ObjectId object,
             detail::NativeCommand command;
             command.kind = detail::NativeCommandKind::draw;
             command.arguments = {arg0, arg1};
-            value->nativeCommands.push_back(std::move(command));
+            detail::record_native(*value, std::move(command));
         }
         break;
     case 9:
@@ -4322,7 +4781,7 @@ Status CommandList::encoder_command(std::uint32_t opcode, ObjectId object,
             detail::NativeCommand command;
             command.kind = detail::NativeCommandKind::dispatch;
             command.arguments = {arg0, arg1, 1};
-            value->nativeCommands.push_back(std::move(command));
+            detail::record_native(*value, std::move(command));
         }
         break;
     default:
@@ -4347,11 +4806,11 @@ Status CommandList::end_encoder(std::uint32_t encoderKind) {
     if (encoderKind == 1) {
         detail::NativeCommand command;
         command.kind = detail::NativeCommandKind::end_render;
-        value->nativeCommands.push_back(std::move(command));
+        detail::record_native(*value, std::move(command));
     } else if (encoderKind == 2) {
         detail::NativeCommand command;
         command.kind = detail::NativeCommandKind::end_compute;
-        value->nativeCommands.push_back(std::move(command));
+        detail::record_native(*value, std::move(command));
     }
     value->activeEncoder = 0;
     return Status::success();
@@ -4579,7 +5038,7 @@ namespace detail {
         command.bindings.push_back(std::move(native));
     }
     list->retained.push_back(bindGroup);
-    list->nativeCommands.push_back(std::move(command));
+    detail::record_native(*list, std::move(command));
     return Status::success();
 }
 
@@ -4640,7 +5099,7 @@ namespace detail {
     command.arguments[0] = static_cast<std::uint32_t>(stages);
     command.arguments[1] = offset;
     command.bytes.assign(data.begin(), data.end());
-    list->nativeCommands.push_back(std::move(command));
+    detail::record_native(*list, std::move(command));
     return Status::success();
 }
 
@@ -4662,7 +5121,7 @@ namespace detail {
         return Status::failure(StatusCode::invalid_state,
                                "draw requires complete bound state and non-zero counts");
     }
-    list->nativeCommands.push_back(std::move(command));
+    detail::record_native(*list, std::move(command));
     state.runtime->update_stats(
         [](BackendStats& stats) { ++stats.drawsRecorded; });
     return Status::success();
@@ -4684,7 +5143,7 @@ namespace detail {
             StatusCode::invalid_state,
             "dispatch requires a bound pipeline and non-zero group counts");
     }
-    list->nativeCommands.push_back(std::move(command));
+    detail::record_native(*list, std::move(command));
     state.runtime->update_stats(
         [](BackendStats& stats) { ++stats.dispatchesRecorded; });
     return Status::success();
@@ -4748,7 +5207,7 @@ Status RenderEncoder::set_viewports(std::uint32_t first,
     command.kind = detail::NativeCommandKind::set_viewports;
     command.arguments[0] = first;
     command.viewports.assign(viewports.begin(), viewports.end());
-    list->nativeCommands.push_back(std::move(command));
+    detail::record_native(*list, std::move(command));
     list->viewportSet = list->viewportSet || first == 0;
     return Status::success();
 }
@@ -4784,7 +5243,7 @@ Status RenderEncoder::set_scissors(std::uint32_t first,
     command.kind = detail::NativeCommandKind::set_scissors;
     command.arguments[0] = first;
     command.scissors.assign(scissors.begin(), scissors.end());
-    list->nativeCommands.push_back(std::move(command));
+    detail::record_native(*list, std::move(command));
     list->scissorSet = list->scissorSet || first == 0;
     return Status::success();
 }
@@ -4814,7 +5273,7 @@ Status RenderEncoder::set_blend_constant(
     command.kind = detail::NativeCommandKind::set_blend_constant;
     const auto bytes = std::as_bytes(std::span{color});
     command.bytes.assign(bytes.begin(), bytes.end());
-    list->nativeCommands.push_back(std::move(command));
+    detail::record_native(*list, std::move(command));
     list->blendConstantSet = true;
     return Status::success();
 }
@@ -4839,7 +5298,7 @@ Status RenderEncoder::set_stencil_reference(std::uint32_t reference) {
     detail::NativeCommand command;
     command.kind = detail::NativeCommandKind::set_stencil_reference;
     command.arguments = {reference};
-    list->nativeCommands.push_back(std::move(command));
+    detail::record_native(*list, std::move(command));
     list->stencilReferenceSet = true;
     return Status::success();
 }
@@ -4869,7 +5328,7 @@ Status RenderEncoder::set_depth_bias(float constantFactor, float slopeScale,
     const std::array<float, 3> values{constantFactor, slopeScale, clamp};
     const auto bytes = std::as_bytes(std::span{values});
     command.bytes.assign(bytes.begin(), bytes.end());
-    list->nativeCommands.push_back(std::move(command));
+    detail::record_native(*list, std::move(command));
     list->depthBiasSet = true;
     return Status::success();
 }
@@ -4942,7 +5401,7 @@ Status RenderEncoder::draw_indirect(Buffer& buffer, std::size_t offset,
     command.object = indirect->native;
     command.arguments = {offset, indexed ? 1u : 0u, drawCount,
                          effectiveStride};
-    list->nativeCommands.push_back(std::move(command));
+    detail::record_native(*list, std::move(command));
     list_->state_->runtime->update_stats(
         [](BackendStats& stats) { ++stats.drawsRecorded; });
     return Status::success();
@@ -4998,7 +5457,7 @@ Status RenderEncoder::draw_indirect_count(
     command.secondaryObject = count->native;
     command.arguments = {offset, countOffset, maximumDrawCount, effectiveStride,
                          indexed ? 1u : 0u};
-    list->nativeCommands.push_back(std::move(command));
+    detail::record_native(*list, std::move(command));
     list_->state_->runtime->update_stats(
         [](BackendStats& stats) { ++stats.drawsRecorded; });
     return Status::success();
@@ -5128,7 +5587,7 @@ Status ComputeEncoder::dispatch_indirect(Buffer& buffer, std::size_t offset) {
     command.kind = detail::NativeCommandKind::dispatch_indirect;
     command.object = indirect->native;
     command.arguments = {offset};
-    list->nativeCommands.push_back(std::move(command));
+    detail::record_native(*list, std::move(command));
     list_->state_->runtime->update_stats(
         [](BackendStats& stats) { ++stats.dispatchesRecorded; });
     return Status::success();
@@ -5484,44 +5943,104 @@ QueueKind Queue::kind() const {
     return value ? value->kind : QueueKind::graphics;
 }
 
-Status Queue::submit(std::span<CommandList* const> commandLists,
-                     Fence* signalFence, std::uint64_t signalValue) {
-    if (!valid() || commandLists.empty()) {
+Status Queue::submit(const QueueSubmitDesc& desc) {
+    if (!valid() || desc.commandLists.empty()) {
         return Status::failure(StatusCode::invalid_argument,
                                "submit requires a valid queue and command lists");
     }
     std::vector<detail::Handle> handles;
-    handles.reserve(commandLists.size());
-    for (auto* list : commandLists) {
+    handles.reserve(desc.commandLists.size());
+    for (auto* list : desc.commandLists) {
         if (list == nullptr || !list->valid() ||
             list->state_->runtime.get() != state_->runtime.get()) {
             return Status::failure(StatusCode::invalid_argument,
                                    "submitted command list is invalid or foreign");
         }
+        if (std::find(handles.begin(), handles.end(), list->state_->handle) !=
+            handles.end()) {
+            return Status::failure(
+                StatusCode::invalid_argument,
+                "a command list cannot appear twice in one submission");
+        }
         handles.push_back(list->state_->handle);
     }
+    std::vector<detail::SemaphorePointHandle> waits;
+    std::vector<detail::SemaphorePointHandle> signals;
+    waits.reserve(desc.waits.size());
+    signals.reserve(desc.signals.size());
+    for (const auto& wait : desc.waits) {
+        if (wait.semaphore == nullptr || !wait.semaphore->valid() ||
+            wait.semaphore->state_->runtime.get() != state_->runtime.get() ||
+            wait.stages == PipelineStage::none) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "submit wait semaphore is invalid or foreign");
+        }
+        waits.push_back(
+            {wait.semaphore->state_->handle, wait.value, wait.stages});
+    }
+    for (const auto& signal : desc.signals) {
+        if (signal.semaphore == nullptr || !signal.semaphore->valid() ||
+            signal.semaphore->state_->runtime.get() != state_->runtime.get()) {
+            return Status::failure(
+                StatusCode::invalid_argument,
+                "submit signal semaphore is invalid or foreign");
+        }
+        signals.push_back({signal.semaphore->state_->handle, signal.value,
+                           PipelineStage::bottom});
+    }
     detail::Handle fenceHandle = 0;
-    if (signalFence != nullptr) {
-        if (!signalFence->valid() ||
-            signalFence->state_->runtime.get() != state_->runtime.get()) {
+    if (desc.signalFence != nullptr) {
+        if (!desc.signalFence->valid() ||
+            desc.signalFence->state_->runtime.get() != state_->runtime.get()) {
             return Status::failure(StatusCode::invalid_argument,
                                    "signal fence is invalid or foreign");
         }
-        fenceHandle = signalFence->state_->handle;
+        fenceHandle = desc.signalFence->state_->handle;
     }
     return state_->runtime->dispatch->submit(*state_->runtime, state_->handle,
-                                             handles, fenceHandle, signalValue);
+                                             handles, waits, signals, fenceHandle,
+                                             desc.signalFenceValue,
+                                             desc.waitTimeout);
 }
 
-Status Queue::present(Swapchain& swapchain, std::uint32_t imageIndex) {
-    if (!valid() || !swapchain.valid() ||
-        swapchain.state_->object->runtime.get() != state_->runtime.get()) {
+Status Queue::submit(std::span<CommandList* const> commandLists,
+                     Fence* signalFence, std::uint64_t signalValue) {
+    QueueSubmitDesc desc;
+    desc.commandLists = commandLists;
+    desc.signalFence = signalFence;
+    desc.signalFenceValue = signalValue;
+    return submit(desc);
+}
+
+Status Queue::present(const QueuePresentDesc& desc) {
+    if (!valid() || desc.swapchain == nullptr || !desc.swapchain->valid() ||
+        desc.swapchain->state_->object->runtime.get() != state_->runtime.get()) {
         return Status::failure(StatusCode::invalid_argument,
                                "present objects are invalid or foreign");
     }
+    std::vector<detail::SemaphorePointHandle> waits;
+    waits.reserve(desc.waits.size());
+    for (const auto& wait : desc.waits) {
+        if (wait.semaphore == nullptr || !wait.semaphore->valid() ||
+            wait.semaphore->state_->runtime.get() != state_->runtime.get() ||
+            wait.stages == PipelineStage::none) {
+            return Status::failure(
+                StatusCode::invalid_argument,
+                "present wait semaphore is invalid or foreign");
+        }
+        waits.push_back(
+            {wait.semaphore->state_->handle, wait.value, wait.stages});
+    }
     return state_->runtime->dispatch->present(
-        *state_->runtime, state_->handle, swapchain.state_->object->handle,
-        imageIndex);
+        *state_->runtime, state_->handle,
+        desc.swapchain->state_->object->handle, desc.imageIndex, waits);
+}
+
+Status Queue::present(Swapchain& swapchain, std::uint32_t imageIndex) {
+    QueuePresentDesc desc;
+    desc.swapchain = &swapchain;
+    desc.imageIndex = imageIndex;
+    return present(desc);
 }
 
 std::uint64_t Fence::completed_value() const noexcept {
@@ -5541,8 +6060,12 @@ Status Fence::wait(std::uint64_t target, std::chrono::nanoseconds timeout) {
         return detail::invalid_object("fence");
     }
     std::unique_lock lock{value->mutex};
-    if (value->changed.wait_for(lock, timeout,
-                                [&] { return value->value >= target; })) {
+    const auto completed = [&] { return value->value >= target; };
+    if (timeout == std::chrono::nanoseconds::max()) {
+        value->changed.wait(lock, completed);
+        return Status::success();
+    }
+    if (value->changed.wait_for(lock, timeout, completed)) {
         return Status::success();
     }
     return Status::failure(StatusCode::timeout, "fence wait timed out");
@@ -5595,9 +6118,6 @@ AcquireResult Swapchain::acquire_next_image() {
         return {.status = detail::invalid_object("swapchain")};
     }
     auto& runtime = *state_->object->runtime;
-    if (!runtime.config.logicalResources) {
-        return {.status = detail::unsupported(runtime, "swapchain acquisition")};
-    }
     const auto value = runtime.resolve<detail::SwapchainPayload>(
         detail::ObjectKind::swapchain, state_->object->handle);
     if (!value) {
@@ -5608,6 +6128,78 @@ AcquireResult Swapchain::acquire_next_image() {
         return {.status = Status::failure(
                     StatusCode::invalid_state,
                     "previous swapchain image has not been presented")};
+    }
+    if (!runtime.config.logicalResources) {
+        if (runtime.config.acquireSwapchain == nullptr) {
+            return {.status = detail::unsupported(runtime,
+                                                  "swapchain acquisition")};
+        }
+        std::shared_ptr<void> nativeSemaphore;
+        if (runtime.config.createSemaphore != nullptr) {
+            auto semaphoreResult = runtime.config.createSemaphore(
+                SemaphoreDesc{.initialValue = 1,
+                              .debugName = value->desc.debugName +
+                                           " acquire"});
+            if (!semaphoreResult.ok()) {
+                return {.status = semaphoreResult.status()};
+            }
+            nativeSemaphore = std::move(semaphoreResult).value();
+        }
+        auto acquired = runtime.config.acquireSwapchain(value->native);
+        if (!acquired.ok()) {
+            if (acquired.status().code == StatusCode::device_lost &&
+                value->device) {
+                value->device->lost.store(true);
+            }
+            return {.status = acquired.status()};
+        }
+        auto nativeImage = std::move(acquired).value();
+        if (!nativeImage.status.ok() &&
+            nativeImage.status.code != StatusCode::suboptimal) {
+            if (nativeImage.status.code == StatusCode::device_lost &&
+                value->device) {
+                value->device->lost.store(true);
+            }
+            return {.status = std::move(nativeImage.status)};
+        }
+        const TextureDesc imageDesc{
+            .extent = {nativeImage.extent.width != 0
+                           ? nativeImage.extent.width
+                           : value->desc.extent.width,
+                       nativeImage.extent.height != 0
+                           ? nativeImage.extent.height
+                           : value->desc.extent.height,
+                       1},
+            .format = value->desc.format,
+            .usage = TextureUsage::color_attachment | TextureUsage::present,
+            .debugName = value->desc.debugName + " image",
+        };
+        value->image = std::make_shared<detail::TexturePayload>(
+            imageDesc, nullptr, std::move(nativeImage.texture), false);
+        for (auto& sync : value->image->sync) {
+            sync.layout = TextureLayout::present;
+            sync.owner = QueueKind::graphics;
+            sync.ownerSet = true;
+        }
+        const auto imageHandle = runtime.allocate(detail::ObjectKind::texture,
+                                                  value->image);
+        state_->image = std::make_unique<Texture>(
+            detail::Factory::texture(state_->object->runtime, imageHandle));
+        const auto semaphoreHandle = runtime.allocate(
+            detail::ObjectKind::semaphore,
+            std::make_shared<detail::SemaphorePayload>(
+                1, std::move(nativeSemaphore)));
+        state_->available = std::make_unique<Semaphore>(
+            detail::Factory::semaphore(state_->object->runtime,
+                                       semaphoreHandle));
+        value->acquired = true;
+        return {
+            .image = state_->image.get(),
+            .imageIndex = nativeImage.imageIndex,
+            .status = std::move(nativeImage.status),
+            .available = state_->available.get(),
+            .availableValue = 1,
+        };
     }
     const auto imageHandle = runtime.allocate(detail::ObjectKind::texture,
                                               value->image);
@@ -5647,6 +6239,25 @@ Status Swapchain::resize(Extent2D extent) {
         return Status::failure(StatusCode::invalid_state,
                                "cannot resize with an acquired image");
     }
+    if (!state_->object->runtime->config.logicalResources) {
+        if (state_->object->runtime->config.resizeSwapchain == nullptr) {
+            return detail::unsupported(*state_->object->runtime,
+                                       "swapchain resize");
+        }
+        if (auto status = state_->object->runtime->config.resizeSwapchain(
+                value->native, extent);
+            !status.ok()) {
+            if (status.code == StatusCode::device_lost && value->device) {
+                value->device->lost.store(true);
+            }
+            return status;
+        }
+        value->desc.extent = extent;
+        value->image.reset();
+        state_->image.reset();
+        state_->available.reset();
+        return Status::success();
+    }
     const TextureDesc imageDesc{
         .extent = {extent.width, extent.height, 1},
         .format = value->desc.format,
@@ -5665,6 +6276,11 @@ Status Swapchain::resize(Extent2D extent) {
     auto reservation = std::move(reservationResult).value();
     value->image = std::make_shared<detail::TexturePayload>(
         imageDesc, std::move(reservation), nullptr, true);
+    for (auto& sync : value->image->sync) {
+        sync.layout = TextureLayout::present;
+        sync.owner = QueueKind::graphics;
+        sync.ownerSet = true;
+    }
     value->desc.extent = extent;
     state_->image.reset();
     state_->available.reset();
