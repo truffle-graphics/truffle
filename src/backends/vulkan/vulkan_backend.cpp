@@ -92,6 +92,119 @@ struct VulkanBufferResource {
     std::mutex mutex;
 };
 
+struct VulkanFormat {
+    VkFormat format = VK_FORMAT_UNDEFINED;
+    VkImageAspectFlags aspects = 0;
+    std::uint32_t bytesPerPixel = 0;
+};
+
+[[nodiscard]] VulkanFormat vulkan_format(TextureFormat format) {
+    switch (format) {
+    case TextureFormat::r8_unorm:
+        return {VK_FORMAT_R8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT, 1};
+    case TextureFormat::rg8_unorm:
+        return {VK_FORMAT_R8G8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT, 2};
+    case TextureFormat::rgba8_unorm:
+        return {VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT, 4};
+    case TextureFormat::rgba8_srgb:
+        return {VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, 4};
+    case TextureFormat::bgra8_unorm:
+        return {VK_FORMAT_B8G8R8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT, 4};
+    case TextureFormat::bgra8_srgb:
+        return {VK_FORMAT_B8G8R8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, 4};
+    case TextureFormat::rgba16_float:
+        return {VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_ASPECT_COLOR_BIT, 8};
+    case TextureFormat::rgba32_float:
+        return {VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_ASPECT_COLOR_BIT, 16};
+    case TextureFormat::depth16_unorm:
+        return {VK_FORMAT_D16_UNORM, VK_IMAGE_ASPECT_DEPTH_BIT, 2};
+    case TextureFormat::depth24_unorm_stencil8:
+        return {VK_FORMAT_D24_UNORM_S8_UINT,
+                VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT, 4};
+    case TextureFormat::depth32_float:
+        return {VK_FORMAT_D32_SFLOAT, VK_IMAGE_ASPECT_DEPTH_BIT, 4};
+    case TextureFormat::depth32_float_stencil8:
+        return {VK_FORMAT_D32_SFLOAT_S8_UINT,
+                VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT, 8};
+    case TextureFormat::unknown:
+    case TextureFormat::bc1_rgba_unorm:
+    case TextureFormat::bc1_rgba_srgb:
+    case TextureFormat::bc3_rgba_unorm:
+    case TextureFormat::bc3_rgba_srgb:
+        break;
+    }
+    return {};
+}
+
+[[nodiscard]] VkImageAspectFlags vulkan_aspect(TextureAspect aspect) {
+    VkImageAspectFlags result = 0;
+    if (has_aspect(aspect, TextureAspect::color)) {
+        result |= VK_IMAGE_ASPECT_COLOR_BIT;
+    }
+    if (has_aspect(aspect, TextureAspect::depth)) {
+        result |= VK_IMAGE_ASPECT_DEPTH_BIT;
+    }
+    if (has_aspect(aspect, TextureAspect::stencil)) {
+        result |= VK_IMAGE_ASPECT_STENCIL_BIT;
+    }
+    return result;
+}
+
+struct VulkanTextureResource {
+    VulkanTextureResource(std::shared_ptr<VulkanContext> contextValue,
+                          VkImage imageValue, VkDeviceMemory memoryValue,
+                          TextureDesc descValue, VulkanFormat formatValue)
+        : context(std::move(contextValue)), image(imageValue),
+          memory(memoryValue), desc(std::move(descValue)), format(formatValue),
+          layouts(static_cast<std::size_t>(desc.mipLevels) * desc.arrayLayers,
+                  VK_IMAGE_LAYOUT_UNDEFINED) {}
+
+    ~VulkanTextureResource() {
+        if (!context || context->device == VK_NULL_HANDLE) {
+            return;
+        }
+        std::lock_guard contextLock{context->mutex};
+        if (image != VK_NULL_HANDLE) {
+            context->deviceTable.vkDestroyImage(context->device, image,
+                                                 nullptr);
+        }
+        if (memory != VK_NULL_HANDLE) {
+            context->deviceTable.vkFreeMemory(context->device, memory, nullptr);
+        }
+    }
+
+    [[nodiscard]] std::size_t layout_index(std::uint32_t mip,
+                                           std::uint32_t layer) const {
+        return static_cast<std::size_t>(layer) * desc.mipLevels + mip;
+    }
+
+    std::shared_ptr<VulkanContext> context;
+    VkImage image = VK_NULL_HANDLE;
+    VkDeviceMemory memory = VK_NULL_HANDLE;
+    TextureDesc desc;
+    VulkanFormat format;
+    std::vector<VkImageLayout> layouts;
+    std::mutex mutex;
+};
+
+struct VulkanTextureViewResource {
+    VulkanTextureViewResource(std::shared_ptr<VulkanTextureResource> textureValue,
+                              VkImageView viewValue)
+        : texture(std::move(textureValue)), view(viewValue) {}
+
+    ~VulkanTextureViewResource() {
+        if (!texture || !texture->context || view == VK_NULL_HANDLE) {
+            return;
+        }
+        std::lock_guard lock{texture->context->mutex};
+        texture->context->deviceTable.vkDestroyImageView(
+            texture->context->device, view, nullptr);
+    }
+
+    std::shared_ptr<VulkanTextureResource> texture;
+    VkImageView view = VK_NULL_HANDLE;
+};
+
 struct VulkanProbe {
     std::shared_ptr<VulkanContext> context;
     std::string adapterName;
@@ -261,6 +374,210 @@ struct VulkanProbe {
         context->deviceTable.vkFreeMemory(context->device, memory, nullptr);
         return Status::failure(StatusCode::out_of_memory,
                                "Vulkan buffer resource allocation failed");
+    }
+}
+
+[[nodiscard]] VkImageUsageFlags vulkan_texture_usage(TextureUsage usage) {
+    VkImageUsageFlags native = 0;
+    if (has_usage(usage, TextureUsage::sampled)) {
+        native |= VK_IMAGE_USAGE_SAMPLED_BIT;
+    }
+    if (has_usage(usage, TextureUsage::storage)) {
+        native |= VK_IMAGE_USAGE_STORAGE_BIT;
+    }
+    if (has_usage(usage, TextureUsage::color_attachment)) {
+        native |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    }
+    if (has_usage(usage, TextureUsage::depth_stencil_attachment)) {
+        native |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    }
+    if (has_usage(usage, TextureUsage::copy_source)) {
+        native |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    }
+    if (has_usage(usage, TextureUsage::copy_destination)) {
+        native |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    }
+    return native;
+}
+
+[[nodiscard]] VkFormatFeatureFlags required_format_features(
+    TextureUsage usage) {
+    VkFormatFeatureFlags features = 0;
+    if (has_usage(usage, TextureUsage::sampled)) {
+        features |= VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
+    }
+    if (has_usage(usage, TextureUsage::storage)) {
+        features |= VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT;
+    }
+    if (has_usage(usage, TextureUsage::color_attachment)) {
+        features |= VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT;
+    }
+    if (has_usage(usage, TextureUsage::depth_stencil_attachment)) {
+        features |= VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    }
+    if (has_usage(usage, TextureUsage::copy_source)) {
+        features |= VK_FORMAT_FEATURE_TRANSFER_SRC_BIT;
+    }
+    if (has_usage(usage, TextureUsage::copy_destination)) {
+        features |= VK_FORMAT_FEATURE_TRANSFER_DST_BIT;
+    }
+    return features;
+}
+
+[[nodiscard]] Result<std::shared_ptr<void>> create_vulkan_texture(
+    const std::shared_ptr<void>& nativeContext, const TextureDesc& desc) {
+    const auto context = std::static_pointer_cast<VulkanContext>(nativeContext);
+    if (!context || context->device == VK_NULL_HANDLE) {
+        return Status::failure(StatusCode::device_lost,
+                               "the Vulkan native context is unavailable");
+    }
+    const auto format = vulkan_format(desc.format);
+    if (desc.dimension != TextureDimension::d2 || desc.extent.depth != 1 ||
+        desc.sampleCount != 1 || desc.memory != MemoryDomain::device_local ||
+        desc.shareable || format.format == VK_FORMAT_UNDEFINED ||
+        has_usage(desc.usage, TextureUsage::present)) {
+        return Status::failure(
+            StatusCode::unsupported,
+            "this Vulkan texture shape, format, sample count, or memory mode "
+            "is unsupported");
+    }
+    const auto usage = vulkan_texture_usage(desc.usage);
+    if (usage == 0) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "Vulkan texture usage is empty");
+    }
+    VkFormatProperties properties{};
+    context->instanceTable.vkGetPhysicalDeviceFormatProperties(
+        context->physicalDevice, format.format, &properties);
+    const auto requiredFeatures = required_format_features(desc.usage);
+    if ((properties.optimalTilingFeatures & requiredFeatures) !=
+        requiredFeatures) {
+        return Status::failure(
+            StatusCode::unsupported,
+            "the Vulkan adapter does not support the requested texture format "
+            "usage");
+    }
+
+    const VkImageCreateInfo imageInfo{
+        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .imageType = VK_IMAGE_TYPE_2D,
+        .format = format.format,
+        .extent = {desc.extent.width, desc.extent.height, 1},
+        .mipLevels = desc.mipLevels,
+        .arrayLayers = desc.arrayLayers,
+        .samples = VK_SAMPLE_COUNT_1_BIT,
+        .tiling = VK_IMAGE_TILING_OPTIMAL,
+        .usage = usage,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .queueFamilyIndexCount = 0,
+        .pQueueFamilyIndices = nullptr,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    };
+
+    VkImage image = VK_NULL_HANDLE;
+    VkDeviceMemory memory = VK_NULL_HANDLE;
+    VkMemoryRequirements requirements{};
+    std::lock_guard lock{context->mutex};
+    auto result = context->deviceTable.vkCreateImage(
+        context->device, &imageInfo, nullptr, &image);
+    if (result != VK_SUCCESS) {
+        return vulkan_failure(StatusCode::out_of_memory,
+                              "Vulkan texture creation failed", result);
+    }
+    context->deviceTable.vkGetImageMemoryRequirements(context->device, image,
+                                                       &requirements);
+    auto memoryType = find_memory_type(
+        *context, requirements.memoryTypeBits,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0);
+    if (!memoryType.ok()) {
+        context->deviceTable.vkDestroyImage(context->device, image, nullptr);
+        return memoryType.status();
+    }
+    const VkMemoryAllocateInfo allocationInfo{
+        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .pNext = nullptr,
+        .allocationSize = requirements.size,
+        .memoryTypeIndex = memoryType.value(),
+    };
+    result = context->deviceTable.vkAllocateMemory(
+        context->device, &allocationInfo, nullptr, &memory);
+    if (result == VK_SUCCESS) {
+        result = context->deviceTable.vkBindImageMemory(context->device, image,
+                                                        memory, 0);
+    }
+    if (result != VK_SUCCESS) {
+        context->deviceTable.vkDestroyImage(context->device, image, nullptr);
+        if (memory != VK_NULL_HANDLE) {
+            context->deviceTable.vkFreeMemory(context->device, memory, nullptr);
+        }
+        return vulkan_failure(
+            result == VK_ERROR_OUT_OF_DEVICE_MEMORY ||
+                    result == VK_ERROR_OUT_OF_HOST_MEMORY
+                ? StatusCode::out_of_memory
+                : StatusCode::backend_error,
+            "Vulkan texture memory allocation failed", result);
+    }
+    try {
+        return std::static_pointer_cast<void>(
+            std::make_shared<VulkanTextureResource>(
+                context, image, memory, desc, format));
+    } catch (const std::bad_alloc&) {
+        context->deviceTable.vkDestroyImage(context->device, image, nullptr);
+        context->deviceTable.vkFreeMemory(context->device, memory, nullptr);
+        return Status::failure(StatusCode::out_of_memory,
+                               "Vulkan texture resource allocation failed");
+    }
+}
+
+[[nodiscard]] Result<std::shared_ptr<void>> create_vulkan_texture_view(
+    const std::shared_ptr<void>& nativeResource,
+    const TextureViewDesc& desc) {
+    const auto texture =
+        std::static_pointer_cast<VulkanTextureResource>(nativeResource);
+    const auto format = vulkan_format(desc.format);
+    if (!texture || texture->image == VK_NULL_HANDLE ||
+        desc.dimension != TextureDimension::d2 ||
+        format.format == VK_FORMAT_UNDEFINED ||
+        format.format != texture->format.format) {
+        return Status::failure(StatusCode::unsupported,
+                               "this Vulkan texture view is unsupported");
+    }
+    const VkImageViewCreateInfo viewInfo{
+        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .image = texture->image,
+        .viewType = desc.range.arrayLayerCount == 1
+                        ? VK_IMAGE_VIEW_TYPE_2D
+                        : VK_IMAGE_VIEW_TYPE_2D_ARRAY,
+        .format = format.format,
+        .components = {},
+        .subresourceRange = {
+            .aspectMask = vulkan_aspect(desc.range.aspects),
+            .baseMipLevel = desc.range.baseMipLevel,
+            .levelCount = desc.range.mipLevelCount,
+            .baseArrayLayer = desc.range.baseArrayLayer,
+            .layerCount = desc.range.arrayLayerCount,
+        },
+    };
+    VkImageView view = VK_NULL_HANDLE;
+    std::lock_guard lock{texture->context->mutex};
+    const auto result = texture->context->deviceTable.vkCreateImageView(
+        texture->context->device, &viewInfo, nullptr, &view);
+    if (result != VK_SUCCESS) {
+        return vulkan_failure(StatusCode::backend_error,
+                              "Vulkan texture-view creation failed", result);
+    }
+    try {
+        return std::static_pointer_cast<void>(
+            std::make_shared<VulkanTextureViewResource>(texture, view));
+    } catch (const std::bad_alloc&) {
+        texture->context->deviceTable.vkDestroyImageView(
+            texture->context->device, view, nullptr);
+        return Status::failure(StatusCode::out_of_memory,
+                               "Vulkan texture-view allocation failed");
     }
 }
 
@@ -460,6 +777,225 @@ struct VulkanProbe {
     return status;
 }
 
+[[nodiscard]] bool vulkan_buffer_texture_region_valid(
+    const VulkanBufferResource& buffer, const VulkanTextureResource& texture,
+    const BufferTextureCopyRegion& region) {
+    if (texture.format.aspects != VK_IMAGE_ASPECT_COLOR_BIT ||
+        region.texture.subresource.aspect != TextureAspect::color ||
+        region.texture.extent.depth != 1) {
+        return false;
+    }
+    const auto tightRow =
+        static_cast<std::size_t>(region.texture.extent.width) *
+        texture.format.bytesPerPixel;
+    const auto rowBytes = region.layout.bytesPerRow == 0
+                              ? tightRow
+                              : region.layout.bytesPerRow;
+    const auto rows = region.layout.rowsPerImage == 0
+                          ? region.texture.extent.height
+                          : region.layout.rowsPerImage;
+    if (rowBytes < tightRow || rows < region.texture.extent.height ||
+        rowBytes % texture.format.bytesPerPixel != 0) {
+        return false;
+    }
+    const auto offset = region.bufferOffset + region.layout.offset;
+    if (offset < region.bufferOffset || (offset & 3u) != 0 ||
+        offset > buffer.logicalSize) {
+        return false;
+    }
+    const auto precedingRows =
+        static_cast<std::size_t>(region.texture.extent.height) - 1u;
+    return precedingRows <= (buffer.logicalSize - offset) / rowBytes &&
+           tightRow <= buffer.logicalSize - offset - precedingRows * rowBytes;
+}
+
+[[nodiscard]] Status validate_vulkan_commands(
+    std::span<const detail::NativeCommand> commands) {
+    for (const auto& command : commands) {
+        if (command.kind == detail::NativeCommandKind::barrier) {
+            continue;
+        }
+        if (command.kind != detail::NativeCommandKind::transfer) {
+            return Status::failure(
+                StatusCode::unsupported,
+                "the Vulkan resource slice supports transfer command lists only");
+        }
+        const auto& transfer = command.transfer;
+        switch (transfer.kind) {
+        case detail::NativeTransferKind::copy_buffer: {
+            const auto source =
+                std::static_pointer_cast<VulkanBufferResource>(transfer.source);
+            const auto destination =
+                std::static_pointer_cast<VulkanBufferResource>(
+                    transfer.destination);
+            if (!source || !destination || source->buffer == VK_NULL_HANDLE ||
+                destination->buffer == VK_NULL_HANDLE ||
+                (transfer.buffer.sourceOffset & 3u) != 0 ||
+                (transfer.buffer.destinationOffset & 3u) != 0 ||
+                (transfer.buffer.size & 3u) != 0) {
+                return Status::failure(
+                    StatusCode::invalid_argument,
+                    "Vulkan buffer copy resources and ranges must be valid and "
+                    "four-byte aligned");
+            }
+            break;
+        }
+        case detail::NativeTransferKind::fill_buffer: {
+            const auto destination =
+                std::static_pointer_cast<VulkanBufferResource>(
+                    transfer.destination);
+            if (!destination || destination->buffer == VK_NULL_HANDLE ||
+                (transfer.buffer.destinationOffset & 3u) != 0 ||
+                (transfer.buffer.size & 3u) != 0) {
+                return Status::failure(
+                    StatusCode::invalid_argument,
+                    "Vulkan buffer fill resource and range must be valid and "
+                    "four-byte aligned");
+            }
+            break;
+        }
+        case detail::NativeTransferKind::copy_buffer_to_texture: {
+            const auto source =
+                std::static_pointer_cast<VulkanBufferResource>(transfer.source);
+            const auto destination =
+                std::static_pointer_cast<VulkanTextureResource>(
+                    transfer.destination);
+            if (!source || !destination ||
+                !vulkan_buffer_texture_region_valid(
+                    *source, *destination, transfer.bufferTexture)) {
+                return Status::failure(
+                    StatusCode::invalid_argument,
+                    "Vulkan buffer-to-texture resources or layout are invalid");
+            }
+            break;
+        }
+        case detail::NativeTransferKind::copy_texture_to_buffer: {
+            const auto source =
+                std::static_pointer_cast<VulkanTextureResource>(transfer.source);
+            const auto destination =
+                std::static_pointer_cast<VulkanBufferResource>(
+                    transfer.destination);
+            if (!source || !destination ||
+                !vulkan_buffer_texture_region_valid(
+                    *destination, *source, transfer.bufferTexture)) {
+                return Status::failure(
+                    StatusCode::invalid_argument,
+                    "Vulkan texture-to-buffer resources or layout are invalid");
+            }
+            break;
+        }
+        case detail::NativeTransferKind::copy_texture: {
+            const auto source =
+                std::static_pointer_cast<VulkanTextureResource>(transfer.source);
+            const auto destination =
+                std::static_pointer_cast<VulkanTextureResource>(
+                    transfer.destination);
+            if (!source || !destination || source == destination ||
+                source->format.format != destination->format.format ||
+                source->format.aspects != VK_IMAGE_ASPECT_COLOR_BIT ||
+                transfer.texture.source.subresource.aspect !=
+                    TextureAspect::color ||
+                transfer.texture.destination.subresource.aspect !=
+                    TextureAspect::color) {
+                return Status::failure(
+                    StatusCode::invalid_argument,
+                    "Vulkan texture-copy resources or formats are invalid");
+            }
+            break;
+        }
+        case detail::NativeTransferKind::clear_texture:
+        case detail::NativeTransferKind::resolve_texture:
+        case detail::NativeTransferKind::blit_texture:
+            return Status::failure(
+                StatusCode::unsupported,
+                "this Vulkan texture transfer is not implemented");
+        }
+    }
+    return Status::success();
+}
+
+[[nodiscard]] VkAccessFlags vulkan_layout_access(VkImageLayout layout) {
+    switch (layout) {
+    case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+        return VK_ACCESS_TRANSFER_READ_BIT;
+    case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+        return VK_ACCESS_TRANSFER_WRITE_BIT;
+    default:
+        return 0;
+    }
+}
+
+void transition_vulkan_texture(VulkanContext& context,
+                               VkCommandBuffer commandBuffer,
+                               VulkanTextureResource& texture,
+                               const TextureSubresource& subresource,
+                               VkImageLayout newLayout) {
+    std::lock_guard lock{texture.mutex};
+    auto& oldLayout =
+        texture.layouts[texture.layout_index(subresource.mipLevel,
+                                             subresource.arrayLayer)];
+    if (oldLayout == newLayout) {
+        return;
+    }
+    const VkImageMemoryBarrier barrier{
+        .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+        .pNext = nullptr,
+        .srcAccessMask = vulkan_layout_access(oldLayout),
+        .dstAccessMask = vulkan_layout_access(newLayout),
+        .oldLayout = oldLayout,
+        .newLayout = newLayout,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = texture.image,
+        .subresourceRange = {
+            .aspectMask = vulkan_aspect(subresource.aspect),
+            .baseMipLevel = subresource.mipLevel,
+            .levelCount = 1,
+            .baseArrayLayer = subresource.arrayLayer,
+            .layerCount = 1,
+        },
+    };
+    const auto sourceStage = oldLayout == VK_IMAGE_LAYOUT_UNDEFINED
+                                 ? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT
+                                 : VK_PIPELINE_STAGE_TRANSFER_BIT;
+    context.deviceTable.vkCmdPipelineBarrier(
+        commandBuffer, sourceStage, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0,
+        nullptr, 0, nullptr, 1, &barrier);
+    oldLayout = newLayout;
+}
+
+[[nodiscard]] VkBufferImageCopy vulkan_buffer_image_copy(
+    const BufferTextureCopyRegion& region,
+    const VulkanTextureResource& texture) {
+    const auto rowLength =
+        region.layout.bytesPerRow == 0
+            ? 0u
+            : static_cast<std::uint32_t>(region.layout.bytesPerRow /
+                                         texture.format.bytesPerPixel);
+    return {
+        .bufferOffset =
+            static_cast<VkDeviceSize>(region.bufferOffset +
+                                      region.layout.offset),
+        .bufferRowLength = rowLength,
+        .bufferImageHeight = static_cast<std::uint32_t>(
+            region.layout.rowsPerImage),
+        .imageSubresource = {
+            .aspectMask = vulkan_aspect(region.texture.subresource.aspect),
+            .mipLevel = region.texture.subresource.mipLevel,
+            .baseArrayLayer = region.texture.subresource.arrayLayer,
+            .layerCount = 1,
+        },
+        .imageOffset = {
+            static_cast<std::int32_t>(region.texture.origin.x),
+            static_cast<std::int32_t>(region.texture.origin.y),
+            static_cast<std::int32_t>(region.texture.origin.z),
+        },
+        .imageExtent = {region.texture.extent.width,
+                        region.texture.extent.height,
+                        region.texture.extent.depth},
+    };
+}
+
 [[nodiscard]] Status record_vulkan_commands(
     VulkanContext& context, VkCommandBuffer commandBuffer,
     std::span<const detail::NativeCommand> commands) {
@@ -557,9 +1093,100 @@ struct VulkanProbe {
                 static_cast<VkDeviceSize>(transfer.buffer.size), pattern);
             break;
         }
-        case detail::NativeTransferKind::copy_buffer_to_texture:
-        case detail::NativeTransferKind::copy_texture_to_buffer:
-        case detail::NativeTransferKind::copy_texture:
+        case detail::NativeTransferKind::copy_buffer_to_texture: {
+            const auto source =
+                std::static_pointer_cast<VulkanBufferResource>(transfer.source);
+            const auto destination =
+                std::static_pointer_cast<VulkanTextureResource>(
+                    transfer.destination);
+            transition_vulkan_texture(
+                context, commandBuffer, *destination,
+                transfer.bufferTexture.texture.subresource,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+            const auto region =
+                vulkan_buffer_image_copy(transfer.bufferTexture, *destination);
+            context.deviceTable.vkCmdCopyBufferToImage(
+                commandBuffer, source->buffer, destination->image,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+            break;
+        }
+        case detail::NativeTransferKind::copy_texture_to_buffer: {
+            const auto source =
+                std::static_pointer_cast<VulkanTextureResource>(transfer.source);
+            const auto destination =
+                std::static_pointer_cast<VulkanBufferResource>(
+                    transfer.destination);
+            transition_vulkan_texture(
+                context, commandBuffer, *source,
+                transfer.bufferTexture.texture.subresource,
+                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+            const auto region =
+                vulkan_buffer_image_copy(transfer.bufferTexture, *source);
+            context.deviceTable.vkCmdCopyImageToBuffer(
+                commandBuffer, source->image,
+                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, destination->buffer, 1,
+                &region);
+            break;
+        }
+        case detail::NativeTransferKind::copy_texture: {
+            const auto source =
+                std::static_pointer_cast<VulkanTextureResource>(transfer.source);
+            const auto destination =
+                std::static_pointer_cast<VulkanTextureResource>(
+                    transfer.destination);
+            transition_vulkan_texture(
+                context, commandBuffer, *source,
+                transfer.texture.source.subresource,
+                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+            transition_vulkan_texture(
+                context, commandBuffer, *destination,
+                transfer.texture.destination.subresource,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+            const VkImageCopy region{
+                .srcSubresource = {
+                    .aspectMask = vulkan_aspect(
+                        transfer.texture.source.subresource.aspect),
+                    .mipLevel =
+                        transfer.texture.source.subresource.mipLevel,
+                    .baseArrayLayer =
+                        transfer.texture.source.subresource.arrayLayer,
+                    .layerCount = 1,
+                },
+                .srcOffset = {
+                    static_cast<std::int32_t>(
+                        transfer.texture.source.origin.x),
+                    static_cast<std::int32_t>(
+                        transfer.texture.source.origin.y),
+                    static_cast<std::int32_t>(
+                        transfer.texture.source.origin.z),
+                },
+                .dstSubresource = {
+                    .aspectMask = vulkan_aspect(
+                        transfer.texture.destination.subresource.aspect),
+                    .mipLevel =
+                        transfer.texture.destination.subresource.mipLevel,
+                    .baseArrayLayer =
+                        transfer.texture.destination.subresource.arrayLayer,
+                    .layerCount = 1,
+                },
+                .dstOffset = {
+                    static_cast<std::int32_t>(
+                        transfer.texture.destination.origin.x),
+                    static_cast<std::int32_t>(
+                        transfer.texture.destination.origin.y),
+                    static_cast<std::int32_t>(
+                        transfer.texture.destination.origin.z),
+                },
+                .extent = {transfer.texture.source.extent.width,
+                           transfer.texture.source.extent.height,
+                           transfer.texture.source.extent.depth},
+            };
+            context.deviceTable.vkCmdCopyImage(
+                commandBuffer, source->image,
+                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, destination->image,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+            break;
+        }
         case detail::NativeTransferKind::clear_texture:
         case detail::NativeTransferKind::resolve_texture:
         case detail::NativeTransferKind::blit_texture:
@@ -578,6 +1205,9 @@ struct VulkanProbe {
 
 [[nodiscard]] Status submit_vulkan_command_buffer(
     VulkanContext& context, std::span<const detail::NativeCommand> commands) {
+    if (auto status = validate_vulkan_commands(commands); !status.ok()) {
+        return status;
+    }
     VkCommandPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     poolInfo.queueFamilyIndex = context.queueFamily;
@@ -904,12 +1534,12 @@ Result<Instance> create_vulkan_instance(const InstanceDesc& desc) {
     config.supportedFeatures = {Feature::transfer, Feature::memory_budget};
     config.resourceCapabilities = {
         .bufferViews = true,
-        .textureViews = false,
+        .textureViews = true,
         .hostCoherent = native.hostCoherent,
         .bufferCopy = true,
         .bufferFill = true,
-        .bufferTextureCopy = false,
-        .textureCopy = false,
+        .bufferTextureCopy = true,
+        .textureCopy = true,
         .textureClear = false,
         .textureResolve = false,
         .textureBlitNearest = false,
@@ -927,6 +1557,8 @@ Result<Instance> create_vulkan_instance(const InstanceDesc& desc) {
     config.invalidateBuffer = &invalidate_vulkan_buffer;
     config.writeBuffer = &write_vulkan_buffer;
     config.readBuffer = &read_vulkan_buffer;
+    config.createTexture = &create_vulkan_texture;
+    config.createTextureView = &create_vulkan_texture_view;
     config.nativeSubmit = &submit_vulkan_commands;
     return detail::create_foundation_instance(desc, std::move(config));
 }
