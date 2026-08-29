@@ -1,337 +1,147 @@
 # Architecture
 
-## Layers
+## Product Shape
 
-Truffle is one product with modules that stay linkable at different levels:
+Truffle is a modular graphics library, not an application framework. A consumer
+chooses a low-level graphics API, rendering helpers, asset metadata, scene
+extraction, or diagnostics without inheriting unrelated layers.
 
-1. Foundation modules such as `truffle_core` provide shared status,
-   configuration, and identity primitives.
-2. `truffle_rhi` defines backend-neutral devices, queues, commands, resources,
-   pipelines, surfaces, swapchains, synchronization, capabilities, and the
-   `IFrameUploadRing` N-buffered upload primitive.
-3. `truffle_backend_*` modules implement RHI contracts behind backend ownership.
-  The null, Metal, Vulkan, OpenGL, and Direct3D backends are buildable now.
-4. Rendering modules such as `truffle_render` expose `RenderBatch`,
-   `InstanceLayout`, `Renderer`, and the `IPipelineCache` interface. This layer
-   has zero compile-time dependency on `truffle_ecs`.
-5. `truffle_assets` defines declarative asset, material-operation, texture,
-   geometry stream, and group/tag metadata. It does not load files, own GPU
-   uploads, or depend on a backend.
-6. `truffle_asset_render` maps declared asset streams into metadata-only render
-   layout and batch plans. It does not allocate buffers, upload data, compile
-   shaders, or own backend state.
-7. The optional `truffle_scene` module bridges ECS worlds into render batches.
-   It depends on both `truffle_ecs` and `truffle_render` and provides
-   `SceneAdapter`, which extracts a `SceneFrame` containing camera state, light
-   state, and a vector of `RenderBatch` objects written through
-   `IFrameUploadRing`.
-8. `truffle_diagnostics` provides opt-in, pull-based asset, render,
-   asset-render-plan, frame-graph, renderer-stats, and debug-overlay inspection
-   helpers. Lower runtime layers do not depend on it.
-9. Future framework-facing modules can add asset importers and tool-facing
-   rendering workflows above the lower layers without hiding them from
-   consumers.
+1. `truffle_core` provides shared status, version, configuration, and identity
+   primitives.
+2. `truffle_rhi` defines the canonical backend-neutral graphics contract.
+3. `truffle_backend_*` modules implement that contract behind backend ownership.
+4. `truffle_render` provides render batches, frame-graph orchestration,
+   renderer execution, and pipeline-cache integration without depending on ECS.
+5. `truffle_assets` declares backend-free asset, material, texture, geometry,
+   group, and tag metadata.
+6. `truffle_asset_render` validates and maps asset declarations to metadata-only
+   render plans without allocating GPU resources.
+7. `truffle_ecs` supplies a general ECS; optional `truffle_scene` converts ECS
+   state into render batches.
+8. `truffle_diagnostics` provides opt-in, pull-based inspection. Runtime layers
+   do not depend on it.
 
-## Repository Shape
+Public contracts live under `include/truffle`. Module implementations live under
+`src`, backend code under `src/backends`, build policy under `cmake`, and
+consumer proofs under `examples` and `tests`.
 
-Public contracts stay under `include/truffle`. Runtime implementations stay
-under module-owned `src` directories, with backend code under `src/backends`
-and the scene adapter under `src/scene`. CMake helpers under `cmake` own
-options, warnings, formatting hooks, install rules, and package export behavior.
-Examples and tests remain consumer proof and validation layers instead of
-runtime dependencies.
+## RHI 1 Replacement
 
-## Three Consumption Levels
+The current `include/truffle/rhi/rhi.hpp` and its interfaces are preliminary.
+RHI 1 replaces them without a compatibility facade. The replacement splits the
+public API into focused headers while retaining one umbrella include.
 
-### Level 1 — Graphics API consumer
-Link `truffle_core`, `truffle_rhi`, and one backend. Manage all GPU resources
-directly. No ECS or scene abstraction required.
+Primary RHI 1 families are `Instance`, `Adapter`, `Device`, `Queue`,
+`CommandPool`, `CommandList`, scoped render/compute/copy encoders, resources and
+views, binding and pipeline objects, synchronization/query objects, `Surface`,
+and `Swapchain`.
 
-### Level 2 — Render module consumer
-Add `truffle_render`. Build `RenderBatch` objects directly from any data source
-(typed arrays, streaming buffers, or GPU-resident handles) and call
-`Renderer::render()`. Use `IFrameUploadRing` for CPU-to-GPU uploads, or add
-`truffle_asset_render` when asset declarations should produce render layout
-plans before any backend work exists.
+Public RAII objects are move-only and contain an opaque generation-checked
+handle plus backend dispatch ownership. They do not expose native graphics
+types. This seam leaves room for a later stable C ABI without adding one now.
 
-### Level 3 — Full framework consumer
-Add `truffle_ecs` and `truffle_scene`. Populate an ECS world and call
-`SceneAdapter::extract(world, ring)` each frame. The adapter writes transform
-data through the ring and returns a `SceneFrame` with ready-to-render batches.
+The detailed object, threading, lifetime, outcome, synchronization, and
+presentation rules are in [the RHI 1 contract](rhi1/README.md). ADR 0011 makes
+the cutover decision durable.
 
-## Data Flow — Three Lanes
+## Current Implementation Truth
 
+- Null is a strict contract interpreter and negative-path oracle, not a GPU
+  backend.
+- Metal is the only current implementation with native API calls. It creates
+  Metal resources and submits Metal work, but lacks the accepted output and
+  presentation suite required for `conformant` or `supported`.
+- Vulkan, OpenGL, and Direct3D are presently headless CPU contract simulators.
+  Their shared state-machine tests do not demonstrate native driver execution.
+- WebGPU, OpenGL ES, and WebGL2 implementations do not yet exist.
+
+Maturity is tracked per backend-platform pair in
+[the support matrix](rhi1/support-matrix.md). Capability support and maturity
+are separate dimensions.
+
+## Consumption Levels
+
+### Level 1 — Graphics API
+
+Link `truffle_core`, `truffle_rhi`, and one enabled backend. The application
+manages GPU resources, synchronization, and presentation directly.
+
+### Level 2 — Rendering
+
+Add `truffle_render`. Build `RenderBatch` objects from any data source and
+execute a `FrameGraph`. Use upload/readback resources directly, or add
+`truffle_asset_render` for metadata-to-layout planning.
+
+### Level 3 — Scene Convenience
+
+Add `truffle_ecs` and `truffle_scene`. `SceneAdapter` extracts camera, light,
+and batch state from an ECS world. This is one first-party ingestion lane, not
+a requirement for RHI or renderer consumers.
+
+## Render Data Lanes
+
+```text
+ECS extraction
+  ecs::World -> SceneAdapter -> RenderBatch[]
+
+Caller-owned bulk data
+  typed arrays / streams -> upload allocation -> RenderBatch[]
+
+GPU-resident data
+  persistent or generated GPU resources -> RenderBatch[]
 ```
-Lane A — ECS extraction (truffle_scene)
-  ecs::World → SceneAdapter → RenderBatch[] via IFrameUploadRing
-  Good for: normal scenes, cameras, lights, standard scene workflows
 
-Lane B — Bulk direct upload (caller-owned)
-  RawBuffer<T> → IFrameUploadRing allocation → RenderBatch
-  Good for: million detections, point clouds, dense simulation outputs
+All lanes converge at renderer-facing batches and frame-graph nodes. The
+renderer does not infer which lane produced a batch. `InstanceLayout` describes
+runtime channels, bindings, offsets, strides, and separate/interleaved storage.
 
-Lane C — GPU-resident (future)
-  IBuffer handle → RenderBatch (zero upload cost)
-  Good for: static geometry, GPU-generated data, persistent simulation state
-```
+`truffle_asset_render` preserves declared stream metadata and validates
+material-required attributes. It does not guess shader semantics, compile
+shaders, allocate resources, or own backend state.
 
-All three lanes produce `RenderBatch` objects attached to `FrameGraph`
-render nodes. `Renderer::render()` executes the resolved graph order and stays
-agnostic to which ingestion lane produced the batch data.
+## Frame Graph And Diagnostics
 
-`FrameGraph` now supports explicit node dependencies and deterministic
-topological scheduling with cycle detection before command recording begins,
-plus resource usage declarations that inject implicit read/write hazard edges.
+`FrameGraph` models compute and render nodes, explicit dependencies, and
+resource-usage hazards. It resolves deterministic topological order and rejects
+cycles before recording.
 
-`InstanceLayout` declares at runtime which channels are present (`Transform`,
-`Color`, `Normal`, `TexCoord`, etc.), which buffer binding each occupies, and
-the per-instance stride. A `BindingModel` flag chooses Separate (SoA, default)
-or Interleaved (AoS). `InstanceLayout::hash()` keys pipeline cache lookup and
-future shader permutation selection.
-
-`truffle_asset_render` is the declarative bridge between `truffle_assets` and
-`truffle_render`. It validates material-required attributes, preserves declared
-binding/offset/stride metadata, and emits `RenderBatch` plans with null buffers.
-Dense or custom semantics such as position, confidence, classification,
-intensity, or velocity require explicit channel mappings; the bridge does not
-guess how low-level backends or shaders should interpret them.
-
-## GPU Transform Hierarchy (Phase 5)
-
-Large hierarchies resolve world matrices on the GPU via a compute pass over
-`ChannelKind::LocalTransform` and `ChannelKind::ParentIndex` arrays.
-
-Current state:
-
-- `TransformComputePass` exists and dispatches through the backend-neutral RHI.
-- Metal compute pipeline path is operational.
-- Reflection-driven compute binding validation is in progress.
+Diagnostics remain pull-based. Callers can request snapshots or reports for
+assets, plans, batches, frame graphs, renderer statistics, and debug-overlay
+declarations. Diagnostics install no global hooks and do not become a runtime
+dependency of render or scene modules.
 
 ## Host Boundary
 
-Truffle does not own native windowing, input policy, application lifetime, or
-the consumer simulation model. Consumers provide host loops and native surface
-boundaries, then choose whether to link low-level RHI modules, renderer modules,
-scene adapter modules, asset declaration modules, diagnostics modules, or future
-higher-level framework modules.
+The application owns native windows, views, layers, event loops, input,
+application lifetime, and resize policy. It lends an appropriate native surface
+handle to RHI and keeps it alive until the RHI `Surface` and its swapchains are
+destroyed.
 
-## Diagnostics Boundary
-
-Diagnostics and profiling helpers stay opt-in. `truffle_diagnostics` reads
-public asset and render contracts and produces snapshots, text reports, or
-combined diagnostics bundles when a consumer asks for them. It does not install
-global hooks, run background tracing, or become a dependency of `truffle_render`
-or `truffle_scene`. Dense workloads should be inspected at group level: catalog
-counts, stream byte ranges, batch counts, instance counts, binding byte ranges,
-layout channels, and frame-graph nodes rather than per-instance CPU scans.
-Asset catalog groups and tags let tools select domains such as lidar detections,
-radar tracks, static meshes, or debug overlays for focused summaries.
-Debug overlay declarations describe lines, boxes, points, labels, and pick
-targets as tool-facing metadata; Truffle does not install an overlay renderer or
-background debug subsystem for them.
-Names for batches, graph nodes, and resources are supplied through diagnostics
-inspection options so render objects do not need permanent debug fields.
-Frame-graph diagnostics also read explicit dependency edges and resource usage
-declarations through public `FrameGraph` inspection accessors. Optional budget
-checks turn summaries into findings only when consumers explicitly ask for them.
+RHI owns graphics-side surface capabilities, swapchain images, acquisition, and
+queue presentation. It does not introduce a window module as part of RHI 1.
 
 ## Dependency Boundary
 
-Runtime dependencies prefer Git submodules when that is practical. Pinned
-source copies are the fallback when submodules do not fit, and they must retain
-license, provenance, and a narrow build footprint. Example-only dependencies
-stay inside their example folders so they do not become Truffle runtime
-dependencies. The `window` module boundary is reserved but unpopulated; Truffle
-does not currently own windowing helpers.
+Core runtime code depends only on C++20 and the standard library. Optional
+backends and shader tools acquire only their own pinned dependencies. Checked-
+out bundled source is the default; configure never downloads source. Platform
+SDKs are explicit prerequisites, and expert system-package mode is deliberate
+rather than an implicit fallback.
 
-## Current Baseline
+The complete policy and dependency groups are in
+[the RHI 1 dependency specification](rhi1/dependencies.md).
 
-The repository currently has Phases 1-12 complete for the current roadmap
-scope and active extension-backend work continuing in parallel:
+## Shader Boundary
 
-- `truffle_render` is ECS-independent and now supports frame-graph orchestration.
-- `RenderBatch` and `InstanceLayout` remain the universal renderer input contract.
-- `IFrameUploadRing` remains the N-buffered CPU-to-GPU upload primitive.
-- `truffle_scene` provides optional ECS extraction via `SceneAdapter`.
-- `IPipelineCache` supports material-to-pipeline mapping and variant hash routing.
-- `IPipelineReflection` is integrated in Metal and Vulkan contract paths.
-- `IPipelineReflection` is integrated in Metal, Vulkan, and OpenGL contract paths.
-- `IPipelineReflection` contract validation now includes Direct3D path coverage.
-- `RendererFrameStats` provides per-frame diagnostics for compute/render node and
-  batch execution, plus presentation tracking.
-- `truffle_assets` provides declarative asset, material-operation, and
-  geometry-stream descriptors plus backend-free material-to-mesh requirement
-  validation, catalog lookup, full-catalog validation reports, and metadata
-  stats snapshots, with optional group/tag descriptors for dense data domains.
-- `truffle_asset_render` provides metadata-only render batch planning from
-  asset catalog meshes and groups, preserving declared dense stream layouts while
-  leaving buffers, uploads, shader compilation, and backend interpretation to
-  later layers.
-- `truffle_diagnostics` provides opt-in render-batch, asset-render-plan,
-  frame-graph, and renderer stats summaries with external labels, dependency
-  edges, and resource usage declarations for tool-facing reports, plus
-  pull-based budget findings and group-filtered combined diagnostics bundles
-  with optional debug-overlay declaration summaries.
-- `truffle/core/version.hpp` defines public API version, compatibility policy,
-  and deprecation-window semantics.
-- Low-level sampler descriptors expose explicit filter, address, LOD,
-  anisotropy, compare, and border-color state while preserving the legacy
-  `linear_filtering` compatibility path.
-- RHI command buffers require an explicit graphics/compute pipeline before
-  draw/dispatch, and pipeline layouts define required bind-group indices that
-  must be bound with compatible group layouts before recording work.
-- Graphics pipeline descriptors include explicit raster, depth/stencil, and
-  color-blend state so higher layers can express render-state policy without
-  inventing backend-specific side channels.
-- Graphics pipeline descriptors include explicit vertex buffer and attribute
-  layouts so higher layers can pass mesh/instance input contracts to RHI without
-  implicit renderer-owned vertex layout policy.
-- Graphics pipeline descriptors include explicit depth attachment formats; depth
-  testing/writes are opt-in and command buffers validate active render-pass
-  color/depth compatibility before pipeline binding. Depth-only pipelines use
-  `TextureFormat::unknown` as the color format.
-- Render-pass descriptors now support stencil-capable depth attachments through
-  `TextureFormat::depth32_float_stencil8` plus explicit stencil load/store/clear
-  fields on `DepthAttachmentDesc`. Shared RHI validation keeps color, depth, and
-  depth-stencil attachment rules aligned across null, Metal, Vulkan, OpenGL, and
-  Direct3D backends before native/backend-specific execution.
-- Depth/stencil pipeline state now includes explicit front/back stencil compare,
-  fail/depth-fail/pass operations, read/write masks, and a render-pass-scoped
-  `ICommandBuffer::set_stencil_reference()` hook so higher layers can express
-  stencil behavior without backend-specific side channels.
-- Bind-group layouts can mark uniform/storage buffer bindings as dynamic-offset
-  bindings; command binding validates supplied offsets against descriptor arrays,
-  buffer ranges, and advertised alignment before work can be recorded. Layouts
-  can also specify explicit native descriptor slots for flattened backend binding
-  models. Bind groups expose persistent/transient-frame allocation policy and
-  layout/group cache keys plus explicit reuse/update hints (`stable`,
-  `update_in_place`, `rebuild`) so higher layers can choose descriptor cache,
-  rewrite, arena, and recycling strategy without inventing backend-specific side
-  channels. Layouts and groups now also expose descriptor footprint summaries
-  (binding count, descriptor counts, dynamic-offset count, and native
-  buffer/texture/sampler slot spans) so higher layers can size descriptor
-  allocation/caching policies from the public RHI. Capabilities and parity
-  reports now also expose each backend's native descriptor mapping model,
-  allocation model, descriptor update model, and whether logical bind groups
-  flatten into one native slot space, so higher layers can align descriptor
-  caching strategy with the backend's actual low-level binding direction. The
-  public helper `bind_group_descriptor_strategy(...)` combines bind-group
-  allocation policy, reuse hint, and backend descriptor policy into an explicit
-  cache-scope / rewrite / recycle classification for higher-level descriptor
-  management, including whether updates resolve as direct writes,
-  copy-into-allocation rewrites, or allocation rebuilds. The same strategy now
-  also exposes cache-key usability, frame-slot cardinality, and recycle-frame
-  lag so higher layers can size descriptor arenas and eviction windows directly
-  from the public RHI contract. Backend descriptor policy now also exposes a
-  native descriptor budget model, while bind-group strategy resolves that into
-  concrete budget units and eviction policy (`manual`, `frame_retire`,
-  `immediate`) so higher layers can budget cache/arena pressure without
-  backend-private heuristics. `bind_group_descriptor_arena_plan(...)` now folds
-  those signals into explicit cache-entry counts, reservation-entry counts, and
-  scaled descriptor-unit totals for persistent caches and per-frame arenas.
-  `bind_group_descriptor_arena_totals(...)` then aggregates multiple bind-group
-  families into whole-pool totals, splitting persistent-cache, per-frame-cache,
-  and uncached transient reservation pressure while flagging invalid mixed
-  budget-model aggregation. Pipeline layouts can now project the same low-level
-  descriptor pressure directly through `pipeline_layout_bind_group_layout(...)`,
-  `pipeline_layout_descriptor_budget(...)`,
-  `pipeline_layout_bind_group_arena_plan(...)`, and
-  `pipeline_layout_descriptor_arena_summary(...)`, so higher layers can derive
-  per-group layouts, whole-layout budget totals, and multi-group arena pressure
-  from grouped pipeline layouts without staging every bind-group family by hand.
-  That same low-level layer now also exposes
-  `bind_group_layout_compatible(...)`,
-  `bind_group_descriptor_strategy_partition_compatible(...)`,
-  `bind_group_descriptor_strategy_partition_reusable(...)`,
-  `bind_group_descriptor_strategy_shareable(...)`,
-  `bind_group_descriptor_family_shareable(...)`, and
-  `pipeline_layout_shared_descriptor_arena_summary(...)` so multiple grouped
-  pipeline layouts can be merged into shared descriptor-family budgets while
-  still surfacing residency or update-policy splits that require separate pool
-  partitions. That shared-family layer now also emits explicit pool-class
-  partitions through `bind_group_descriptor_arena_pool_class(...)` and
-  `pipeline_layout_shared_descriptor_arena_partition_summary(...)`, allowing
-  higher layers to materialize concrete persistent-cache, per-frame-cache, and
-  uncached reservation arenas directly from the public low-level contract. Those
-  partitions now also aggregate mixed cache-key and update-path metadata so
-  families that need different update policies can still reuse the same
-  materialized arena partition without hiding that policy variance. Family-to-
-  partition residency hooks now make the remaining distinction explicit by
-  reporting lifetime class, live-object scope, and whether a family only shares
-  pool capacity versus aligning 1:1 with the whole partition. The shared arena
-  planning surface now also has a single bundle helper that returns families,
-  partitions, residencies, and reuse cohorts together so higher layers can
-  consume the full low-level descriptor plan without chaining helper calls. It
-  now also emits concrete arena and reuse materialization descriptors, so
-  allocator-facing code can consume partition capacities and cohort-specific
-  reuse policy directly from the public low-level contract. The runtime RHI
-  surface now also exposes backend-neutral `IBindGroupDescriptorArena` and
-  `IBindGroupDescriptorReuseMaterializer` contracts plus shared validation for
-  materialized runtime descriptors. Built-in backends now materialize retained
-  descriptor-arena and reuse-materializer runtime objects directly from that
-  public contract, so higher layers can target one allocator-facing interface
-  without inventing a parallel runtime abstraction on top of the planning data.
-  Those runtime arenas now also expose slot-aware usage snapshots, explicit
-  reservation/release operations, whole-slot retirement, and full clearing, so
-  low-level users can account for per-frame descriptor capacity directly from
-  the public RHI instead of treating materialization descriptors as static
-  metadata only. Reuse materializers have also grown into stateful runtime
-  policy objects: they now expose arena-compatibility checks, state snapshots,
-  round-robin per-frame reservation shaping, observed reservation tracking,
-  slot retirement, and clear/reset behavior, so descriptor reuse policy is no
-  longer just descriptive cohort metadata. Those two runtime contracts can now
-  also be composed through `BindGroupDescriptorRuntimeCoordinator`, which tracks
-  coordinated reservations and drives reserve/release/retire/clear sequencing
-  through one low-level helper instead of forcing higher layers to manually keep
-  arena and reuse state in lockstep. The coordinator and both underlying
-  runtime objects now also expose reservation snapshots so low-level callers can
-  detect drift caused by out-of-band arena/materializer mutations and reconcile
-  coordinated tracking explicitly instead of silently operating on stale state.
-  The runtime descriptor layer now also exposes pressure/saturation guidance for
-  arenas, reuse materializers, and coordinators, including reclamation hints and
-  preferred next actions derived from the same public snapshots, so higher
-  layers can make eviction/reuse decisions from stable low-level signals rather
-  than re-deriving pressure heuristics themselves. It now also exposes concrete
-  reclamation plans that rank slot-retirement and reservation-release candidates
-  from those same low-level signals, so future higher layers can ask the runtime
-  what to reclaim first instead of inventing separate victim-selection policy.
-  Those per-coordinator signals can now also be arbitrated across multiple
-  descriptor pools/partitions, so higher layers can compare competing low-level
-  pressure sources and choose where to reconcile, reclaim, or throttle first
-  from one stable aggregate runtime view. That aggregate layer now also exposes
-  explicit admission-control plans for prospective reservations, so higher
-  layers can ask whether a request should be admitted immediately, reconciled
-  first, reclaimed first, audited, or throttled from one backend-neutral
-  low-level decision surface. It now also supports batched quota carving across
-  several reservation intents, so callers can simulate how shared low-level
-  descriptor headroom and reclaimable relief would be consumed before they
-  commit those requests against live coordinators. That batch layer now also has
-  an execution path that can reconcile, reclaim, reserve, and roll back
-  committed reservations in order, so accepted quota plans can move through one
-  rollback-aware low-level commit surface instead of ad hoc caller sequencing.
-  Saved batch plans can now also be revalidated against live coordinator state
-  before execution, so higher layers can detect when drift, incompatibility, or
-  changed slot headroom has made a previously accepted low-level plan unsafe.
-  Those saved plans can now also be repaired by replaying the original request
-  intents through current low-level coordinator state, which yields an explicit
-  replacement plan plus per-request rewrite metadata when placements or
-  admission actions must change. That repaired replacement plan can now also be
-  executed through one atomic helper, so callers can recover stale saved batch
-  work without manually chaining repair and commit steps. Repair can now also
-  be expressed as a compact delta plan plus an apply helper, so callers can
-  inspect or patch only the changed requests instead of depending on the full
-  replacement-plan decision array. Those deltas now also carry causal reason
-  flags and aggregate reason counts, so callers can distinguish stale actions,
-  incompatible coordinators, drift, capacity/reclaim pressure, and structural
-  rewrites without re-reading the full repair context.
-- Buffers expose explicit CPU mapping hooks, including `mapped_data()` access for
-  mapped-at-creation buffers. The low-level contract treats
-  automatic/upload/readback buffer memory as CPU-mappable and rejects
-  `device_local` mapping, with mapped state tracked by built-in backends.
-- CI emits backend parity matrix Markdown/JSON artifacts for tracked backend
-  contract/reflection tests, plus a live `rhi-parity-report.json` generated
-  from `BackendParityReport` capability summaries.
+RHI consumes a format-neutral `ShaderPackage`. The optional host-side
+`truffle-shaderc` tool can produce multi-target packages from several authoring
+languages and precompiled formats. Runtime compilation is optional, and target
+variants must agree on normalized reflection.
 
-ADRs 0004-0008 lock the current design direction; ADR 0009 governs phase
-completion policy and execution gating; ADR 0010 defines API compatibility
-versioning semantics.
+See [the shader package direction](rhi1/shader-package.md).
+
+## Deferred Surfaces
+
+The Simple RHI, compatibility facade, D3D11, WebGL1, legacy GL/GLES profiles,
+CUDA/OpenCL, and public proprietary-console implementations are outside RHI 1.
+Backend factory boundaries remain extensible for future private platform work.

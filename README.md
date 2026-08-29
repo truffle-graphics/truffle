@@ -6,13 +6,14 @@ simulations, CAD-style applications, games, and other graphics-heavy software.
 ## Status
 
 - Stage: Draft
+- RHI: Breaking RHI 1 replacement in progress under milestone `Truffle RHI 1`
 - Owner: TinMan
 - License: Apache-2.0
 - Visibility: Public
 - Reason: Truffle is public engineering work and this repository contains the
   project baseline intended for outside review.
-- Promotion criteria to Public: Backend-neutral contracts, examples, and tests
-  establish the first architecture baseline before production GPU backends land.
+- Promotion criteria: Each backend-platform pair is promoted independently from
+  native output, validation, presentation, recovery, and packaging evidence.
 
 ## What This Project Is
 
@@ -21,8 +22,9 @@ flow, and GPU abstraction without forcing them into a game engine or application
 framework. It is not an application framework and it is not a dedicated game
 engine.
 
-The first implementation line focuses on stable architecture and build contracts
-with backend-neutral APIs and contract-tested backend modules:
+The current implementation line is replacing the preliminary RHI without a
+compatibility shim. Shared contract tests remain useful, but only Metal
+currently calls a native graphics API:
 
 - `truffle_core` owns shared status, configuration, and handle primitives.
 - `truffle_assets` defines declarative asset, material-operation, texture,
@@ -31,8 +33,15 @@ with backend-neutral APIs and contract-tested backend modules:
 - `truffle_asset_render` turns declared asset streams into metadata-only render
   layout and batch plans without owning buffers, uploads, shaders, or backends.
 - `truffle_ecs` provides a general-purpose ECS world.
-- `truffle_rhi` defines backend-neutral GPU and presentation contracts.
+- `truffle_rhi` currently contains the preliminary backend-neutral GPU and
+  presentation contracts being replaced by RHI 1.
 - `truffle_backend_null` validates RHI flow without a GPU dependency.
+- `truffle_backend_metal` is the preliminary native Metal implementation and is
+  currently classified `cross_compiles` on macOS pending accepted
+  validation-enabled native smoke evidence.
+- `truffle_backend_vulkan`, `truffle_backend_opengl`, and
+  `truffle_backend_direct3d` currently build headless contract simulators, not
+  native implementations of those APIs.
 - `truffle_render` starts the independently consumable rendering layer above RHI.
 - `truffle_diagnostics` provides opt-in asset/render/frame/asset-render-plan/
   debug-overlay inspection helpers and bundle reports without adding diagnostics
@@ -63,8 +72,9 @@ cmake --build --preset dev
 ctest --preset dev
 ```
 
-See `docs/charter.md`, `docs/architecture.md`, and `docs/roadmap.md` for the
-current project boundaries and backend direction.
+See `docs/charter.md`, `docs/architecture.md`, `docs/roadmap.md`, and
+`docs/rhi1/` for the current boundaries, replacement sequence, and backend
+maturity evidence.
 
 ## CMake Consumers
 
@@ -76,13 +86,14 @@ find_package(Truffle CONFIG REQUIRED)
 target_link_libraries(my_tool PRIVATE Truffle::RHI Truffle::Render)
 ```
 
-The package exports `Truffle::Core`, `Truffle::Assets`,
+The current preliminary package exports `Truffle::Core`, `Truffle::Assets`,
 `Truffle::AssetRender`, `Truffle::ECS`, `Truffle::RHI`,
 `Truffle::BackendNull`, `Truffle::Render`, `Truffle::Scene`, and
 `Truffle::Diagnostics`. Additional backend exports
 (`Truffle::BackendMetal`, `Truffle::BackendVulkan`, `Truffle::BackendOpenGL`,
 `Truffle::BackendDirect3D`) are available when their corresponding CMake
-options are enabled.
+options are enabled. Except for Metal, those optional backend exports currently
+refer to contract simulators; they are not native support claims.
 
 See `docs/distribution.md` for package generation, install verification, and
 release workflow guidance.

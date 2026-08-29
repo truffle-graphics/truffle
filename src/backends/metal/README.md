@@ -1,5 +1,8 @@
-# Metal Backend Placeholder
+# Metal Backend
 
-This directory owns the future Metal backend implementation. The
-`TRUFFLE_BUILD_BACKEND_METAL` option reserves its build boundary until the
-backend milestone adds platform gating, targets, and implementation code.
+This directory owns Truffle's preliminary native Metal implementation. It uses
+Metal and QuartzCore APIs and currently reaches the RHI 1 `cross_compiles` gate
+on macOS. Accepted validation-enabled native smoke, deterministic GPU-output,
+native presentation, recovery, and broader Apple-platform evidence remain.
+
+See `docs/rhi1/support-matrix.md` for the evidence gates.
