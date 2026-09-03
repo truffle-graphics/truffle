@@ -218,7 +218,11 @@ void verify_direct3d_buffers() {
       .arrayLayers = 6,
   });
   assert(cubeTexture.ok());
-  assert(device.create_texture_view(cubeTexture.value()).ok());
+  auto cubeView = device.create_texture_view(
+      cubeTexture.value(),
+      {.dimension = rhi::TextureDimension::cube,
+       .range = {.arrayLayerCount = 6}});
+  assert(cubeView.ok());
 
   auto depthTexture = device.create_texture({
       .extent = {4, 4, 1},
