@@ -119,6 +119,16 @@ if(TRUFFLE_BUILD_BACKEND_DIRECT3D)
     if(WIN32)
         set_tests_properties(truffle_direct3d_tests PROPERTIES
                              LABELS "native-smoke;validation")
+        add_executable(truffle_direct3d_presentation_tests
+                       direct3d_presentation_tests.cpp)
+        target_link_libraries(truffle_direct3d_presentation_tests
+                              PRIVATE truffle_backend_direct3d)
+        target_include_directories(truffle_direct3d_presentation_tests
+                                   PRIVATE "${PROJECT_SOURCE_DIR}/src/backends/direct3d")
+        add_test(NAME truffle_direct3d_presentation_tests
+                 COMMAND truffle_direct3d_presentation_tests)
+        set_tests_properties(truffle_direct3d_presentation_tests PROPERTIES
+                             LABELS "presentation;validation")
     endif()
 endif()
 

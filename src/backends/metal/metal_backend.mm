@@ -742,7 +742,8 @@ struct MetalFormat {
 }
 
 [[nodiscard]] Result<std::shared_ptr<void>> create_metal_swapchain(
-    const std::shared_ptr<void>& nativeSurface, const SwapchainDesc& desc) {
+    const std::shared_ptr<void>&, const std::shared_ptr<void>& nativeSurface,
+    const SwapchainDesc& desc) {
     @autoreleasepool {
         const auto surface =
             std::static_pointer_cast<MetalSurfaceResource>(nativeSurface);

@@ -221,7 +221,8 @@ struct FoundationBackendConfig {
         const std::shared_ptr<void>&, const QueryPoolDesc&) = nullptr;
     Result<std::shared_ptr<void>> (*createSurface)(const SurfaceDesc&) = nullptr;
     Result<std::shared_ptr<void>> (*createSwapchain)(
-        const std::shared_ptr<void>&, const SwapchainDesc&) = nullptr;
+        const std::shared_ptr<void>&, const std::shared_ptr<void>&,
+        const SwapchainDesc&) = nullptr;
     Result<NativeSwapchainImage> (*acquireSwapchain)(
         const std::shared_ptr<void>&) = nullptr;
     Status (*resizeSwapchain)(const std::shared_ptr<void>&, Extent2D) = nullptr;

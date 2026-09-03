@@ -1,5 +1,6 @@
 #include "truffle/rhi/direct3d_backend.hpp"
 
+#include "direct3d_backend_test.hpp"
 #include "foundation_backend.hpp"
 
 #ifdef _WIN32
@@ -11,6 +12,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstring>
 #include <cwchar>
 #include <limits>
@@ -23,6 +25,25 @@
 namespace truffle::rhi {
 
 #ifdef _WIN32
+namespace detail {
+
+namespace {
+std::atomic<Direct3DAcquireFault> gDirect3DAcquireFaultForTesting{
+    Direct3DAcquireFault::none};
+std::atomic<Direct3DPresentFault> gDirect3DPresentFaultForTesting{
+    Direct3DPresentFault::none};
+} // namespace
+
+void set_direct3d_acquire_fault_for_testing(Direct3DAcquireFault fault) noexcept {
+  gDirect3DAcquireFaultForTesting.store(fault);
+}
+
+void set_direct3d_present_fault_for_testing(Direct3DPresentFault fault) noexcept {
+  gDirect3DPresentFaultForTesting.store(fault);
+}
+
+} // namespace detail
+
 namespace {
 
 using Microsoft::WRL::ComPtr;
@@ -55,10 +76,27 @@ using Microsoft::WRL::ComPtr;
 }
 
 struct Direct3DContext {
+  ComPtr<IDXGIFactory6> factory;
   ComPtr<ID3D12Device> device;
   ComPtr<ID3D12CommandQueue> queue;
   ComPtr<ID3D12Fence> fence;
   std::uint64_t fenceValue = 0;
+  bool tearingSupported = false;
+  std::mutex mutex;
+};
+
+struct Direct3DSurfaceResource {
+  HWND window = nullptr;
+  Extent2D initialExtent;
+};
+
+struct Direct3DSwapchainResource {
+  std::shared_ptr<Direct3DContext> context;
+  std::shared_ptr<Direct3DSurfaceResource> surface;
+  ComPtr<IDXGISwapChain3> swapchain;
+  SwapchainDesc desc;
+  DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
+  UINT flags = 0;
   std::mutex mutex;
 };
 
@@ -2847,6 +2885,13 @@ record_direct3d_commands(Direct3DContext &context, ID3D12GraphicsCommandList &co
   }
 
   auto context = std::make_shared<Direct3DContext>();
+  context->factory = factory;
+  BOOL tearingSupported = FALSE;
+  if (SUCCEEDED(factory->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING,
+                                             &tearingSupported,
+                                             sizeof(tearingSupported)))) {
+    context->tearingSupported = tearingSupported == TRUE;
+  }
   result = D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0,
                              IID_PPV_ARGS(&context->device));
   if (FAILED(result)) {
@@ -3038,6 +3083,345 @@ create_direct3d_query_pool(const std::shared_ptr<void> &nativeContext,
   return std::static_pointer_cast<void>(std::move(pool));
 }
 
+[[nodiscard]] DXGI_FORMAT direct3d_swapchain_format(TextureFormat format) {
+  switch (format) {
+  case TextureFormat::rgba8_unorm:
+  case TextureFormat::rgba8_srgb:
+    return DXGI_FORMAT_R8G8B8A8_UNORM;
+  case TextureFormat::bgra8_unorm:
+  case TextureFormat::bgra8_srgb:
+    return DXGI_FORMAT_B8G8R8A8_UNORM;
+  case TextureFormat::rgba16_float:
+    return DXGI_FORMAT_R16G16B16A16_FLOAT;
+  default:
+    return DXGI_FORMAT_UNKNOWN;
+  }
+}
+
+[[nodiscard]] Status direct3d_presentation_failure(std::string operation,
+                                                   HRESULT result) {
+  StatusCode code = StatusCode::backend_error;
+  switch (result) {
+  case DXGI_ERROR_DEVICE_HUNG:
+  case DXGI_ERROR_DEVICE_REMOVED:
+  case DXGI_ERROR_DEVICE_RESET:
+  case DXGI_ERROR_DRIVER_INTERNAL_ERROR:
+    code = StatusCode::device_lost;
+    break;
+  case DXGI_ERROR_ACCESS_LOST:
+    code = StatusCode::surface_lost;
+    break;
+  case DXGI_ERROR_WAS_STILL_DRAWING:
+    code = StatusCode::timeout;
+    break;
+  case DXGI_ERROR_MODE_CHANGE_IN_PROGRESS:
+    code = StatusCode::out_of_date;
+    break;
+  case E_OUTOFMEMORY:
+    code = StatusCode::out_of_memory;
+    break;
+  default:
+    break;
+  }
+  return direct3d_failure(code, "D3D12 " + operation + " failed", result);
+}
+
+[[nodiscard]] Status direct3d_acquire_fault_status(detail::Direct3DAcquireFault fault) {
+  switch (fault) {
+  case detail::Direct3DAcquireFault::timeout:
+    return Status::failure(StatusCode::timeout, "injected D3D12 acquisition timeout");
+  case detail::Direct3DAcquireFault::out_of_date:
+    return Status::failure(StatusCode::out_of_date,
+                           "injected D3D12 out-of-date swapchain");
+  case detail::Direct3DAcquireFault::surface_lost:
+    return Status::failure(StatusCode::surface_lost, "injected D3D12 surface loss");
+  case detail::Direct3DAcquireFault::device_lost:
+    return Status::failure(StatusCode::device_lost, "injected D3D12 device loss");
+  case detail::Direct3DAcquireFault::out_of_memory:
+    return Status::failure(StatusCode::out_of_memory,
+                           "injected D3D12 presentation allocation failure");
+  case detail::Direct3DAcquireFault::none:
+  case detail::Direct3DAcquireFault::suboptimal:
+    return Status::success();
+  }
+  return Status::success();
+}
+
+[[nodiscard]] Status direct3d_present_fault_status(detail::Direct3DPresentFault fault) {
+  switch (fault) {
+  case detail::Direct3DPresentFault::timeout:
+    return Status::failure(StatusCode::timeout, "injected D3D12 presentation timeout");
+  case detail::Direct3DPresentFault::out_of_date:
+    return Status::failure(StatusCode::out_of_date,
+                           "injected D3D12 out-of-date presentation");
+  case detail::Direct3DPresentFault::surface_lost:
+    return Status::failure(StatusCode::surface_lost,
+                           "injected D3D12 presentation surface loss");
+  case detail::Direct3DPresentFault::device_lost:
+    return Status::failure(StatusCode::device_lost,
+                           "injected D3D12 presentation device loss");
+  case detail::Direct3DPresentFault::out_of_memory:
+    return Status::failure(StatusCode::out_of_memory,
+                           "injected D3D12 presentation allocation failure");
+  case detail::Direct3DPresentFault::suboptimal:
+    return Status::failure(StatusCode::suboptimal,
+                           "injected D3D12 suboptimal presentation");
+  case detail::Direct3DPresentFault::none:
+    return Status::success();
+  }
+  return Status::success();
+}
+
+[[nodiscard]] Result<Extent2D>
+direct3d_client_extent(const Direct3DSurfaceResource &surface) {
+  if (surface.window == nullptr || !IsWindow(surface.window)) {
+    return Status::failure(StatusCode::surface_lost,
+                           "the Win32 presentation window no longer exists");
+  }
+  RECT client{};
+  if (!GetClientRect(surface.window, &client)) {
+    return direct3d_failure(StatusCode::surface_lost, "Win32 client-area query failed",
+                            HRESULT_FROM_WIN32(GetLastError()));
+  }
+  const auto width =
+      static_cast<std::uint32_t>(std::max<LONG>(0, client.right - client.left));
+  const auto height =
+      static_cast<std::uint32_t>(std::max<LONG>(0, client.bottom - client.top));
+  if (width == 0 || height == 0) {
+    return Status::failure(StatusCode::out_of_date,
+                           "the Win32 client area has zero extent");
+  }
+  return Extent2D{width, height};
+}
+
+[[nodiscard]] Result<std::shared_ptr<void>>
+create_direct3d_surface(const SurfaceDesc &desc) {
+  if (desc.native.kind != NativeSurfaceKind::win32 || desc.native.handle == nullptr) {
+    return Status::failure(StatusCode::unsupported,
+                           "D3D12 surfaces require a Win32 HWND handle");
+  }
+  auto surface = std::make_shared<Direct3DSurfaceResource>();
+  surface->window = static_cast<HWND>(desc.native.handle);
+  surface->initialExtent = desc.initialExtent;
+  if (!IsWindow(surface->window)) {
+    return Status::failure(StatusCode::invalid_argument,
+                           "D3D12 surface handle is not a live Win32 window");
+  }
+  return std::static_pointer_cast<void>(std::move(surface));
+}
+
+[[nodiscard]] Result<std::shared_ptr<void>>
+create_direct3d_swapchain(const std::shared_ptr<void> &nativeContext,
+                          const std::shared_ptr<void> &nativeSurface,
+                          const SwapchainDesc &desc) {
+  const auto context = std::static_pointer_cast<Direct3DContext>(nativeContext);
+  const auto surface = std::static_pointer_cast<Direct3DSurfaceResource>(nativeSurface);
+  if (!context || !context->factory || !context->device || !context->queue) {
+    return Status::failure(StatusCode::device_lost,
+                           "the D3D12 presentation context is unavailable");
+  }
+  if (!surface) {
+    return Status::failure(StatusCode::invalid_argument,
+                           "the D3D12 presentation surface is invalid");
+  }
+  auto clientExtent = direct3d_client_extent(*surface);
+  if (!clientExtent.ok()) {
+    return clientExtent.status();
+  }
+  const auto format = direct3d_swapchain_format(desc.format);
+  if (format == DXGI_FORMAT_UNKNOWN) {
+    return Status::failure(StatusCode::unsupported,
+                           "the D3D12 swapchain format is unsupported");
+  }
+  if (desc.presentMode == PresentMode::mailbox) {
+    return Status::failure(StatusCode::unsupported,
+                           "DXGI flip-model swapchains do not expose mailbox mode");
+  }
+  if (desc.presentMode == PresentMode::immediate && !context->tearingSupported) {
+    return Status::failure(StatusCode::unsupported,
+                           "DXGI tearing support is required for immediate mode");
+  }
+  if (desc.imageCount < 2 || desc.imageCount > 16) {
+    return Status::failure(StatusCode::invalid_argument,
+                           "D3D12 flip-model image count must be between 2 and 16");
+  }
+
+  auto result = std::make_shared<Direct3DSwapchainResource>();
+  result->context = context;
+  result->surface = surface;
+  result->desc = desc;
+  result->format = format;
+  result->flags =
+      desc.presentMode == PresentMode::immediate ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0;
+  const DXGI_SWAP_CHAIN_DESC1 nativeDesc{
+      .Width = desc.extent.width,
+      .Height = desc.extent.height,
+      .Format = format,
+      .Stereo = FALSE,
+      .SampleDesc = {.Count = 1, .Quality = 0},
+      .BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT,
+      .BufferCount = desc.imageCount,
+      .Scaling = DXGI_SCALING_STRETCH,
+      .SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD,
+      .AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED,
+      .Flags = result->flags,
+  };
+  ComPtr<IDXGISwapChain1> nativeSwapchain;
+  auto nativeResult = context->factory->CreateSwapChainForHwnd(
+      context->queue.Get(), surface->window, &nativeDesc, nullptr, nullptr,
+      &nativeSwapchain);
+  if (FAILED(nativeResult)) {
+    return direct3d_presentation_failure("swapchain creation", nativeResult);
+  }
+  nativeResult = nativeSwapchain.As(&result->swapchain);
+  if (FAILED(nativeResult)) {
+    return direct3d_presentation_failure("swapchain interface query", nativeResult);
+  }
+  nativeResult = context->factory->MakeWindowAssociation(
+      surface->window, DXGI_MWA_NO_ALT_ENTER | DXGI_MWA_NO_WINDOW_CHANGES);
+  if (FAILED(nativeResult)) {
+    return direct3d_presentation_failure("window association", nativeResult);
+  }
+  return std::static_pointer_cast<void>(std::move(result));
+}
+
+[[nodiscard]] Result<detail::NativeSwapchainImage>
+acquire_direct3d_swapchain(const std::shared_ptr<void> &nativeSwapchain) {
+  const auto swapchain =
+      std::static_pointer_cast<Direct3DSwapchainResource>(nativeSwapchain);
+  if (!swapchain || !swapchain->context || !swapchain->swapchain || !swapchain->surface) {
+    return Status::failure(StatusCode::surface_lost,
+                           "the D3D12 swapchain is unavailable");
+  }
+  const auto fault = detail::gDirect3DAcquireFaultForTesting.load();
+  if (fault != detail::Direct3DAcquireFault::none &&
+      fault != detail::Direct3DAcquireFault::suboptimal) {
+    return direct3d_acquire_fault_status(fault);
+  }
+  auto clientExtent = direct3d_client_extent(*swapchain->surface);
+  if (!clientExtent.ok()) {
+    return clientExtent.status();
+  }
+  std::lock_guard lock{swapchain->mutex};
+  const auto imageIndex = swapchain->swapchain->GetCurrentBackBufferIndex();
+  ComPtr<ID3D12Resource> backBuffer;
+  const auto result =
+      swapchain->swapchain->GetBuffer(imageIndex, IID_PPV_ARGS(&backBuffer));
+  if (FAILED(result)) {
+    return direct3d_presentation_failure("back-buffer acquisition", result);
+  }
+  const auto resourceDesc = backBuffer->GetDesc();
+  auto texture = std::make_shared<Direct3DTextureResource>();
+  texture->context = swapchain->context;
+  texture->resource = std::move(backBuffer);
+  texture->desc = {
+      .extent = {static_cast<std::uint32_t>(resourceDesc.Width), resourceDesc.Height, 1},
+      .format = swapchain->desc.format,
+      .usage = TextureUsage::color_attachment | TextureUsage::copy_source |
+               TextureUsage::present,
+      .debugName = swapchain->desc.debugName + " back buffer",
+  };
+  texture->format = direct3d_format(swapchain->desc.format);
+  texture->states = {D3D12_RESOURCE_STATE_PRESENT};
+
+  detail::NativeSwapchainImage acquired;
+  acquired.texture = std::static_pointer_cast<void>(std::move(texture));
+  acquired.imageIndex = imageIndex;
+  acquired.extent = {static_cast<std::uint32_t>(resourceDesc.Width), resourceDesc.Height};
+  acquired.status =
+      fault == detail::Direct3DAcquireFault::suboptimal ||
+              clientExtent.value().width != swapchain->desc.extent.width ||
+              clientExtent.value().height != swapchain->desc.extent.height
+          ? Status::failure(StatusCode::suboptimal,
+                            "Win32 client extent differs from swapchain extent")
+          : Status::success();
+  return acquired;
+}
+
+[[nodiscard]] Status
+resize_direct3d_swapchain(const std::shared_ptr<void> &nativeSwapchain, Extent2D extent) {
+  const auto swapchain =
+      std::static_pointer_cast<Direct3DSwapchainResource>(nativeSwapchain);
+  if (!swapchain || !swapchain->context || !swapchain->swapchain || !swapchain->surface) {
+    return Status::failure(StatusCode::surface_lost,
+                           "the D3D12 swapchain is unavailable");
+  }
+  auto clientExtent = direct3d_client_extent(*swapchain->surface);
+  if (!clientExtent.ok()) {
+    return clientExtent.status();
+  }
+  std::scoped_lock lock{swapchain->context->mutex, swapchain->mutex};
+  if (auto status = submit_empty(*swapchain->context); !status.ok()) {
+    return status;
+  }
+  const auto result = swapchain->swapchain->ResizeBuffers(
+      swapchain->desc.imageCount, extent.width, extent.height, swapchain->format,
+      swapchain->flags);
+  if (FAILED(result)) {
+    return direct3d_presentation_failure("swapchain resize", result);
+  }
+  swapchain->desc.extent = extent;
+  return Status::success();
+}
+
+[[nodiscard]] Status
+present_direct3d_swapchain(const std::shared_ptr<void> &nativeSwapchain,
+                           std::uint32_t imageIndex,
+                           std::span<const detail::NativeSemaphorePoint> waits) {
+  const auto swapchain =
+      std::static_pointer_cast<Direct3DSwapchainResource>(nativeSwapchain);
+  if (!swapchain || !swapchain->context || !swapchain->swapchain || !swapchain->surface) {
+    return Status::failure(StatusCode::surface_lost,
+                           "the D3D12 swapchain is unavailable");
+  }
+  const auto fault = detail::gDirect3DPresentFaultForTesting.load();
+  if (fault != detail::Direct3DPresentFault::none) {
+    return direct3d_present_fault_status(fault);
+  }
+  auto clientExtent = direct3d_client_extent(*swapchain->surface);
+  if (!clientExtent.ok()) {
+    return clientExtent.status();
+  }
+  std::scoped_lock lock{swapchain->context->mutex, swapchain->mutex};
+  if (imageIndex != swapchain->swapchain->GetCurrentBackBufferIndex()) {
+    return Status::failure(StatusCode::invalid_state,
+                           "D3D12 presentation image is not current");
+  }
+  for (const auto &wait : waits) {
+    const auto semaphore =
+        std::static_pointer_cast<Direct3DSemaphoreResource>(wait.semaphore);
+    if (!semaphore || !semaphore->fence) {
+      return Status::failure(StatusCode::invalid_argument,
+                             "D3D12 present semaphore is invalid");
+    }
+    const auto result =
+        swapchain->context->queue->Wait(semaphore->fence.Get(), wait.value);
+    if (FAILED(result)) {
+      return direct3d_presentation_failure("presentation wait", result);
+    }
+  }
+  const auto syncInterval = swapchain->desc.presentMode == PresentMode::fifo ? 1u : 0u;
+  const auto presentFlags = swapchain->desc.presentMode == PresentMode::immediate
+                                ? DXGI_PRESENT_ALLOW_TEARING
+                                : 0u;
+  const auto result = swapchain->swapchain->Present(syncInterval, presentFlags);
+  if (result == DXGI_STATUS_OCCLUDED) {
+    return Status::failure(StatusCode::suboptimal,
+                           "the Win32 presentation window is occluded");
+  }
+  if (FAILED(result)) {
+    return direct3d_presentation_failure("presentation", result);
+  }
+  if (auto status = submit_empty(*swapchain->context); !status.ok()) {
+    return status;
+  }
+  return clientExtent.value().width != swapchain->desc.extent.width ||
+                 clientExtent.value().height != swapchain->desc.extent.height
+             ? Status::failure(StatusCode::suboptimal,
+                               "Win32 client extent differs from swapchain extent")
+             : Status::success();
+}
+
 } // namespace
 #endif
 
@@ -3055,9 +3439,9 @@ Result<Instance> create_direct3d12_instance(const InstanceDesc &desc) {
   config.adapterName = std::move(native.adapterName);
   config.queueKinds = {QueueKind::graphics};
   config.supportedFeatures = {
-      Feature::compute,        Feature::transfer,          Feature::timestamp_queries,
-      Feature::memory_budget,  Feature::descriptor_arrays, Feature::dynamic_offsets,
-      Feature::push_constants,
+      Feature::compute,           Feature::transfer,       Feature::presentation,
+      Feature::timestamp_queries, Feature::memory_budget,  Feature::descriptor_arrays,
+      Feature::dynamic_offsets,   Feature::push_constants,
   };
   config.resourceCapabilities = {
       .bufferViews = true,
@@ -3107,6 +3491,7 @@ Result<Instance> create_direct3d12_instance(const InstanceDesc &desc) {
   };
   config.deviceLocalBudgetBytes = native.deviceLocalBudget;
   config.native = true;
+  config.presentation = true;
   config.nativeContext = std::move(native.context);
   config.createBuffer = &create_direct3d_buffer;
   config.mapBuffer = &map_direct3d_buffer;
@@ -3123,6 +3508,11 @@ Result<Instance> create_direct3d12_instance(const InstanceDesc &desc) {
   config.createComputePipeline = &create_direct3d_compute_pipeline;
   config.createSemaphore = &create_direct3d_semaphore;
   config.createQueryPool = &create_direct3d_query_pool;
+  config.createSurface = &create_direct3d_surface;
+  config.createSwapchain = &create_direct3d_swapchain;
+  config.acquireSwapchain = &acquire_direct3d_swapchain;
+  config.resizeSwapchain = &resize_direct3d_swapchain;
+  config.presentSwapchain = &present_direct3d_swapchain;
   config.nativeSubmit = &submit_direct3d_commands;
   return detail::create_foundation_instance(desc, std::move(config));
 #else
