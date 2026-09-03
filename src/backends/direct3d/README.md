@@ -29,9 +29,20 @@ compare exact triangle, textured-binding, depth, MRT, MSAA-resolve, and
 compute-to-render output. Layout mismatches and unimplemented capabilities fail
 explicitly.
 
+Timeline semaphores own native D3D12 fences and submissions encode queue
+wait/signal values. Buffer and texture dependencies use legacy resource-state
+transitions, UAV barriers, and aliasing barriers. This is the deterministic
+fallback for the Windows SDK 19041 floor; enhanced barriers require a separate
+tested capability path. Timestamp and occlusion query heaps resolve packed
+64-bit results into copy-destination buffers. WARP tests cover multi-list
+ordering, wait and fence timeout/retry, stale-layout and aliasing failures,
+timestamp ordering, and an exact full-screen occlusion count. Validation also
+enables GPU-based validation when the installed debug interface supports it.
+
 Compressed, host-visible, and external texture paths remain unsupported, as do
 explicit copy-encoder texture clear/resolve/blit. Bindless tables, tessellation,
-indirect-count execution, pipeline caches, dynamic depth bias, timeline
-synchronization, DXGI surface/swapchain, and presentation are also unsupported.
+indirect-count execution, pipeline caches, dynamic depth bias,
+pipeline-statistics queries, native multi-queue ownership transfer, DXGI
+surface/swapchain, and presentation are also unsupported.
 Non-Windows builds keep the explicit unavailable factory so no simulated D3D12
 adapter can appear.

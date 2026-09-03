@@ -106,7 +106,9 @@ RHI 1 owns mechanism rather than renderer policy:
 - callers own resource allocators and descriptor arenas;
 - synchronization uses pipeline-stage flags, access flags, texture layouts,
   subresource and aliasing barriers, queue ownership transfers, and explicit
-  wait/signal semaphore values.
+  wait/signal semaphore values;
+- query pools expose command-list timestamp writes, render-scoped occlusion
+  queries, and explicit 64-bit result resolution into buffers.
 
 Descriptor caching, admission, quota, eviction, recovery, and materialization
 policy belongs above RHI. The preliminary policy engine was deleted during the

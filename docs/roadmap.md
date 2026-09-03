@@ -108,7 +108,8 @@ Tracked by #33.
 - [ ] Complete the compiler prerequisites in #73.
 - [x] Complete D3D12 baseline resources and ShaderPackage-backed graphics and
   compute pipelines through #49-#50.
-- [ ] Complete D3D12 synchronization and DXGI presentation through #51-#52.
+- [x] Complete D3D12 synchronization, barrier, and query paths through #51.
+- [ ] Complete D3D12 DXGI presentation through #52.
 - [ ] Complete Vulkan baseline capability and Linux, Windows, Android, and
   MoltenVK platform lanes through #53-#59.
 - [ ] Complete OpenGL/OpenGL ES resources, pipelines, synchronization, and

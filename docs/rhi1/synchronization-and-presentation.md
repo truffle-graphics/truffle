@@ -24,6 +24,32 @@ represent completed GPU work, not merely accepted work. This is correct but
 intentionally conservative; asynchronous queue workers and deferred object
 retirement remain hardening work.
 
+`QueryPool` results are explicit command-stream data. Timestamp writes occur
+between encoders, occlusion queries begin and end inside one render encoder,
+and `CommandList::resolve_queries()` writes packed 64-bit results into a buffer
+with `copy_destination` usage. Query type/index, nesting, resolution range,
+buffer usage, alignment, and availability are validated. Pipeline-statistics
+queries remain optional and fail when a backend does not implement them.
+
+## Direct3D 12 mapping
+
+- Timeline semaphores own `ID3D12Fence` values. Submissions encode queue waits
+  and signals; the portable bounded wait preserves timeout-without-consumption
+  so an executable command list can be retried.
+- Buffer and texture dependencies use legacy `ResourceBarrier` transitions,
+  with UAV barriers for write-after-write ordering and native aliasing barriers.
+  Queue ownership transfer remains unsupported while the backend exposes only
+  one direct queue.
+- Legacy barriers are the baseline fallback for the declared Windows SDK 19041
+  floor. Enhanced barriers are not selected opportunistically; they require a
+  separately tested capability path before they can replace this deterministic
+  fallback.
+- Timestamp and occlusion pools map to D3D12 query heaps and resolve through
+  `ResolveQueryData`. Timestamp stage hints identify command-stream placement;
+  D3D12 supplies no finer portable per-stage timestamp point.
+- Validation-enabled instances turn on both the D3D12 debug layer and
+  GPU-based validation when the installed debug interface exposes it.
+
 ## Presentation
 
 Acquisition returns a borrowed image, image index, status, and an available
