@@ -9,8 +9,9 @@ rather than growing a historical transcript here.
 
 ## Current Focus
 
-Complete #55's Vulkan resource allocation and transfer coverage through Linux
-validation-layer evidence without overstating runtime-dependent support.
+Close #55's Vulkan resource allocation and transfer coverage through a final
+negative-path and capability audit, then advance to dependency-ready compiler
+and Vulkan binding work without overstating runtime-dependent support.
 
 ## Latest Handoff
 
@@ -100,6 +101,13 @@ validation-layer evidence without overstating runtime-dependent support.
   validation-layer proof. External
   sharing remains deliberately unsupported because no Linux handle ownership
   contract is yet exposed by the backend.
+- `feat/rhi1-vulkan-resource-audit` closes the remaining #55 acceptance gaps:
+  overflow-safe host layout bounds, deterministic invalid cube-view and
+  host-multisample rejection, native partial-clear rejection, budget exhaustion,
+  and explicit sampler/external capability gates. Samplers remain sequenced with
+  #53 because the public contract exposes them through ordinary bindings; device
+  addresses are not exposed by RHI 1; external handles remain unadvertised until
+  a platform ownership contract exists. Local and native CI evidence is pending.
 
 - PR #46 is merged without closing issue #33. Vulkan buffer/texture and D3D12
   buffer transfers are on `develop`; post-merge build run `33261566114` is green

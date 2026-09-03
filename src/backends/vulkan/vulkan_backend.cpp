@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -1859,11 +1860,20 @@ void transition_vulkan_texture(VulkanContext& context,
         return Status::failure(StatusCode::invalid_argument,
                                "Vulkan host texture data layout is invalid");
     }
-    const auto imageStride = dataRow * rowsPerImage;
-    const auto required = dataLayout.offset +
-                          (region.extent.depth - 1u) * imageStride +
-                          (blocksHigh - 1u) * dataRow + tightRow;
-    if (required < dataLayout.offset || required > dataSize) {
+    const auto available = dataSize - dataLayout.offset;
+    const auto precedingImages =
+        static_cast<std::size_t>(region.extent.depth - 1u);
+    const auto precedingRows = static_cast<std::size_t>(blocksHigh - 1u);
+    if (precedingImages != 0 &&
+        (rowsPerImage > std::numeric_limits<std::size_t>::max() / dataRow ||
+         dataRow * rowsPerImage > available / precedingImages)) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "Vulkan host texture data is too small");
+    }
+    const auto imageStride = precedingImages == 0 ? 0 : dataRow * rowsPerImage;
+    const auto imageOffset = precedingImages * imageStride;
+    if (precedingRows > (available - imageOffset) / dataRow ||
+        tightRow > available - imageOffset - precedingRows * dataRow) {
         return Status::failure(StatusCode::invalid_argument,
                                "Vulkan host texture data is too small");
     }
@@ -1886,28 +1896,48 @@ void transition_vulkan_texture(VulkanContext& context,
         context.device, texture.image, &subresource, &nativeLayout);
     const auto blockX = region.origin.x / texture.format.blockWidth;
     const auto blockY = region.origin.y / texture.format.blockHeight;
+    const auto nativeRows = divide_round_up(
+        mip_dimension(texture.desc.extent.height,
+                      region.subresource.mipLevel),
+        texture.format.blockHeight);
+    if (texture.mapped == nullptr || nativeLayout.rowPitch == 0 ||
+        (nativeLayout.depthPitch == 0 &&
+         nativeRows > std::numeric_limits<VkDeviceSize>::max() /
+                          nativeLayout.rowPitch)) {
+        return Status::failure(StatusCode::backend_error,
+                               "Vulkan returned an invalid host texture layout");
+    }
     const auto nativeDepthStride =
         nativeLayout.depthPitch == 0
-            ? nativeLayout.rowPitch *
-                  divide_round_up(
-                      mip_dimension(texture.desc.extent.height,
-                                    region.subresource.mipLevel),
-                      texture.format.blockHeight)
+            ? nativeLayout.rowPitch * nativeRows
             : nativeLayout.depthPitch;
-    const auto nativeOffset = nativeLayout.offset +
-                              static_cast<VkDeviceSize>(region.origin.z) *
-                                  nativeDepthStride +
-                              static_cast<VkDeviceSize>(blockY) *
-                                  nativeLayout.rowPitch +
-                              static_cast<VkDeviceSize>(blockX) *
-                                  texture.format.bytesPerBlock;
-    const auto nativeRequired = nativeOffset +
-                                static_cast<VkDeviceSize>(region.extent.depth - 1u) *
-                                    nativeDepthStride +
-                                static_cast<VkDeviceSize>(blocksHigh - 1u) *
-                                    nativeLayout.rowPitch +
-                                tightRow;
-    if (nativeRequired > texture.allocationSize) {
+    const auto advance_within_allocation =
+        [&](VkDeviceSize& cursor, VkDeviceSize count,
+            VkDeviceSize stride) noexcept {
+            if (cursor > texture.allocationSize ||
+                (count != 0 &&
+                 stride > (texture.allocationSize - cursor) / count)) {
+                return false;
+            }
+            cursor += count * stride;
+            return true;
+        };
+    auto nativeOffset = nativeLayout.offset;
+    if (!advance_within_allocation(nativeOffset, region.origin.z,
+                                   nativeDepthStride) ||
+        !advance_within_allocation(nativeOffset, blockY,
+                                   nativeLayout.rowPitch) ||
+        !advance_within_allocation(nativeOffset, blockX,
+                                   texture.format.bytesPerBlock)) {
+        return Status::failure(StatusCode::backend_error,
+                               "Vulkan host texture layout exceeds allocation");
+    }
+    auto nativeRequired = nativeOffset;
+    if (!advance_within_allocation(nativeRequired, region.extent.depth - 1u,
+                                   nativeDepthStride) ||
+        !advance_within_allocation(nativeRequired, blocksHigh - 1u,
+                                   nativeLayout.rowPitch) ||
+        !advance_within_allocation(nativeRequired, 1, tightRow)) {
         return Status::failure(StatusCode::backend_error,
                                "Vulkan host texture layout exceeds allocation");
     }
