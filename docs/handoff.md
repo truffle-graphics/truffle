@@ -9,12 +9,20 @@ rather than growing a historical transcript here.
 
 ## Current Focus
 
-Close #55's Vulkan resource allocation and transfer coverage through a final
-negative-path and capability audit, then advance to dependency-ready compiler
-and Vulkan binding work without overstating runtime-dependent support.
+Advance #73 with the pinned offline GLSL/GLSL ES to SPIR-V route required by
+#53, preserving a compiler-free runtime and dependency-free assembly mode.
 
 ## Latest Handoff
 
+- Issue #55 is closed by PR #142 and merge commit `c249c164`. Its native Build
+  `33818770807` and final PR-head Build `33818960477` pass package, macOS,
+  Ubuntu, and Windows, including Vulkan validation-layer negative paths.
+- `feat/rhi1-shaderc-spirv-route` starts #73 with glslang `16.5.0` pinned at
+  `a8d28bd082bff18ffbe80996e922b012f915cf07`. The compiler remains private to
+  an explicit optional tool flag; offline and package builds perform no fetch.
+  The CLI compiles GLSL/GLSL ES to generated SPIR-V variants, records the exact
+  compiler version/revision and bounded diagnostics, rejects invalid source,
+  and checks byte-for-byte package determinism. Native CI evidence is pending.
 - Issue #129 completed the contributor-neutral planning workflow and the full
   RHI 1 backlog conversion without changing production code.
 - The public Truffle Project #5 contains 95 issues with Status, Phase,

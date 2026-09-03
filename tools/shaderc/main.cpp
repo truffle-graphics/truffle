@@ -1,7 +1,12 @@
 #include "truffle/rhi/shader_package.hpp"
 
+#if defined(TRUFFLE_SHADERC_HAS_GLSLANG)
+#include "glslang_compiler.hpp"
+#endif
+
 #include <algorithm>
 #include <cstddef>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -36,6 +41,7 @@ struct Arguments {
     std::string compilerVersion;
     std::string compilerRevision;
     std::string append;
+    bool compile = false;
 };
 
 [[nodiscard]] Status invalid(std::string message) {
@@ -49,7 +55,8 @@ void usage(std::ostream& output) {
            "--source-language LANGUAGE "
            "--compiler-name NAME --compiler-version VERSION "
            "[--compiler-revision REV] [--entry NAME] "
-           "[--kind precompiled|native|generated] [--append PACKAGE]\n"
+           "[--kind precompiled|native|generated] [--append PACKAGE] "
+           "[--compile]\n"
         << "Targets: spirv, dxil, metallib, msl, wgsl, glsl, glsl-es\n"
         << "Stages: vertex, fragment, compute\n"
         << "Source languages: slang, hlsl, glsl, glsl-es, wgsl, msl, "
@@ -65,6 +72,10 @@ void usage(std::ostream& output) {
         if (key == "--help") {
             usage(std::cout);
             return invalid("help requested");
+        }
+        if (key == "--compile") {
+            result.compile = true;
+            continue;
         }
         if (index + 1 >= argc) {
             return invalid("missing value for " + std::string{key});
@@ -103,8 +114,8 @@ void usage(std::ostream& output) {
     if (result.name.empty() || result.target.empty() || result.stage.empty() ||
         result.input.empty() || result.output.empty() ||
         result.sourceHash.empty() || result.sourceLanguage.empty() ||
-        result.compilerName.empty() ||
-        result.compilerVersion.empty()) {
+        (!result.compile &&
+         (result.compilerName.empty() || result.compilerVersion.empty()))) {
         return invalid("required package arguments are missing");
     }
     return result;
@@ -237,8 +248,14 @@ int main(int argc, char** argv) {
             std::cerr << packageResult.status().message << '\n';
             return 2;
         }
-        std::cout << packageResult.value().desc().name << " variants="
-                  << packageResult.value().desc().variants.size() << '\n';
+        const auto& desc = packageResult.value().desc();
+        std::cout << desc.name << " variants=" << desc.variants.size()
+                  << " compilers=" << desc.compilers.size() << '\n';
+        for (const auto& compiler : desc.compilers) {
+            std::cout << "compiler=" << compiler.name
+                      << " version=" << compiler.version
+                      << " revision=" << compiler.revision << '\n';
+        }
         return 0;
     }
     auto argumentsResult = parse_arguments(argc, argv);
@@ -268,6 +285,14 @@ int main(int argc, char** argv) {
         return 2;
     }
     const auto target = targetResult.value();
+    if (arguments.compile &&
+        (target != rhi::ShaderTarget::spirv ||
+         (languageResult.value() != rhi::ShaderSourceLanguage::glsl &&
+          languageResult.value() != rhi::ShaderSourceLanguage::glsl_es))) {
+        std::cerr << "the enabled compiler route accepts GLSL or GLSL ES to "
+                     "SPIR-V only\n";
+        return 2;
+    }
     ShaderPackageDesc desc;
     if (!arguments.append.empty()) {
         auto baseBytes = read_file(arguments.append);
@@ -304,10 +329,39 @@ int main(int argc, char** argv) {
         std::cerr << "appended source provenance does not match\n";
         return 2;
     }
+    auto variantCode = std::move(codeResult).value();
+    auto compilerName = arguments.compilerName;
+    auto compilerVersion = arguments.compilerVersion;
+    auto compilerRevision = arguments.compilerRevision;
+    auto variantKind = kindResult.value();
+    std::string compilerDiagnostics;
+    if (arguments.compile) {
+#if defined(TRUFFLE_SHADERC_HAS_GLSLANG)
+        std::string sourceText(variantCode.size(), '\0');
+        std::memcpy(sourceText.data(), variantCode.data(), variantCode.size());
+        auto compiled = shaderc::compile_glsl_to_spirv(
+            sourceText, stageResult.value(), arguments.entry,
+            languageResult.value() == rhi::ShaderSourceLanguage::glsl_es);
+        if (!compiled.ok()) {
+            std::cerr << compiled.status().message << '\n';
+            return 2;
+        }
+        variantCode = std::move(compiled.value().spirv);
+        compilerName = "glslang";
+        compilerVersion = std::move(compiled.value().compilerVersion);
+        compilerRevision = std::move(compiled.value().compilerRevision);
+        compilerDiagnostics = std::move(compiled.value().diagnostics);
+        variantKind = rhi::ShaderVariantKind::generated;
+#else
+        std::cerr << "GLSL compilation support is not enabled; configure with "
+                     "TRUFFLE_SHADERC_ENABLE_GLSLANG=ON\n";
+        return 2;
+#endif
+    }
     const rhi::ShaderCompilerRecord compiler{
-        .name = arguments.compilerName,
-        .version = arguments.compilerVersion,
-        .revision = arguments.compilerRevision,
+        .name = std::move(compilerName),
+        .version = std::move(compilerVersion),
+        .revision = std::move(compilerRevision),
     };
     if (std::find(desc.compilers.begin(), desc.compilers.end(), compiler) ==
         desc.compilers.end()) {
@@ -316,11 +370,19 @@ int main(int argc, char** argv) {
     ShaderVariantDesc variant;
     variant.target = target;
     variant.format = format_for_target(target);
-    variant.kind = kindResult.value();
+    variant.kind = variantKind;
     variant.stage = stageResult.value();
     variant.entryPoint = arguments.entry;
-    variant.code = std::move(codeResult).value();
+    variant.code = std::move(variantCode);
     desc.variants.push_back(std::move(variant));
+    if (!compilerDiagnostics.empty()) {
+        desc.diagnostics.push_back({
+            .severity = rhi::ShaderDiagnosticSeverity::info,
+            .variant = arguments.target + ":" + arguments.stage + ":" +
+                       arguments.entry,
+            .message = std::move(compilerDiagnostics),
+        });
+    }
     auto packageResult = ShaderPackage::create(std::move(desc));
     if (!packageResult.ok()) {
         std::cerr << packageResult.status().message << '\n';

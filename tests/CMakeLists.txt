@@ -236,6 +236,14 @@ if(TRUFFLE_BUILD_SHADERC)
             "-DTRUFFLE_SHADERC=$<TARGET_FILE:truffle-shaderc>"
             "-DTRUFFLE_SHADERC_TEST_DIR=${PROJECT_BINARY_DIR}/shaderc-smoke"
             -P "${PROJECT_SOURCE_DIR}/cmake/ShadercSmoke.cmake")
+    if(TRUFFLE_SHADERC_ENABLE_GLSLANG)
+        add_test(
+            NAME truffle_shaderc_glslang_smoke
+            COMMAND ${CMAKE_COMMAND}
+                "-DTRUFFLE_SHADERC=$<TARGET_FILE:truffle-shaderc>"
+                "-DTRUFFLE_SHADERC_TEST_DIR=${PROJECT_BINARY_DIR}/shaderc-glslang-smoke"
+                -P "${PROJECT_SOURCE_DIR}/cmake/ShadercGlslangSmoke.cmake")
+    endif()
 endif()
 
 add_executable(truffle_performance_sanity_tests performance_sanity_tests.cpp)
