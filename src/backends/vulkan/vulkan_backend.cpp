@@ -237,17 +237,28 @@ struct VulkanFormat {
 struct VulkanTextureResource {
     VulkanTextureResource(std::shared_ptr<VulkanContext> contextValue,
                           VkImage imageValue, VkDeviceMemory memoryValue,
-                          TextureDesc descValue, VulkanFormat formatValue)
+                          VkDeviceSize allocationSizeValue,
+                          TextureDesc descValue, VulkanFormat formatValue,
+                          bool hostVisibleValue, bool hostCoherentValue,
+                          void* mappedValue, VkImageLayout initialLayout)
         : context(std::move(contextValue)), image(imageValue),
-          memory(memoryValue), desc(std::move(descValue)), format(formatValue),
+          memory(memoryValue), allocationSize(allocationSizeValue),
+          desc(std::move(descValue)), format(formatValue),
+          hostVisible(hostVisibleValue), hostCoherent(hostCoherentValue),
+          mapped(mappedValue),
           layouts(static_cast<std::size_t>(desc.mipLevels) * desc.arrayLayers,
-                  VK_IMAGE_LAYOUT_UNDEFINED) {}
+                  initialLayout) {}
 
     ~VulkanTextureResource() {
         if (!context || context->device == VK_NULL_HANDLE) {
             return;
         }
         std::lock_guard contextLock{context->mutex};
+        std::lock_guard resourceLock{mutex};
+        if (mapped != nullptr) {
+            context->deviceTable.vkUnmapMemory(context->device, memory);
+            mapped = nullptr;
+        }
         if (image != VK_NULL_HANDLE) {
             context->deviceTable.vkDestroyImage(context->device, image,
                                                  nullptr);
@@ -265,8 +276,12 @@ struct VulkanTextureResource {
     std::shared_ptr<VulkanContext> context;
     VkImage image = VK_NULL_HANDLE;
     VkDeviceMemory memory = VK_NULL_HANDLE;
+    VkDeviceSize allocationSize = 0;
     TextureDesc desc;
     VulkanFormat format;
+    bool hostVisible = false;
+    bool hostCoherent = false;
+    void* mapped = nullptr;
     std::vector<VkImageLayout> layouts;
     std::mutex mutex;
 };
@@ -539,10 +554,14 @@ struct VulkanProbe {
     const auto imageType = vulkan_image_type(desc.dimension);
     const auto sampleCount = vulkan_sample_count(desc.sampleCount);
     const auto imageFlags = vulkan_image_flags(desc);
-    if (desc.memory != MemoryDomain::device_local || desc.shareable ||
+    const auto tiling = desc.memory == MemoryDomain::device_local
+                            ? VK_IMAGE_TILING_OPTIMAL
+                            : VK_IMAGE_TILING_LINEAR;
+    if (desc.memory == MemoryDomain::external || desc.shareable ||
         format.format == VK_FORMAT_UNDEFINED ||
         imageType == VK_IMAGE_TYPE_MAX_ENUM ||
         sampleCount == VK_SAMPLE_COUNT_FLAG_BITS_MAX_ENUM ||
+        (tiling == VK_IMAGE_TILING_LINEAR && desc.sampleCount != 1) ||
         has_usage(desc.usage, TextureUsage::present)) {
         return Status::failure(
             StatusCode::unsupported,
@@ -558,7 +577,10 @@ struct VulkanProbe {
     context->instanceTable.vkGetPhysicalDeviceFormatProperties(
         context->physicalDevice, format.format, &properties);
     const auto requiredFeatures = required_format_features(desc.usage);
-    if ((properties.optimalTilingFeatures & requiredFeatures) !=
+    const auto availableFeatures = tiling == VK_IMAGE_TILING_OPTIMAL
+                                       ? properties.optimalTilingFeatures
+                                       : properties.linearTilingFeatures;
+    if ((availableFeatures & requiredFeatures) !=
         requiredFeatures) {
         return Status::failure(
             StatusCode::unsupported,
@@ -569,7 +591,7 @@ struct VulkanProbe {
     const auto propertiesResult =
         context->instanceTable.vkGetPhysicalDeviceImageFormatProperties(
             context->physicalDevice, format.format, imageType,
-            VK_IMAGE_TILING_OPTIMAL, usage, imageFlags, &imageProperties);
+            tiling, usage, imageFlags, &imageProperties);
     if (propertiesResult != VK_SUCCESS ||
         desc.extent.width > imageProperties.maxExtent.width ||
         desc.extent.height > imageProperties.maxExtent.height ||
@@ -592,17 +614,22 @@ struct VulkanProbe {
         .mipLevels = desc.mipLevels,
         .arrayLayers = desc.arrayLayers,
         .samples = sampleCount,
-        .tiling = VK_IMAGE_TILING_OPTIMAL,
+        .tiling = tiling,
         .usage = usage,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
         .queueFamilyIndexCount = 0,
         .pQueueFamilyIndices = nullptr,
-        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+        .initialLayout = tiling == VK_IMAGE_TILING_LINEAR
+                             ? VK_IMAGE_LAYOUT_PREINITIALIZED
+                             : VK_IMAGE_LAYOUT_UNDEFINED,
     };
 
     VkImage image = VK_NULL_HANDLE;
     VkDeviceMemory memory = VK_NULL_HANDLE;
     VkMemoryRequirements requirements{};
+    bool hostVisible = false;
+    bool hostCoherent = false;
+    void* mapped = nullptr;
     std::lock_guard lock{context->mutex};
     auto result = context->deviceTable.vkCreateImage(
         context->device, &imageInfo, nullptr, &image);
@@ -612,9 +639,18 @@ struct VulkanProbe {
     }
     context->deviceTable.vkGetImageMemoryRequirements(context->device, image,
                                                        &requirements);
-    auto memoryType = find_memory_type(
-        *context, requirements.memoryTypeBits,
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 0);
+    VkMemoryPropertyFlags requiredMemory =
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    VkMemoryPropertyFlags preferredMemory = 0;
+    if (tiling == VK_IMAGE_TILING_LINEAR) {
+        requiredMemory = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+        preferredMemory = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        if (desc.memory == MemoryDomain::readback) {
+            preferredMemory |= VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+        }
+    }
+    auto memoryType = find_memory_type(*context, requirements.memoryTypeBits,
+                                       requiredMemory, preferredMemory);
     if (!memoryType.ok()) {
         context->deviceTable.vkDestroyImage(context->device, image, nullptr);
         return memoryType.status();
@@ -631,7 +667,21 @@ struct VulkanProbe {
         result = context->deviceTable.vkBindImageMemory(context->device, image,
                                                         memory, 0);
     }
+    if (result == VK_SUCCESS && tiling == VK_IMAGE_TILING_LINEAR) {
+        result = context->deviceTable.vkMapMemory(
+            context->device, memory, 0, requirements.size, 0, &mapped);
+        const auto memoryFlags = context->memoryProperties
+                                     .memoryTypes[memoryType.value()]
+                                     .propertyFlags;
+        hostVisible =
+            (memoryFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0;
+        hostCoherent =
+            (memoryFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0;
+    }
     if (result != VK_SUCCESS) {
+        if (mapped != nullptr) {
+            context->deviceTable.vkUnmapMemory(context->device, memory);
+        }
         context->deviceTable.vkDestroyImage(context->device, image, nullptr);
         if (memory != VK_NULL_HANDLE) {
             context->deviceTable.vkFreeMemory(context->device, memory, nullptr);
@@ -646,8 +696,15 @@ struct VulkanProbe {
     try {
         return std::static_pointer_cast<void>(
             std::make_shared<VulkanTextureResource>(
-                context, image, memory, desc, format));
+                context, image, memory, requirements.size, desc, format,
+                hostVisible, hostCoherent, mapped,
+                tiling == VK_IMAGE_TILING_LINEAR
+                    ? VK_IMAGE_LAYOUT_PREINITIALIZED
+                    : VK_IMAGE_LAYOUT_UNDEFINED));
     } catch (const std::bad_alloc&) {
+        if (mapped != nullptr) {
+            context->deviceTable.vkUnmapMemory(context->device, memory);
+        }
         context->deviceTable.vkDestroyImage(context->device, image, nullptr);
         context->deviceTable.vkFreeMemory(context->device, memory, nullptr);
         return Status::failure(StatusCode::out_of_memory,
@@ -1135,12 +1192,29 @@ struct VulkanProbe {
 
 [[nodiscard]] VkAccessFlags vulkan_layout_access(VkImageLayout layout) {
     switch (layout) {
+    case VK_IMAGE_LAYOUT_PREINITIALIZED:
+        return VK_ACCESS_HOST_WRITE_BIT;
+    case VK_IMAGE_LAYOUT_GENERAL:
+        return VK_ACCESS_HOST_READ_BIT | VK_ACCESS_HOST_WRITE_BIT;
     case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
         return VK_ACCESS_TRANSFER_READ_BIT;
     case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
         return VK_ACCESS_TRANSFER_WRITE_BIT;
     default:
         return 0;
+    }
+}
+
+[[nodiscard]] VkPipelineStageFlags vulkan_layout_stage(
+    VkImageLayout layout) noexcept {
+    switch (layout) {
+    case VK_IMAGE_LAYOUT_UNDEFINED:
+        return VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    case VK_IMAGE_LAYOUT_PREINITIALIZED:
+    case VK_IMAGE_LAYOUT_GENERAL:
+        return VK_PIPELINE_STAGE_HOST_BIT;
+    default:
+        return VK_PIPELINE_STAGE_TRANSFER_BIT;
     }
 }
 
@@ -1174,9 +1248,7 @@ void transition_vulkan_texture(VulkanContext& context,
             .layerCount = 1,
         },
     };
-    const auto sourceStage = oldLayout == VK_IMAGE_LAYOUT_UNDEFINED
-                                 ? VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT
-                                 : VK_PIPELINE_STAGE_TRANSFER_BIT;
+    const auto sourceStage = vulkan_layout_stage(oldLayout);
     context.deviceTable.vkCmdPipelineBarrier(
         commandBuffer, sourceStage, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0,
         nullptr, 0, nullptr, 1, &barrier);
@@ -1642,6 +1714,280 @@ void transition_vulkan_texture(VulkanContext& context,
                                 "Vulkan native command submission failed", result);
 }
 
+[[nodiscard]] bool vulkan_host_texture_region_valid(
+    const VulkanTextureResource& texture, const TextureRegion& region) noexcept {
+    if (!texture.hostVisible || texture.mapped == nullptr ||
+        region.subresource.mipLevel >= texture.desc.mipLevels ||
+        region.subresource.arrayLayer >= texture.desc.arrayLayers ||
+        !vulkan_single_aspect(region.subresource.aspect) ||
+        (texture.format.aspects & vulkan_aspect(region.subresource.aspect)) == 0 ||
+        region.extent.width == 0 || region.extent.height == 0 ||
+        region.extent.depth == 0) {
+        return false;
+    }
+    const auto mip = region.subresource.mipLevel;
+    const auto width = mip_dimension(texture.desc.extent.width, mip);
+    const auto height = mip_dimension(texture.desc.extent.height, mip);
+    const auto depth = texture.desc.dimension == TextureDimension::d3
+                           ? mip_dimension(texture.desc.extent.depth, mip)
+                           : 1u;
+    if (region.origin.x > width || region.extent.width > width - region.origin.x ||
+        region.origin.y > height ||
+        region.extent.height > height - region.origin.y ||
+        region.origin.z > depth ||
+        region.extent.depth > depth - region.origin.z) {
+        return false;
+    }
+    return region.origin.x % texture.format.blockWidth == 0 &&
+           region.origin.y % texture.format.blockHeight == 0;
+}
+
+[[nodiscard]] Status transition_vulkan_texture_to_host(
+    VulkanContext& context, VulkanTextureResource& texture,
+    const TextureSubresource& subresource, bool write) {
+    VkCommandPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    poolInfo.queueFamilyIndex = context.queueFamily;
+    VkCommandPool pool = VK_NULL_HANDLE;
+    auto result = context.deviceTable.vkCreateCommandPool(
+        context.device, &poolInfo, nullptr, &pool);
+    if (result != VK_SUCCESS) {
+        return vulkan_failure(StatusCode::backend_error,
+                              "Vulkan host-transition pool creation failed",
+                              result);
+    }
+    VkCommandBufferAllocateInfo allocationInfo{};
+    allocationInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocationInfo.commandPool = pool;
+    allocationInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocationInfo.commandBufferCount = 1;
+    VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+    result = context.deviceTable.vkAllocateCommandBuffers(
+        context.device, &allocationInfo, &commandBuffer);
+    if (result == VK_SUCCESS) {
+        VkCommandBufferBeginInfo beginInfo{};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        result = context.deviceTable.vkBeginCommandBuffer(commandBuffer,
+                                                          &beginInfo);
+    }
+    if (result == VK_SUCCESS) {
+        std::lock_guard textureLock{texture.mutex};
+        auto& oldLayout = texture.layouts[texture.layout_index(
+            subresource.mipLevel, subresource.arrayLayer)];
+        const VkImageMemoryBarrier barrier{
+            .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .pNext = nullptr,
+            .srcAccessMask = vulkan_layout_access(oldLayout),
+            .dstAccessMask = write ? VK_ACCESS_HOST_WRITE_BIT
+                                   : VK_ACCESS_HOST_READ_BIT,
+            .oldLayout = oldLayout,
+            .newLayout = VK_IMAGE_LAYOUT_GENERAL,
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .image = texture.image,
+            .subresourceRange = {
+                .aspectMask = vulkan_aspect(subresource.aspect),
+                .baseMipLevel = subresource.mipLevel,
+                .levelCount = 1,
+                .baseArrayLayer = subresource.arrayLayer,
+                .layerCount = 1,
+            },
+        };
+        context.deviceTable.vkCmdPipelineBarrier(
+            commandBuffer, vulkan_layout_stage(oldLayout),
+            VK_PIPELINE_STAGE_HOST_BIT, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+        result = context.deviceTable.vkEndCommandBuffer(commandBuffer);
+    }
+    if (result == VK_SUCCESS) {
+        const VkSubmitInfo submitInfo{
+            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .pNext = nullptr,
+            .waitSemaphoreCount = 0,
+            .pWaitSemaphores = nullptr,
+            .pWaitDstStageMask = nullptr,
+            .commandBufferCount = 1,
+            .pCommandBuffers = &commandBuffer,
+            .signalSemaphoreCount = 0,
+            .pSignalSemaphores = nullptr,
+        };
+        result = context.deviceTable.vkQueueSubmit(context.queue, 1, &submitInfo,
+                                                   VK_NULL_HANDLE);
+    }
+    if (result == VK_SUCCESS) {
+        result = context.deviceTable.vkQueueWaitIdle(context.queue);
+    }
+    if (result == VK_SUCCESS) {
+        std::lock_guard textureLock{texture.mutex};
+        texture.layouts[texture.layout_index(subresource.mipLevel,
+                                             subresource.arrayLayer)] =
+            VK_IMAGE_LAYOUT_GENERAL;
+    }
+    context.deviceTable.vkDestroyCommandPool(context.device, pool, nullptr);
+    if (result == VK_ERROR_DEVICE_LOST) {
+        return vulkan_failure(StatusCode::device_lost,
+                              "Vulkan lost the device during host transition",
+                              result);
+    }
+    return result == VK_SUCCESS
+               ? Status::success()
+               : vulkan_failure(StatusCode::backend_error,
+                                "Vulkan host texture transition failed", result);
+}
+
+[[nodiscard]] Status access_vulkan_texture_host_memory(
+    VulkanTextureResource& texture, const TextureRegion& region,
+    const TextureDataLayout& dataLayout, const std::byte* source,
+    std::byte* destination, std::size_t dataSize, bool write) {
+    if (!vulkan_host_texture_region_valid(texture, region)) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "Vulkan host texture region is invalid");
+    }
+    const auto blocksWide =
+        divide_round_up(region.extent.width, texture.format.blockWidth);
+    const auto blocksHigh =
+        divide_round_up(region.extent.height, texture.format.blockHeight);
+    const auto tightRow = static_cast<std::size_t>(blocksWide) *
+                          texture.format.bytesPerBlock;
+    const auto dataRow =
+        dataLayout.bytesPerRow == 0 ? tightRow : dataLayout.bytesPerRow;
+    const auto rowsPerImage = dataLayout.rowsPerImage == 0
+                                  ? static_cast<std::size_t>(blocksHigh)
+                                  : dataLayout.rowsPerImage;
+    if (dataRow < tightRow || rowsPerImage < blocksHigh ||
+        dataLayout.offset > dataSize) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "Vulkan host texture data layout is invalid");
+    }
+    const auto imageStride = dataRow * rowsPerImage;
+    const auto required = dataLayout.offset +
+                          (region.extent.depth - 1u) * imageStride +
+                          (blocksHigh - 1u) * dataRow + tightRow;
+    if (required < dataLayout.offset || required > dataSize) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "Vulkan host texture data is too small");
+    }
+
+    auto& context = *texture.context;
+    std::lock_guard contextLock{context.mutex};
+    if (auto status = transition_vulkan_texture_to_host(
+            context, texture, region.subresource, write);
+        !status.ok()) {
+        return status;
+    }
+    std::lock_guard textureLock{texture.mutex};
+    const VkImageSubresource subresource{
+        .aspectMask = vulkan_aspect(region.subresource.aspect),
+        .mipLevel = region.subresource.mipLevel,
+        .arrayLayer = region.subresource.arrayLayer,
+    };
+    VkSubresourceLayout nativeLayout{};
+    context.deviceTable.vkGetImageSubresourceLayout(
+        context.device, texture.image, &subresource, &nativeLayout);
+    const auto blockX = region.origin.x / texture.format.blockWidth;
+    const auto blockY = region.origin.y / texture.format.blockHeight;
+    const auto nativeDepthStride =
+        nativeLayout.depthPitch == 0
+            ? nativeLayout.rowPitch *
+                  divide_round_up(
+                      mip_dimension(texture.desc.extent.height,
+                                    region.subresource.mipLevel),
+                      texture.format.blockHeight)
+            : nativeLayout.depthPitch;
+    const auto nativeOffset = nativeLayout.offset +
+                              static_cast<VkDeviceSize>(region.origin.z) *
+                                  nativeDepthStride +
+                              static_cast<VkDeviceSize>(blockY) *
+                                  nativeLayout.rowPitch +
+                              static_cast<VkDeviceSize>(blockX) *
+                                  texture.format.bytesPerBlock;
+    const auto nativeRequired = nativeOffset +
+                                static_cast<VkDeviceSize>(region.extent.depth - 1u) *
+                                    nativeDepthStride +
+                                static_cast<VkDeviceSize>(blocksHigh - 1u) *
+                                    nativeLayout.rowPitch +
+                                tightRow;
+    if (nativeRequired > texture.allocationSize) {
+        return Status::failure(StatusCode::backend_error,
+                               "Vulkan host texture layout exceeds allocation");
+    }
+    if (!write && !texture.hostCoherent) {
+        const VkMappedMemoryRange range{
+            .sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
+            .pNext = nullptr,
+            .memory = texture.memory,
+            .offset = 0,
+            .size = VK_WHOLE_SIZE,
+        };
+        const auto result = context.deviceTable.vkInvalidateMappedMemoryRanges(
+            context.device, 1, &range);
+        if (result != VK_SUCCESS) {
+            return vulkan_failure(StatusCode::backend_error,
+                                  "Vulkan texture invalidation failed", result);
+        }
+    }
+    auto* mapped = static_cast<std::byte*>(texture.mapped);
+    for (std::uint32_t z = 0; z < region.extent.depth; ++z) {
+        for (std::uint32_t row = 0; row < blocksHigh; ++row) {
+            auto* native = mapped + nativeOffset +
+                           static_cast<VkDeviceSize>(z) * nativeDepthStride +
+                           static_cast<VkDeviceSize>(row) * nativeLayout.rowPitch;
+            auto* data = (write ? const_cast<std::byte*>(source) : destination) +
+                         dataLayout.offset +
+                         static_cast<std::size_t>(z) * imageStride +
+                         static_cast<std::size_t>(row) * dataRow;
+            if (write) {
+                std::memcpy(native, data, tightRow);
+            } else {
+                std::memcpy(data, native, tightRow);
+            }
+        }
+    }
+    if (write && !texture.hostCoherent) {
+        const VkMappedMemoryRange range{
+            .sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
+            .pNext = nullptr,
+            .memory = texture.memory,
+            .offset = 0,
+            .size = VK_WHOLE_SIZE,
+        };
+        const auto result = context.deviceTable.vkFlushMappedMemoryRanges(
+            context.device, 1, &range);
+        if (result != VK_SUCCESS) {
+            return vulkan_failure(StatusCode::backend_error,
+                                  "Vulkan texture flush failed", result);
+        }
+    }
+    return Status::success();
+}
+
+[[nodiscard]] Status write_vulkan_texture(
+    const std::shared_ptr<void>& nativeResource, const TextureRegion& region,
+    std::span<const std::byte> data, const TextureDataLayout& layout) {
+    const auto resource =
+        std::static_pointer_cast<VulkanTextureResource>(nativeResource);
+    if (!resource || !resource->hostVisible) {
+        return Status::failure(StatusCode::unsupported,
+                               "Vulkan texture is not host writable");
+    }
+    return access_vulkan_texture_host_memory(*resource, region, layout,
+                                             data.data(), nullptr, data.size(),
+                                             true);
+}
+
+[[nodiscard]] Status read_vulkan_texture(
+    const std::shared_ptr<void>& nativeResource, const TextureRegion& region,
+    std::span<std::byte> data, const TextureDataLayout& layout) {
+    const auto resource =
+        std::static_pointer_cast<VulkanTextureResource>(nativeResource);
+    if (!resource || !resource->hostVisible) {
+        return Status::failure(StatusCode::unsupported,
+                               "Vulkan texture is not host readable");
+    }
+    return access_vulkan_texture_host_memory(*resource, region, layout, nullptr,
+                                             data.data(), data.size(), false);
+}
+
 [[nodiscard]] Result<VulkanProbe> initialize_vulkan(const InstanceDesc& desc) {
     const auto loaderResult = volkInitialize();
     if (loaderResult != VK_SUCCESS) {
@@ -1939,6 +2285,8 @@ Result<Instance> create_vulkan_instance(const InstanceDesc& desc) {
     config.readBuffer = &read_vulkan_buffer;
     config.createTexture = &create_vulkan_texture;
     config.createTextureView = &create_vulkan_texture_view;
+    config.writeTexture = &write_vulkan_texture;
+    config.readTexture = &read_vulkan_texture;
     config.nativeSubmit = &submit_vulkan_commands;
     return detail::create_foundation_instance(desc, std::move(config));
 }

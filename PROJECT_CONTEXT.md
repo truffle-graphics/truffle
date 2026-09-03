@@ -37,7 +37,8 @@ Current evidence is narrower than the old roadmap claimed:
   physical device-removal evidence, broader Apple-platform execution, and full
   native conformance remain.
 - The #33 matrix work gives Linux Vulkan a pinned private headers/volk loader
-  path, native buffers, capability-checked device-local texture shapes/views,
+  path, native buffers, host-visible linear images, capability-checked texture
+  shapes/views,
   padded-row and subresource transfers, clear, resolve, and blit commands;
   Windows D3D12 owns native upload/readback/default-heap buffers,
   device-local textures/views, buffer/texture transfers, ShaderPackage-backed
