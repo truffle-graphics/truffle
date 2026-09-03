@@ -84,10 +84,12 @@ validation-layer evidence without overstating runtime-dependent support.
   compressed, and multisampled device-local shapes with compatible views.
   Native transfer recording now covers mip/layer/volume/compressed copies,
   color/depth/stencil whole-subresource clear and readback, color resolve, and
-  nearest/linear color blit. The strict local build and all 36 tests pass;
-  Linux validation-layer execution with required BC1 and four-sample paths is
-  the next evidence gate. Host-visible textures, external-memory decisions,
-  and allocation accounting remain in #55.
+  nearest/linear color blit. The strict local build and all 36 tests pass.
+  PR #140 Build `33817112365` passes package, macOS, Ubuntu, and Windows; its
+  Ubuntu validation lane requires BC1, depth/stencil, four-sample resolve, and
+  linear-blit exact output rather than silently skipping them. Host-visible
+  textures, external-memory decisions, and allocation accounting remain in
+  #55.
 
 - PR #46 is merged without closing issue #33. Vulkan buffer/texture and D3D12
   buffer transfers are on `develop`; post-merge build run `33261566114` is green
