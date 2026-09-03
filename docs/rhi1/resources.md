@@ -59,7 +59,9 @@ their buffer offset to the layout offset.
 |---|---|---|
 | Null validation | All declared shapes and format classes; views; budgets; allocator callbacks; mapping/coherence; all transfer families; nearest blit; deferred-retirement validation. | External import/export, linear blit, and compressed clear return `unsupported`. |
 | Metal on macOS | Native buffers; native selected single-layer 2D, multisample color, depth/depth-stencil, and swapchain textures and views; shared/private memory; mapping/coherence; buffer copy/fill; texture copy; buffer-texture copy; deterministic readback; render-pass MSAA resolves. | Non-2D/array and unlisted formats, external sharing, and copy-encoder texture clear/resolve/blit remain unsupported. |
-| Vulkan, D3D12, OpenGL | No adapter is exposed. | The backend factory returns `unsupported`; no Null-backed resource is reported as native. |
+| Vulkan on Linux | Native upload/readback/device-local buffers and capability-checked device-local 1D/2D/3D/cube/array/mipmapped/compressed/multisampled images; compatible views; buffer/image and image/image copies; whole-subresource clear; color resolve; nearest/linear color blit. | Host-visible textures, external sharing, compressed clear, and unsupported runtime format/sample combinations fail explicitly. |
+| D3D12 on Windows | Native upload/readback/default-heap buffers, device-local textures/views, and buffer/texture transfers. | Compressed/external textures and explicit texture clear/resolve/blit remain unsupported. |
+| OpenGL/OpenGL ES on Linux | Native upload/readback/device-local buffers, views, copies, and fills. | Textures remain unsupported. |
 
 The macOS test runs with `MTL_DEBUG_LAYER=1` and compares exact bytes after
 native buffer, texture, and buffer-texture round trips. This satisfies the

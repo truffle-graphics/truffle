@@ -45,8 +45,10 @@ for each backend/platform pair:
   acquire/present proofs reach `native_smoke` on macOS.
 - `truffle_backend_vulkan` uses pinned private Vulkan headers and volk. Linux
   initializes a real loader/device/graphics queue, owns upload/readback and
-  device-local buffers plus selected device-local 2D textures/views, and proves
-  buffer and padded-row texture transfers before exposing an adapter.
+  device-local buffers plus capability-checked 1D, 2D, 3D, cube, array,
+  mipmapped, compressed, and multisampled device-local textures/views. Native
+  evidence covers padded-row and subresource copies, clear, resolve, and
+  nearest/linear blit paths.
 - `truffle_backend_direct3d` initializes the Windows SDK D3D12 WARP device,
   owns upload/readback and default-heap buffers plus device-local textures and
   descriptor views, consumes packaged native HLSL or offline DXIL, maps logical

@@ -9,8 +9,8 @@ rather than growing a historical transcript here.
 
 ## Current Focus
 
-Complete #52's host-owned Win32/DXGI presentation path through Windows
-debug-layer and GPU-validation WARP evidence.
+Complete #55's Vulkan resource allocation and transfer coverage through Linux
+validation-layer evidence without overstating runtime-dependent support.
 
 ## Latest Handoff
 
@@ -77,6 +77,19 @@ debug-layer and GPU-validation WARP evidence.
   Windows; its WARP presentation lane proves exact BGRA8 swapchain readback,
   acquire/render/present, client-size drift, occluded-desktop handling,
   `ResizeBuffers`, destroyed-window detection, and device-loss propagation.
+- Issue #52 is closed by PR #138 and merge commit `66db0030`; final PR-head
+  Build `33815897273` passes package, macOS, Ubuntu, and Windows.
+- `feat/rhi1-vulkan-resources` begins #55 by expanding Vulkan images from the
+  narrow 2D slice to capability-checked 1D, 2D, 3D, cube, array, mipmapped,
+  compressed, and multisampled device-local shapes with compatible views.
+  Native transfer recording now covers mip/layer/volume/compressed copies,
+  color/depth/stencil whole-subresource clear and readback, color resolve, and
+  nearest/linear color blit. The strict local build and all 36 tests pass.
+  PR #140 Build `33817112365` passes package, macOS, Ubuntu, and Windows; its
+  Ubuntu validation lane requires BC1, depth/stencil, four-sample resolve, and
+  linear-blit exact output rather than silently skipping them. Host-visible
+  textures, external-memory decisions, and allocation accounting remain in
+  #55.
 
 - PR #46 is merged without closing issue #33. Vulkan buffer/texture and D3D12
   buffer transfers are on `develop`; post-merge build run `33261566114` is green
