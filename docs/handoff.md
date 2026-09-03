@@ -9,8 +9,8 @@ rather than growing a historical transcript here.
 
 ## Current Focus
 
-Merge #49's evidenced D3D12 texture slice, then execute #50's native D3D12
-ShaderPackage binding and pipeline work.
+Complete #50's native D3D12 ShaderPackage binding and pipeline work through
+Windows debug-layer WARP output evidence.
 
 ## Latest Handoff
 
@@ -18,8 +18,8 @@ ShaderPackage binding and pipeline work.
   RHI 1 backlog conversion without changing production code.
 - The public Truffle Project #5 contains 95 issues with Status, Phase,
   Workstream, Priority, Effort, and Target evidence fields. Completed #26-#32,
-  #48, and #129 are `Done`; #49 is `In Progress`; the remaining 85 accepted
-  items are visible as `Todo`, with later Phase 6/7 work also labeled
+  #48, #49, and #129 are `Done`; #50 is `In Progress`; the remaining 84
+  accepted items are visible as `Todo`, with later Phase 6/7 work also labeled
   `deferred`.
 - Issue #25 structurally owns #26-#35 and #129. Phase epics #33, #34, and #35
   each structurally own 27 detailed sub-issues: #48-#74, #75-#101, and
@@ -46,6 +46,13 @@ ShaderPackage binding and pipeline work.
   upload, texture-to-texture copy, readback, and native view creation. The only
   failing check is the separately tracked companion-routing credential issue
   #131, which is not an engine validation gate.
+- Issue #50 is implementing D3D12 HLSL/DXIL shader ownership, reflected root
+  signatures, immutable bind groups and descriptor arrays, graphics/compute
+  PSOs, render/depth attachments, MSAA resolve, draw/dispatch, and indirect
+  commands. The first native proof covers exact triangle, indexed/instanced,
+  indirect, MRT, and MSAA-resolve output; Windows compilation and execution are
+  still pending before the binding, depth, and compute-to-render proof is
+  completed.
 
 - PR #46 is merged without closing issue #33. Vulkan buffer/texture and D3D12
   buffer transfers are on `develop`; post-merge build run `33261566114` is green
@@ -203,6 +210,19 @@ The local lane verifies the non-Windows unavailable contract. PR #135 Build
 256-byte-padded row readback, native texture-view creation, and debug-layer
 validation receipt required for merge.
 
+Issue #50 local cross-platform contract validation during implementation:
+
+```text
+cmake --build --preset ci --parallel 4
+ctest --preset ci --output-on-failure  # 36/36
+git diff --check
+```
+
+The local macOS lane compiles the shared callback/context changes and verifies
+all non-Windows contracts. The `_WIN32` implementation and new golden-output
+body require the next Windows CI checkpoint before the remaining #50 cases are
+added.
+
 The isolated worktree required the repository's pinned Vulkan submodules; the
 documented `git submodule update --init vendor/vulkan-headers vendor/volk`
 recovery path succeeded before the clean configure/build/test run.
@@ -244,8 +264,9 @@ because CMake does not discover `clang-format` on this host's `PATH`;
 
 ## Next Resume Steps
 
-1. Merge the evidenced #49 change, mark its Project item `Done`, then execute
-   #50's D3D12 shader, binding, root-signature, and pipeline slice.
+1. Run #50's first Windows CI checkpoint, correct any Windows SDK or debug-layer
+   findings, then add the textured, depth, dynamic-offset, push-constant, and
+   compute-to-render golden-output cases required for closure.
 2. Continue #33 only through its focused Project sub-issues; update issue and
    Project state whenever scope, evidence, or disposition changes.
 3. Keep WebGPU/WebGL2 and every unexecuted mobile/Apple/Vulkan platform at

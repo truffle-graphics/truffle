@@ -1,4 +1,5 @@
 #include "truffle/rhi/direct3d_backend.hpp"
+#include "truffle/rhi/shader_package.hpp"
 
 #include "native_backend_smoke.hpp"
 
@@ -6,12 +7,123 @@
 #include <array>
 #include <cassert>
 #include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <functional>
+#include <span>
+#include <string>
+#include <string_view>
+#include <vector>
 
 namespace {
 
-void verify_direct3d_buffers() {
-  namespace rhi = truffle::rhi;
+namespace rhi = truffle::rhi;
 
+std::vector<std::byte> bytes(std::string_view source) {
+  const auto raw = std::as_bytes(std::span{source.data(), source.size()});
+  return {raw.begin(), raw.end()};
+}
+
+rhi::Shader make_hlsl_shader(rhi::Device &device, std::string name,
+                             rhi::ShaderStage stage, std::string entryPoint,
+                             std::string_view source,
+                             std::vector<rhi::ResourceBinding> reflection = {},
+                             std::vector<rhi::PushConstantRange> pushConstants = {},
+                             std::vector<rhi::ShaderBindingMap> bindingMap = {}) {
+  rhi::ShaderPackageDesc packageDesc;
+  packageDesc.name = std::move(name);
+  packageDesc.sources.push_back({.path = "native-test.hlsl",
+                                 .language = rhi::ShaderSourceLanguage::hlsl,
+                                 .sha256 = std::string(64, '0')});
+  packageDesc.compilers.push_back(
+      {.name = "Windows SDK D3DCompiler", .version = "system"});
+  packageDesc.variants.push_back({
+      .target = rhi::ShaderTarget::dxil,
+      .format = rhi::ShaderByteFormat::native_source,
+      .kind = rhi::ShaderVariantKind::native_override,
+      .stage = stage,
+      .entryPoint = entryPoint,
+      .reflection = {.bindings = reflection, .pushConstants = pushConstants},
+      .code = bytes(source),
+  });
+  for (const auto &mapping : bindingMap) {
+    packageDesc.remaps.push_back({
+        .target = rhi::ShaderTarget::dxil,
+        .stage = mapping.stage,
+        .group = mapping.group,
+        .binding = mapping.binding,
+        .arrayElement = mapping.arrayElement,
+        .nativeGroup = mapping.nativeGroup,
+        .nativeBinding = mapping.nativeBinding,
+        .nativeArrayElement = mapping.nativeArrayElement,
+    });
+  }
+  auto package = rhi::ShaderPackage::create(std::move(packageDesc));
+  assert(package.ok());
+  auto shader =
+      device.create_shader(package.value(), rhi::ShaderTarget::dxil, entryPoint, stage);
+  assert(shader.ok());
+  return std::move(shader).value();
+}
+
+void submit(rhi::Device &device, rhi::Queue &queue,
+            const std::function<void(rhi::CommandList &)> &record) {
+  auto pool = device.create_command_pool(rhi::QueueKind::graphics);
+  assert(pool.ok());
+  auto list = pool.value().allocate();
+  assert(list.ok());
+  assert(list.value().begin().ok());
+  record(list.value());
+  assert(list.value().end().ok());
+  std::array<rhi::CommandList *, 1> lists{&list.value()};
+  assert(queue.submit(lists).ok());
+}
+
+std::vector<std::byte> read_rgba8(rhi::Device &device, rhi::Queue &queue,
+                                  rhi::Texture &texture, std::uint32_t width,
+                                  std::uint32_t height) {
+  constexpr std::size_t rowPitch = 256;
+  auto readback = device.create_buffer({
+      .size = rowPitch * height,
+      .usage = rhi::BufferUsage::copy_destination,
+      .memory = rhi::MemoryDomain::readback,
+  });
+  assert(readback.ok());
+  submit(device, queue, [&](rhi::CommandList &list) {
+    auto copy = list.begin_copy();
+    assert(copy.ok());
+    assert(copy.value()
+               .fill_buffer(readback.value(), 0, rowPitch * height, std::byte{})
+               .ok());
+    assert(copy.value()
+               .copy_texture_to_buffer(
+                   texture, readback.value(),
+                   {.layout = {.bytesPerRow = rowPitch, .rowsPerImage = height},
+                    .texture = {.subresource = {.aspect = rhi::TextureAspect::color},
+                                .extent = {width, height, 1}}})
+               .ok());
+    assert(copy.value().end().ok());
+  });
+  std::vector<std::byte> output(rowPitch * height);
+  assert(readback.value().read(0, output).ok());
+  return output;
+}
+
+void assert_solid_rgba8(std::span<const std::byte> pixels, std::uint32_t width,
+                        std::uint32_t height, std::array<std::byte, 4> expected) {
+  constexpr std::size_t rowPitch = 256;
+  for (std::uint32_t row = 0; row < height; ++row) {
+    for (std::uint32_t column = 0; column < width; ++column) {
+      const auto offset = row * rowPitch + column * 4u;
+      assert(std::equal(expected.begin(), expected.end(), pixels.begin() + offset));
+    }
+    assert(std::all_of(pixels.begin() + row * rowPitch + width * 4u,
+                       pixels.begin() + (row + 1u) * rowPitch,
+                       [](std::byte value) { return value == std::byte{}; }));
+  }
+}
+
+void verify_direct3d_buffers() {
   auto instanceResult = rhi::create_direct3d12_instance();
   assert(instanceResult.ok());
   auto instance = std::move(instanceResult).value();
@@ -220,8 +332,7 @@ void verify_direct3d_buffers() {
   assert(cubeTexture.ok());
   auto cubeView = device.create_texture_view(
       cubeTexture.value(),
-      {.dimension = rhi::TextureDimension::cube,
-       .range = {.arrayLayerCount = 6}});
+      {.dimension = rhi::TextureDimension::cube, .range = {.arrayLayerCount = 6}});
   assert(cubeView.ok());
 
   auto depthTexture = device.create_texture({
@@ -243,13 +354,185 @@ void verify_direct3d_buffers() {
   assert(!unsupportedTexture.ok());
   assert(unsupportedTexture.status().code == truffle::core::StatusCode::unsupported);
 
-  auto unsupportedMultisample = device.create_texture({
+  auto multisampleAttachment = device.create_texture({
       .extent = {4, 4, 1},
       .usage = rhi::TextureUsage::color_attachment,
       .sampleCount = 4,
   });
-  assert(!unsupportedMultisample.ok());
-  assert(unsupportedMultisample.status().code == truffle::core::StatusCode::unsupported);
+  assert(multisampleAttachment.ok());
+}
+
+void verify_direct3d_graphics() {
+  constexpr std::string_view shaderSource = R"(
+struct MrtOutput {
+  float4 first : SV_Target0;
+  float4 second : SV_Target1;
+};
+
+float4 fullscreen_vs(uint vertexId : SV_VertexID) : SV_Position {
+  const float2 positions[3] = {
+      float2(-1.0, -1.0), float2(-1.0, 3.0), float2(3.0, -1.0)};
+  return float4(positions[vertexId], 0.5, 1.0);
+}
+
+float4 solid_ps() : SV_Target0 {
+  return float4(0.25, 0.5, 0.75, 1.0);
+}
+
+MrtOutput mrt_ps() {
+  MrtOutput output;
+  output.first = float4(1.0, 0.0, 0.0, 1.0);
+  output.second = float4(0.0, 1.0, 0.0, 1.0);
+  return output;
+}
+)";
+  auto instance = rhi::create_direct3d12_instance();
+  assert(instance.ok());
+  auto adapter = instance.value().adapter(0);
+  assert(adapter.ok());
+  const auto &info = adapter.value().info();
+  assert(info.bindings.ordinaryBindGroups);
+  assert(info.bindings.descriptorArrays);
+  assert(info.bindings.dynamicOffsets);
+  assert(info.bindings.immutableSamplers);
+  assert(info.bindings.pushConstants);
+  assert(info.pipelines.graphics && info.pipelines.compute);
+  assert(info.pipelines.multipleRenderTargets && info.pipelines.depthStencil);
+  assert(info.pipelines.multisample && info.pipelines.indirect);
+  assert(!info.pipelines.tessellation && !info.pipelines.indirectCount &&
+         !info.pipelines.pipelineCache);
+
+  auto device = adapter.value().request_device(
+      {.requiredFeatures = {
+           rhi::Feature::compute, rhi::Feature::transfer, rhi::Feature::descriptor_arrays,
+           rhi::Feature::dynamic_offsets, rhi::Feature::push_constants}});
+  assert(device.ok());
+  auto queue = device.value().queue(rhi::QueueKind::graphics);
+  assert(queue.ok());
+  auto vertex = make_hlsl_shader(device.value(), "D3D12 fullscreen vertex",
+                                 rhi::ShaderStage::vertex, "fullscreen_vs", shaderSource);
+  auto fragment = make_hlsl_shader(device.value(), "D3D12 solid fragment",
+                                   rhi::ShaderStage::fragment, "solid_ps", shaderSource);
+  auto mrtFragment = make_hlsl_shader(device.value(), "D3D12 MRT fragment",
+                                      rhi::ShaderStage::fragment, "mrt_ps", shaderSource);
+
+  auto pipeline = device.value().create_pipeline({
+      .vertexShader = &vertex,
+      .fragmentShader = &fragment,
+      .colorTargets = {{.format = rhi::TextureFormat::rgba8_unorm}},
+  });
+  assert(pipeline.ok());
+  constexpr std::uint32_t width = 8;
+  constexpr std::uint32_t height = 8;
+  auto color = device.value().create_texture({
+      .extent = {width, height, 1},
+      .format = rhi::TextureFormat::rgba8_unorm,
+      .usage = rhi::TextureUsage::color_attachment | rhi::TextureUsage::copy_source,
+  });
+  assert(color.ok());
+  submit(device.value(), queue.value(), [&](rhi::CommandList &list) {
+    auto render =
+        list.begin_rendering({.extent = {width, height},
+                              .colorAttachments = {{.texture = &color.value(),
+                                                    .loadOp = rhi::LoadOp::clear,
+                                                    .storeOp = rhi::StoreOp::store}}});
+    assert(render.ok());
+    assert(render.value().bind_pipeline(pipeline.value()).ok());
+    assert(render.value().draw(3).ok());
+    assert(render.value().end().ok());
+  });
+  assert_solid_rgba8(
+      read_rgba8(device.value(), queue.value(), color.value(), width, height), width,
+      height, {std::byte{64}, std::byte{128}, std::byte{191}, std::byte{255}});
+
+  auto index = device.value().create_buffer({
+      .size = 3 * sizeof(std::uint16_t),
+      .usage = rhi::BufferUsage::index,
+      .memory = rhi::MemoryDomain::upload,
+  });
+  auto indirect = device.value().create_buffer({
+      .size = 4 * sizeof(std::uint32_t),
+      .usage = rhi::BufferUsage::indirect,
+      .memory = rhi::MemoryDomain::upload,
+  });
+  assert(index.ok() && indirect.ok());
+  const std::array<std::uint16_t, 3> indices{0, 1, 2};
+  const std::array<std::uint32_t, 4> drawArguments{3, 2, 0, 0};
+  assert(index.value().write(0, std::as_bytes(std::span{indices})).ok());
+  assert(indirect.value().write(0, std::as_bytes(std::span{drawArguments})).ok());
+  submit(device.value(), queue.value(), [&](rhi::CommandList &list) {
+    auto render = list.begin_rendering(
+        {.extent = {width, height}, .colorAttachments = {{.texture = &color.value()}}});
+    assert(render.ok());
+    assert(render.value().bind_pipeline(pipeline.value()).ok());
+    assert(render.value()
+               .bind_index_buffer(index.value(), 0, rhi::IndexFormat::uint16)
+               .ok());
+    assert(render.value().draw_indexed(3, 2).ok());
+    assert(render.value().draw_indirect(indirect.value(), 0, false).ok());
+    assert(render.value().end().ok());
+  });
+
+  auto mrtPipeline = device.value().create_pipeline({
+      .vertexShader = &vertex,
+      .fragmentShader = &mrtFragment,
+      .colorTargets = {{.format = rhi::TextureFormat::rgba8_unorm},
+                       {.format = rhi::TextureFormat::rgba8_unorm}},
+  });
+  auto secondColor = device.value().create_texture({
+      .extent = {width, height, 1},
+      .format = rhi::TextureFormat::rgba8_unorm,
+      .usage = rhi::TextureUsage::color_attachment | rhi::TextureUsage::copy_source,
+  });
+  assert(mrtPipeline.ok() && secondColor.ok());
+  submit(device.value(), queue.value(), [&](rhi::CommandList &list) {
+    auto render =
+        list.begin_rendering({.extent = {width, height},
+                              .colorAttachments = {{.texture = &color.value()},
+                                                   {.texture = &secondColor.value()}}});
+    assert(render.ok());
+    assert(render.value().bind_pipeline(mrtPipeline.value()).ok());
+    assert(render.value().draw(3).ok());
+    assert(render.value().end().ok());
+  });
+  assert_solid_rgba8(
+      read_rgba8(device.value(), queue.value(), color.value(), width, height), width,
+      height, {std::byte{255}, std::byte{}, std::byte{}, std::byte{255}});
+  assert_solid_rgba8(
+      read_rgba8(device.value(), queue.value(), secondColor.value(), width, height),
+      width, height, {std::byte{}, std::byte{255}, std::byte{}, std::byte{255}});
+
+  auto multisample = device.value().create_texture({
+      .extent = {width, height, 1},
+      .format = rhi::TextureFormat::rgba8_unorm,
+      .usage = rhi::TextureUsage::color_attachment,
+      .sampleCount = 4,
+  });
+  auto resolve = device.value().create_texture({
+      .extent = {width, height, 1},
+      .format = rhi::TextureFormat::rgba8_unorm,
+      .usage = rhi::TextureUsage::color_attachment | rhi::TextureUsage::copy_source,
+  });
+  auto multisamplePipeline = device.value().create_pipeline({
+      .vertexShader = &vertex,
+      .fragmentShader = &fragment,
+      .colorTargets = {{.format = rhi::TextureFormat::rgba8_unorm}},
+      .multisample = {.sampleCount = 4},
+  });
+  assert(multisample.ok() && resolve.ok() && multisamplePipeline.ok());
+  submit(device.value(), queue.value(), [&](rhi::CommandList &list) {
+    auto render = list.begin_rendering(
+        {.extent = {width, height},
+         .colorAttachments = {
+             {.texture = &multisample.value(), .resolveTexture = &resolve.value()}}});
+    assert(render.ok());
+    assert(render.value().bind_pipeline(multisamplePipeline.value()).ok());
+    assert(render.value().draw(3).ok());
+    assert(render.value().end().ok());
+  });
+  assert_solid_rgba8(
+      read_rgba8(device.value(), queue.value(), resolve.value(), width, height), width,
+      height, {std::byte{64}, std::byte{128}, std::byte{191}, std::byte{255}});
 }
 
 } // namespace
@@ -257,6 +540,7 @@ void verify_direct3d_buffers() {
 int main() {
 #ifdef _WIN32
   verify_direct3d_buffers();
+  verify_direct3d_graphics();
 #else
   const auto result = truffle::rhi::create_direct3d12_instance();
   truffle::tests::verify_unavailable_backend(result);
