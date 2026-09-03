@@ -51,10 +51,11 @@ for each backend/platform pair:
   owns upload/readback and default-heap buffers plus device-local textures and
   descriptor views, consumes packaged native HLSL or offline DXIL, maps logical
   layouts to root signatures, and owns graphics/compute pipelines, barriers,
-  timeline synchronization, and timestamp/occlusion queries. GPU-validation
-  WARP tests prove ordered native work and query readback plus exact triangle,
-  textured binding, depth/MRT/MSAA, indexed/instanced/indirect, and
-  compute-to-render output.
+  timeline synchronization, timestamp/occlusion queries, and host-owned Win32
+  DXGI presentation. GPU-validation WARP tests prove ordered native work,
+  query and swapchain readback, resize/recovery, exact triangle, textured
+  binding, depth/MRT/MSAA, indexed/instanced/indirect, and compute-to-render
+  output.
 - `truffle_backend_opengl` and `truffle_backend_opengles` use Linux surfaceless
   EGL contexts and deterministic clear/readback smoke proofs. Both own mapped
   and device-local buffers/views and prove native copy and byte-fill transfers;

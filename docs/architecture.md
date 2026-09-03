@@ -61,9 +61,10 @@ the cutover decision durable.
   and native transfers. D3D12 owns buffers, device-local textures, native
   descriptor views and transfers, packaged shaders, reflected root signatures,
   graphics/compute pipelines, native draw/dispatch commands, explicit barriers,
-  timeline fences, and timestamp/occlusion queries; the EGL profiles own
-  buffers/views and native transfers. These remain narrow matrix foundations:
-  WSI, presentation, and unadvertised resource operations are unsupported.
+  timeline fences, timestamp/occlusion queries, and host-owned Win32/DXGI
+  presentation; the EGL profiles own buffers/views and native transfers. These
+  remain narrow matrix foundations: unadvertised resource operations and
+  backend/platform presentation paths are unsupported.
 - WebGPU and WebGL2 have explicit source targets. WebGPU remains unavailable;
   WebGL2 has an Emscripten context path but no browser evidence, so both remain
   `source_only` in repository maturity.

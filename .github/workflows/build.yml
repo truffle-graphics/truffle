@@ -62,7 +62,7 @@ jobs:
         run: ctest --preset ci -L native-smoke
 
       - name: Run native presentation proof
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' || runner.os == 'Windows'
         env:
           MTL_DEBUG_LAYER: 1
         run: ctest --preset ci -L presentation
