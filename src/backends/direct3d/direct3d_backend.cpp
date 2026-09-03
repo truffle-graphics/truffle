@@ -241,6 +241,16 @@ struct Direct3DSamplerResource {
   D3D12_SAMPLER_DESC desc{};
 };
 
+struct Direct3DSemaphoreResource {
+  ComPtr<ID3D12Fence> fence;
+};
+
+struct Direct3DQueryPoolResource {
+  ComPtr<ID3D12QueryHeap> heap;
+  QueryType type = QueryType::timestamp;
+  D3D12_QUERY_TYPE nativeType = D3D12_QUERY_TYPE_TIMESTAMP;
+};
+
 struct Direct3DShaderResource {
   std::shared_ptr<Direct3DContext> context;
   ComPtr<ID3DBlob> ownedBytecode;
@@ -1852,6 +1862,146 @@ void transition_direct3d_texture_range(ID3D12GraphicsCommandList &commandList,
   }
 }
 
+[[nodiscard]] D3D12_RESOURCE_STATES direct3d_buffer_barrier_state(Access access) {
+  if (has_access(access, Access::shader_write) ||
+      has_access(access, Access::memory_write)) {
+    return D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+  }
+  if (has_access(access, Access::transfer_write)) {
+    return D3D12_RESOURCE_STATE_COPY_DEST;
+  }
+  D3D12_RESOURCE_STATES state = D3D12_RESOURCE_STATE_COMMON;
+  if (has_access(access, Access::transfer_read)) {
+    state |= D3D12_RESOURCE_STATE_COPY_SOURCE;
+  }
+  if (has_access(access, Access::index_read)) {
+    state |= D3D12_RESOURCE_STATE_INDEX_BUFFER;
+  }
+  if (has_access(access, Access::vertex_attribute_read) ||
+      has_access(access, Access::uniform_read)) {
+    state |= D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER;
+  }
+  if (has_access(access, Access::indirect_read)) {
+    state |= D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT;
+  }
+  if (has_access(access, Access::shader_read) ||
+      has_access(access, Access::memory_read)) {
+    state |= D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE |
+             D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+  }
+  return state;
+}
+
+[[nodiscard]] D3D12_RESOURCE_STATES
+direct3d_texture_barrier_state(const detail::NativeTextureBarrier &barrier) {
+  switch (barrier.newLayout) {
+  case TextureLayout::general:
+    if (has_access(barrier.destinationAccess, Access::shader_write)) {
+      return D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+    }
+    return has_access(barrier.destinationAccess, Access::shader_read)
+               ? D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE |
+                     D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
+               : D3D12_RESOURCE_STATE_COMMON;
+  case TextureLayout::color_attachment:
+    return D3D12_RESOURCE_STATE_RENDER_TARGET;
+  case TextureLayout::depth_stencil_attachment:
+    return has_access(barrier.destinationAccess, Access::depth_stencil_write)
+               ? D3D12_RESOURCE_STATE_DEPTH_WRITE
+               : D3D12_RESOURCE_STATE_DEPTH_READ;
+  case TextureLayout::depth_stencil_read_only:
+    return D3D12_RESOURCE_STATE_DEPTH_READ;
+  case TextureLayout::shader_read_only:
+    return D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE |
+           D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+  case TextureLayout::transfer_source:
+    return D3D12_RESOURCE_STATE_COPY_SOURCE;
+  case TextureLayout::transfer_destination:
+    return D3D12_RESOURCE_STATE_COPY_DEST;
+  case TextureLayout::present:
+    return D3D12_RESOURCE_STATE_PRESENT;
+  case TextureLayout::undefined:
+    break;
+  }
+  return D3D12_RESOURCE_STATE_COMMON;
+}
+
+[[nodiscard]] ID3D12Resource *
+direct3d_barrier_resource(const std::shared_ptr<void> &buffer,
+                          const std::shared_ptr<void> &texture) {
+  if (buffer) {
+    const auto native = std::static_pointer_cast<Direct3DBufferResource>(buffer);
+    return native ? native->resource.Get() : nullptr;
+  }
+  const auto native = std::static_pointer_cast<Direct3DTextureResource>(texture);
+  return native ? native->resource.Get() : nullptr;
+}
+
+[[nodiscard]] Status record_direct3d_barriers(ID3D12GraphicsCommandList &commandList,
+                                              const detail::NativeCommand &command) {
+  for (const auto &barrier : command.bufferBarriers) {
+    const auto buffer = std::static_pointer_cast<Direct3DBufferResource>(barrier.buffer);
+    if (!buffer) {
+      return Status::failure(StatusCode::invalid_argument,
+                             "D3D12 buffer barrier resource is invalid");
+    }
+    if (barrier.transferOwnership) {
+      return Status::failure(
+          StatusCode::unsupported,
+          "D3D12 queue ownership transfer requires a native multi-queue backend");
+    }
+    if (auto status = transition_direct3d_buffer(
+            commandList, *buffer,
+            direct3d_buffer_barrier_state(barrier.destinationAccess));
+        !status.ok()) {
+      return status;
+    }
+    if (has_access(barrier.sourceAccess, Access::shader_write) &&
+        has_access(barrier.destinationAccess, Access::shader_write)) {
+      D3D12_RESOURCE_BARRIER native{};
+      native.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+      native.UAV.pResource = buffer->resource.Get();
+      commandList.ResourceBarrier(1, &native);
+    }
+  }
+  for (const auto &barrier : command.textureBarriers) {
+    const auto texture =
+        std::static_pointer_cast<Direct3DTextureResource>(barrier.texture);
+    if (!texture) {
+      return Status::failure(StatusCode::invalid_argument,
+                             "D3D12 texture barrier resource is invalid");
+    }
+    if (barrier.transferOwnership) {
+      return Status::failure(
+          StatusCode::unsupported,
+          "D3D12 queue ownership transfer requires a native multi-queue backend");
+    }
+    transition_direct3d_texture_range(commandList, *texture, barrier.range,
+                                      direct3d_texture_barrier_state(barrier));
+    if (has_access(barrier.sourceAccess, Access::shader_write) &&
+        has_access(barrier.destinationAccess, Access::shader_write)) {
+      D3D12_RESOURCE_BARRIER native{};
+      native.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+      native.UAV.pResource = texture->resource.Get();
+      commandList.ResourceBarrier(1, &native);
+    }
+  }
+  for (const auto &barrier : command.aliasingBarriers) {
+    auto *before = direct3d_barrier_resource(barrier.beforeBuffer, barrier.beforeTexture);
+    auto *after = direct3d_barrier_resource(barrier.afterBuffer, barrier.afterTexture);
+    if (before == nullptr || after == nullptr || before == after) {
+      return Status::failure(StatusCode::invalid_argument,
+                             "D3D12 aliasing barrier resources are invalid");
+    }
+    D3D12_RESOURCE_BARRIER native{};
+    native.Type = D3D12_RESOURCE_BARRIER_TYPE_ALIASING;
+    native.Aliasing.pResourceBefore = before;
+    native.Aliasing.pResourceAfter = after;
+    commandList.ResourceBarrier(1, &native);
+  }
+  return Status::success();
+}
+
 struct Direct3DSubmissionDescriptors {
   ComPtr<ID3D12DescriptorHeap> resources;
   ComPtr<ID3D12DescriptorHeap> samplers;
@@ -2090,6 +2240,9 @@ record_direct3d_commands(Direct3DContext &context, ID3D12GraphicsCommandList &co
   detail::NativeDepthStencilAttachment depthAttachment;
   for (const auto &command : commands) {
     if (command.kind == detail::NativeCommandKind::barrier) {
+      if (auto status = record_direct3d_barriers(commandList, command); !status.ok()) {
+        return status;
+      }
       continue;
     }
     if (command.kind != detail::NativeCommandKind::transfer) {
@@ -2462,6 +2615,54 @@ record_direct3d_commands(Direct3DContext &context, ID3D12GraphicsCommandList &co
                              static_cast<UINT>(command.arguments[1]),
                              static_cast<UINT>(command.arguments[2]));
         break;
+      case detail::NativeCommandKind::write_timestamp: {
+        const auto pool =
+            std::static_pointer_cast<Direct3DQueryPoolResource>(command.object);
+        if (!pool || !pool->heap || pool->type != QueryType::timestamp) {
+          return Status::failure(StatusCode::invalid_argument,
+                                 "D3D12 timestamp query is invalid");
+        }
+        commandList.EndQuery(pool->heap.Get(), D3D12_QUERY_TYPE_TIMESTAMP,
+                             static_cast<UINT>(command.arguments[0]));
+        break;
+      }
+      case detail::NativeCommandKind::begin_occlusion_query:
+      case detail::NativeCommandKind::end_occlusion_query: {
+        const auto pool =
+            std::static_pointer_cast<Direct3DQueryPoolResource>(command.object);
+        if (!pool || !pool->heap || pool->type != QueryType::occlusion) {
+          return Status::failure(StatusCode::invalid_argument,
+                                 "D3D12 occlusion query is invalid");
+        }
+        if (command.kind == detail::NativeCommandKind::begin_occlusion_query) {
+          commandList.BeginQuery(pool->heap.Get(), D3D12_QUERY_TYPE_OCCLUSION,
+                                 static_cast<UINT>(command.arguments[0]));
+        } else {
+          commandList.EndQuery(pool->heap.Get(), D3D12_QUERY_TYPE_OCCLUSION,
+                               static_cast<UINT>(command.arguments[0]));
+        }
+        break;
+      }
+      case detail::NativeCommandKind::resolve_queries: {
+        const auto pool =
+            std::static_pointer_cast<Direct3DQueryPoolResource>(command.object);
+        const auto destination =
+            std::static_pointer_cast<Direct3DBufferResource>(command.secondaryObject);
+        if (!pool || !pool->heap || !destination) {
+          return Status::failure(StatusCode::invalid_argument,
+                                 "D3D12 query resolve resources are invalid");
+        }
+        if (auto status = transition_direct3d_buffer(commandList, *destination,
+                                                     D3D12_RESOURCE_STATE_COPY_DEST);
+            !status.ok()) {
+          return status;
+        }
+        commandList.ResolveQueryData(pool->heap.Get(), pool->nativeType,
+                                     static_cast<UINT>(command.arguments[0]),
+                                     static_cast<UINT>(command.arguments[1]),
+                                     destination->resource.Get(), command.arguments[2]);
+        break;
+      }
       case detail::NativeCommandKind::transfer:
       case detail::NativeCommandKind::barrier:
         break;
@@ -2620,6 +2821,10 @@ record_direct3d_commands(Direct3DContext &context, ID3D12GraphicsCommandList &co
     ComPtr<ID3D12Debug> debug;
     if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug)))) {
       debug->EnableDebugLayer();
+      ComPtr<ID3D12Debug1> debugWithGpuValidation;
+      if (SUCCEEDED(debug.As(&debugWithGpuValidation))) {
+        debugWithGpuValidation->SetEnableGPUBasedValidation(TRUE);
+      }
       factoryFlags |= DXGI_CREATE_FACTORY_DEBUG;
     }
   }
@@ -2707,10 +2912,6 @@ submit_direct3d_commands(const std::shared_ptr<void> &nativeContext,
                          std::span<const detail::NativeCommand> commands,
                          std::span<const detail::NativeSemaphorePoint> waits,
                          std::span<const detail::NativeSemaphorePoint> signals) {
-  if (!waits.empty() || !signals.empty()) {
-    return Status::failure(StatusCode::unsupported,
-                           "D3D12 timeline semaphore submission is not implemented");
-  }
   const auto context = std::static_pointer_cast<Direct3DContext>(nativeContext);
   if (!context || !context->device || !context->queue || !context->fence) {
     return Status::failure(StatusCode::device_lost,
@@ -2719,6 +2920,19 @@ submit_direct3d_commands(const std::shared_ptr<void> &nativeContext,
   std::lock_guard lock{context->mutex};
   if (auto status = validate_direct3d_commands(commands); !status.ok()) {
     return status;
+  }
+  for (const auto &wait : waits) {
+    const auto semaphore =
+        std::static_pointer_cast<Direct3DSemaphoreResource>(wait.semaphore);
+    if (!semaphore || !semaphore->fence) {
+      return Status::failure(StatusCode::invalid_argument,
+                             "D3D12 wait semaphore is invalid");
+    }
+    const auto result = context->queue->Wait(semaphore->fence.Get(), wait.value);
+    if (FAILED(result)) {
+      return direct3d_failure(StatusCode::backend_error,
+                              "D3D12 queue semaphore wait failed", result);
+    }
   }
   ComPtr<ID3D12CommandAllocator> allocator;
   auto result = context->device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,
@@ -2750,7 +2964,78 @@ submit_direct3d_commands(const std::shared_ptr<void> &nativeContext,
   }
   ID3D12CommandList *lists[] = {commandList.Get()};
   context->queue->ExecuteCommandLists(1, lists);
+  for (const auto &signal : signals) {
+    const auto semaphore =
+        std::static_pointer_cast<Direct3DSemaphoreResource>(signal.semaphore);
+    if (!semaphore || !semaphore->fence) {
+      return Status::failure(StatusCode::invalid_argument,
+                             "D3D12 signal semaphore is invalid");
+    }
+    result = context->queue->Signal(semaphore->fence.Get(), signal.value);
+    if (FAILED(result)) {
+      return direct3d_failure(StatusCode::backend_error,
+                              "D3D12 queue semaphore signal failed", result);
+    }
+  }
   return submit_empty(*context);
+}
+
+[[nodiscard]] Result<std::shared_ptr<void>>
+create_direct3d_semaphore(const std::shared_ptr<void> &nativeContext,
+                          const SemaphoreDesc &desc) {
+  const auto context = std::static_pointer_cast<Direct3DContext>(nativeContext);
+  if (!context || !context->device) {
+    return Status::failure(StatusCode::device_lost,
+                           "the D3D12 native context is unavailable");
+  }
+  auto semaphore = std::make_shared<Direct3DSemaphoreResource>();
+  const auto result = context->device->CreateFence(
+      desc.initialValue, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&semaphore->fence));
+  if (FAILED(result)) {
+    return direct3d_failure(StatusCode::backend_error,
+                            "D3D12 timeline semaphore creation failed", result);
+  }
+  return std::static_pointer_cast<void>(std::move(semaphore));
+}
+
+[[nodiscard]] Result<std::shared_ptr<void>>
+create_direct3d_query_pool(const std::shared_ptr<void> &nativeContext,
+                           const QueryPoolDesc &desc) {
+  const auto context = std::static_pointer_cast<Direct3DContext>(nativeContext);
+  if (!context || !context->device) {
+    return Status::failure(StatusCode::device_lost,
+                           "the D3D12 native context is unavailable");
+  }
+  D3D12_QUERY_HEAP_TYPE heapType;
+  D3D12_QUERY_TYPE queryType;
+  switch (desc.type) {
+  case QueryType::timestamp:
+    heapType = D3D12_QUERY_HEAP_TYPE_TIMESTAMP;
+    queryType = D3D12_QUERY_TYPE_TIMESTAMP;
+    break;
+  case QueryType::occlusion:
+    heapType = D3D12_QUERY_HEAP_TYPE_OCCLUSION;
+    queryType = D3D12_QUERY_TYPE_OCCLUSION;
+    break;
+  case QueryType::pipeline_statistics:
+    return Status::failure(StatusCode::unsupported,
+                           "D3D12 pipeline-statistics queries are unsupported");
+  }
+  auto pool = std::make_shared<Direct3DQueryPoolResource>();
+  pool->type = desc.type;
+  pool->nativeType = queryType;
+  const D3D12_QUERY_HEAP_DESC nativeDesc{
+      .Type = heapType,
+      .Count = desc.count,
+      .NodeMask = 0,
+  };
+  const auto result =
+      context->device->CreateQueryHeap(&nativeDesc, IID_PPV_ARGS(&pool->heap));
+  if (FAILED(result)) {
+    return direct3d_failure(StatusCode::backend_error, "D3D12 query-pool creation failed",
+                            result);
+  }
+  return std::static_pointer_cast<void>(std::move(pool));
 }
 
 } // namespace
@@ -2769,9 +3054,11 @@ Result<Instance> create_direct3d12_instance(const InstanceDesc &desc) {
   config.maturity = BackendMaturity::native_smoke;
   config.adapterName = std::move(native.adapterName);
   config.queueKinds = {QueueKind::graphics};
-  config.supportedFeatures = {Feature::compute,         Feature::transfer,
-                              Feature::memory_budget,   Feature::descriptor_arrays,
-                              Feature::dynamic_offsets, Feature::push_constants};
+  config.supportedFeatures = {
+      Feature::compute,        Feature::transfer,          Feature::timestamp_queries,
+      Feature::memory_budget,  Feature::descriptor_arrays, Feature::dynamic_offsets,
+      Feature::push_constants,
+  };
   config.resourceCapabilities = {
       .bufferViews = true,
       .textureViews = true,
@@ -2834,6 +3121,8 @@ Result<Instance> create_direct3d12_instance(const InstanceDesc &desc) {
   config.createShader = &create_direct3d_shader;
   config.createPipeline = &create_direct3d_pipeline;
   config.createComputePipeline = &create_direct3d_compute_pipeline;
+  config.createSemaphore = &create_direct3d_semaphore;
+  config.createQueryPool = &create_direct3d_query_pool;
   config.nativeSubmit = &submit_direct3d_commands;
   return detail::create_foundation_instance(desc, std::move(config));
 #else

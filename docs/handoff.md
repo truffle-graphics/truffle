@@ -9,8 +9,8 @@ rather than growing a historical transcript here.
 
 ## Current Focus
 
-Merge #50's completed native D3D12 ShaderPackage binding and pipeline slice,
-then continue the Phase 5 backlog with #51.
+Complete #51's native D3D12 synchronization, barrier, and query work through
+Windows debug-layer WARP evidence.
 
 ## Latest Handoff
 
@@ -46,7 +46,7 @@ then continue the Phase 5 backlog with #51.
   upload, texture-to-texture copy, readback, and native view creation. The only
   failing check is the separately tracked companion-routing credential issue
   #131, which is not an engine validation gate.
-- Issue #50 is implementing D3D12 HLSL/DXIL shader ownership, reflected root
+- Issue #50 implements D3D12 HLSL/DXIL shader ownership, reflected root
   signatures, immutable bind groups and descriptor arrays, graphics/compute
   PSOs, render/depth attachments, MSAA resolve, draw/dispatch, and indirect
   commands. Final Build `33763713016` passes package, macOS, Ubuntu, and the
@@ -55,6 +55,21 @@ then continue the Phase 5 backlog with #51.
   ordering, indexed/instanced/indirect draws, MRT, MSAA-resolve, and
   compute-to-render output plus negative capability/layout cases. The separate
   companion-routing failure remains tracked by #131 and is not an engine gate.
+- Issue #50 is closed by PR #136 and merge commit `ba3d8a40`; its final receipt
+  Build `33763990063` passes package, macOS, Ubuntu, and Windows.
+- Issue #51 is in progress. It maps RHI buffer/texture and aliasing barriers to
+  native D3D12 legacy barriers, gives each timeline semaphore a native fence,
+  and encodes queue waits/signals. The public query contract now records
+  timestamps, scoped occlusion queries, and explicit query resolution; Null
+  validates the lifecycle and D3D12 owns timestamp/occlusion heaps plus exact
+  readback. The first Windows build exposed one missing read-only-depth enum
+  case, then the native test correctly showed that an `undefined` old layout is
+  a wildcard rather than a stale state; both test/code findings are corrected.
+  Build `33766645262` passes package, macOS, Ubuntu, and Windows; its WARP lane
+  proves timestamp ordering and an exact 64-sample occlusion result. Explicit
+  fence timeout/retry coverage and GPU-based validation pass in final Build
+  `33766961283` along with package, macOS, and Ubuntu. The full local build and
+  36/36 tests also pass.
 
 - PR #46 is merged without closing issue #33. Vulkan buffer/texture and D3D12
   buffer transfers are on `develop`; post-merge build run `33261566114` is green
@@ -266,8 +281,8 @@ because CMake does not discover `clang-format` on this host's `PATH`;
 
 ## Next Resume Steps
 
-1. Merge PR #136 and close #50 with final Build `33763713016` as its native
-   receipt, then start #51's D3D12 synchronization slice.
+1. Run the final documentation receipt CI, merge PR #137, and close #51 with
+   Build `33766961283` as its native evidence; then begin #52.
 2. Continue #33 only through its focused Project sub-issues; update issue and
    Project state whenever scope, evidence, or disposition changes.
 3. Keep WebGPU/WebGL2 and every unexecuted mobile/Apple/Vulkan platform at

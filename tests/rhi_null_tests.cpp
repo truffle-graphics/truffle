@@ -237,6 +237,51 @@ int main() {
     assert(timeoutStatus.code == rhi::StatusCode::timeout);
     assert(timeoutList.state() == rhi::CommandListState::executable);
 
+    auto timestampPoolResult = context.device.create_query_pool({
+        .type = rhi::QueryType::timestamp,
+        .count = 2,
+    });
+    auto occlusionPoolResult = context.device.create_query_pool({
+        .type = rhi::QueryType::occlusion,
+        .count = 1,
+    });
+    auto queryReadbackResult = context.device.create_buffer({
+        .size = 3 * sizeof(std::uint64_t),
+        .usage = rhi::BufferUsage::copy_destination,
+        .memory = rhi::MemoryDomain::readback,
+    });
+    assert(timestampPoolResult.ok() && occlusionPoolResult.ok() &&
+           queryReadbackResult.ok());
+    auto timestampPool = std::move(timestampPoolResult).value();
+    auto occlusionPool = std::move(occlusionPoolResult).value();
+    auto queryReadback = std::move(queryReadbackResult).value();
+    auto queryListResult = pool.allocate();
+    assert(queryListResult.ok());
+    auto queryList = std::move(queryListResult).value();
+    assert(queryList.begin().ok());
+    assert(queryList.write_timestamp(timestampPool, 0).ok());
+    assert(!queryList.write_timestamp(timestampPool, 2).ok());
+    auto queryRenderResult = queryList.begin_rendering({.extent = {1, 1}});
+    assert(queryRenderResult.ok());
+    auto queryRender = std::move(queryRenderResult).value();
+    assert(queryRender.begin_occlusion_query(occlusionPool, 0).ok());
+    assert(queryRender.end_occlusion_query().ok());
+    assert(queryRender.end().ok());
+    assert(queryList.write_timestamp(timestampPool, 1).ok());
+    assert(queryList.resolve_queries(timestampPool, 0, 2, queryReadback).ok());
+    assert(queryList
+               .resolve_queries(occlusionPool, 0, 1, queryReadback,
+                                2 * sizeof(std::uint64_t))
+               .ok());
+    assert(queryList.end().ok());
+    std::array<rhi::CommandList*, 1> queryLists{&queryList};
+    assert(queue.submit(queryLists).ok());
+    std::array<std::uint64_t, 3> queryResults{};
+    assert(queryReadback
+               .read(0, std::as_writable_bytes(std::span{queryResults}))
+               .ok());
+    assert((queryResults == std::array<std::uint64_t, 3>{1, 2, 1}));
+
     auto syncTextureResult = context.device.create_texture({
         .extent = {4, 4, 1},
         .format = rhi::TextureFormat::rgba8_unorm,
@@ -358,9 +403,9 @@ int main() {
     const auto stats = context.instance.stats();
     assert(stats.devicesCreated == 1);
     assert(stats.commandPoolsCreated == 2);
-    assert(stats.commandListsCreated == 8);
+    assert(stats.commandListsCreated == 9);
     assert(stats.drawsRecorded == 1);
-    assert(stats.submissions == 6);
+    assert(stats.submissions == 7);
     assert(stats.presentations == 2);
     return 0;
 }

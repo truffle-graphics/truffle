@@ -32,7 +32,7 @@ int main() {
     assert(!context.adapter.info().native);
 
     auto unsupportedFeature = context.adapter.request_device({
-        .requiredFeatures = {rhi::Feature::timestamp_queries},
+        .requiredFeatures = {rhi::Feature::external_memory},
     });
     assert(!unsupportedFeature.ok());
     assert(unsupportedFeature.status().code == core::StatusCode::unsupported);
