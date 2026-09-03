@@ -65,8 +65,10 @@ Windows debug-layer WARP evidence.
   readback. The first Windows build exposed one missing read-only-depth enum
   case, then the native test correctly showed that an `undefined` old layout is
   a wildcard rather than a stale state; both test/code findings are corrected.
-  The full local build and 36/36 tests pass; expanded Windows execution is
-  pending.
+  Build `33766645262` passes package, macOS, Ubuntu, and Windows; its WARP lane
+  proves timestamp ordering and an exact 64-sample occlusion result. Explicit
+  fence timeout/retry coverage and GPU-based validation enablement are the final
+  native checkpoint; the full local build and 36/36 tests pass.
 
 - PR #46 is merged without closing issue #33. Vulkan buffer/texture and D3D12
   buffer transfers are on `develop`; post-merge build run `33261566114` is green
@@ -278,9 +280,9 @@ because CMake does not discover `clang-format` on this host's `PATH`;
 
 ## Next Resume Steps
 
-1. Push #51's expanded synchronization/query checkpoint, correct any Windows
-   SDK, debug-layer, timestamp, or occlusion-readback findings, then finalize
-   the public evidence and unsupported-state documentation.
+1. Push #51's final fence-timeout/GPU-validation checkpoint, correct any Windows
+   finding, then finalize the public evidence and unsupported-state
+   documentation.
 2. Continue #33 only through its focused Project sub-issues; update issue and
    Project state whenever scope, evidence, or disposition changes.
 3. Keep WebGPU/WebGL2 and every unexecuted mobile/Apple/Vulkan platform at

@@ -2821,6 +2821,10 @@ record_direct3d_commands(Direct3DContext &context, ID3D12GraphicsCommandList &co
     ComPtr<ID3D12Debug> debug;
     if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug)))) {
       debug->EnableDebugLayer();
+      ComPtr<ID3D12Debug1> debugWithGpuValidation;
+      if (SUCCEEDED(debug.As(&debugWithGpuValidation))) {
+        debugWithGpuValidation->SetEnableGPUBasedValidation(TRUE);
+      }
       factoryFlags |= DXGI_CREATE_FACTORY_DEBUG;
     }
   }

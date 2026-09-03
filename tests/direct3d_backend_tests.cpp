@@ -446,6 +446,20 @@ void verify_direct3d_synchronization() {
   assert(timeline.value().value() == 4);
   assert(completion.value().completed_value() == 7);
   assert(completion.value().wait(7, std::chrono::nanoseconds{1}).ok());
+  const auto fenceTimeout = completion.value().wait(8, std::chrono::nanoseconds{1});
+  assert(!fenceTimeout.ok());
+  assert(fenceTimeout.code == truffle::core::StatusCode::timeout);
+  auto fenceRetryList = pool.value().allocate();
+  assert(fenceRetryList.ok());
+  assert(fenceRetryList.value().begin().ok());
+  assert(fenceRetryList.value().end().ok());
+  std::array<rhi::CommandList *, 1> fenceRetryLists{&fenceRetryList.value()};
+  assert(queue.value()
+             .submit({.commandLists = fenceRetryLists,
+                      .signalFence = &completion.value(),
+                      .signalFenceValue = 8})
+             .ok());
+  assert(completion.value().wait(8, std::chrono::milliseconds{1}).ok());
   std::array<std::byte, byteCount> output{};
   assert(readback.value().read(0, output).ok());
   assert(output == expected);
