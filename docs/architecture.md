@@ -154,6 +154,24 @@ GL-family targets.
 The complete policy and dependency groups are in
 [the RHI 1 dependency specification](rhi1/dependencies.md).
 
+## Architecture Guardrails
+
+The CMake target graph is an enforceable part of the architecture, not merely a
+diagram. `tools/check_architecture.py` rejects production-target dependencies
+and public-header imports that violate the documented layer direction. CI runs
+the same guard on every pull request. The tool also has a non-blocking source
+length report: crossing its threshold means "review cohesion", not "this is a
+God file".
+
+Responsibility cohesion requires engineering judgment and is reviewed through
+[`architecture-review.md`](architecture-review.md). Every production-code plan
+names the owning module, allowed dependencies, non-goals, and public-contract
+effect. Small files are reviewed when they combine independent owners,
+lifecycles, or reasons to change; large files may remain cohesive when they
+have one clear owner and responsibility. Orchestrators may coordinate interfaces
+and lifecycle transitions, but detailed subsystem behavior remains with its
+owning implementation.
+
 ## Shader Boundary
 
 RHI consumes a format-neutral `ShaderPackage`. The optional host-side

@@ -15,6 +15,7 @@ contributor-neutral defaults.
    - `docs/planning.md`
    - `docs/overview.md`
    - `docs/architecture.md`
+   - `docs/architecture-review.md`
    - `docs/doctrine/README.md`
    - `docs/doctrine/*.md`
 2. Prefer doctrine defaults:
@@ -66,8 +67,26 @@ contributor-neutral defaults.
    - If a push fails, report delivery as incomplete and retry through an
      approved, configured access path. Do not make another commit, switch
      branches, or claim the work is available on another machine until the
-      push succeeds. Do not substitute another remote without explicit approval.
-7. Delivery quality bar:
+     push succeeds. Do not substitute another remote without explicit approval.
+7. Preserve architecture and responsibility boundaries:
+   - For every implementation plan that changes production code, state the
+     owning module, permitted dependencies, non-goals, and whether a public
+     contract changes. State "no architectural boundary change" when that is
+     genuinely the case.
+   - Follow `docs/architecture-review.md` during planning and review. A change
+     may not add a reverse-layer dependency or make an optional higher layer a
+     runtime dependency of a lower layer.
+   - Treat file length as a review signal only, never as a God-file verdict.
+     A file at or above the documented review threshold is a cohesion-review
+     candidate; so is any smaller file that combines responsibilities with
+     different owners, lifecycles, or reasons to change.
+   - Orchestrators may compose owned interfaces, sequencing, and lifecycle
+     transitions, but must not absorb the detailed implementation or policy of
+     the subsystems they coordinate. Extract that behavior to its owning module.
+   - Resolve a cohesion-review candidate by recording why its responsibilities
+     remain cohesive or by creating a tightly scoped refactor issue. Do not
+     silently grow a mixed-responsibility file.
+8. Delivery quality bar:
    - Keep changes small and focused
    - If work is tracked in GitHub Projects, implement only against a clear issue
    - Prefer small, unambiguous issues; split broad tasks into manageable subtasks
@@ -75,7 +94,7 @@ contributor-neutral defaults.
    - Exceptions are allowed for non-diff tasks, discovery-first work, or unavoidable architecture-level changes; document rationale in the issue or PR
    - Do not push directly to protected branches (`master`, `develop`); use PR flow even when operating with admin credentials or AI automation
    - Ensure lint/tests/build pass for touched areas
-8. Use detached implementation companion automation by default:
+9. Use detached implementation companion automation by default:
    - Feature, fix, refactor, and public contract work may be followed by
      background companion work instead of blocking the implementation session.
    - `.github/workflows/companion-automation.yml` classifies same-repository PR
@@ -93,4 +112,4 @@ contributor-neutral defaults.
      contracts, release/distribution behavior, or commit-ready AI handoff state
      changes.
    - GitHub Actions remains the detached validation gate.
-9. If local repo policy conflicts with doctrine snapshot, follow local repo files and call out the conflict explicitly.
+10. If local repo policy conflicts with doctrine snapshot, follow local repo files and call out the conflict explicitly.

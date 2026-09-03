@@ -76,6 +76,29 @@ machine. Do not substitute a different remote without explicit approval.
 Protected branches remain pull-request-only; this policy permits pushes only to
 the approved non-protected implementation branch.
 
+## Architecture And Cohesion Review
+
+Truffle protects its layered CMake target graph in CI. The guard rejects an
+undeclared production-target dependency or a reverse-layer public-header import;
+run it locally with:
+
+```bash
+python3 tools/check_architecture.py --report
+```
+
+This mechanical guard is necessary but not sufficient. Review every production
+code change for one clear owner, a coherent reason to change, and dependencies
+that follow the architecture documented in `docs/architecture.md`.
+`docs/architecture-review.md` is the required checklist for AI-assisted plans
+and reviews.
+
+Source length is only a review signal. The default 1,000-line report threshold
+identifies candidates for cohesion review; it does not label a file a God file
+or require an automatic split. A smaller file is equally a candidate when it
+mixes unrelated policy, orchestration, and implementation that should have
+separate owners. Resolve a candidate by recording why its responsibilities
+belong together or by creating a focused refactor issue.
+
 ## Stop And Resume
 
 Before switching machines or stopping active work:
