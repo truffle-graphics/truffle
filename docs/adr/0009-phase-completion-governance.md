@@ -18,17 +18,26 @@ delivery quality regresses.
 
 A phase is considered complete only when all phase gates pass:
 
-1. Implementation gate: required code deliverables for the phase are merged.
-2. Test gate: phase-specific tests and full regression suite pass.
-3. CI gate: configured CI checks for touched backends/platforms pass.
-4. Documentation gate: roadmap, handoff, and architecture/docs reflect the same
+1. Planning gate: accepted work is represented by focused, structurally linked
+   issues in the delivery Project, including explicit dispositions for
+   deferrals and discovered follow-ups.
+2. Implementation gate: required code deliverables for the phase are merged.
+3. Test gate: phase-specific tests and full regression suite pass.
+4. CI gate: configured CI checks for touched backends/platforms pass.
+5. Documentation gate: roadmap, handoff, and architecture/docs reflect the same
    status and decisions.
-5. Risk gate: open risks are explicitly tracked with owners or resolved.
+6. Risk gate: open risks are explicitly tracked with owners or resolved.
 
 Additionally:
 
 - No phase may be marked complete if a required roadmap deliverable is still a
   stub or deferred implementation in phase-owned code paths.
+- Broad program and phase issues are epics rather than implementation units.
+  Before production work begins, decompose them into focused sub-issues with
+  scope, non-goals, ownership, dependencies, acceptance criteria, and evidence
+  requirements.
+- An accepted deferral remains an open, discoverable issue with a reason and
+  unblock condition. A local plan or handoff is not the sole durable record.
 - A later phase may start in parallel only if it does not relabel earlier phase
   status as complete.
 - Handoff updates are mandatory before AI-authored commits.

@@ -102,6 +102,11 @@ See `docs/charter.md`, `docs/architecture.md`, `docs/roadmap.md`, and
 `docs/rhi1/` for the current boundaries, replacement sequence, and backend
 maturity evidence.
 
+Accepted and deliberately deferred work is tracked in the
+[Truffle delivery project](https://github.com/users/loosewired/projects/5) and
+repository issues. [`docs/planning.md`](docs/planning.md) defines the durable
+planning and traceability rules used by contributors and automation.
+
 ## CMake Consumers
 
 Truffle keeps each library layer linkable on its own. Install the configured

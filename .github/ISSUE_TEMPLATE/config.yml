@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Truffle delivery project
+    url: https://github.com/users/loosewired/projects/5
+    about: Review accepted, active, and deferred Truffle work.
+  - name: RHI 1 roadmap
+    url: https://github.com/truffle-graphics/truffle/blob/develop/docs/roadmap.md
+    about: Review the current RHI 1 phase sequence and completion gates.
