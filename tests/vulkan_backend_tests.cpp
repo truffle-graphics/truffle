@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 
 namespace {
 
@@ -247,6 +248,28 @@ void verify_vulkan_buffers() {
          .format = rhi::TextureFormat::rgba8_unorm,
          .range = {.mipLevelCount = 3, .arrayLayerCount = 6}});
     assert(cubeView.ok());
+    auto invalidCubeView = device.create_texture_view(
+        cube.value(),
+        {.dimension = rhi::TextureDimension::cube,
+         .format = rhi::TextureFormat::rgba8_unorm,
+         .range = {.baseArrayLayer = 1, .arrayLayerCount = 5}});
+    assert(!invalidCubeView.ok());
+    assert(invalidCubeView.status().code == rhi::StatusCode::unsupported);
+
+    auto hostMultisample = device.create_texture({
+        .extent = {2, 2, 1},
+        .format = rhi::TextureFormat::rgba8_unorm,
+        .usage = rhi::TextureUsage::copy_source,
+        .sampleCount = 4,
+        .memory = rhi::MemoryDomain::upload,
+    });
+    assert(!hostMultisample.ok());
+    assert(hostMultisample.status().code == rhi::StatusCode::unsupported);
+
+    assert(!info.bindings.ordinaryBindGroups);
+    auto sampler = device.create_sampler({});
+    assert(!sampler.ok());
+    assert(sampler.status().code == rhi::StatusCode::unsupported);
 
     std::array<std::byte, 16> mipLayerPixels{};
     for (std::size_t index = 0; index < mipLayerPixels.size(); ++index) {
@@ -377,6 +400,23 @@ void verify_vulkan_buffers() {
         assert(clearOutput[offset + 2] == std::byte{0x00});
         assert(clearOutput[offset + 3] == std::byte{0xff});
     }
+
+    assert(list.reset().ok());
+    assert(list.begin().ok());
+    auto partialClearResult = list.begin_copy();
+    assert(partialClearResult.ok());
+    auto partialClear = std::move(partialClearResult).value();
+    assert(partialClear
+               .clear_texture(clearTexture.value(),
+                              {.origin = {0, 0, 0}, .extent = {1, 2, 1}},
+                              {.color = {.r = 1.0F}})
+               .ok());
+    assert(partialClear.end().ok());
+    assert(list.end().ok());
+    std::array<rhi::CommandList*, 1> partialClearLists{&list};
+    const auto partialClearStatus = queue.submit(partialClearLists);
+    assert(partialClearStatus.code == rhi::StatusCode::unsupported);
+    assert(list.reset().ok());
 
     auto depthTexture = device.create_texture({
         .extent = {2, 2, 1},
@@ -595,6 +635,18 @@ void verify_vulkan_buffers() {
            initialUploadBudget.value().usedBytes);
     assert(releasedReadbackBudget.value().usedBytes ==
            initialReadbackBudget.value().usedBytes);
+
+    const auto deviceBudget =
+        device.memory_budget(rhi::MemoryDomain::device_local);
+    assert(deviceBudget.ok());
+    assert(deviceBudget.value().available_bytes() <
+           std::numeric_limits<std::size_t>::max());
+    auto overBudgetBuffer = device.create_buffer({
+        .size = deviceBudget.value().available_bytes() + 1,
+        .usage = rhi::BufferUsage::copy_source,
+    });
+    assert(!overBudgetBuffer.ok());
+    assert(overBudgetBuffer.status().code == rhi::StatusCode::out_of_memory);
 
     auto externalTexture = device.create_texture({
         .extent = {2, 2, 1},
