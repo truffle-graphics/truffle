@@ -107,7 +107,10 @@ and Vulkan binding work without overstating runtime-dependent support.
   and explicit sampler/external capability gates. Samplers remain sequenced with
   #53 because the public contract exposes them through ordinary bindings; device
   addresses are not exposed by RHI 1; external handles remain unadvertised until
-  a platform ownership contract exists. Local and native CI evidence is pending.
+  a platform ownership contract exists. Commit `0c8ec99` passes the strict local
+  build and all 36 tests. PR #142 Build `33818770807` passes package, macOS,
+  Ubuntu, and Windows; the Ubuntu validation lane exercises the native negative
+  paths. This completes #55 without promoting Vulkan beyond `native_smoke`.
 
 - PR #46 is merged without closing issue #33. Vulkan buffer/texture and D3D12
   buffer transfers are on `develop`; post-merge build run `33261566114` is green
