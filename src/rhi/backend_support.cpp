@@ -10,9 +10,10 @@ namespace truffle::rhi {
 namespace {
 
 constexpr BackendEvidence source_only{};
-constexpr BackendEvidence native_smoke{
+constexpr BackendEvidence validated_native_smoke{
     .compiles = true,
     .nativeSmoke = true,
+    .validation = true,
 };
 constexpr BackendEvidence metal_smoke{
     .compiles = true,
@@ -48,8 +49,10 @@ constexpr std::array support{
                            BackendMaturity::source_only, true, source_only,
                            "target identified; no device or simulator lane yet"},
     BackendPlatformSupport{BackendKind::vulkan, PlatformKind::linux_host,
-                           BackendMaturity::native_smoke, true, native_smoke,
-                           "bundled headers and volk with a native loader/driver smoke lane"},
+                           BackendMaturity::native_smoke, true,
+                           validated_native_smoke,
+                           "native buffers and selected 2D texture transfers "
+                           "using bundled headers and volk"},
     BackendPlatformSupport{BackendKind::vulkan, PlatformKind::windows,
                            BackendMaturity::source_only, true, source_only,
                            "native loader source is present; no official runtime lane yet"},
@@ -63,11 +66,15 @@ constexpr std::array support{
                            BackendMaturity::source_only, true, source_only,
                            "MoltenVK dependency and execution lane not present"},
     BackendPlatformSupport{BackendKind::direct3d12, PlatformKind::windows,
-                           BackendMaturity::native_smoke, true, native_smoke,
-                           "Windows SDK and WARP command submission smoke lane"},
+                           BackendMaturity::native_smoke, true,
+                           validated_native_smoke,
+                           "Windows SDK WARP buffers, views, copies, and byte "
+                           "fills"},
     BackendPlatformSupport{BackendKind::opengl, PlatformKind::linux_host,
-                           BackendMaturity::native_smoke, true, native_smoke,
-                           "EGL surfaceless native clear/readback smoke lane"},
+                           BackendMaturity::native_smoke, true,
+                           validated_native_smoke,
+                           "EGL surfaceless buffers, views, copies, fills, and "
+                           "exact readback"},
     BackendPlatformSupport{BackendKind::opengl, PlatformKind::windows,
                            BackendMaturity::source_only, true, source_only,
                            "target identified; no WGL execution lane yet"},
@@ -75,8 +82,10 @@ constexpr std::array support{
                            BackendMaturity::source_only, true, source_only,
                            "deprecated compatibility target; no native lane yet"},
     BackendPlatformSupport{BackendKind::opengles, PlatformKind::linux_host,
-                           BackendMaturity::native_smoke, true, native_smoke,
-                           "EGL surfaceless ES 3 native clear/readback smoke lane"},
+                           BackendMaturity::native_smoke, true,
+                           validated_native_smoke,
+                           "EGL ES 3 surfaceless buffers, views, copies, fills, "
+                           "and exact readback"},
     BackendPlatformSupport{BackendKind::opengles, PlatformKind::android,
                            BackendMaturity::source_only, true, source_only,
                            "target identified; no NDK execution lane yet"},

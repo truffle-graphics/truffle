@@ -9,18 +9,17 @@ rather than growing a historical transcript here.
 
 ## Current Focus
 
-Resume native backend implementation through the durable Project backlog. The
-next executable Phase 5 items are #48 (reconcile matrix documentation) and #49
-(D3D12 textures and transfers).
+Merge #48's evidence reconciliation, then resume native backend implementation
+with #49 (D3D12 textures and transfers).
 
 ## Latest Handoff
 
 - Issue #129 completed the contributor-neutral planning workflow and the full
   RHI 1 backlog conversion without changing production code.
-- The public Truffle Project #5 now contains 95 issues with Status, Phase,
-  Workstream, Priority, Effort, and Target evidence fields. Completed #26-#32
-  and #129 are `Done`; the remaining 87 accepted items are visible as `Todo`,
-  with later Phase 6/7 work also labeled `deferred`.
+- The public Truffle Project #5 contains 95 issues with Status, Phase,
+  Workstream, Priority, Effort, and Target evidence fields. After #48 merges,
+  completed #26-#32, #48, and #129 are `Done`; the remaining 86 accepted items
+  are visible as `Todo`, with later Phase 6/7 work also labeled `deferred`.
 - Issue #25 structurally owns #26-#35 and #129. Phase epics #33, #34, and #35
   each structurally own 27 detailed sub-issues: #48-#74, #75-#101, and
   #102-#128 respectively.
@@ -35,6 +34,10 @@ next executable Phase 5 items are #48 (reconcile matrix documentation) and #49
 - Repository automation follow-ups #131 and #132 record the companion-dispatch
   credential failure and deprecated action runtimes as Program/Governance work.
   They contain no credentials or private machine details.
+- Issue #48 reconciles the public status documents and backend READMEs with the
+  merged Vulkan, D3D12, OpenGL, and OpenGL ES resource slices. The public support
+  rows now report validation evidence truthfully and link exact source commits
+  and native CI runs.
 
 - PR #46 is merged without closing issue #33. Vulkan buffer/texture and D3D12
   buffer transfers are on `develop`; post-merge build run `33261566114` is green
@@ -109,8 +112,8 @@ next executable Phase 5 items are #48 (reconcile matrix documentation) and #49
   with an unaligned fill and mapped verification.
 - PR #47's first Ubuntu run reached both native profiles and found that a
   mapped-at-creation upload flush inherited the most recent global GL target
-  binding. The write path now rebinds its owning buffer before explicit flush;
-  native acceptance is pending the rerun.
+  binding. The merged write path rebinds its owning buffer before explicit
+  flush; Build `33262121061` passes both EGL native profiles.
 
 ## Durable Decisions
 
@@ -163,6 +166,22 @@ MTL_DEBUG_LAYER=1 ctest --preset ci -L 'native-smoke|presentation'
 git diff --check
 ```
 
+Issue #48 matrix-evidence reconciliation on macOS Apple Silicon:
+
+```text
+cmake --build --preset ci -j 8
+ctest --preset ci --output-on-failure                       # 36/36
+MTL_DEBUG_LAYER=1 ctest --preset ci -L 'native-smoke|presentation'
+                                                               # 2/2
+truffle-rhi-doctor --json /tmp/truffle-rhi48-doctor.json
+local Markdown link targets                                  # valid
+git diff --check
+```
+
+The doctor output records `validation: true` for Linux Vulkan, Windows D3D12,
+Linux OpenGL, and Linux OpenGL ES while retaining `native_smoke` maturity and
+false conformance/presentation dimensions.
+
 The isolated worktree required the repository's pinned Vulkan submodules; the
 documented `git submodule update --init vendor/vulkan-headers vendor/volk`
 recovery path succeeded before the clean configure/build/test run.
@@ -204,7 +223,7 @@ because CMake does not discover `clang-format` on this host's `PATH`;
 
 ## Next Resume Steps
 
-1. Execute #48 to reconcile public matrix claims with PRs #44-#47, then begin
+1. Merge #48 after cross-platform CI, mark its Project card `Done`, and begin
    #49's D3D12 texture/copy-footprint slice.
 2. Continue #33 only through its focused Project sub-issues; update issue and
    Project state whenever scope, evidence, or disposition changes.

@@ -103,8 +103,9 @@ Tracked by #33.
 - [x] Add Windows SDK D3D12 WARP device/command-list smoke.
 - [x] Add Linux surfaceless EGL OpenGL/OpenGL ES deterministic clear/readback
   smoke.
-- [ ] Reconcile merged evidence and complete the compiler prerequisites in #48
-  and #73.
+- [x] Reconcile merged native resource evidence and public matrix claims in
+  #48.
+- [ ] Complete the compiler prerequisites in #73.
 - [ ] Complete D3D12 baseline resources, pipelines, synchronization, and DXGI
   presentation through #49-#52.
 - [ ] Complete Vulkan baseline capability and Linux, Windows, Android, and

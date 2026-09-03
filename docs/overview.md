@@ -16,8 +16,10 @@ Current baseline:
 - Native Metal buffers, selected 2D textures, shared-event synchronization, and
   `CAMetalLayer` presentation with validation-enabled deterministic output and
   status/recovery proofs at `native_smoke` on macOS.
-- Explicitly unavailable Vulkan, OpenGL, and Direct3D targets that report no
-  simulated adapters until their native implementations land.
+- Native-smoke Vulkan, OpenGL, OpenGL ES, and Direct3D 12 target slices that
+  expose adapters only after native initialization. Their implemented buffer
+  and selected Vulkan texture-transfer capabilities are reported explicitly;
+  missing capabilities remain unsupported rather than simulated.
 - Deterministic ShaderPackage 1.0 creation/loading with normalized cross-target
   reflection, capability gates, native-variant precedence, and an optional
   dependency-free package assembly and inspection tool.

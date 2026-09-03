@@ -23,12 +23,12 @@ regression can demote one pair without changing another backend or platform.
 |---|---|---|---|---|
 | Null validation | All CI hosts | Strict RHI 1 contract interpreter | validation-only | Generation, lifetime, state, threading, resource, synchronization, acquire, submit, and present tests; never reported as a GPU backend. |
 | Metal | macOS | Native Metal resource, pipeline, synchronization, and presentation slice | `native_smoke` | Metal API validation runs deterministic output, ordered render-to-copy, shared-event synchronization, native `CAMetalLayer` acquire/render/present plus resize/status recovery, and private out-of-date/device-loss fault proofs. A host-window loop, physical device-removal evidence, broader platform execution, and full conformance remain. |
-| Vulkan | Linux | Native initialization and command-buffer smoke slice | `native_smoke` | Pinned private Vulkan-Headers/volk load the host runtime, optionally enable Khronos validation, create a real instance/device/graphics queue, and submit a native command buffer. Resources, pipelines, WSI, presentation, and conformance remain unsupported. |
+| Vulkan | Linux | Native resource and transfer smoke slice | `native_smoke` | Pinned private Vulkan-Headers/volk load the host runtime and optionally enable Khronos validation. Native buffers, selected device-local 2D textures/views, buffer copies/fills, padded-row buffer-texture copies, and texture copies pass exact readback. Texture clear/resolve/blit, compressed and multisampled textures, pipelines, synchronization, WSI, presentation, and full conformance remain unsupported. |
 | Vulkan | Windows, Android, macOS/iOS | Native loader source with platform targets | `source_only` | No official native runtime lanes yet. Portability enumeration/subset handling is present, but MoltenVK is not bundled and no Apple claim is made. |
-| Direct3D 12 | Windows | Native Windows-SDK WARP initialization and command-list smoke slice | `native_smoke` | Creates the DXGI WARP adapter, D3D12 device/queue/fence, executes a native command list, and waits for completion. Resources, pipelines, DXGI presentation, and conformance remain unsupported. |
-| OpenGL | Linux | Native surfaceless EGL OpenGL smoke slice | `native_smoke` | Creates a real context and pbuffer, clears, reads back exact native output, and submits through `glFinish`. Resource objects and presentation remain unsupported. |
+| Direct3D 12 | Windows | Native Windows-SDK WARP buffer and transfer smoke slice | `native_smoke` | Creates the DXGI WARP adapter and owns committed upload/readback/default-heap buffers, buffer views, mapping, native copies, and arbitrary-range fills. Exact output is checked under the debug layer. Textures, pipelines, synchronization, DXGI presentation, and full conformance remain unsupported. |
+| OpenGL | Linux | Native surfaceless EGL OpenGL buffer and transfer smoke slice | `native_smoke` | Creates a real context and pbuffer, then owns mapped/device-local buffers and views with native copies/fills and exact readback. Textures, pipelines, broader state tracking, window presentation, and full conformance remain unsupported. |
 | OpenGL | Windows, macOS | Source target | `source_only` | WGL and deprecated macOS native execution lanes are not present. |
-| OpenGL ES | Linux | Native surfaceless EGL ES 3 smoke slice | `native_smoke` | Creates a real ES context and pbuffer and proves deterministic clear/readback. Android and presentation paths remain. |
+| OpenGL ES | Linux | Native surfaceless EGL ES 3 buffer and transfer smoke slice | `native_smoke` | Creates a real ES context and pbuffer, then owns mapped/device-local buffers and views with native copies/fills and exact readback. Textures, pipelines, Android surfaces, presentation, and full conformance remain unsupported. |
 | OpenGL ES | Android | Source target | `source_only` | No NDK/emulator execution lane yet. |
 | WebGPU | Web | Explicit unavailable factory | `source_only` | Target exists, but pinned Emdawnwebgpu and browser device execution are not present; no adapter is exposed. |
 | WebGL2 | Web | Browser context source path | `source_only` | The Emscripten path creates a WebGL2 canvas context only at runtime; no browser CI evidence exists, so no promotion is claimed. |
@@ -42,6 +42,20 @@ The public `backend_platform_support()` table serializes these rows, including
 separate compile, smoke, conformance, validation, and presentation evidence.
 `truffle-rhi-doctor` adds current-host build/runtime probes. Strict CI fails if
 a linked `native_smoke` host row cannot initialize its native adapter.
+
+## Phase 5 Native Resource Evidence
+
+The following receipts are the source of truth used for the resource claims
+above. Maturity remains `native_smoke`: these slices prove real native objects
+and deterministic output, but do not satisfy the complete conformance or
+presentation gates.
+
+| Slice | Merged source | Native CI evidence | Proven result |
+|---|---|---|---|
+| Vulkan buffers | [`cc19d647`](https://github.com/truffle-graphics/truffle/commit/cc19d6474d0425885e42264ec03fd91bca617a62) via [PR #44](https://github.com/truffle-graphics/truffle/pull/44) | [Build `33260608283`](https://github.com/truffle-graphics/truffle/actions/runs/33260608283) Ubuntu validation lane | Upload/readback/device-local buffers, views, native copies and fills, exact mapped readback. |
+| Vulkan textures | [`8b0a988e`](https://github.com/truffle-graphics/truffle/commit/8b0a988e2cdeb23d91bd7a6aa775676e1e948d5d) via [PR #45](https://github.com/truffle-graphics/truffle/pull/45) | [Build `33261166883`](https://github.com/truffle-graphics/truffle/actions/runs/33261166883) Ubuntu validation lane | Selected device-local 2D textures/views and an exact padded-row buffer -> texture -> texture -> buffer round trip. |
+| D3D12 buffers | [`b983aec4`](https://github.com/truffle-graphics/truffle/commit/b983aec4eca521620a44552da04a8ad5ee1f52ab) via [PR #46](https://github.com/truffle-graphics/truffle/pull/46) | [Build `33261487148`](https://github.com/truffle-graphics/truffle/actions/runs/33261487148) Windows debug-layer lane | Upload/readback/default-heap buffers, views, native copies and arbitrary-range fills with exact WARP readback. |
+| OpenGL and OpenGL ES buffers | [`df019385`](https://github.com/truffle-graphics/truffle/commit/df01938528a06f11d156c5760e255c69db3f83cb) via [PR #47](https://github.com/truffle-graphics/truffle/pull/47) | [Build `33262121061`](https://github.com/truffle-graphics/truffle/actions/runs/33262121061) Ubuntu EGL validation lanes | Shared desktop GL/ES upload/readback/device-local buffers, views, copies and arbitrary-range fills with exact native readback. |
 
 ## Target Matrix
 
