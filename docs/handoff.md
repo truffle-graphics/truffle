@@ -9,12 +9,30 @@ rather than growing a historical transcript here.
 
 ## Current Focus
 
-Deliver issue #33's native backend/platform matrix in evidence-gated slices.
-The current branch adds shared EGL-owned GL/GLES buffers, mapping, and native
-copy/fill submission; textures, pipelines, synchronization, WSI, and broader
-platform work follow.
+Complete issue #129's durable planning and Project workflow before resuming
+native backend implementation. The next executable Phase 5 items are #48
+(reconcile matrix documentation) and #49 (D3D12 textures and transfers).
 
 ## Latest Handoff
+
+- Issue #129 tracks the contributor-neutral planning workflow and the complete
+  RHI 1 backlog conversion. The work is isolated on
+  `docs/rhi1-actionable-backlog` and does not change production code.
+- The public Truffle Project #5 now contains 93 issues with Status, Phase,
+  Workstream, Priority, Effort, and Target evidence fields. Completed #26-#32
+  are `Done`; #129 is `In Progress`; accepted outstanding work is visible as
+  `Todo`, with later Phase 6/7 work also labeled `deferred`.
+- Issue #25 structurally owns #26-#35 and #129. Phase epics #33, #34, and #35
+  each structurally own 27 detailed sub-issues: #48-#74, #75-#101, and
+  #102-#128 respectively.
+- Every new work package records context, outcome, scope, non-goals,
+  architecture ownership, public-contract effect, dependencies, objective
+  acceptance criteria, and required validation/native evidence. Epic bodies
+  contain grouped work-breakdown indexes.
+- `docs/planning.md`, the planned-work issue form, and the pull-request template
+  make durable issue/Project tracking mandatory for accepted implementation and
+  deliberate deferral while preserving a public-safe, contributor-neutral
+  boundary.
 
 - PR #46 is merged without closing issue #33. Vulkan buffer/texture and D3D12
   buffer transfers are on `develop`; post-merge build run `33261566114` is green
@@ -124,6 +142,28 @@ platform work follow.
 
 ## Validation
 
+Issue #129 planning-workflow validation:
+
+```text
+GitHub hierarchy: #25 has 11 children; #33, #34, and #35 have 27
+children each; all phase epics link structurally back to #25.
+GitHub Project #5: 93 issues; Done 7, In Progress 1, Todo 85.
+Project metadata: no missing Status, Phase, Workstream, Priority, Effort,
+or Target evidence values.
+Detailed issue audit: #48-#129 include the required actionable sections.
+Ruby YAML parse: both issue-template YAML files pass.
+cmake --preset ci
+cmake --build --preset ci -j 8
+ctest --preset ci --output-on-failure                       # 36/36
+MTL_DEBUG_LAYER=1 ctest --preset ci -L 'native-smoke|presentation'
+                                                               # 2/2
+git diff --check
+```
+
+The isolated worktree required the repository's pinned Vulkan submodules; the
+documented `git submodule update --init vendor/vulkan-headers vendor/volk`
+recovery path succeeded before the clean configure/build/test run.
+
 Current #33 matrix-slice validation on macOS Apple Silicon:
 
 ```text
@@ -161,11 +201,12 @@ because CMake does not discover `clang-format` on this host's `PATH`;
 
 ## Next Resume Steps
 
-1. Publish the EGL buffer slice and require both Ubuntu GL profiles to pass exact
-   device-local readback before merging it into `develop`.
-2. Continue #33 with D3D12 and GL/GLES textures before native
-   shaders/pipelines and presentation.
-3. Keep WebGPU/WebGL2 and every unexecuted mobile/Apple/Vulkan platform at
+1. Merge #129 after tracker readback and documentation/template validation.
+2. Execute #48 to reconcile public matrix claims with PRs #44-#47, then begin
+   #49's D3D12 texture/copy-footprint slice.
+3. Continue #33 only through its focused Project sub-issues; update issue and
+   Project state whenever scope, evidence, or disposition changes.
+4. Keep WebGPU/WebGL2 and every unexecuted mobile/Apple/Vulkan platform at
    `source_only`; keep native slices at `native_smoke` until shared native
    contracts and presentation evidence exist.
 

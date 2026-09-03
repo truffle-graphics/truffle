@@ -1,0 +1,97 @@
+name: Planned work
+description: Record accepted implementation or deliberately deferred work
+title: ""
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for accepted work. Add the issue to the Truffle delivery project and link its real parent issue when applicable.
+  - type: dropdown
+    id: disposition
+    attributes:
+      label: Initial disposition
+      options:
+        - Planned
+        - Deferred
+        - Blocked by a known dependency
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Describe the verified current state and why this work exists.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Required outcome
+      description: State the observable result rather than only the activity.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: List the owned changes required for the outcome.
+    validations:
+      required: true
+  - type: textarea
+    id: non_goals
+    attributes:
+      label: Out of scope
+      description: List adjacent responsibilities this issue must not absorb.
+    validations:
+      required: true
+  - type: textarea
+    id: architecture
+    attributes:
+      label: Architecture boundary
+      description: Name the owning module, permitted dependencies, and public-contract effect.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Provide objective, checkable completion conditions.
+      value: |
+        - [ ]
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Required validation and evidence
+      description: Name the tests, builds, native runs, artifacts, or readback needed to close.
+      value: |
+        - [ ]
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies and sequencing
+      description: Link prerequisites, followers, blockers, and safe parallel work.
+    validations:
+      required: true
+  - type: textarea
+    id: deferral
+    attributes:
+      label: Deferral or unblock condition
+      description: Required for deferred or blocked work; otherwise write Not applicable.
+    validations:
+      required: true
+  - type: checkboxes
+    id: tracking
+    attributes:
+      label: Durable tracking
+      options:
+        - label: I linked the applicable parent issue or explained why this is top-level.
+          required: true
+        - label: I will add this issue to the Truffle delivery project and applicable milestone.
+          required: true
+        - label: This issue contains no credentials, private notes, transcripts, or machine-private information.
+          required: true

@@ -11,6 +11,12 @@ The earlier Phase 1-12 labels described useful preliminary contracts and tests,
 but their “Complete” wording did not prove native GPU execution or platform
 support. They are historical inputs, not the current delivery gates.
 
+The [Truffle delivery project](https://github.com/users/loosewired/projects/5)
+is the cross-machine execution view. Issue #25 is the program parent; phase
+issues are epics, and their structurally linked sub-issues contain the
+executable scope, dependencies, acceptance criteria, and evidence requirements.
+See `docs/planning.md` for the durable tracking contract.
+
 ## Phase 0: Restore Baseline And Project Truth — Complete
 
 - [x] #26 restore warning-clean package, macOS, Ubuntu, and Windows CI.
@@ -97,14 +103,19 @@ Tracked by #33.
 - [x] Add Windows SDK D3D12 WARP device/command-list smoke.
 - [x] Add Linux surfaceless EGL OpenGL/OpenGL ES deterministic clear/readback
   smoke.
-- [ ] Complete Metal across the declared Apple targets.
-- [ ] Complete Vulkan resources, pipelines, synchronization, WSI, Windows,
-  Android, and Apple MoltenVK lanes.
-- [ ] Complete D3D12 resources, pipelines, synchronization, and DXGI
-  presentation.
-- [ ] Complete WebGPU on wasm32 through pinned Emdawnwebgpu.
-- [ ] Complete OpenGL/OpenGL ES resource and presentation paths plus WebGL2
-  browser execution.
+- [ ] Reconcile merged evidence and complete the compiler prerequisites in #48
+  and #73.
+- [ ] Complete D3D12 baseline resources, pipelines, synchronization, and DXGI
+  presentation through #49-#52.
+- [ ] Complete Vulkan baseline capability and Linux, Windows, Android, and
+  MoltenVK platform lanes through #53-#59.
+- [ ] Complete OpenGL/OpenGL ES resources, pipelines, synchronization, and
+  desktop/Android presentation through #60-#64.
+- [ ] Complete WebGPU and WebGL2 runtime, rendering, browser presentation, and
+  recovery through #65-#68 and #70.
+- [ ] Complete Metal macOS conformance plus Apple cross-build and runtime
+  evidence through #69 and #71-#72.
+- [ ] Close the phase only through the evidence audit in #74.
 
 Every backend-platform pair advances from `source_only` through `supported`
 only when it meets the published evidence gate. Unsupported features fail
@@ -114,11 +125,16 @@ explicitly and remain visible in capabilities.
 
 Tracked by #34.
 
-- Acceleration structures/ray queries and full ray pipelines where native.
-- Task/mesh shaders.
-- Variable-rate rendering and Metal rasterization-rate maps.
-- Sparse resources and residency.
-- Multiview and native query families.
+- [ ] Acceleration-structure, ray-query, and ray-pipeline contracts and native
+  implementations: #75-#78.
+- [ ] Task/mesh shader contracts and Metal, Vulkan, and D3D12 implementations:
+  #79-#82.
+- [ ] Variable-rate rendering contracts and native implementations: #83-#86.
+- [ ] Sparse resource/residency contracts and native implementations: #87-#90.
+- [ ] Multiview contracts and native/standardized implementations: #91-#94 and
+  #98.
+- [ ] Query-family contracts and native/standardized implementations: #95-#100.
+- [ ] Close the phase only through the conformance audit in #101.
 
 Each subsystem has a distinct capability contract and native conformance suite.
 Standard/KHR/ARB GL-family features may participate; vendor-only extensions are
@@ -128,11 +144,17 @@ deferred.
 
 Tracked by #35.
 
-- Optimize allocation, command recycling, descriptor use, deferred deletion,
-  and pipeline caches only after native correctness.
-- Run validation layers and platform-specific recovery suites.
-- Package enabled backends without leaking disabled dependencies.
-- Promote backend-platform pairs individually and publish their evidence.
+- [ ] Implement asynchronous submission and deferred retirement through
+  #102-#105 and #107.
+- [ ] Optimize backend allocation and transient-resource reuse through #106,
+  #108-#109, and #112.
+- [ ] Harden descriptor, pipeline, and command-object reuse through #110-#111
+  and #113.
+- [ ] Complete package isolation, recovery, conformance, validation,
+  performance, provenance, and evidence publication through #114-#120.
+- [ ] Make independent backend/platform maturity decisions through #121-#126.
+- [ ] Close the program through the final acceptance and contract-freeze work
+  in #127-#128.
 
 RHI 1 is complete when its contract and governance are stable and every target
 has a truthful published maturity state. Not every backend must be `supported`

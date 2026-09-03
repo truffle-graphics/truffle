@@ -12,6 +12,7 @@ contributor-neutral defaults.
    - `README.md`
    - `CONTRIBUTING.md`
    - `docs/handoff.md`
+   - `docs/planning.md`
    - `docs/overview.md`
    - `docs/architecture.md`
    - `docs/doctrine/README.md`
@@ -24,11 +25,31 @@ contributor-neutral defaults.
    - Update docs when behavior or architecture changes
    - Preserve repository visibility rules
    - Avoid secrets in commits and docs
-4. Keep AI-authored commits handoff-current:
+4. Make accepted work durable before implementation:
+   - Treat local notes, conversations, and temporary plans as transient. Once
+     work is accepted for implementation or deliberate deferral, create or
+     update a repository issue before implementation continues or the planning
+     session ends.
+   - Add accepted issues to the Truffle delivery project and the applicable
+     milestone. A broad roadmap issue is an epic, not an implementation unit;
+     decompose it into focused sub-issues before production work begins.
+   - Every implementation issue records context, required outcome, scope,
+     non-goals, architecture ownership and allowed dependencies, public-contract
+     effect, dependencies, acceptance criteria, and required validation or
+     native evidence. Record a deferral reason and unblock condition when work
+     cannot proceed yet.
+   - Keep real GitHub parent/sub-issue relationships, Project status, roadmap,
+     and issue state synchronized. Plain-text `Parent: #...` references are not
+     a substitute for the structural relationship.
+   - Record durable architectural or product decisions in repository docs or an
+     ADR and link the deciding issue. Unaccepted brainstorming does not require
+     a backlog item.
+   - Follow `docs/planning.md` for the complete public planning contract.
+5. Keep AI-authored commits handoff-current:
    - Before creating any AI-authored commit, update `docs/handoff.md`
    - Record changed status, decisions, verification, next steps, and open risks as applicable
    - Keep the handoff curated: do not add transcript dumps, secrets, or machine-private notes
-5. Delivery quality bar:
+6. Delivery quality bar:
    - Keep changes small and focused
    - If work is tracked in GitHub Projects, implement only against a clear issue
    - Prefer small, unambiguous issues; split broad tasks into manageable subtasks
@@ -36,7 +57,7 @@ contributor-neutral defaults.
    - Exceptions are allowed for non-diff tasks, discovery-first work, or unavoidable architecture-level changes; document rationale in the issue or PR
    - Do not push directly to protected branches (`master`, `develop`); use PR flow even when operating with admin credentials or AI automation
    - Ensure lint/tests/build pass for touched areas
-6. Use detached implementation companion automation by default:
+7. Use detached implementation companion automation by default:
    - Feature, fix, refactor, and public contract work may be followed by
      background companion work instead of blocking the implementation session.
    - `.github/workflows/companion-automation.yml` classifies same-repository PR
@@ -54,4 +75,4 @@ contributor-neutral defaults.
      contracts, release/distribution behavior, or commit-ready AI handoff state
      changes.
    - GitHub Actions remains the detached validation gate.
-7. If local repo policy conflicts with doctrine snapshot, follow local repo files and call out the conflict explicitly.
+8. If local repo policy conflicts with doctrine snapshot, follow local repo files and call out the conflict explicitly.

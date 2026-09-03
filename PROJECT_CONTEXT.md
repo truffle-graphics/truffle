@@ -96,6 +96,8 @@ consumer selects concrete loading, upload, and backend behavior.
 - `docs/rhi1/` defines the RHI 1 contract, dependencies, shader packages, and
   maturity matrix.
 - `docs/roadmap.md` is the active issue-aligned program sequence.
+- `docs/planning.md` defines the durable issue, Project, and decision-tracking
+  workflow.
 - `docs/adr/0011-rhi-1-replacement-contract.md` records the breaking decision.
 - `docs/handoff.md` is the rolling cross-machine work status and must be
   updated before an AI-authored commit.
@@ -104,4 +106,6 @@ consumer selects concrete loading, upload, and backend behavior.
 
 Continue issue #33 from the native initialization matrix into backend-owned
 resources, shaders, synchronization, WSI/presentation, and platform lanes;
-promote no pair beyond its recorded evidence.
+promote no pair beyond its recorded evidence. Execute from the focused #33
+sub-issues in the Truffle delivery project rather than from an untracked local
+plan.

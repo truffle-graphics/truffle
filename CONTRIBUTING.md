@@ -22,6 +22,35 @@ messages, and signed repository history.
 - Run the relevant build and test checks before requesting merge.
 - Merge only signed commits into protected branches.
 
+## Durable Planning And Traceability
+
+Accepted work must be recoverable from the public repository and GitHub
+tracker. A local planning document, chat, or handoff is not the only record of
+work that the project has decided to implement or deliberately defer.
+
+Before implementation begins:
+
+1. Create or refine a focused repository issue.
+2. Add it to the [Truffle delivery project](https://github.com/users/loosewired/projects/5)
+   and the applicable milestone.
+3. Link it as a real sub-issue when it belongs to a roadmap epic.
+4. Record the context, required outcome, scope, non-goals, owning module,
+   permitted dependencies, public-contract effect, dependencies, acceptance
+   criteria, and required validation or native evidence.
+5. If the work is deferred, keep it open and record why it is deferred and what
+   condition makes it actionable.
+
+Broad roadmap issues organize work; they are not implementation branches.
+Production changes should normally use one focused issue and one reviewable
+commit set. Update the issue and Project status when scope, sequencing,
+evidence, or disposition changes. Close an issue only when its acceptance
+criteria are satisfied or its final disposition is explicit.
+
+Durable architectural and product decisions belong in project documentation or
+an ADR linked from the issue. Brainstorming that has not been accepted as work
+does not need an issue. See [`docs/planning.md`](docs/planning.md) for the full
+planning contract.
+
 ## Stop And Resume
 
 Before switching machines or stopping active work:
