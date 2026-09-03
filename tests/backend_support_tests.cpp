@@ -21,6 +21,7 @@ int main() {
             row.maturity == BackendMaturity::supported) {
             assert(row.evidence.compiles);
             assert(row.evidence.nativeSmoke);
+            assert(row.evidence.validation);
         }
         if (row.backend == BackendKind::null_validation) {
             foundNull = true;

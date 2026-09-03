@@ -44,13 +44,16 @@ for each backend/platform pair:
   textured, depth/MRT/MSAA, indirect, compute-to-render, mixed-ordering, and
   acquire/present proofs reach `native_smoke` on macOS.
 - `truffle_backend_vulkan` uses pinned private Vulkan headers and volk. Linux
-  initializes a real loader/device/graphics queue and submits a native command
-  buffer before exposing an adapter.
-- `truffle_backend_direct3d` initializes the Windows SDK D3D12 WARP device and
-  executes a native command list before exposing an adapter.
+  initializes a real loader/device/graphics queue, owns upload/readback and
+  device-local buffers plus selected device-local 2D textures/views, and proves
+  buffer and padded-row texture transfers before exposing an adapter.
+- `truffle_backend_direct3d` initializes the Windows SDK D3D12 WARP device,
+  owns upload/readback and default-heap buffers/views, and proves native copy
+  and byte-fill submission before exposing an adapter.
 - `truffle_backend_opengl` and `truffle_backend_opengles` use Linux surfaceless
-  EGL contexts and deterministic clear/readback smoke proofs. These matrix
-  slices intentionally expose no resource or pipeline capabilities yet.
+  EGL contexts and deterministic clear/readback smoke proofs. Both own mapped
+  and device-local buffers/views and prove native copy and byte-fill transfers;
+  texture, shader, pipeline, and presentation capabilities remain unsupported.
 - WebGPU remains an explicit `source_only` factory. WebGL2 has a browser-native
   context path when built with Emscripten but remains `source_only` until its
   browser CI evidence exists. Neither exposes a simulated adapter.
