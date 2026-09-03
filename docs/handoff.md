@@ -12,6 +12,19 @@ rather than growing a historical transcript here.
 Complete #51's native D3D12 synchronization, barrier, and query work through
 Windows debug-layer WARP evidence.
 
+## Delivery Workflow Update
+
+- AI-assisted implementation defaults to review-first delivery. Before an AI
+  implements a plan, the user selects review-first or commit-and-push delivery
+  and agrees the proposed cohesive or staged commit structure.
+- Every AI-authored commit is pushed to the same branch's configured upstream
+  immediately. A failed push leaves delivery incomplete; no later commit or
+  branch switch occurs before the push is recovered through an approved access
+  path.
+- Protected branches remain pull-request-only. The repository-local agent and
+  contributor guidance record the workflow; no RHI contract or backend
+  capability changed in this update.
+
 ## Latest Handoff
 
 - Issue #129 completed the contributor-neutral planning workflow and the full
