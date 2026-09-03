@@ -9,7 +9,8 @@ rather than growing a historical transcript here.
 
 ## Current Focus
 
-Complete #49's Windows debug-layer evidence for D3D12 textures and transfers.
+Merge #49's evidenced D3D12 texture slice, then execute #50's native D3D12
+ShaderPackage binding and pipeline work.
 
 ## Latest Handoff
 
@@ -40,8 +41,11 @@ Complete #49's Windows debug-layer evidence for D3D12 textures and transfers.
   and native CI runs.
 - Issue #49 implements D3D12 device-local textures, native descriptor views,
   per-subresource state transitions, and padded-row buffer/texture plus
-  texture/texture copies. Its WARP acceptance test and Windows compilation must
-  pass in CI because the local macOS toolchain cannot compile Windows SDK code.
+  texture/texture copies. PR #135 Build `33759484321` passes package, macOS,
+  Ubuntu, and Windows; the Windows debug-layer WARP lane proves exact padded-row
+  upload, texture-to-texture copy, readback, and native view creation. The only
+  failing check is the separately tracked companion-routing credential issue
+  #131, which is not an engine validation gate.
 
 - PR #46 is merged without closing issue #33. Vulkan buffer/texture and D3D12
   buffer transfers are on `develop`; post-merge build run `33261566114` is green
@@ -194,9 +198,10 @@ ctest --test-dir build/ci -R truffle_direct3d_tests --output-on-failure
 git diff --check
 ```
 
-The local lane verifies the non-Windows unavailable contract. Windows SDK
-compilation, WARP execution, exact padded-row readback, and debug-layer
-validation remain the required CI gate before merge.
+The local lane verifies the non-Windows unavailable contract. PR #135 Build
+`33759484321` supplies the Windows SDK compilation, WARP execution, exact
+256-byte-padded row readback, native texture-view creation, and debug-layer
+validation receipt required for merge.
 
 The isolated worktree required the repository's pinned Vulkan submodules; the
 documented `git submodule update --init vendor/vulkan-headers vendor/volk`
@@ -239,8 +244,8 @@ because CMake does not discover `clang-format` on this host's `PATH`;
 
 ## Next Resume Steps
 
-1. Complete #49 through Windows WARP CI, then execute #50's D3D12 shader,
-   binding, root-signature, and pipeline slice.
+1. Merge the evidenced #49 change, mark its Project item `Done`, then execute
+   #50's D3D12 shader, binding, root-signature, and pipeline slice.
 2. Continue #33 only through its focused Project sub-issues; update issue and
    Project state whenever scope, evidence, or disposition changes.
 3. Keep WebGPU/WebGL2 and every unexecuted mobile/Apple/Vulkan platform at
