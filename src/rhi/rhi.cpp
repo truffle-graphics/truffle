@@ -2685,7 +2685,8 @@ struct Factory {
         if (runtime.config.createSemaphore == nullptr) {
             return unsupported(runtime, "semaphore creation");
         }
-        auto result = runtime.config.createSemaphore(desc);
+        auto result = runtime.config.createSemaphore(runtime.config.nativeContext,
+                                                      desc);
         if (!result.ok()) {
             return result.status();
         }
@@ -4560,6 +4561,18 @@ Status CommandList::barrier(const BarrierBatch& batch) {
         if (!resource) {
             return detail::invalid_object("buffer barrier resource");
         }
+        operation.native.bufferBarriers.push_back({
+            .buffer = resource->native,
+            .offset = desc.offset,
+            .size = desc.size,
+            .sourceStages = desc.sourceStages,
+            .destinationStages = desc.destinationStages,
+            .sourceAccess = desc.sourceAccess,
+            .destinationAccess = desc.destinationAccess,
+            .transferOwnership = desc.transferOwnership,
+            .sourceQueue = desc.sourceQueue,
+            .destinationQueue = desc.destinationQueue,
+        });
         desc.buffer = nullptr;
         operation.barrier.buffers.push_back(
             {.desc = desc, .resource = std::move(resource)});
@@ -4583,6 +4596,19 @@ Status CommandList::barrier(const BarrierBatch& batch) {
         if (!resource) {
             return detail::invalid_object("texture barrier resource");
         }
+        operation.native.textureBarriers.push_back({
+            .texture = resource->native,
+            .range = desc.range,
+            .oldLayout = desc.oldLayout,
+            .newLayout = desc.newLayout,
+            .sourceStages = desc.sourceStages,
+            .destinationStages = desc.destinationStages,
+            .sourceAccess = desc.sourceAccess,
+            .destinationAccess = desc.destinationAccess,
+            .transferOwnership = desc.transferOwnership,
+            .sourceQueue = desc.sourceQueue,
+            .destinationQueue = desc.destinationQueue,
+        });
         desc.texture = nullptr;
         operation.barrier.textures.push_back(
             {.desc = desc, .resource = std::move(resource)});
@@ -4634,6 +4660,16 @@ Status CommandList::barrier(const BarrierBatch& batch) {
         desc.afterBuffer = nullptr;
         desc.afterTexture = nullptr;
         alias.desc = desc;
+        operation.native.aliasingBarriers.push_back({
+            .beforeBuffer = alias.beforeBuffer ? alias.beforeBuffer->native
+                                               : std::shared_ptr<void>{},
+            .beforeTexture = alias.beforeTexture ? alias.beforeTexture->native
+                                                 : std::shared_ptr<void>{},
+            .afterBuffer = alias.afterBuffer ? alias.afterBuffer->native
+                                             : std::shared_ptr<void>{},
+            .afterTexture = alias.afterTexture ? alias.afterTexture->native
+                                               : std::shared_ptr<void>{},
+        });
         operation.barrier.aliasing.push_back(std::move(alias));
     }
     value->operations.push_back(std::move(operation));
@@ -6160,6 +6196,7 @@ AcquireResult Swapchain::acquire_next_image() {
         std::shared_ptr<void> nativeSemaphore;
         if (runtime.config.createSemaphore != nullptr) {
             auto semaphoreResult = runtime.config.createSemaphore(
+                runtime.config.nativeContext,
                 SemaphoreDesc{.initialValue = 1,
                               .debugName = value->desc.debugName +
                                            " acquire"});

@@ -1634,7 +1634,7 @@ struct MetalFormat {
 }
 
 [[nodiscard]] Result<std::shared_ptr<void>> create_metal_semaphore(
-    const SemaphoreDesc& desc) {
+    const std::shared_ptr<void>&, const SemaphoreDesc& desc) {
     @autoreleasepool {
         const auto device = system_device();
         if (device == nil) {

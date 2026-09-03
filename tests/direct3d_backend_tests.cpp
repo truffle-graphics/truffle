@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -360,6 +361,180 @@ void verify_direct3d_buffers() {
       .sampleCount = 4,
   });
   assert(multisampleAttachment.ok());
+}
+
+void verify_direct3d_synchronization() {
+  auto instanceResult = rhi::create_direct3d12_instance();
+  assert(instanceResult.ok());
+  auto instance = std::move(instanceResult).value();
+  auto adapter = instance.adapter(0);
+  assert(adapter.ok());
+  auto device = adapter.value().request_device({.requiredFeatures = {
+                                                    rhi::Feature::transfer,
+                                                }});
+  assert(device.ok());
+  auto queue = device.value().queue(rhi::QueueKind::graphics);
+  auto pool = device.value().create_command_pool(rhi::QueueKind::graphics);
+  assert(queue.ok() && pool.ok());
+
+  constexpr std::size_t byteCount = 64;
+  std::array<std::byte, byteCount> expected{};
+  for (std::size_t index = 0; index < expected.size(); ++index) {
+    expected[index] = std::byte{static_cast<unsigned char>(index * 7u + 3u)};
+  }
+  auto upload = device.value().create_buffer({
+      .size = byteCount,
+      .usage = rhi::BufferUsage::copy_source,
+      .memory = rhi::MemoryDomain::upload,
+  });
+  auto intermediate = device.value().create_buffer({
+      .size = byteCount,
+      .usage = rhi::BufferUsage::copy_source | rhi::BufferUsage::copy_destination,
+      .memory = rhi::MemoryDomain::device_local,
+  });
+  auto readback = device.value().create_buffer({
+      .size = byteCount,
+      .usage = rhi::BufferUsage::copy_destination,
+      .memory = rhi::MemoryDomain::readback,
+  });
+  assert(upload.ok() && intermediate.ok() && readback.ok());
+  assert(upload.value().write(0, expected).ok());
+
+  auto first = pool.value().allocate();
+  auto second = pool.value().allocate();
+  assert(first.ok() && second.ok());
+  assert(first.value().begin().ok());
+  auto firstCopy = first.value().begin_copy();
+  assert(firstCopy.ok());
+  assert(firstCopy.value()
+             .copy_buffer(upload.value(), 0, intermediate.value(), 0, byteCount)
+             .ok());
+  assert(firstCopy.value().end().ok());
+  rhi::BarrierBatch copyBarrier;
+  copyBarrier.buffers.push_back({
+      .buffer = &intermediate.value(),
+      .sourceStages = rhi::PipelineStage::copy,
+      .destinationStages = rhi::PipelineStage::copy,
+      .sourceAccess = rhi::Access::transfer_write,
+      .destinationAccess = rhi::Access::transfer_read,
+  });
+  assert(first.value().barrier(copyBarrier).ok());
+  assert(first.value().end().ok());
+
+  assert(second.value().begin().ok());
+  auto secondCopy = second.value().begin_copy();
+  assert(secondCopy.ok());
+  assert(secondCopy.value()
+             .copy_buffer(intermediate.value(), 0, readback.value(), 0, byteCount)
+             .ok());
+  assert(secondCopy.value().end().ok());
+  assert(second.value().end().ok());
+
+  auto timeline = device.value().create_semaphore();
+  auto completion = device.value().create_fence();
+  assert(timeline.ok() && completion.ok());
+  std::array<rhi::CommandList *, 2> ordered{&first.value(), &second.value()};
+  const std::array<rhi::SemaphoreSignal, 1> signal{{
+      {.semaphore = &timeline.value(), .value = 4},
+  }};
+  assert(queue.value()
+             .submit({.commandLists = ordered,
+                      .signals = signal,
+                      .signalFence = &completion.value(),
+                      .signalFenceValue = 7})
+             .ok());
+  assert(timeline.value().value() == 4);
+  assert(completion.value().completed_value() == 7);
+  assert(completion.value().wait(7, std::chrono::nanoseconds{1}).ok());
+  std::array<std::byte, byteCount> output{};
+  assert(readback.value().read(0, output).ok());
+  assert(output == expected);
+
+  auto waiting = pool.value().allocate();
+  assert(waiting.ok());
+  assert(waiting.value().begin().ok());
+  assert(waiting.value().end().ok());
+  auto blocked = device.value().create_semaphore();
+  assert(blocked.ok());
+  std::array<rhi::CommandList *, 1> waitingLists{&waiting.value()};
+  const std::array<rhi::SemaphoreWait, 1> waits{{
+      {.semaphore = &blocked.value(), .value = 1},
+  }};
+  const auto timeout = queue.value().submit({
+      .commandLists = waitingLists,
+      .waits = waits,
+      .waitTimeout = std::chrono::nanoseconds{1},
+  });
+  assert(!timeout.ok());
+  assert(timeout.code == truffle::core::StatusCode::timeout);
+  assert(waiting.value().state() == rhi::CommandListState::executable);
+
+  auto signalList = pool.value().allocate();
+  assert(signalList.ok());
+  assert(signalList.value().begin().ok());
+  assert(signalList.value().end().ok());
+  std::array<rhi::CommandList *, 1> signalLists{&signalList.value()};
+  const std::array<rhi::SemaphoreSignal, 1> release{{
+      {.semaphore = &blocked.value(), .value = 1},
+  }};
+  assert(queue.value().submit({.commandLists = signalLists, .signals = release}).ok());
+  assert(queue.value()
+             .submit({.commandLists = waitingLists,
+                      .waits = waits,
+                      .waitTimeout = std::chrono::milliseconds{1}})
+             .ok());
+
+  auto texture = device.value().create_texture({
+      .extent = {4, 4, 1},
+      .format = rhi::TextureFormat::rgba8_unorm,
+      .usage = rhi::TextureUsage::sampled | rhi::TextureUsage::copy_destination,
+  });
+  assert(texture.ok());
+  auto transitionList = pool.value().allocate();
+  assert(transitionList.ok());
+  assert(transitionList.value().begin().ok());
+  rhi::BarrierBatch transition;
+  transition.textures.push_back({
+      .texture = &texture.value(),
+      .range = {.aspects = rhi::TextureAspect::color},
+      .oldLayout = rhi::TextureLayout::undefined,
+      .newLayout = rhi::TextureLayout::shader_read_only,
+      .destinationStages = rhi::PipelineStage::fragment_shader,
+      .destinationAccess = rhi::Access::shader_read,
+  });
+  assert(transitionList.value().barrier(transition).ok());
+  assert(transitionList.value().end().ok());
+  std::array<rhi::CommandList *, 1> transitionLists{&transitionList.value()};
+  assert(queue.value().submit(transitionLists).ok());
+
+  auto staleList = pool.value().allocate();
+  assert(staleList.ok());
+  assert(staleList.value().begin().ok());
+  rhi::BarrierBatch stale;
+  stale.textures.push_back({
+      .texture = &texture.value(),
+      .range = {.aspects = rhi::TextureAspect::color},
+      .oldLayout = rhi::TextureLayout::undefined,
+      .newLayout = rhi::TextureLayout::general,
+  });
+  assert(staleList.value().barrier(stale).ok());
+  assert(staleList.value().end().ok());
+  std::array<rhi::CommandList *, 1> staleLists{&staleList.value()};
+  const auto staleSubmit = queue.value().submit(staleLists);
+  assert(!staleSubmit.ok());
+  assert(staleSubmit.code == truffle::core::StatusCode::invalid_state);
+
+  auto aliasList = pool.value().allocate();
+  assert(aliasList.ok());
+  assert(aliasList.value().begin().ok());
+  rhi::BarrierBatch invalidAlias;
+  invalidAlias.aliasing.push_back({
+      .beforeBuffer = &intermediate.value(),
+      .afterBuffer = &intermediate.value(),
+  });
+  const auto aliasStatus = aliasList.value().barrier(invalidAlias);
+  assert(!aliasStatus.ok());
+  assert(aliasStatus.code == truffle::core::StatusCode::invalid_argument);
 }
 
 void verify_direct3d_bindings_depth_and_compute() {
@@ -962,6 +1137,7 @@ MrtOutput mrt_ps() {
 int main() {
 #ifdef _WIN32
   verify_direct3d_buffers();
+  verify_direct3d_synchronization();
   verify_direct3d_graphics_output();
   verify_direct3d_bindings_depth_and_compute();
 #else

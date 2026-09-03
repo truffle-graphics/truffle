@@ -89,6 +89,40 @@ struct NativeBindingResource {
     std::size_t size = 0;
 };
 
+struct NativeBufferBarrier {
+    std::shared_ptr<void> buffer;
+    std::size_t offset = 0;
+    std::size_t size = whole_size;
+    PipelineStage sourceStages = PipelineStage::top;
+    PipelineStage destinationStages = PipelineStage::bottom;
+    Access sourceAccess = Access::none;
+    Access destinationAccess = Access::none;
+    bool transferOwnership = false;
+    QueueKind sourceQueue = QueueKind::graphics;
+    QueueKind destinationQueue = QueueKind::graphics;
+};
+
+struct NativeTextureBarrier {
+    std::shared_ptr<void> texture;
+    TextureSubresourceRange range;
+    TextureLayout oldLayout = TextureLayout::undefined;
+    TextureLayout newLayout = TextureLayout::general;
+    PipelineStage sourceStages = PipelineStage::top;
+    PipelineStage destinationStages = PipelineStage::bottom;
+    Access sourceAccess = Access::none;
+    Access destinationAccess = Access::none;
+    bool transferOwnership = false;
+    QueueKind sourceQueue = QueueKind::graphics;
+    QueueKind destinationQueue = QueueKind::graphics;
+};
+
+struct NativeAliasingBarrier {
+    std::shared_ptr<void> beforeBuffer;
+    std::shared_ptr<void> beforeTexture;
+    std::shared_ptr<void> afterBuffer;
+    std::shared_ptr<void> afterTexture;
+};
+
 struct NativeCommand {
     NativeCommandKind kind = NativeCommandKind::draw;
     NativeTransfer transfer;
@@ -98,6 +132,9 @@ struct NativeCommand {
     std::shared_ptr<void> object;
     std::shared_ptr<void> secondaryObject;
     std::vector<NativeBindingResource> bindings;
+    std::vector<NativeBufferBarrier> bufferBarriers;
+    std::vector<NativeTextureBarrier> textureBarriers;
+    std::vector<NativeAliasingBarrier> aliasingBarriers;
     std::vector<std::byte> bytes;
     std::vector<Viewport> viewports;
     std::vector<ScissorRect> scissors;
@@ -175,7 +212,7 @@ struct FoundationBackendConfig {
         const std::shared_ptr<void>&, const ComputePipelineDesc&,
         const NativePipelineLayout&, const std::shared_ptr<void>&) = nullptr;
     Result<std::shared_ptr<void>> (*createSemaphore)(
-        const SemaphoreDesc&) = nullptr;
+        const std::shared_ptr<void>&, const SemaphoreDesc&) = nullptr;
     Result<std::shared_ptr<void>> (*createSurface)(const SurfaceDesc&) = nullptr;
     Result<std::shared_ptr<void>> (*createSwapchain)(
         const std::shared_ptr<void>&, const SwapchainDesc&) = nullptr;
