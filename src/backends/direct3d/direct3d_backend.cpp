@@ -1890,8 +1890,12 @@ void transition_direct3d_texture_range(ID3D12GraphicsCommandList &commandList,
 direct3d_texture_barrier_state(const detail::NativeTextureBarrier &barrier) {
   switch (barrier.newLayout) {
   case TextureLayout::general:
-    return has_access(barrier.destinationAccess, Access::shader_write)
-               ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+    if (has_access(barrier.destinationAccess, Access::shader_write)) {
+      return D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+    }
+    return has_access(barrier.destinationAccess, Access::shader_read)
+               ? D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE |
+                     D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
                : D3D12_RESOURCE_STATE_COMMON;
   case TextureLayout::color_attachment:
     return D3D12_RESOURCE_STATE_RENDER_TARGET;
@@ -1899,6 +1903,8 @@ direct3d_texture_barrier_state(const detail::NativeTextureBarrier &barrier) {
     return has_access(barrier.destinationAccess, Access::depth_stencil_write)
                ? D3D12_RESOURCE_STATE_DEPTH_WRITE
                : D3D12_RESOURCE_STATE_DEPTH_READ;
+  case TextureLayout::depth_stencil_read_only:
+    return D3D12_RESOURCE_STATE_DEPTH_READ;
   case TextureLayout::shader_read_only:
     return D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE |
            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
