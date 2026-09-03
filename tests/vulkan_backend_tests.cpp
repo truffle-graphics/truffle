@@ -7,6 +7,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 
 namespace {
 
@@ -312,7 +313,8 @@ void verify_vulkan_buffers() {
         .usage = rhi::TextureUsage::copy_source |
                  rhi::TextureUsage::copy_destination,
     });
-    if (compressed.ok()) {
+    assert(compressed.ok());
+    {
         std::array<std::byte, 32> compressedBytes{};
         for (std::size_t index = 0; index < compressedBytes.size(); ++index) {
             compressedBytes[index] =
@@ -341,8 +343,6 @@ void verify_vulkan_buffers() {
         std::array<std::byte, compressedBytes.size()> compressedOutput{};
         assert(compressedReadback.read(0, compressedOutput).ok());
         assert(compressedOutput == compressedBytes);
-    } else {
-        assert(compressed.status().code == rhi::StatusCode::unsupported);
     }
 
     auto clearTexture = device.create_texture({
@@ -376,6 +376,67 @@ void verify_vulkan_buffers() {
         assert(clearOutput[offset + 1] == std::byte{0x80});
         assert(clearOutput[offset + 2] == std::byte{0x00});
         assert(clearOutput[offset + 3] == std::byte{0xff});
+    }
+
+    auto depthTexture = device.create_texture({
+        .extent = {2, 2, 1},
+        .format = rhi::TextureFormat::depth32_float,
+        .usage = rhi::TextureUsage::copy_source |
+                 rhi::TextureUsage::depth_stencil_attachment,
+    });
+    auto depthReadback = create_transfer_buffer(
+        16, rhi::BufferUsage::copy_destination,
+        rhi::MemoryDomain::readback);
+    assert(depthTexture.ok());
+    submit_copy([&](rhi::CopyEncoder& copy) {
+        const rhi::TextureRegion region{
+            .subresource = {.aspect = rhi::TextureAspect::depth},
+            .extent = {2, 2, 1},
+        };
+        assert(copy
+                   .clear_texture(depthTexture.value(), region,
+                                  {.depth = 0.25F})
+                   .ok());
+        assert(copy
+                   .copy_texture_to_buffer(depthTexture.value(), depthReadback,
+                                           {.texture = region})
+                   .ok());
+    });
+    std::array<std::byte, 16> depthOutput{};
+    assert(depthReadback.read(0, depthOutput).ok());
+    float depthValue = 0.0F;
+    std::memcpy(&depthValue, depthOutput.data(), sizeof(depthValue));
+    assert(depthValue == 0.25F);
+
+    auto stencilTexture = device.create_texture({
+        .extent = {2, 2, 1},
+        .format = rhi::TextureFormat::depth24_unorm_stencil8,
+        .usage = rhi::TextureUsage::copy_source |
+                 rhi::TextureUsage::depth_stencil_attachment,
+    });
+    auto stencilReadback = create_transfer_buffer(
+        16, rhi::BufferUsage::copy_destination,
+        rhi::MemoryDomain::readback);
+    assert(stencilTexture.ok());
+    submit_copy([&](rhi::CopyEncoder& copy) {
+        const rhi::TextureRegion region{
+            .subresource = {.aspect = rhi::TextureAspect::stencil},
+            .extent = {2, 2, 1},
+        };
+        assert(copy
+                   .clear_texture(stencilTexture.value(), region,
+                                  {.stencil = 0x5au})
+                   .ok());
+        assert(copy
+                   .copy_texture_to_buffer(stencilTexture.value(),
+                                           stencilReadback,
+                                           {.texture = region})
+                   .ok());
+    });
+    std::array<std::byte, 16> stencilOutput{};
+    assert(stencilReadback.read(0, stencilOutput).ok());
+    for (std::size_t index = 0; index < 4; ++index) {
+        assert(stencilOutput[index] == std::byte{0x5a});
     }
 
     auto blitSource = device.create_texture({
@@ -435,7 +496,8 @@ void verify_vulkan_buffers() {
         .usage = rhi::TextureUsage::copy_source |
                  rhi::TextureUsage::copy_destination,
     });
-    if (multisample.ok() && resolved.ok()) {
+    assert(multisample.ok() && resolved.ok());
+    {
         auto resolveReadback = create_transfer_buffer(
             16, rhi::BufferUsage::copy_destination,
             rhi::MemoryDomain::readback);
@@ -464,9 +526,6 @@ void verify_vulkan_buffers() {
         assert(resolveOutput[1] == std::byte{0xff});
         assert(resolveOutput[2] == std::byte{0x00});
         assert(resolveOutput[3] == std::byte{0xff});
-    } else {
-        assert(!multisample.ok());
-        assert(multisample.status().code == rhi::StatusCode::unsupported);
     }
 
     auto hostTexture = device.create_texture({

@@ -14,6 +14,9 @@ uncompressed whole-subresource clear, color resolve, and nearest/linear color
 blit execute natively. Tests compare exact buffer output, padded-row and
 mip/layer/volume/compressed round trips, clear/blit output, and multisample
 resolve when the software adapter exposes the requested format/sample count.
+Depth and stencil aspects have explicit clear/readback coverage, and the Linux
+lane requires BC1 plus four-sample resolve support rather than silently skipping
+those paths.
 
 The backend owns its Vulkan allocation boundary directly: it queries memory
 requirements and memory types, allocates and binds each resource, and releases

@@ -83,10 +83,11 @@ validation-layer evidence without overstating runtime-dependent support.
   narrow 2D slice to capability-checked 1D, 2D, 3D, cube, array, mipmapped,
   compressed, and multisampled device-local shapes with compatible views.
   Native transfer recording now covers mip/layer/volume/compressed copies,
-  whole-subresource clear, color resolve, and nearest/linear color blit. The
-  strict local build and all 36 tests pass; Linux validation-layer execution is
-  the next evidence gate. Host-visible textures, depth/stencil readback,
-  external-memory decisions, and allocation accounting remain in #55.
+  color/depth/stencil whole-subresource clear and readback, color resolve, and
+  nearest/linear color blit. The strict local build and all 36 tests pass;
+  Linux validation-layer execution with required BC1 and four-sample paths is
+  the next evidence gate. Host-visible textures, external-memory decisions,
+  and allocation accounting remain in #55.
 
 - PR #46 is merged without closing issue #33. Vulkan buffer/texture and D3D12
   buffer transfers are on `develop`; post-merge build run `33261566114` is green
