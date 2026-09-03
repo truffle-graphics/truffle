@@ -9,8 +9,8 @@ rather than growing a historical transcript here.
 
 ## Current Focus
 
-Complete #51's native D3D12 synchronization, barrier, and query work through
-Windows debug-layer WARP evidence.
+Complete #52's host-owned Win32/DXGI presentation path through Windows
+debug-layer and GPU-validation WARP evidence.
 
 ## Latest Handoff
 
@@ -18,7 +18,7 @@ Windows debug-layer WARP evidence.
   RHI 1 backlog conversion without changing production code.
 - The public Truffle Project #5 contains 95 issues with Status, Phase,
   Workstream, Priority, Effort, and Target evidence fields. Completed #26-#32,
-  #48, #49, and #129 are `Done`; #50 is `In Progress`; the remaining 84
+  #48-#51, and #129 are `Done`; #52 is `In Progress`; the remaining 82
   accepted items are visible as `Todo`, with later Phase 6/7 work also labeled
   `deferred`.
 - Issue #25 structurally owns #26-#35 and #129. Phase epics #33, #34, and #35
@@ -57,7 +57,7 @@ Windows debug-layer WARP evidence.
   companion-routing failure remains tracked by #131 and is not an engine gate.
 - Issue #50 is closed by PR #136 and merge commit `ba3d8a40`; its final receipt
   Build `33763990063` passes package, macOS, Ubuntu, and Windows.
-- Issue #51 is in progress. It maps RHI buffer/texture and aliasing barriers to
+- Issue #51 is complete. It maps RHI buffer/texture and aliasing barriers to
   native D3D12 legacy barriers, gives each timeline semaphore a native fence,
   and encodes queue waits/signals. The public query contract now records
   timestamps, scoped occlusion queries, and explicit query resolution; Null
@@ -70,6 +70,13 @@ Windows debug-layer WARP evidence.
   fence timeout/retry coverage and GPU-based validation pass in final Build
   `33766961283` along with package, macOS, and Ubuntu. The full local build and
   36/36 tests also pass.
+- Issue #52 implements host-owned Win32 surfaces and DXGI flip-model
+  swapchains, borrowed D3D12 back buffers, timeline-connected presentation,
+  aligned resize/recreation, tearing capability checks, and typed recovery
+  statuses. PR #138 Build `33815232612` passes package, macOS, Ubuntu, and
+  Windows; its WARP presentation lane proves exact BGRA8 swapchain readback,
+  acquire/render/present, client-size drift, occluded-desktop handling,
+  `ResizeBuffers`, destroyed-window detection, and device-loss propagation.
 
 - PR #46 is merged without closing issue #33. Vulkan buffer/texture and D3D12
   buffer transfers are on `develop`; post-merge build run `33261566114` is green
@@ -281,8 +288,9 @@ because CMake does not discover `clang-format` on this host's `PATH`;
 
 ## Next Resume Steps
 
-1. Run the final documentation receipt CI, merge PR #137, and close #51 with
-   Build `33766961283` as its native evidence; then begin #52.
+1. Run the final documentation receipt CI, merge PR #138, and close #52 with
+   Build `33815232612` as its native evidence; then begin the next dependency-
+   ready #33 sub-issue from the Project.
 2. Continue #33 only through its focused Project sub-issues; update issue and
    Project state whenever scope, evidence, or disposition changes.
 3. Keep WebGPU/WebGL2 and every unexecuted mobile/Apple/Vulkan platform at

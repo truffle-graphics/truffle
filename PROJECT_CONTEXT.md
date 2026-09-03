@@ -41,11 +41,12 @@ Current evidence is narrower than the old roadmap claimed:
   transfers; Windows D3D12 owns native upload/readback/default-heap buffers,
   device-local textures/views, buffer/texture transfers, ShaderPackage-backed
   root signatures, graphics/compute pipelines, explicit barriers, native
-  timeline fences, and timestamp/occlusion queries on WARP; and Linux
+  timeline fences, timestamp/occlusion queries, and host-owned Win32/DXGI
+  presentation on WARP; and Linux
   OpenGL/OpenGL ES own native EGL buffers and transfers after surfaceless
   clear/readback initialization. These adapters report only the capabilities
-  they implement. Remaining WSI, presentation, and unadvertised resource gaps
-  stay unsupported rather than simulated.
+  they implement. Remaining backend/platform WSI, presentation, and
+  unadvertised resource gaps stay unsupported rather than simulated.
 - ShaderPackage 1.0 is a deterministic compiler-free runtime contract with a
   canonical manifest/blob container, cross-target reflection validation,
   capability gates, and native-override selection. Optional

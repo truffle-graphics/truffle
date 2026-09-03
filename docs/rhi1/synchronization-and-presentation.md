@@ -49,6 +49,20 @@ queries remain optional and fail when a backend does not implement them.
   D3D12 supplies no finer portable per-stage timestamp point.
 - Validation-enabled instances turn on both the D3D12 debug layer and
   GPU-based validation when the installed debug interface exposes it.
+- A `win32` surface borrows a live host-provided `HWND`; Truffle does not create
+  the window, pump its messages, or control application lifetime. Swapchains
+  use `CreateSwapChainForHwnd` with flip-discard buffers, and acquired images
+  are borrowed D3D12 back buffers released after presentation so
+  `ResizeBuffers` can proceed safely.
+- `fifo` uses a synchronized present interval. `immediate` is available only
+  when `DXGI_FEATURE_PRESENT_ALLOW_TEARING` succeeds and sets both swapchain
+  and present tearing flags. DXGI exposes no portable mailbox mode, so
+  `mailbox` returns `unsupported`.
+- Supported swapchain formats are RGBA8/BGRA8 UNORM or sRGB views and
+  RGBA16-float. Flip-model image counts must be between 2 and 16. Client-area
+  drift is `suboptimal`; zero extent is `out_of_date`; destroyed windows,
+  allocation failure, busy presentation, and device removal map to
+  `surface_lost`, `out_of_memory`, `timeout`, and `device_lost` respectively.
 
 ## Presentation
 
@@ -88,3 +102,10 @@ application window or event loop. A private, non-installed fault hook validates
 the nondeterministic out-of-date acquisition and device-loss propagation paths,
 then exercises real resize and fresh-device recovery without pretending that CI
 physically resized the layer to zero or removed the GPU.
+
+The validation-enabled Windows suite owns only its test window and message
+pump. It proves Win32 surface creation, a WARP-backed flip-model swapchain,
+exact BGRA8 clear/readback before native presentation, semaphore-connected
+acquire/render/present, client-size drift, `ResizeBuffers` recovery, destroyed
+window detection, and typed status/device recovery. An occluded CI desktop is
+reported as usable `suboptimal` presentation rather than false success.
