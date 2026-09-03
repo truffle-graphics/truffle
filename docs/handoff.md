@@ -49,10 +49,11 @@ Windows debug-layer WARP output evidence.
 - Issue #50 is implementing D3D12 HLSL/DXIL shader ownership, reflected root
   signatures, immutable bind groups and descriptor arrays, graphics/compute
   PSOs, render/depth attachments, MSAA resolve, draw/dispatch, and indirect
-  commands. The first native proof covers exact triangle, indexed/instanced,
-  indirect, MRT, and MSAA-resolve output; Windows compilation and execution are
-  still pending before the binding, depth, and compute-to-render proof is
-  completed.
+  commands. Build `33762117716` passes the first native checkpoint for exact
+  triangle, indexed/instanced, indirect, MRT, and MSAA-resolve output. The next
+  checkpoint adds descriptor arrays, immutable samplers, dynamic offsets,
+  push constants, depth ordering, compute-to-render output, and negative
+  capability/layout cases; its Windows execution is pending.
 
 - PR #46 is merged without closing issue #33. Vulkan buffer/texture and D3D12
   buffer transfers are on `develop`; post-merge build run `33261566114` is green
@@ -219,9 +220,10 @@ git diff --check
 ```
 
 The local macOS lane compiles the shared callback/context changes and verifies
-all non-Windows contracts. The `_WIN32` implementation and new golden-output
-body require the next Windows CI checkpoint before the remaining #50 cases are
-added.
+all non-Windows contracts. Build `33762117716` passed the initial `_WIN32`
+golden-output body. The expanded binding, depth, and compute body now passes the
+same 36-test local suite and requires Windows CI before #50 documentation and
+closure.
 
 The isolated worktree required the repository's pinned Vulkan submodules; the
 documented `git submodule update --init vendor/vulkan-headers vendor/volk`
@@ -264,9 +266,9 @@ because CMake does not discover `clang-format` on this host's `PATH`;
 
 ## Next Resume Steps
 
-1. Run #50's first Windows CI checkpoint, correct any Windows SDK or debug-layer
-   findings, then add the textured, depth, dynamic-offset, push-constant, and
-   compute-to-render golden-output cases required for closure.
+1. Run #50's expanded Windows CI checkpoint, correct any Windows SDK,
+   golden-output, or debug-layer findings, then record the evidence and close
+   the issue only after every acceptance case passes.
 2. Continue #33 only through its focused Project sub-issues; update issue and
    Project state whenever scope, evidence, or disposition changes.
 3. Keep WebGPU/WebGL2 and every unexecuted mobile/Apple/Vulkan platform at

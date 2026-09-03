@@ -362,7 +362,362 @@ void verify_direct3d_buffers() {
   assert(multisampleAttachment.ok());
 }
 
-void verify_direct3d_graphics() {
+void verify_direct3d_bindings_depth_and_compute() {
+  constexpr std::string_view shaderSource = R"(
+Texture2D textures[2] : register(t0, space0);
+SamplerState textureSampler : register(s2, space0);
+cbuffer Tint : register(b3, space0) { float4 tint; };
+cbuffer PushConstants : register(b255, space0) {
+  float depthValue;
+  float3 unusedPadding;
+  float4 pushedColor;
+};
+RWByteAddressBuffer computeOutput : register(u4, space0);
+ByteAddressBuffer renderInput : register(t4, space0);
+
+float4 fullscreen_vs(uint vertexId : SV_VertexID) : SV_Position {
+  const float2 positions[3] = {
+      float2(-1.0, -1.0), float2(-1.0, 3.0), float2(3.0, -1.0)};
+  return float4(positions[vertexId], 0.5, 1.0);
+}
+
+float4 depth_vs(uint vertexId : SV_VertexID) : SV_Position {
+  const float2 positions[3] = {
+      float2(-1.0, -1.0), float2(-1.0, 3.0), float2(3.0, -1.0)};
+  return float4(positions[vertexId], depthValue, 1.0);
+}
+
+float4 textured_ps() : SV_Target0 {
+  return textures[1].SampleLevel(textureSampler, float2(0.5, 0.5), 0) * tint;
+}
+
+float4 pushed_ps() : SV_Target0 { return pushedColor; }
+
+[numthreads(1, 1, 1)]
+void compute_main(uint3 id : SV_DispatchThreadID) {
+  computeOutput.Store4(0, asuint(float4(0.0, 0.0, 1.0, 1.0)));
+}
+
+float4 computed_ps() : SV_Target0 {
+  return asfloat(renderInput.Load4(0));
+}
+)";
+  auto instance = rhi::create_direct3d12_instance();
+  assert(instance.ok());
+  auto adapter = instance.value().adapter(0);
+  assert(adapter.ok());
+  auto device = adapter.value().request_device({
+      .requiredFeatures = {rhi::Feature::compute, rhi::Feature::transfer,
+                           rhi::Feature::descriptor_arrays, rhi::Feature::dynamic_offsets,
+                           rhi::Feature::push_constants},
+  });
+  assert(device.ok());
+  auto queue = device.value().queue(rhi::QueueKind::graphics);
+  assert(queue.ok());
+  auto vertex = make_hlsl_shader(device.value(), "D3D12 binding vertex",
+                                 rhi::ShaderStage::vertex, "fullscreen_vs", shaderSource);
+
+  auto textureUpload = device.value().create_buffer({
+      .size = 256,
+      .usage = rhi::BufferUsage::copy_source,
+      .memory = rhi::MemoryDomain::upload,
+  });
+  auto sampledTexture = device.value().create_texture({
+      .extent = {1, 1, 1},
+      .format = rhi::TextureFormat::rgba8_unorm,
+      .usage = rhi::TextureUsage::sampled | rhi::TextureUsage::copy_destination,
+  });
+  assert(textureUpload.ok() && sampledTexture.ok());
+  std::array<std::byte, 256> texelUpload{};
+  texelUpload[0] = std::byte{10};
+  texelUpload[1] = std::byte{20};
+  texelUpload[2] = std::byte{30};
+  texelUpload[3] = std::byte{255};
+  assert(textureUpload.value().write(0, texelUpload).ok());
+  submit(device.value(), queue.value(), [&](rhi::CommandList &list) {
+    auto copy = list.begin_copy();
+    assert(copy.ok());
+    assert(copy.value()
+               .copy_buffer_to_texture(
+                   textureUpload.value(), sampledTexture.value(),
+                   {.layout = {.bytesPerRow = 256, .rowsPerImage = 1},
+                    .texture = {.subresource = {.aspect = rhi::TextureAspect::color},
+                                .extent = {1, 1, 1}}})
+               .ok());
+    assert(copy.value().end().ok());
+  });
+  auto sampledView = device.value().create_texture_view(sampledTexture.value());
+  auto sampler = device.value().create_sampler();
+  assert(sampledView.ok() && sampler.ok());
+  auto bindingLayout = device.value().create_bind_group_layout({
+      .group = 0,
+      .entries = {{.binding = 0,
+                   .type = rhi::BindingType::sampled_texture,
+                   .arrayCount = 2,
+                   .visibility = rhi::ShaderStageMask::fragment},
+                  {.binding = 1,
+                   .type = rhi::BindingType::sampler,
+                   .visibility = rhi::ShaderStageMask::fragment,
+                   .immutableSampler = &sampler.value()},
+                  {.binding = 2,
+                   .type = rhi::BindingType::uniform_buffer,
+                   .visibility = rhi::ShaderStageMask::fragment,
+                   .dynamicOffset = true,
+                   .minimumBufferSize = 16}},
+  });
+  assert(bindingLayout.ok());
+  auto pipelineLayout = device.value().create_pipeline_layout(
+      {.bindGroupLayouts = {&bindingLayout.value()}});
+  assert(pipelineLayout.ok());
+  auto tint = device.value().create_buffer({
+      .size = 512,
+      .usage = rhi::BufferUsage::uniform,
+      .memory = rhi::MemoryDomain::upload,
+  });
+  assert(tint.ok());
+  const std::array<float, 4> halfRed{0.5F, 1.0F, 1.0F, 1.0F};
+  assert(tint.value().write(256, std::as_bytes(std::span{halfRed})).ok());
+  auto arena = device.value().create_descriptor_arena();
+  assert(arena.ok());
+  auto group = device.value().create_bind_group({
+      .layout = &bindingLayout.value(),
+      .arena = &arena.value(),
+      .entries = {{.binding = 0, .arrayElement = 0, .textureView = &sampledView.value()},
+                  {.binding = 0, .arrayElement = 1, .textureView = &sampledView.value()},
+                  {.binding = 2, .buffer = &tint.value(), .size = 16}},
+  });
+  assert(group.ok());
+  std::vector<rhi::ResourceBinding> texturedReflection{
+      {.name = "textures",
+       .stage = rhi::ShaderStage::fragment,
+       .type = rhi::ResourceBindingType::texture,
+       .group = 0,
+       .binding = 0,
+       .arrayCount = 2},
+      {.name = "textureSampler",
+       .stage = rhi::ShaderStage::fragment,
+       .type = rhi::ResourceBindingType::sampler,
+       .group = 0,
+       .binding = 1},
+      {.name = "tint",
+       .stage = rhi::ShaderStage::fragment,
+       .type = rhi::ResourceBindingType::buffer,
+       .group = 0,
+       .binding = 2,
+       .minimumSize = 16},
+  };
+  std::vector<rhi::ShaderBindingMap> texturedMap{
+      {.stage = rhi::ShaderStage::fragment, .group = 0, .binding = 0, .nativeBinding = 0},
+      {.stage = rhi::ShaderStage::fragment, .group = 0, .binding = 1, .nativeBinding = 2},
+      {.stage = rhi::ShaderStage::fragment, .group = 0, .binding = 2, .nativeBinding = 3},
+  };
+  auto texturedFragment = make_hlsl_shader(
+      device.value(), "D3D12 textured fragment", rhi::ShaderStage::fragment,
+      "textured_ps", shaderSource, texturedReflection, {}, texturedMap);
+  auto texturedPipeline = device.value().create_pipeline({
+      .vertexShader = &vertex,
+      .fragmentShader = &texturedFragment,
+      .layout = &pipelineLayout.value(),
+      .colorTargets = {{.format = rhi::TextureFormat::rgba8_unorm}},
+  });
+  assert(texturedPipeline.ok());
+  constexpr std::uint32_t width = 8;
+  constexpr std::uint32_t height = 8;
+  auto target = device.value().create_texture({
+      .extent = {width, height, 1},
+      .format = rhi::TextureFormat::rgba8_unorm,
+      .usage = rhi::TextureUsage::color_attachment | rhi::TextureUsage::copy_source,
+  });
+  assert(target.ok());
+  submit(device.value(), queue.value(), [&](rhi::CommandList &list) {
+    auto render = list.begin_rendering(
+        {.extent = {width, height}, .colorAttachments = {{.texture = &target.value()}}});
+    assert(render.ok());
+    assert(render.value().bind_pipeline(texturedPipeline.value()).ok());
+    assert(render.value()
+               .bind_group(0, group.value(), std::array<std::uint32_t, 1>{256})
+               .ok());
+    assert(render.value().draw(3).ok());
+    assert(render.value().end().ok());
+  });
+  assert_solid_rgba8(
+      read_rgba8(device.value(), queue.value(), target.value(), width, height), width,
+      height, {std::byte{5}, std::byte{20}, std::byte{30}, std::byte{255}});
+
+  auto depthVertex = make_hlsl_shader(
+      device.value(), "D3D12 depth vertex", rhi::ShaderStage::vertex, "depth_vs",
+      shaderSource, {}, {{.stage = rhi::ShaderStage::vertex, .offset = 0, .size = 4}});
+  auto pushedFragment =
+      make_hlsl_shader(device.value(), "D3D12 pushed fragment",
+                       rhi::ShaderStage::fragment, "pushed_ps", shaderSource, {},
+                       {{.stage = rhi::ShaderStage::fragment, .offset = 16, .size = 16}});
+  auto pushLayout = device.value().create_pipeline_layout({
+      .pushConstants = {{.stage = rhi::ShaderStage::vertex, .offset = 0, .size = 4},
+                        {.stage = rhi::ShaderStage::fragment, .offset = 16, .size = 16}},
+  });
+  assert(pushLayout.ok());
+  auto depthPipeline = device.value().create_pipeline({
+      .vertexShader = &depthVertex,
+      .fragmentShader = &pushedFragment,
+      .layout = &pushLayout.value(),
+      .colorTargets = {{.format = rhi::TextureFormat::rgba8_unorm}},
+      .depthStencil = {.format = rhi::TextureFormat::depth32_float,
+                       .depthWriteEnabled = true,
+                       .depthCompare = rhi::CompareOp::less},
+  });
+  auto depth = device.value().create_texture({
+      .extent = {width, height, 1},
+      .format = rhi::TextureFormat::depth32_float,
+      .usage = rhi::TextureUsage::depth_stencil_attachment,
+  });
+  assert(depthPipeline.ok() && depth.ok());
+  submit(device.value(), queue.value(), [&](rhi::CommandList &list) {
+    auto render =
+        list.begin_rendering({.extent = {width, height},
+                              .colorAttachments = {{.texture = &target.value()}},
+                              .depthStencilAttachment = {.texture = &depth.value()}});
+    assert(render.ok());
+    assert(render.value().bind_pipeline(depthPipeline.value()).ok());
+    const float nearDepth = 0.25F;
+    const std::array<float, 4> green{0.0F, 1.0F, 0.0F, 1.0F};
+    assert(render.value()
+               .push_constants(rhi::ShaderStageMask::vertex, 0,
+                               std::as_bytes(std::span{&nearDepth, 1}))
+               .ok());
+    assert(render.value()
+               .push_constants(rhi::ShaderStageMask::fragment, 16,
+                               std::as_bytes(std::span{green}))
+               .ok());
+    assert(render.value().draw(3).ok());
+    const float farDepth = 0.75F;
+    const std::array<float, 4> red{1.0F, 0.0F, 0.0F, 1.0F};
+    assert(render.value()
+               .push_constants(rhi::ShaderStageMask::vertex, 0,
+                               std::as_bytes(std::span{&farDepth, 1}))
+               .ok());
+    assert(render.value()
+               .push_constants(rhi::ShaderStageMask::fragment, 16,
+                               std::as_bytes(std::span{red}))
+               .ok());
+    assert(render.value().draw(3).ok());
+    assert(render.value().end().ok());
+  });
+  assert_solid_rgba8(
+      read_rgba8(device.value(), queue.value(), target.value(), width, height), width,
+      height, {std::byte{}, std::byte{255}, std::byte{}, std::byte{255}});
+
+  auto storageLayout = device.value().create_bind_group_layout({
+      .group = 0,
+      .entries = {{.binding = 0,
+                   .type = rhi::BindingType::storage_buffer,
+                   .visibility =
+                       rhi::ShaderStageMask::compute | rhi::ShaderStageMask::fragment,
+                   .minimumBufferSize = 16}},
+  });
+  assert(storageLayout.ok());
+  auto storagePipelineLayout = device.value().create_pipeline_layout(
+      {.bindGroupLayouts = {&storageLayout.value()}});
+  auto storage = device.value().create_buffer({
+      .size = 16,
+      .usage = rhi::BufferUsage::storage,
+      .memory = rhi::MemoryDomain::device_local,
+  });
+  auto storageArena = device.value().create_descriptor_arena();
+  assert(storagePipelineLayout.ok() && storage.ok() && storageArena.ok());
+  auto storageGroup = device.value().create_bind_group({
+      .layout = &storageLayout.value(),
+      .arena = &storageArena.value(),
+      .entries = {{.binding = 0, .buffer = &storage.value(), .size = 16}},
+  });
+  assert(storageGroup.ok());
+  const std::vector<rhi::ShaderBindingMap> storageMap{{
+      .stage = rhi::ShaderStage::compute,
+      .group = 0,
+      .binding = 0,
+      .nativeBinding = 4,
+  }};
+  auto computeShader =
+      make_hlsl_shader(device.value(), "D3D12 compute", rhi::ShaderStage::compute,
+                       "compute_main", shaderSource,
+                       {{.name = "computeOutput",
+                         .stage = rhi::ShaderStage::compute,
+                         .type = rhi::ResourceBindingType::buffer,
+                         .group = 0,
+                         .binding = 0,
+                         .minimumSize = 16,
+                         .readOnly = false}},
+                       {}, storageMap);
+  auto computePipeline = device.value().create_compute_pipeline({
+      .computeShader = &computeShader,
+      .layout = &storagePipelineLayout.value(),
+      .requiredWorkgroupSize = {1, 1, 1},
+  });
+  assert(computePipeline.ok());
+  submit(device.value(), queue.value(), [&](rhi::CommandList &list) {
+    auto compute = list.begin_compute();
+    assert(compute.ok());
+    assert(compute.value().bind_pipeline(computePipeline.value()).ok());
+    assert(compute.value().bind_group(0, storageGroup.value()).ok());
+    assert(compute.value().dispatch(1, 1, 1).ok());
+    assert(compute.value().end().ok());
+  });
+  auto computedFragment =
+      make_hlsl_shader(device.value(), "D3D12 computed fragment",
+                       rhi::ShaderStage::fragment, "computed_ps", shaderSource,
+                       {{.name = "renderInput",
+                         .stage = rhi::ShaderStage::fragment,
+                         .type = rhi::ResourceBindingType::buffer,
+                         .group = 0,
+                         .binding = 0,
+                         .minimumSize = 16}},
+                       {},
+                       {{.stage = rhi::ShaderStage::fragment,
+                         .group = 0,
+                         .binding = 0,
+                         .nativeBinding = 4}});
+  auto computedPipeline = device.value().create_pipeline({
+      .vertexShader = &vertex,
+      .fragmentShader = &computedFragment,
+      .layout = &storagePipelineLayout.value(),
+      .colorTargets = {{.format = rhi::TextureFormat::rgba8_unorm}},
+  });
+  assert(computedPipeline.ok());
+  submit(device.value(), queue.value(), [&](rhi::CommandList &list) {
+    auto render = list.begin_rendering(
+        {.extent = {width, height}, .colorAttachments = {{.texture = &target.value()}}});
+    assert(render.ok());
+    assert(render.value().bind_pipeline(computedPipeline.value()).ok());
+    assert(render.value().bind_group(0, storageGroup.value()).ok());
+    assert(render.value().draw(3).ok());
+    assert(render.value().end().ok());
+  });
+  assert_solid_rgba8(
+      read_rgba8(device.value(), queue.value(), target.value(), width, height), width,
+      height, {std::byte{}, std::byte{}, std::byte{255}, std::byte{255}});
+
+  auto mismatchedLayout = device.value().create_bind_group_layout({
+      .group = 0,
+      .entries = {{.binding = 0, .type = rhi::BindingType::sampler}},
+  });
+  assert(mismatchedLayout.ok());
+  auto mismatchedPipelineLayout = device.value().create_pipeline_layout(
+      {.bindGroupLayouts = {&mismatchedLayout.value()}});
+  assert(mismatchedPipelineLayout.ok());
+  auto invalidPipeline = device.value().create_pipeline({
+      .vertexShader = &vertex,
+      .fragmentShader = &computedFragment,
+      .layout = &mismatchedPipelineLayout.value(),
+      .colorTargets = {{.format = rhi::TextureFormat::rgba8_unorm}},
+  });
+  assert(!invalidPipeline.ok());
+  assert(invalidPipeline.status().code == truffle::core::StatusCode::invalid_argument);
+  assert(!device.value().create_pipeline_cache().ok());
+  assert(!device.value()
+              .create_bindless_table({.layout = &storageLayout.value(), .capacity = 8})
+              .ok());
+}
+
+void verify_direct3d_graphics_output() {
   constexpr std::string_view shaderSource = R"(
 struct MrtOutput {
   float4 first : SV_Target0;
@@ -375,9 +730,7 @@ float4 fullscreen_vs(uint vertexId : SV_VertexID) : SV_Position {
   return float4(positions[vertexId], 0.5, 1.0);
 }
 
-float4 solid_ps() : SV_Target0 {
-  return float4(0.25, 0.5, 0.75, 1.0);
-}
+float4 solid_ps() : SV_Target0 { return float4(0.25, 0.5, 0.75, 1.0); }
 
 MrtOutput mrt_ps() {
   MrtOutput output;
@@ -540,7 +893,8 @@ MrtOutput mrt_ps() {
 int main() {
 #ifdef _WIN32
   verify_direct3d_buffers();
-  verify_direct3d_graphics();
+  verify_direct3d_graphics_output();
+  verify_direct3d_bindings_depth_and_compute();
 #else
   const auto result = truffle::rhi::create_direct3d12_instance();
   truffle::tests::verify_unavailable_backend(result);
