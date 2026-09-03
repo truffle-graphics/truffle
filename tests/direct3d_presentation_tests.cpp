@@ -153,7 +153,8 @@ rhi::Swapchain create_swapchain(PresentationContext &context, rhi::Surface &surf
 
 void render_readback_and_present(PresentationContext &context, rhi::Swapchain &swapchain,
                                  rhi::Extent2D extent) {
-  constexpr std::size_t rowPitch = 256;
+  const auto rowBytes = static_cast<std::size_t>(extent.width) * 4u;
+  const auto rowPitch = (rowBytes + 255u) & ~std::size_t{255u};
   auto acquired = swapchain.acquire_next_image();
   assert(acquired.ok());
   assert(acquired.image->desc().extent.width == extent.width);
