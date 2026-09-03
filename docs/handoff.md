@@ -9,19 +9,18 @@ rather than growing a historical transcript here.
 
 ## Current Focus
 
-Complete issue #129's durable planning and Project workflow before resuming
-native backend implementation. The next executable Phase 5 items are #48
-(reconcile matrix documentation) and #49 (D3D12 textures and transfers).
+Resume native backend implementation through the durable Project backlog. The
+next executable Phase 5 items are #48 (reconcile matrix documentation) and #49
+(D3D12 textures and transfers).
 
 ## Latest Handoff
 
-- Issue #129 tracks the contributor-neutral planning workflow and the complete
-  RHI 1 backlog conversion. The work is isolated on
-  `docs/rhi1-actionable-backlog` and does not change production code.
-- The public Truffle Project #5 now contains 93 issues with Status, Phase,
+- Issue #129 completed the contributor-neutral planning workflow and the full
+  RHI 1 backlog conversion without changing production code.
+- The public Truffle Project #5 now contains 95 issues with Status, Phase,
   Workstream, Priority, Effort, and Target evidence fields. Completed #26-#32
-  are `Done`; #129 is `In Progress`; accepted outstanding work is visible as
-  `Todo`, with later Phase 6/7 work also labeled `deferred`.
+  and #129 are `Done`; the remaining 87 accepted items are visible as `Todo`,
+  with later Phase 6/7 work also labeled `deferred`.
 - Issue #25 structurally owns #26-#35 and #129. Phase epics #33, #34, and #35
   each structurally own 27 detailed sub-issues: #48-#74, #75-#101, and
   #102-#128 respectively.
@@ -33,6 +32,9 @@ native backend implementation. The next executable Phase 5 items are #48
   make durable issue/Project tracking mandatory for accepted implementation and
   deliberate deferral while preserving a public-safe, contributor-neutral
   boundary.
+- Repository automation follow-ups #131 and #132 record the companion-dispatch
+  credential failure and deprecated action runtimes as Program/Governance work.
+  They contain no credentials or private machine details.
 
 - PR #46 is merged without closing issue #33. Vulkan buffer/texture and D3D12
   buffer transfers are on `develop`; post-merge build run `33261566114` is green
@@ -147,10 +149,11 @@ Issue #129 planning-workflow validation:
 ```text
 GitHub hierarchy: #25 has 11 children; #33, #34, and #35 have 27
 children each; all phase epics link structurally back to #25.
-GitHub Project #5: 93 issues; Done 7, In Progress 1, Todo 85.
+GitHub Project #5: 95 issues; Done 8, Todo 87.
 Project metadata: no missing Status, Phase, Workstream, Priority, Effort,
 or Target evidence values.
-Detailed issue audit: #48-#129 include the required actionable sections.
+Detailed RHI/governance issue audit: #48-#129 include the required actionable
+sections; automation follow-ups #131 and #132 were checked separately.
 Ruby YAML parse: both issue-template YAML files pass.
 cmake --preset ci
 cmake --build --preset ci -j 8
@@ -201,14 +204,15 @@ because CMake does not discover `clang-format` on this host's `PATH`;
 
 ## Next Resume Steps
 
-1. Merge #129 after tracker readback and documentation/template validation.
-2. Execute #48 to reconcile public matrix claims with PRs #44-#47, then begin
+1. Execute #48 to reconcile public matrix claims with PRs #44-#47, then begin
    #49's D3D12 texture/copy-footprint slice.
-3. Continue #33 only through its focused Project sub-issues; update issue and
+2. Continue #33 only through its focused Project sub-issues; update issue and
    Project state whenever scope, evidence, or disposition changes.
-4. Keep WebGPU/WebGL2 and every unexecuted mobile/Apple/Vulkan platform at
+3. Keep WebGPU/WebGL2 and every unexecuted mobile/Apple/Vulkan platform at
    `source_only`; keep native slices at `native_smoke` until shared native
    contracts and presentation evidence exist.
+4. Resolve #131 and #132 independently of engine maturity claims; neither
+   follow-up blocks the already-green cross-platform Build workflow.
 
 ## Open Risks
 
@@ -233,5 +237,6 @@ because CMake does not discover `clang-format` on this host's `PATH`;
 - MoltenVK, Emdawnwebgpu, VMA, D3D12MA, and GL loader/state-tracker groups are
   absent until the code that consumes them is implemented and validated.
 - The companion-task GitHub credential still fails before dispatch with `401
-  Bad credentials`; this is external repository automation, not engine
-  validation.
+  Bad credentials`; issue #131 tracks this external repository automation, not
+  engine validation. Issue #132 separately tracks migration away from
+  deprecated Node.js 20 action runtimes.
