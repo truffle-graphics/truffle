@@ -57,12 +57,16 @@ Windows debug-layer WARP evidence.
   companion-routing failure remains tracked by #131 and is not an engine gate.
 - Issue #50 is closed by PR #136 and merge commit `ba3d8a40`; its final receipt
   Build `33763990063` passes package, macOS, Ubuntu, and Windows.
-- Issue #51 is in progress. Its first checkpoint maps RHI buffer/texture and
-  aliasing barriers to native D3D12 legacy barriers, gives each timeline
-  semaphore a native fence, encodes queue waits/signals, and tests multi-list
-  ordering, timeout retry, fence completion, exact readback, explicit texture
-  transition, and typed stale-layout/aliasing failures. The local configured
-  build and 36/36 tests pass; Windows execution is pending.
+- Issue #51 is in progress. It maps RHI buffer/texture and aliasing barriers to
+  native D3D12 legacy barriers, gives each timeline semaphore a native fence,
+  and encodes queue waits/signals. The public query contract now records
+  timestamps, scoped occlusion queries, and explicit query resolution; Null
+  validates the lifecycle and D3D12 owns timestamp/occlusion heaps plus exact
+  readback. The first Windows build exposed one missing read-only-depth enum
+  case, then the native test correctly showed that an `undefined` old layout is
+  a wildcard rather than a stale state; both test/code findings are corrected.
+  The full local build and 36/36 tests pass; expanded Windows execution is
+  pending.
 
 - PR #46 is merged without closing issue #33. Vulkan buffer/texture and D3D12
   buffer transfers are on `develop`; post-merge build run `33261566114` is green
@@ -274,9 +278,9 @@ because CMake does not discover `clang-format` on this host's `PATH`;
 
 ## Next Resume Steps
 
-1. Push #51's first native synchronization/barrier checkpoint, correct any
-   Windows SDK or debug-layer findings, then implement timestamp and occlusion
-   query recording/resolution through deterministic readback.
+1. Push #51's expanded synchronization/query checkpoint, correct any Windows
+   SDK, debug-layer, timestamp, or occlusion-readback findings, then finalize
+   the public evidence and unsupported-state documentation.
 2. Continue #33 only through its focused Project sub-issues; update issue and
    Project state whenever scope, evidence, or disposition changes.
 3. Keep WebGPU/WebGL2 and every unexecuted mobile/Apple/Vulkan platform at

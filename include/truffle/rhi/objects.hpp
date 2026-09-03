@@ -493,6 +493,14 @@ public:
     [[nodiscard]] Result<ComputeEncoder> begin_compute();
     [[nodiscard]] Result<CopyEncoder> begin_copy();
     [[nodiscard]] Status barrier(const BarrierBatch& batch);
+    [[nodiscard]] Status write_timestamp(
+        QueryPool& pool, std::uint32_t query,
+        PipelineStage stage = PipelineStage::bottom);
+    [[nodiscard]] Status resolve_queries(QueryPool& pool,
+                                         std::uint32_t firstQuery,
+                                         std::uint32_t queryCount,
+                                         Buffer& destination,
+                                         std::size_t destinationOffset = 0);
 
 private:
     explicit CommandList(std::unique_ptr<detail::ObjectState> state) noexcept;
@@ -543,6 +551,9 @@ public:
     [[nodiscard]] Status set_depth_bias(float constantFactor,
                                         float slopeScale,
                                         float clamp);
+    [[nodiscard]] Status begin_occlusion_query(QueryPool& pool,
+                                                std::uint32_t query);
+    [[nodiscard]] Status end_occlusion_query();
     [[nodiscard]] Status draw(std::uint32_t vertexCount,
                               std::uint32_t instanceCount = 1,
                               std::uint32_t firstVertex = 0,
@@ -724,6 +735,8 @@ private:
     explicit QueryPool(std::unique_ptr<detail::ObjectState> state) noexcept;
     std::unique_ptr<detail::ObjectState> state_;
     friend struct detail::Factory;
+    friend class CommandList;
+    friend class RenderEncoder;
 };
 
 class Surface {

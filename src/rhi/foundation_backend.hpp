@@ -58,6 +58,10 @@ enum class NativeCommandKind {
     draw_indirect_count,
     dispatch,
     dispatch_indirect,
+    write_timestamp,
+    begin_occlusion_query,
+    end_occlusion_query,
+    resolve_queries,
 };
 
 struct NativeRenderAttachment {
@@ -213,6 +217,8 @@ struct FoundationBackendConfig {
         const NativePipelineLayout&, const std::shared_ptr<void>&) = nullptr;
     Result<std::shared_ptr<void>> (*createSemaphore)(
         const std::shared_ptr<void>&, const SemaphoreDesc&) = nullptr;
+    Result<std::shared_ptr<void>> (*createQueryPool)(
+        const std::shared_ptr<void>&, const QueryPoolDesc&) = nullptr;
     Result<std::shared_ptr<void>> (*createSurface)(const SurfaceDesc&) = nullptr;
     Result<std::shared_ptr<void>> (*createSwapchain)(
         const std::shared_ptr<void>&, const SwapchainDesc&) = nullptr;

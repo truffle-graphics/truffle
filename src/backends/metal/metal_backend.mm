@@ -1749,6 +1749,13 @@ struct MetalFormat {
                         "Metal barriers require an encoder boundary"));
                 }
                 break;
+            case detail::NativeCommandKind::write_timestamp:
+            case detail::NativeCommandKind::begin_occlusion_query:
+            case detail::NativeCommandKind::end_occlusion_query:
+            case detail::NativeCommandKind::resolve_queries:
+                return fail(Status::failure(
+                    StatusCode::unsupported,
+                    "Metal query commands are not implemented"));
             case detail::NativeCommandKind::begin_render: {
                 if (render != nil || compute != nil) {
                     return fail(Status::failure(

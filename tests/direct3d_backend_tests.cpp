@@ -514,7 +514,7 @@ void verify_direct3d_synchronization() {
   stale.textures.push_back({
       .texture = &texture.value(),
       .range = {.aspects = rhi::TextureAspect::color},
-      .oldLayout = rhi::TextureLayout::undefined,
+      .oldLayout = rhi::TextureLayout::transfer_source,
       .newLayout = rhi::TextureLayout::general,
   });
   assert(staleList.value().barrier(stale).ok());
@@ -955,13 +955,16 @@ MrtOutput mrt_ps() {
   assert(info.pipelines.graphics && info.pipelines.compute);
   assert(info.pipelines.multipleRenderTargets && info.pipelines.depthStencil);
   assert(info.pipelines.multisample && info.pipelines.indirect);
+  assert(std::find(info.supportedFeatures.begin(), info.supportedFeatures.end(),
+                   rhi::Feature::timestamp_queries) != info.supportedFeatures.end());
   assert(!info.pipelines.tessellation && !info.pipelines.indirectCount &&
          !info.pipelines.pipelineCache);
 
   auto device = adapter.value().request_device(
-      {.requiredFeatures = {
-           rhi::Feature::compute, rhi::Feature::transfer, rhi::Feature::descriptor_arrays,
-           rhi::Feature::dynamic_offsets, rhi::Feature::push_constants}});
+      {.requiredFeatures = {rhi::Feature::compute, rhi::Feature::transfer,
+                            rhi::Feature::descriptor_arrays,
+                            rhi::Feature::dynamic_offsets, rhi::Feature::push_constants,
+                            rhi::Feature::timestamp_queries}});
   assert(device.ok());
   auto queue = device.value().queue(rhi::QueueKind::graphics);
   assert(queue.ok());
@@ -1000,6 +1003,53 @@ MrtOutput mrt_ps() {
   assert_solid_rgba8(
       read_rgba8(device.value(), queue.value(), color.value(), width, height), width,
       height, {std::byte{64}, std::byte{128}, std::byte{191}, std::byte{255}});
+
+  auto timestamps = device.value().create_query_pool({
+      .type = rhi::QueryType::timestamp,
+      .count = 2,
+  });
+  auto occlusion = device.value().create_query_pool({
+      .type = rhi::QueryType::occlusion,
+      .count = 1,
+  });
+  auto queryReadback = device.value().create_buffer({
+      .size = 3 * sizeof(std::uint64_t),
+      .usage = rhi::BufferUsage::copy_destination,
+      .memory = rhi::MemoryDomain::readback,
+  });
+  assert(timestamps.ok() && occlusion.ok() && queryReadback.ok());
+  auto unsupportedStatistics = device.value().create_query_pool({
+      .type = rhi::QueryType::pipeline_statistics,
+      .count = 1,
+  });
+  assert(!unsupportedStatistics.ok());
+  assert(unsupportedStatistics.status().code == truffle::core::StatusCode::unsupported);
+  submit(device.value(), queue.value(), [&](rhi::CommandList &list) {
+    assert(list.write_timestamp(timestamps.value(), 0).ok());
+    assert(!list.write_timestamp(timestamps.value(), 2).ok());
+    auto render = list.begin_rendering(
+        {.extent = {width, height}, .colorAttachments = {{.texture = &color.value()}}});
+    assert(render.ok());
+    assert(!render.value().begin_occlusion_query(timestamps.value(), 0).ok());
+    assert(render.value().begin_occlusion_query(occlusion.value(), 0).ok());
+    assert(render.value().bind_pipeline(pipeline.value()).ok());
+    assert(render.value().draw(3).ok());
+    assert(render.value().end_occlusion_query().ok());
+    assert(!render.value().end_occlusion_query().ok());
+    assert(render.value().end().ok());
+    assert(list.write_timestamp(timestamps.value(), 1).ok());
+    assert(list.resolve_queries(timestamps.value(), 0, 2, queryReadback.value()).ok());
+    assert(list.resolve_queries(occlusion.value(), 0, 1, queryReadback.value(),
+                                2 * sizeof(std::uint64_t))
+               .ok());
+  });
+  std::array<std::uint64_t, 3> queryResults{};
+  assert(queryReadback.value()
+             .read(0, std::as_writable_bytes(std::span{queryResults}))
+             .ok());
+  assert(queryResults[0] != 0);
+  assert(queryResults[1] >= queryResults[0]);
+  assert(queryResults[2] == width * height);
 
   auto vertexInput =
       make_hlsl_shader(device.value(), "D3D12 vertex input", rhi::ShaderStage::vertex,

@@ -245,6 +245,12 @@ struct Direct3DSemaphoreResource {
   ComPtr<ID3D12Fence> fence;
 };
 
+struct Direct3DQueryPoolResource {
+  ComPtr<ID3D12QueryHeap> heap;
+  QueryType type = QueryType::timestamp;
+  D3D12_QUERY_TYPE nativeType = D3D12_QUERY_TYPE_TIMESTAMP;
+};
+
 struct Direct3DShaderResource {
   std::shared_ptr<Direct3DContext> context;
   ComPtr<ID3DBlob> ownedBytecode;
@@ -2609,6 +2615,54 @@ record_direct3d_commands(Direct3DContext &context, ID3D12GraphicsCommandList &co
                              static_cast<UINT>(command.arguments[1]),
                              static_cast<UINT>(command.arguments[2]));
         break;
+      case detail::NativeCommandKind::write_timestamp: {
+        const auto pool =
+            std::static_pointer_cast<Direct3DQueryPoolResource>(command.object);
+        if (!pool || !pool->heap || pool->type != QueryType::timestamp) {
+          return Status::failure(StatusCode::invalid_argument,
+                                 "D3D12 timestamp query is invalid");
+        }
+        commandList.EndQuery(pool->heap.Get(), D3D12_QUERY_TYPE_TIMESTAMP,
+                             static_cast<UINT>(command.arguments[0]));
+        break;
+      }
+      case detail::NativeCommandKind::begin_occlusion_query:
+      case detail::NativeCommandKind::end_occlusion_query: {
+        const auto pool =
+            std::static_pointer_cast<Direct3DQueryPoolResource>(command.object);
+        if (!pool || !pool->heap || pool->type != QueryType::occlusion) {
+          return Status::failure(StatusCode::invalid_argument,
+                                 "D3D12 occlusion query is invalid");
+        }
+        if (command.kind == detail::NativeCommandKind::begin_occlusion_query) {
+          commandList.BeginQuery(pool->heap.Get(), D3D12_QUERY_TYPE_OCCLUSION,
+                                 static_cast<UINT>(command.arguments[0]));
+        } else {
+          commandList.EndQuery(pool->heap.Get(), D3D12_QUERY_TYPE_OCCLUSION,
+                               static_cast<UINT>(command.arguments[0]));
+        }
+        break;
+      }
+      case detail::NativeCommandKind::resolve_queries: {
+        const auto pool =
+            std::static_pointer_cast<Direct3DQueryPoolResource>(command.object);
+        const auto destination =
+            std::static_pointer_cast<Direct3DBufferResource>(command.secondaryObject);
+        if (!pool || !pool->heap || !destination) {
+          return Status::failure(StatusCode::invalid_argument,
+                                 "D3D12 query resolve resources are invalid");
+        }
+        if (auto status = transition_direct3d_buffer(commandList, *destination,
+                                                     D3D12_RESOURCE_STATE_COPY_DEST);
+            !status.ok()) {
+          return status;
+        }
+        commandList.ResolveQueryData(pool->heap.Get(), pool->nativeType,
+                                     static_cast<UINT>(command.arguments[0]),
+                                     static_cast<UINT>(command.arguments[1]),
+                                     destination->resource.Get(), command.arguments[2]);
+        break;
+      }
       case detail::NativeCommandKind::transfer:
       case detail::NativeCommandKind::barrier:
         break;
@@ -2940,6 +2994,46 @@ create_direct3d_semaphore(const std::shared_ptr<void> &nativeContext,
   return std::static_pointer_cast<void>(std::move(semaphore));
 }
 
+[[nodiscard]] Result<std::shared_ptr<void>>
+create_direct3d_query_pool(const std::shared_ptr<void> &nativeContext,
+                           const QueryPoolDesc &desc) {
+  const auto context = std::static_pointer_cast<Direct3DContext>(nativeContext);
+  if (!context || !context->device) {
+    return Status::failure(StatusCode::device_lost,
+                           "the D3D12 native context is unavailable");
+  }
+  D3D12_QUERY_HEAP_TYPE heapType;
+  D3D12_QUERY_TYPE queryType;
+  switch (desc.type) {
+  case QueryType::timestamp:
+    heapType = D3D12_QUERY_HEAP_TYPE_TIMESTAMP;
+    queryType = D3D12_QUERY_TYPE_TIMESTAMP;
+    break;
+  case QueryType::occlusion:
+    heapType = D3D12_QUERY_HEAP_TYPE_OCCLUSION;
+    queryType = D3D12_QUERY_TYPE_OCCLUSION;
+    break;
+  case QueryType::pipeline_statistics:
+    return Status::failure(StatusCode::unsupported,
+                           "D3D12 pipeline-statistics queries are unsupported");
+  }
+  auto pool = std::make_shared<Direct3DQueryPoolResource>();
+  pool->type = desc.type;
+  pool->nativeType = queryType;
+  const D3D12_QUERY_HEAP_DESC nativeDesc{
+      .Type = heapType,
+      .Count = desc.count,
+      .NodeMask = 0,
+  };
+  const auto result =
+      context->device->CreateQueryHeap(&nativeDesc, IID_PPV_ARGS(&pool->heap));
+  if (FAILED(result)) {
+    return direct3d_failure(StatusCode::backend_error, "D3D12 query-pool creation failed",
+                            result);
+  }
+  return std::static_pointer_cast<void>(std::move(pool));
+}
+
 } // namespace
 #endif
 
@@ -2956,9 +3050,11 @@ Result<Instance> create_direct3d12_instance(const InstanceDesc &desc) {
   config.maturity = BackendMaturity::native_smoke;
   config.adapterName = std::move(native.adapterName);
   config.queueKinds = {QueueKind::graphics};
-  config.supportedFeatures = {Feature::compute,         Feature::transfer,
-                              Feature::memory_budget,   Feature::descriptor_arrays,
-                              Feature::dynamic_offsets, Feature::push_constants};
+  config.supportedFeatures = {
+      Feature::compute,        Feature::transfer,          Feature::timestamp_queries,
+      Feature::memory_budget,  Feature::descriptor_arrays, Feature::dynamic_offsets,
+      Feature::push_constants,
+  };
   config.resourceCapabilities = {
       .bufferViews = true,
       .textureViews = true,
@@ -3022,6 +3118,7 @@ Result<Instance> create_direct3d12_instance(const InstanceDesc &desc) {
   config.createPipeline = &create_direct3d_pipeline;
   config.createComputePipeline = &create_direct3d_compute_pipeline;
   config.createSemaphore = &create_direct3d_semaphore;
+  config.createQueryPool = &create_direct3d_query_pool;
   config.nativeSubmit = &submit_direct3d_commands;
   return detail::create_foundation_instance(desc, std::move(config));
 #else

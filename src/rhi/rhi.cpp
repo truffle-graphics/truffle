@@ -949,6 +949,7 @@ struct TransferCommand {
 
 struct PipelinePayload;
 struct ComputePipelinePayload;
+struct QueryPoolPayload;
 
 struct CommandListPayload {
     QueueKind kind = QueueKind::graphics;
@@ -965,6 +966,8 @@ struct CommandListPayload {
     bool depthBiasSet = true;
     std::shared_ptr<PipelinePayload> graphicsPipeline;
     std::shared_ptr<ComputePipelinePayload> computePipeline;
+    std::shared_ptr<QueryPoolPayload> activeOcclusionPool;
+    std::uint32_t activeOcclusionQuery = 0;
     std::vector<TextureFormat> renderColorFormats;
     TextureFormat renderDepthStencilFormat = TextureFormat::unknown;
     std::uint32_t renderSampleCount = 1;
@@ -989,12 +992,14 @@ struct CommandListPayload {
         std::vector<TextureBarrierCommand> textures;
         std::vector<AliasingBarrierCommand> aliasing;
     };
-    enum class OperationKind { command, transfer, barrier };
+    enum class OperationKind { command, transfer, barrier, query };
     struct Operation {
         OperationKind kind = OperationKind::command;
         NativeCommand native;
         TransferCommand transfer;
         BarrierCommand barrier;
+        std::shared_ptr<QueryPoolPayload> queryPool;
+        std::shared_ptr<BufferPayload> queryDestination;
     };
     std::vector<Operation> operations;
     std::mutex mutex;
@@ -1048,7 +1053,17 @@ struct SemaphorePayload {
 };
 
 struct QueryPoolPayload {
+    QueryPoolPayload(QueryPoolDesc value, std::shared_ptr<void> nativeValue,
+                     bool logical)
+        : desc(std::move(value)), native(std::move(nativeValue)),
+          values(logical ? desc.count : 0), ready(logical ? desc.count : 0) {}
     QueryPoolDesc desc;
+    std::shared_ptr<void> native;
+    std::vector<std::uint64_t> values;
+    std::vector<bool> ready;
+    std::uint64_t sequence = 0;
+    std::uint32_t activeQuery = std::numeric_limits<std::uint32_t>::max();
+    std::mutex mutex;
 };
 
 struct SurfacePayload {
@@ -2703,16 +2718,26 @@ struct Factory {
     if (!runtime.resolve<DevicePayload>(ObjectKind::device, deviceHandle)) {
         return invalid_object("device");
     }
-    if (!runtime.config.logicalResources) {
-        return unsupported(runtime, "query pool creation");
-    }
     if (desc.count == 0) {
         return Status::failure(StatusCode::invalid_argument,
                                "query pool count must be non-zero");
     }
-    return runtime.allocate(ObjectKind::query_pool,
-                            std::make_shared<QueryPoolPayload>(
-                                QueryPoolPayload{desc}));
+    std::shared_ptr<void> native;
+    if (!runtime.config.logicalResources) {
+        if (runtime.config.createQueryPool == nullptr) {
+            return unsupported(runtime, "query pool creation");
+        }
+        auto result = runtime.config.createQueryPool(runtime.config.nativeContext,
+                                                     desc);
+        if (!result.ok()) {
+            return result.status();
+        }
+        native = std::move(result).value();
+    }
+    return runtime.allocate(
+        ObjectKind::query_pool,
+        std::make_shared<QueryPoolPayload>(desc, std::move(native),
+                                           runtime.config.logicalResources));
 }
 
 [[nodiscard]] Result<Handle> foundation_create_surface(Runtime& runtime,
@@ -2943,6 +2968,64 @@ struct Factory {
     return Status::success();
 }
 
+[[nodiscard]] Status execute_logical_query(
+    const CommandListPayload::Operation& operation) {
+    const auto& pool = operation.queryPool;
+    if (!pool) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "query command has no query pool");
+    }
+    std::lock_guard poolLock{pool->mutex};
+    const auto query = static_cast<std::uint32_t>(operation.native.arguments[0]);
+    switch (operation.native.kind) {
+    case NativeCommandKind::write_timestamp:
+        pool->values[query] = ++pool->sequence;
+        pool->ready[query] = true;
+        return Status::success();
+    case NativeCommandKind::begin_occlusion_query:
+        if (pool->activeQuery != std::numeric_limits<std::uint32_t>::max()) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "an occlusion query is already active");
+        }
+        pool->activeQuery = query;
+        pool->ready[query] = false;
+        return Status::success();
+    case NativeCommandKind::end_occlusion_query:
+        if (pool->activeQuery != query) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "occlusion query end does not match begin");
+        }
+        pool->values[query] = 1;
+        pool->ready[query] = true;
+        pool->activeQuery = std::numeric_limits<std::uint32_t>::max();
+        return Status::success();
+    case NativeCommandKind::resolve_queries: {
+        const auto count =
+            static_cast<std::uint32_t>(operation.native.arguments[1]);
+        const auto destinationOffset =
+            static_cast<std::size_t>(operation.native.arguments[2]);
+        if (!operation.queryDestination) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "query resolve has no destination buffer");
+        }
+        for (std::uint32_t index = 0; index < count; ++index) {
+            if (!pool->ready[query + index]) {
+                return Status::failure(StatusCode::invalid_state,
+                                       "query result is not available");
+            }
+        }
+        std::lock_guard destinationLock{operation.queryDestination->mutex};
+        std::memcpy(operation.queryDestination->bytes.data() + destinationOffset,
+                    pool->values.data() + query,
+                    static_cast<std::size_t>(count) * sizeof(std::uint64_t));
+        return Status::success();
+    }
+    default:
+        return Status::failure(StatusCode::invalid_argument,
+                               "unknown logical query command");
+    }
+}
+
 [[nodiscard]] Status foundation_submit(Runtime& runtime, Handle queueHandle,
                                        std::span<const Handle> commandLists,
                                        std::span<const SemaphorePointHandle> waits,
@@ -3043,6 +3126,11 @@ struct Factory {
             case CommandListPayload::OperationKind::barrier:
                 if (auto status = execute_barrier(operation.barrier, queue->kind);
                     !status.ok()) {
+                    return status;
+                }
+                break;
+            case CommandListPayload::OperationKind::query:
+                if (auto status = execute_logical_query(operation); !status.ok()) {
                     return status;
                 }
                 break;
@@ -4290,6 +4378,8 @@ Status CommandList::begin() {
     value->depthBiasSet = true;
     value->graphicsPipeline.reset();
     value->computePipeline.reset();
+    value->activeOcclusionPool.reset();
+    value->activeOcclusionQuery = 0;
     return Status::success();
 }
 
@@ -4337,6 +4427,8 @@ Status CommandList::reset() {
     value->depthBiasSet = true;
     value->graphicsPipeline.reset();
     value->computePipeline.reset();
+    value->activeOcclusionPool.reset();
+    value->activeOcclusionQuery = 0;
     value->renderColorFormats.clear();
     value->renderDepthStencilFormat = TextureFormat::unknown;
     value->renderSampleCount = 1;
@@ -4676,6 +4768,93 @@ Status CommandList::barrier(const BarrierBatch& batch) {
     return Status::success();
 }
 
+Status CommandList::write_timestamp(QueryPool& pool, std::uint32_t query,
+                                    PipelineStage stage) {
+    const auto value = detail::payload<detail::CommandListPayload>(
+        state_, detail::ObjectKind::command_list);
+    if (!value || !pool.valid() ||
+        pool.state_->runtime.get() != state_->runtime.get()) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "timestamp query pool is invalid or foreign");
+    }
+    const auto queryPool = detail::payload<detail::QueryPoolPayload>(
+        pool.state_, detail::ObjectKind::query_pool);
+    if (!queryPool) {
+        return detail::invalid_object("query pool");
+    }
+    std::lock_guard lock{value->mutex};
+    if (value->owner != std::this_thread::get_id() ||
+        value->state != CommandListState::recording || value->activeEncoder != 0) {
+        return Status::failure(
+            StatusCode::invalid_state,
+            "timestamp queries require an owned command list with no active encoder");
+    }
+    if (queryPool->desc.type != QueryType::timestamp ||
+        query >= queryPool->desc.count || stage == PipelineStage::none) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "timestamp query type, index, or stage is invalid");
+    }
+    detail::CommandListPayload::Operation operation;
+    operation.kind = detail::CommandListPayload::OperationKind::query;
+    operation.queryPool = queryPool;
+    operation.native.kind = detail::NativeCommandKind::write_timestamp;
+    operation.native.object = queryPool->native;
+    operation.native.arguments = {query, static_cast<std::uint64_t>(stage)};
+    value->retained.push_back(queryPool);
+    value->operations.push_back(std::move(operation));
+    return Status::success();
+}
+
+Status CommandList::resolve_queries(QueryPool& pool, std::uint32_t firstQuery,
+                                    std::uint32_t queryCount,
+                                    Buffer& destination,
+                                    std::size_t destinationOffset) {
+    const auto value = detail::payload<detail::CommandListPayload>(
+        state_, detail::ObjectKind::command_list);
+    if (!value || !pool.valid() || !destination.valid() ||
+        pool.state_->runtime.get() != state_->runtime.get() ||
+        destination.state_->runtime.get() != state_->runtime.get()) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "query resolve resources are invalid or foreign");
+    }
+    const auto queryPool = detail::payload<detail::QueryPoolPayload>(
+        pool.state_, detail::ObjectKind::query_pool);
+    const auto buffer = detail::payload<detail::BufferPayload>(
+        destination.state_, detail::ObjectKind::buffer);
+    if (!queryPool || !buffer) {
+        return detail::invalid_object("query resolve resource");
+    }
+    std::lock_guard lock{value->mutex};
+    const auto byteCount =
+        static_cast<std::size_t>(queryCount) * sizeof(std::uint64_t);
+    if (value->owner != std::this_thread::get_id() ||
+        value->state != CommandListState::recording || value->activeEncoder != 0) {
+        return Status::failure(
+            StatusCode::invalid_state,
+            "query resolution requires an owned command list with no active encoder");
+    }
+    if (queryCount == 0 || firstQuery >= queryPool->desc.count ||
+        queryCount > queryPool->desc.count - firstQuery ||
+        destinationOffset % alignof(std::uint64_t) != 0 ||
+        !has_usage(buffer->desc.usage, BufferUsage::copy_destination) ||
+        !detail::buffer_range_valid(*buffer, destinationOffset, byteCount)) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "query resolve range or destination is invalid");
+    }
+    detail::CommandListPayload::Operation operation;
+    operation.kind = detail::CommandListPayload::OperationKind::query;
+    operation.queryPool = queryPool;
+    operation.queryDestination = buffer;
+    operation.native.kind = detail::NativeCommandKind::resolve_queries;
+    operation.native.object = queryPool->native;
+    operation.native.secondaryObject = buffer->native;
+    operation.native.arguments = {firstQuery, queryCount, destinationOffset};
+    value->retained.push_back(queryPool);
+    value->retained.push_back(buffer);
+    value->operations.push_back(std::move(operation));
+    return Status::success();
+}
+
 Status CommandList::encoder_command(std::uint32_t opcode, ObjectId object,
                                     std::uint64_t arg0, std::uint64_t arg1) {
     const auto value = detail::payload<detail::CommandListPayload>(
@@ -4858,7 +5037,8 @@ Status CommandList::end_encoder(std::uint32_t encoderKind) {
     }
     std::lock_guard lock{value->mutex};
     if (value->owner != std::this_thread::get_id() ||
-        value->activeEncoder != encoderKind) {
+        value->activeEncoder != encoderKind ||
+        (encoderKind == 1 && value->activeOcclusionPool)) {
         return Status::failure(StatusCode::invalid_state,
                                "encoder end does not match active encoder");
     }
@@ -4883,6 +5063,7 @@ void CommandList::abandon_encoder(std::uint32_t encoderKind) noexcept {
     }
     std::lock_guard lock{value->mutex};
     if (value->activeEncoder == encoderKind) {
+        value->activeOcclusionPool.reset();
         value->activeEncoder = 0;
         value->state = CommandListState::invalid;
     }
@@ -5389,6 +5570,71 @@ Status RenderEncoder::set_depth_bias(float constantFactor, float slopeScale,
     command.bytes.assign(bytes.begin(), bytes.end());
     detail::record_native(*list, std::move(command));
     list->depthBiasSet = true;
+    return Status::success();
+}
+
+Status RenderEncoder::begin_occlusion_query(QueryPool& pool,
+                                            std::uint32_t query) {
+    if (!active_ || list_ == nullptr || !pool.valid() ||
+        pool.state_->runtime.get() != list_->state_->runtime.get()) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "occlusion query pool is invalid or foreign");
+    }
+    const auto queryPool = detail::payload<detail::QueryPoolPayload>(
+        pool.state_, detail::ObjectKind::query_pool);
+    const auto list = detail::payload<detail::CommandListPayload>(
+        list_->state_, detail::ObjectKind::command_list);
+    if (!queryPool || !list) {
+        return detail::invalid_object("occlusion query resource");
+    }
+    std::lock_guard lock{list->mutex};
+    if (list->owner != std::this_thread::get_id() || list->activeEncoder != 1 ||
+        list->activeOcclusionPool) {
+        return Status::failure(StatusCode::invalid_state,
+                               "an occlusion query is already active");
+    }
+    if (queryPool->desc.type != QueryType::occlusion ||
+        query >= queryPool->desc.count) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "occlusion query type or index is invalid");
+    }
+    detail::CommandListPayload::Operation operation;
+    operation.kind = detail::CommandListPayload::OperationKind::query;
+    operation.queryPool = queryPool;
+    operation.native.kind = detail::NativeCommandKind::begin_occlusion_query;
+    operation.native.object = queryPool->native;
+    operation.native.arguments = {query};
+    list->activeOcclusionPool = queryPool;
+    list->activeOcclusionQuery = query;
+    list->retained.push_back(queryPool);
+    list->operations.push_back(std::move(operation));
+    return Status::success();
+}
+
+Status RenderEncoder::end_occlusion_query() {
+    if (!active_ || list_ == nullptr) {
+        return detail::invalid_object("render encoder");
+    }
+    const auto list = detail::payload<detail::CommandListPayload>(
+        list_->state_, detail::ObjectKind::command_list);
+    if (!list) {
+        return detail::invalid_object("command list");
+    }
+    std::lock_guard lock{list->mutex};
+    if (list->owner != std::this_thread::get_id() || list->activeEncoder != 1 ||
+        !list->activeOcclusionPool) {
+        return Status::failure(StatusCode::invalid_state,
+                               "no occlusion query is active");
+    }
+    detail::CommandListPayload::Operation operation;
+    operation.kind = detail::CommandListPayload::OperationKind::query;
+    operation.queryPool = list->activeOcclusionPool;
+    operation.native.kind = detail::NativeCommandKind::end_occlusion_query;
+    operation.native.object = list->activeOcclusionPool->native;
+    operation.native.arguments = {list->activeOcclusionQuery};
+    list->operations.push_back(std::move(operation));
+    list->activeOcclusionPool.reset();
+    list->activeOcclusionQuery = 0;
     return Status::success();
 }
 

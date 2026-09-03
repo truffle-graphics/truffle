@@ -16,6 +16,7 @@ Result<Instance> create_null_instance(const InstanceDesc& desc) {
                                QueueKind::transfer},
                 .supportedFeatures = {Feature::presentation, Feature::compute,
                                       Feature::transfer, Feature::memory_budget,
+                                      Feature::timestamp_queries,
                                       Feature::descriptor_arrays,
                                       Feature::dynamic_offsets,
                                       Feature::push_constants,
