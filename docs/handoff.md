@@ -9,8 +9,8 @@ rather than growing a historical transcript here.
 
 ## Current Focus
 
-Complete #50's native D3D12 ShaderPackage binding and pipeline work through
-Windows debug-layer WARP output evidence.
+Merge #50's completed native D3D12 ShaderPackage binding and pipeline slice,
+then continue the Phase 5 backlog with #51.
 
 ## Latest Handoff
 
@@ -49,12 +49,12 @@ Windows debug-layer WARP output evidence.
 - Issue #50 is implementing D3D12 HLSL/DXIL shader ownership, reflected root
   signatures, immutable bind groups and descriptor arrays, graphics/compute
   PSOs, render/depth attachments, MSAA resolve, draw/dispatch, and indirect
-  commands. Build `33762763659` passes the expanded Windows debug-layer WARP
-  suite with exact triangle, textured descriptor-array/dynamic-offset output,
-  push-constant depth ordering, indexed/instanced/indirect draws, MRT,
-  MSAA-resolve, and compute-to-render output plus negative capability/layout
-  cases. Vertex-input/blend coverage and explicit dynamic-depth-bias rejection
-  pass the 36-test local suite and await the final cross-platform CI receipt.
+  commands. Final Build `33763713016` passes package, macOS, Ubuntu, and the
+  Windows debug-layer WARP suite with exact triangle, vertex-input/blend,
+  textured descriptor-array/dynamic-offset output, push-constant depth
+  ordering, indexed/instanced/indirect draws, MRT, MSAA-resolve, and
+  compute-to-render output plus negative capability/layout cases. The separate
+  companion-routing failure remains tracked by #131 and is not an engine gate.
 
 - PR #46 is merged without closing issue #33. Vulkan buffer/texture and D3D12
   buffer transfers are on `develop`; post-merge build run `33261566114` is green
@@ -221,10 +221,9 @@ git diff --check
 ```
 
 The local macOS lane compiles the shared callback/context changes and verifies
-all non-Windows contracts. Build `33762117716` passed the initial `_WIN32`
-golden-output body. The expanded binding, depth, and compute body now passes the
-same 36-test local suite and requires Windows CI before #50 documentation and
-closure.
+all non-Windows contracts. Final Build `33763713016` passes package, macOS,
+Ubuntu, and Windows. Its WARP debug-layer lane executes the complete #50
+golden-output and negative-capability suite.
 
 The isolated worktree required the repository's pinned Vulkan submodules; the
 documented `git submodule update --init vendor/vulkan-headers vendor/volk`
@@ -267,9 +266,8 @@ because CMake does not discover `clang-format` on this host's `PATH`;
 
 ## Next Resume Steps
 
-1. Run #50's final cross-platform CI checkpoint, correct any Windows SDK,
-   golden-output, or debug-layer findings, then record the evidence and close
-   the issue only after every acceptance case passes.
+1. Merge PR #136 and close #50 with final Build `33763713016` as its native
+   receipt, then start #51's D3D12 synchronization slice.
 2. Continue #33 only through its focused Project sub-issues; update issue and
    Project state whenever scope, evidence, or disposition changes.
 3. Keep WebGPU/WebGL2 and every unexecuted mobile/Apple/Vulkan platform at
