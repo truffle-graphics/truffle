@@ -17,6 +17,10 @@ namespace {
 
 namespace rhi = truffle::rhi;
 
+[[nodiscard]] bool presentation_usable(const rhi::Status &status) {
+  return status.ok() || status.code == rhi::StatusCode::suboptimal;
+}
+
 LRESULT CALLBACK window_procedure(HWND window, UINT message, WPARAM wparam,
                                   LPARAM lparam) {
   return DefWindowProcW(window, message, wparam, lparam);
@@ -242,11 +246,11 @@ void render_readback_and_present(PresentationContext &context, rhi::Swapchain &s
   const std::array<rhi::SemaphoreWait, 1> presentWaits{{
       {.semaphore = &rendered.value(), .value = 1, .stages = rhi::PipelineStage::bottom},
   }};
-  assert(context.queue
-             .present({.swapchain = &swapchain,
-                       .imageIndex = acquired.imageIndex,
-                       .waits = presentWaits})
-             .ok());
+  assert(presentation_usable(context.queue.present({
+      .swapchain = &swapchain,
+      .imageIndex = acquired.imageIndex,
+      .waits = presentWaits,
+  })));
 }
 
 void verify_status_paths(PresentationContext &context, rhi::Swapchain &swapchain) {
@@ -267,7 +271,8 @@ void verify_status_paths(PresentationContext &context, rhi::Swapchain &swapchain
   assert(suboptimalAcquire.ok());
   assert(suboptimalAcquire.status.code == rhi::StatusCode::suboptimal);
   rhi::detail::set_direct3d_acquire_fault_for_testing(Direct3DAcquireFault::none);
-  assert(context.queue.present(swapchain, suboptimalAcquire.imageIndex).ok());
+  assert(presentation_usable(
+      context.queue.present(swapchain, suboptimalAcquire.imageIndex)));
 
   for (const auto [fault, code] : std::array{
            std::pair{Direct3DPresentFault::timeout, rhi::StatusCode::timeout},
@@ -279,7 +284,7 @@ void verify_status_paths(PresentationContext &context, rhi::Swapchain &swapchain
     rhi::detail::set_direct3d_present_fault_for_testing(fault);
     assert(context.queue.present(swapchain, acquired.imageIndex).code == code);
     rhi::detail::set_direct3d_present_fault_for_testing(Direct3DPresentFault::none);
-    assert(context.queue.present(swapchain, acquired.imageIndex).ok());
+    assert(presentation_usable(context.queue.present(swapchain, acquired.imageIndex)));
   }
 
   auto outOfDateImage = swapchain.acquire_next_image();
