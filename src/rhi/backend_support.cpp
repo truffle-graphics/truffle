@@ -68,8 +68,8 @@ constexpr std::array support{
     BackendPlatformSupport{BackendKind::direct3d12, PlatformKind::windows,
                            BackendMaturity::native_smoke, true,
                            validated_native_smoke,
-                           "Windows SDK WARP buffers, views, copies, and byte "
-                           "fills"},
+                           "Windows SDK WARP resources, ShaderPackage bindings, "
+                           "graphics/compute pipelines, and exact output"},
     BackendPlatformSupport{BackendKind::opengl, PlatformKind::linux_host,
                            BackendMaturity::native_smoke, true,
                            validated_native_smoke,

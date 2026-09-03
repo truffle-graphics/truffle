@@ -1717,7 +1717,8 @@ struct Factory {
         if (runtime.config.createSampler == nullptr) {
             return unsupported(runtime, "sampler creation");
         }
-        auto result = runtime.config.createSampler(desc);
+        auto result = runtime.config.createSampler(runtime.config.nativeContext,
+                                                   desc);
         if (!result.ok()) {
             return result.status();
         }
@@ -2193,7 +2194,8 @@ struct Factory {
         if (runtime.config.createShader == nullptr) {
             return unsupported(runtime, "shader creation");
         }
-        auto result = runtime.config.createShader(desc);
+        auto result = runtime.config.createShader(runtime.config.nativeContext,
+                                                  desc);
         if (!result.ok()) {
             return result.status();
         }
@@ -2487,8 +2489,16 @@ struct Factory {
             return Status::failure(StatusCode::invalid_argument,
                                    "native graphics pipeline requires shaders");
         }
-        auto result = runtime.config.createPipeline(desc, vertex->native,
-                                                    fragment->native);
+        NativePipelineLayout nativeLayout;
+        if (layout) {
+            nativeLayout.pushConstants = layout->desc.pushConstants;
+            for (const auto& group : layout->layouts) {
+                nativeLayout.bindGroups.push_back(group->desc);
+            }
+        }
+        auto result = runtime.config.createPipeline(
+            runtime.config.nativeContext, desc, nativeLayout, vertex->native,
+            fragment->native);
         if (!result.ok()) {
             return result.status();
         }
@@ -2624,8 +2634,16 @@ struct Factory {
         if (runtime.config.createComputePipeline == nullptr) {
             return unsupported(runtime, "compute pipeline creation");
         }
-        auto result =
-            runtime.config.createComputePipeline(normalized, shader->native);
+        NativePipelineLayout nativeLayout;
+        if (layout) {
+            nativeLayout.pushConstants = layout->desc.pushConstants;
+            for (const auto& group : layout->layouts) {
+                nativeLayout.bindGroups.push_back(group->desc);
+            }
+        }
+        auto result = runtime.config.createComputePipeline(
+            runtime.config.nativeContext, normalized, nativeLayout,
+            shader->native);
         if (!result.ok()) {
             return result.status();
         }

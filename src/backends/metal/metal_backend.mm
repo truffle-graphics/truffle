@@ -380,7 +380,7 @@ struct MetalSwapchainResource {
 }
 
 [[nodiscard]] Result<std::shared_ptr<void>> create_metal_sampler(
-    const SamplerDesc& desc) {
+    const std::shared_ptr<void>&, const SamplerDesc& desc) {
     @autoreleasepool {
         const auto device = system_device();
         auto* descriptor = [[MTLSamplerDescriptor alloc] init];
@@ -418,7 +418,7 @@ struct MetalSwapchainResource {
 }
 
 [[nodiscard]] Result<std::shared_ptr<void>> create_metal_shader(
-    const ShaderDesc& desc) {
+    const std::shared_ptr<void>&, const ShaderDesc& desc) {
     @autoreleasepool {
         const auto device = system_device();
         if (desc.format != ShaderByteFormat::native_source &&
@@ -939,7 +939,9 @@ struct MetalFormat {
 }
 
 [[nodiscard]] Result<std::shared_ptr<void>> create_metal_pipeline(
-    const PipelineDesc& desc, const std::shared_ptr<void>& vertexResource,
+    const std::shared_ptr<void>&, const PipelineDesc& desc,
+    const detail::NativePipelineLayout&,
+    const std::shared_ptr<void>& vertexResource,
     const std::shared_ptr<void>& fragmentResource) {
     @autoreleasepool {
         const auto unsupportedDynamic =
@@ -1080,7 +1082,9 @@ struct MetalFormat {
 }
 
 [[nodiscard]] Result<std::shared_ptr<void>> create_metal_compute_pipeline(
-    const ComputePipelineDesc& desc, const std::shared_ptr<void>& shaderResource) {
+    const std::shared_ptr<void>&, const ComputePipelineDesc& desc,
+    const detail::NativePipelineLayout&,
+    const std::shared_ptr<void>& shaderResource) {
     @autoreleasepool {
         const auto shader =
             std::static_pointer_cast<MetalShaderResource>(shaderResource);

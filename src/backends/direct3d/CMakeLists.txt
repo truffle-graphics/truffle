@@ -4,7 +4,7 @@ target_link_libraries(truffle_backend_direct3d PUBLIC truffle_rhi)
 if(WIN32)
     target_compile_definitions(truffle_backend_direct3d PRIVATE
                                WIN32_LEAN_AND_MEAN NOMINMAX _WIN32_WINNT=0x0A00)
-    target_link_libraries(truffle_backend_direct3d PRIVATE d3d12 dxgi)
+    target_link_libraries(truffle_backend_direct3d PRIVATE d3d12 d3dcompiler dxgi)
 endif()
 truffle_configure_target(truffle_backend_direct3d BackendDirect3D)
 add_library(Truffle::BackendDirect3D ALIAS truffle_backend_direct3d)

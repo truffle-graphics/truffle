@@ -106,8 +106,9 @@ Tracked by #33.
 - [x] Reconcile merged native resource evidence and public matrix claims in
   #48.
 - [ ] Complete the compiler prerequisites in #73.
-- [ ] Complete D3D12 baseline resources, pipelines, synchronization, and DXGI
-  presentation through #49-#52.
+- [x] Complete D3D12 baseline resources and ShaderPackage-backed graphics and
+  compute pipelines through #49-#50.
+- [ ] Complete D3D12 synchronization and DXGI presentation through #51-#52.
 - [ ] Complete Vulkan baseline capability and Linux, Windows, Android, and
   MoltenVK platform lanes through #53-#59.
 - [ ] Complete OpenGL/OpenGL ES resources, pipelines, synchronization, and

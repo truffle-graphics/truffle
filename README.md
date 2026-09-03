@@ -49,8 +49,10 @@ for each backend/platform pair:
   buffer and padded-row texture transfers before exposing an adapter.
 - `truffle_backend_direct3d` initializes the Windows SDK D3D12 WARP device,
   owns upload/readback and default-heap buffers plus device-local textures and
-  descriptor views, and proves native buffer, padded-row texture, and
-  texture-to-texture transfers before exposing an adapter.
+  descriptor views, consumes packaged native HLSL or offline DXIL, maps logical
+  layouts to root signatures, and owns graphics/compute pipelines. Debug-layer
+  WARP tests prove native transfers plus exact triangle, textured binding,
+  depth/MRT/MSAA, indexed/instanced/indirect, and compute-to-render output.
 - `truffle_backend_opengl` and `truffle_backend_opengles` use Linux surfaceless
   EGL contexts and deterministic clear/readback smoke proofs. Both own mapped
   and device-local buffers/views and prove native copy and byte-fill transfers;

@@ -117,6 +117,11 @@ struct NativeSwapchainImage {
     Status status = Status::success();
 };
 
+struct NativePipelineLayout {
+    std::vector<BindGroupLayoutDesc> bindGroups;
+    std::vector<PushConstantRange> pushConstants;
+};
+
 struct FoundationBackendConfig {
     BackendKind kind = BackendKind::null_validation;
     PlatformKind platform = PlatformKind::all;
@@ -158,13 +163,17 @@ struct FoundationBackendConfig {
     Status (*readTexture)(const std::shared_ptr<void>&, const TextureRegion&,
                           std::span<std::byte>,
                           const TextureDataLayout&) = nullptr;
-    Result<std::shared_ptr<void>> (*createSampler)(const SamplerDesc&) = nullptr;
-    Result<std::shared_ptr<void>> (*createShader)(const ShaderDesc&) = nullptr;
+    Result<std::shared_ptr<void>> (*createSampler)(
+        const std::shared_ptr<void>&, const SamplerDesc&) = nullptr;
+    Result<std::shared_ptr<void>> (*createShader)(
+        const std::shared_ptr<void>&, const ShaderDesc&) = nullptr;
     Result<std::shared_ptr<void>> (*createPipeline)(
-        const PipelineDesc&, const std::shared_ptr<void>&,
+        const std::shared_ptr<void>&, const PipelineDesc&,
+        const NativePipelineLayout&, const std::shared_ptr<void>&,
         const std::shared_ptr<void>&) = nullptr;
     Result<std::shared_ptr<void>> (*createComputePipeline)(
-        const ComputePipelineDesc&, const std::shared_ptr<void>&) = nullptr;
+        const std::shared_ptr<void>&, const ComputePipelineDesc&,
+        const NativePipelineLayout&, const std::shared_ptr<void>&) = nullptr;
     Result<std::shared_ptr<void>> (*createSemaphore)(
         const SemaphoreDesc&) = nullptr;
     Result<std::shared_ptr<void>> (*createSurface)(const SurfaceDesc&) = nullptr;

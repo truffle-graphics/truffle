@@ -340,7 +340,9 @@ template <typename T, typename Read>
     case ShaderTarget::spirv:
         return variant.format == ShaderByteFormat::spirv;
     case ShaderTarget::dxil:
-        return variant.format == ShaderByteFormat::dxil;
+        return variant.format == ShaderByteFormat::dxil ||
+               (variant.format == ShaderByteFormat::native_source &&
+                variant.kind == ShaderVariantKind::native_override);
     case ShaderTarget::metal_library:
         return variant.format == ShaderByteFormat::metal_library;
     case ShaderTarget::metal_source:
