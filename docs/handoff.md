@@ -9,17 +9,17 @@ rather than growing a historical transcript here.
 
 ## Current Focus
 
-Merge #48's evidence reconciliation, then resume native backend implementation
-with #49 (D3D12 textures and transfers).
+Complete #49's Windows debug-layer evidence for D3D12 textures and transfers.
 
 ## Latest Handoff
 
 - Issue #129 completed the contributor-neutral planning workflow and the full
   RHI 1 backlog conversion without changing production code.
 - The public Truffle Project #5 contains 95 issues with Status, Phase,
-  Workstream, Priority, Effort, and Target evidence fields. After #48 merges,
-  completed #26-#32, #48, and #129 are `Done`; the remaining 86 accepted items
-  are visible as `Todo`, with later Phase 6/7 work also labeled `deferred`.
+  Workstream, Priority, Effort, and Target evidence fields. Completed #26-#32,
+  #48, and #129 are `Done`; #49 is `In Progress`; the remaining 85 accepted
+  items are visible as `Todo`, with later Phase 6/7 work also labeled
+  `deferred`.
 - Issue #25 structurally owns #26-#35 and #129. Phase epics #33, #34, and #35
   each structurally own 27 detailed sub-issues: #48-#74, #75-#101, and
   #102-#128 respectively.
@@ -38,6 +38,10 @@ with #49 (D3D12 textures and transfers).
   merged Vulkan, D3D12, OpenGL, and OpenGL ES resource slices. The public support
   rows now report validation evidence truthfully and link exact source commits
   and native CI runs.
+- Issue #49 implements D3D12 device-local textures, native descriptor views,
+  per-subresource state transitions, and padded-row buffer/texture plus
+  texture/texture copies. Its WARP acceptance test and Windows compilation must
+  pass in CI because the local macOS toolchain cannot compile Windows SDK code.
 
 - PR #46 is merged without closing issue #33. Vulkan buffer/texture and D3D12
   buffer transfers are on `develop`; post-merge build run `33261566114` is green
@@ -182,6 +186,18 @@ The doctor output records `validation: true` for Linux Vulkan, Windows D3D12,
 Linux OpenGL, and Linux OpenGL ES while retaining `native_smoke` maturity and
 false conformance/presentation dimensions.
 
+Issue #49 local cross-platform contract validation:
+
+```text
+cmake --build --preset ci -j 8
+ctest --test-dir build/ci -R truffle_direct3d_tests --output-on-failure
+git diff --check
+```
+
+The local lane verifies the non-Windows unavailable contract. Windows SDK
+compilation, WARP execution, exact padded-row readback, and debug-layer
+validation remain the required CI gate before merge.
+
 The isolated worktree required the repository's pinned Vulkan submodules; the
 documented `git submodule update --init vendor/vulkan-headers vendor/volk`
 recovery path succeeded before the clean configure/build/test run.
@@ -223,8 +239,8 @@ because CMake does not discover `clang-format` on this host's `PATH`;
 
 ## Next Resume Steps
 
-1. Merge #48 after cross-platform CI, mark its Project card `Done`, and begin
-   #49's D3D12 texture/copy-footprint slice.
+1. Complete #49 through Windows WARP CI, then execute #50's D3D12 shader,
+   binding, root-signature, and pipeline slice.
 2. Continue #33 only through its focused Project sub-issues; update issue and
    Project state whenever scope, evidence, or disposition changes.
 3. Keep WebGPU/WebGL2 and every unexecuted mobile/Apple/Vulkan platform at
@@ -248,8 +264,10 @@ because CMake does not discover `clang-format` on this host's `PATH`;
   or explicitly unsupported. EGL still proves initialization and a narrow smoke
   workload only.
 - D3D12 submission remains synchronous and fill commands allocate transient
-  upload resources per operation. Pooling and asynchronous retirement belong to
-  a later performance slice after resource correctness is evidenced.
+  upload resources per operation. Textures do not yet implement compressed,
+  multisampled, external, clear, resolve, or blit paths. Pooling and asynchronous
+  retirement belong to later performance slices after resource correctness is
+  evidenced.
 - Linux EGL context destruction is thread-sensitive. The synchronous matrix
   slice serializes and restores the context; asynchronous GL work needs a
   deliberate context-ownership model.
