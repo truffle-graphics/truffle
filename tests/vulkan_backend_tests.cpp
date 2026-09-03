@@ -528,13 +528,81 @@ void verify_vulkan_buffers() {
         assert(resolveOutput[3] == std::byte{0xff});
     }
 
-    auto hostTexture = device.create_texture({
+    const auto initialUploadBudget =
+        device.memory_budget(rhi::MemoryDomain::upload);
+    const auto initialReadbackBudget =
+        device.memory_budget(rhi::MemoryDomain::readback);
+    assert(initialUploadBudget.ok() && initialReadbackBudget.ok());
+    {
+        constexpr std::size_t hostRowPitch = 16;
+        constexpr std::size_t hostBytes = hostRowPitch * 2;
+        auto hostUpload = device.create_texture({
+            .extent = {2, 2, 1},
+            .format = rhi::TextureFormat::rgba8_unorm,
+            .usage = rhi::TextureUsage::copy_source,
+            .memory = rhi::MemoryDomain::upload,
+        });
+        auto hostReadback = device.create_texture({
+            .extent = {2, 2, 1},
+            .format = rhi::TextureFormat::rgba8_unorm,
+            .usage = rhi::TextureUsage::copy_destination,
+            .memory = rhi::MemoryDomain::readback,
+        });
+        assert(hostUpload.ok() && hostReadback.ok());
+        const auto activeUploadBudget =
+            device.memory_budget(rhi::MemoryDomain::upload);
+        const auto activeReadbackBudget =
+            device.memory_budget(rhi::MemoryDomain::readback);
+        assert(activeUploadBudget.ok() && activeReadbackBudget.ok());
+        assert(activeUploadBudget.value().usedBytes >
+               initialUploadBudget.value().usedBytes);
+        assert(activeReadbackBudget.value().usedBytes >
+               initialReadbackBudget.value().usedBytes);
+
+        std::array<std::byte, hostBytes> hostPixels{};
+        for (std::size_t row = 0; row < 2; ++row) {
+            for (std::size_t column = 0; column < 8; ++column) {
+                const auto index = row * hostRowPitch + column;
+                hostPixels[index] =
+                    std::byte{static_cast<unsigned char>(0x20u + index)};
+            }
+        }
+        const rhi::TextureRegion hostRegion{.extent = {2, 2, 1}};
+        const rhi::TextureDataLayout hostLayout{
+            .bytesPerRow = hostRowPitch,
+            .rowsPerImage = 2,
+        };
+        assert(hostUpload.value().write(hostRegion, hostPixels, hostLayout).ok());
+        submit_copy([&](rhi::CopyEncoder& copy) {
+            assert(copy
+                       .copy_texture(hostUpload.value(), hostReadback.value(),
+                                     {.source = hostRegion,
+                                      .destination = hostRegion})
+                       .ok());
+        });
+        std::array<std::byte, hostBytes> hostOutput{};
+        assert(hostReadback.value()
+                   .read(hostRegion, hostOutput, hostLayout)
+                   .ok());
+        assert(hostOutput == hostPixels);
+    }
+    const auto releasedUploadBudget =
+        device.memory_budget(rhi::MemoryDomain::upload);
+    const auto releasedReadbackBudget =
+        device.memory_budget(rhi::MemoryDomain::readback);
+    assert(releasedUploadBudget.ok() && releasedReadbackBudget.ok());
+    assert(releasedUploadBudget.value().usedBytes ==
+           initialUploadBudget.value().usedBytes);
+    assert(releasedReadbackBudget.value().usedBytes ==
+           initialReadbackBudget.value().usedBytes);
+
+    auto externalTexture = device.create_texture({
         .extent = {2, 2, 1},
         .usage = rhi::TextureUsage::copy_source,
-        .memory = rhi::MemoryDomain::upload,
+        .shareable = true,
     });
-    assert(!hostTexture.ok());
-    assert(hostTexture.status().code == rhi::StatusCode::unsupported);
+    assert(!externalTexture.ok());
+    assert(externalTexture.status().code == rhi::StatusCode::unsupported);
 }
 
 } // namespace

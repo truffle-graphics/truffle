@@ -90,6 +90,14 @@ validation-layer evidence without overstating runtime-dependent support.
   linear-blit exact output rather than silently skipping them. Host-visible
   textures, external-memory decisions, and allocation accounting remain in
   #55.
+- `feat/rhi1-vulkan-host-memory` continues #55 with runtime-queried linear
+  images for upload/readback memory. Direct texture access follows native
+  subresource row/depth pitches, preserves caller padding, flushes/invalidates
+  non-coherent memory, and transitions queue work to host access. The Linux
+  test requires an exact padded host-upload -> native image copy ->
+  host-readback round trip and verifies logical budget release. External
+  sharing remains deliberately unsupported because no Linux handle ownership
+  contract is yet exposed by the backend.
 
 - PR #46 is merged without closing issue #33. Vulkan buffer/texture and D3D12
   buffer transfers are on `develop`; post-merge build run `33261566114` is green

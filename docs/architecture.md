@@ -57,8 +57,9 @@ the cutover decision durable.
   logical substitutes.
 - Linux Vulkan, Windows D3D12 WARP, and Linux EGL OpenGL/OpenGL ES expose an
   adapter only after real native initialization and command or clear/readback
-  smoke succeeds. Vulkan owns buffers, capability-checked device-local image
-  shapes/views, subresource copies, clear, resolve, and blit transfers. D3D12
+  smoke succeeds. Vulkan owns buffers, host-visible linear images,
+  capability-checked image shapes/views, subresource copies, clear, resolve,
+  and blit transfers. D3D12
   owns buffers, device-local textures, native
   descriptor views and transfers, packaged shaders, reflected root signatures,
   graphics/compute pipelines, native draw/dispatch commands, explicit barriers,
