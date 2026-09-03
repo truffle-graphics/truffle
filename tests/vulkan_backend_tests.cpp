@@ -30,6 +30,10 @@ void verify_vulkan_buffers() {
     assert(info.resources.textureViews);
     assert(info.resources.bufferTextureCopy);
     assert(info.resources.textureCopy);
+    assert(info.resources.textureClear);
+    assert(info.resources.textureResolve);
+    assert(info.resources.textureBlitNearest);
+    assert(info.resources.textureBlitLinear);
 
     auto deviceResult = adapter.request_device({
         .requiredFeatures = {rhi::Feature::transfer,
@@ -179,14 +183,299 @@ void verify_vulkan_buffers() {
     assert(textureReadback.read(0, outputPixels).ok());
     assert(outputPixels == expectedPixels);
 
-    auto unsupportedTexture = device.create_texture({
-        .dimension = rhi::TextureDimension::d3,
-        .extent = {4, 4, 4},
-        .usage = rhi::TextureUsage::copy_source,
+    const auto submit_copy = [&](auto&& record) {
+        assert(list.reset().ok());
+        assert(list.begin().ok());
+        auto copyResult = list.begin_copy();
+        assert(copyResult.ok());
+        auto copy = std::move(copyResult).value();
+        record(copy);
+        assert(copy.end().ok());
+        assert(list.end().ok());
+        std::array<rhi::CommandList*, 1> copyLists{&list};
+        assert(queue.submit(copyLists).ok());
+    };
+    const auto create_transfer_buffer = [&](std::size_t size,
+                                            rhi::BufferUsage usage,
+                                            rhi::MemoryDomain memory) {
+        auto result = device.create_buffer({
+            .size = size,
+            .usage = usage,
+            .memory = memory,
+        });
+        assert(result.ok());
+        return std::move(result).value();
+    };
+
+    auto texture1d = device.create_texture({
+        .dimension = rhi::TextureDimension::d1,
+        .extent = {8, 1, 1},
+        .format = rhi::TextureFormat::r8_unorm,
+        .usage = rhi::TextureUsage::copy_source |
+                 rhi::TextureUsage::copy_destination,
+        .mipLevels = 4,
     });
-    assert(!unsupportedTexture.ok());
-    assert(unsupportedTexture.status().code ==
-           truffle::core::StatusCode::unsupported);
+    auto textureArray = device.create_texture({
+        .extent = {8, 8, 1},
+        .format = rhi::TextureFormat::rgba8_unorm,
+        .usage = rhi::TextureUsage::copy_source |
+                 rhi::TextureUsage::copy_destination,
+        .mipLevels = 4,
+        .arrayLayers = 2,
+    });
+    auto texture3d = device.create_texture({
+        .dimension = rhi::TextureDimension::d3,
+        .extent = {2, 2, 2},
+        .format = rhi::TextureFormat::rgba8_unorm,
+        .usage = rhi::TextureUsage::copy_source |
+                 rhi::TextureUsage::copy_destination,
+    });
+    auto cube = device.create_texture({
+        .dimension = rhi::TextureDimension::cube,
+        .extent = {4, 4, 1},
+        .format = rhi::TextureFormat::rgba8_srgb,
+        .usage = rhi::TextureUsage::sampled |
+                 rhi::TextureUsage::copy_destination,
+        .mipLevels = 3,
+        .arrayLayers = 6,
+    });
+    assert(texture1d.ok() && textureArray.ok() && texture3d.ok() && cube.ok());
+    auto cubeView = device.create_texture_view(
+        cube.value(),
+        {.dimension = rhi::TextureDimension::cube,
+         .format = rhi::TextureFormat::rgba8_unorm,
+         .range = {.mipLevelCount = 3, .arrayLayerCount = 6}});
+    assert(cubeView.ok());
+
+    std::array<std::byte, 16> mipLayerPixels{};
+    for (std::size_t index = 0; index < mipLayerPixels.size(); ++index) {
+        mipLayerPixels[index] =
+            std::byte{static_cast<unsigned char>(0x30u + index)};
+    }
+    auto mipUpload = create_transfer_buffer(
+        mipLayerPixels.size(), rhi::BufferUsage::copy_source,
+        rhi::MemoryDomain::upload);
+    auto mipReadback = create_transfer_buffer(
+        mipLayerPixels.size(), rhi::BufferUsage::copy_destination,
+        rhi::MemoryDomain::readback);
+    assert(mipUpload.write(0, mipLayerPixels).ok());
+    const rhi::TextureRegion mipLayerRegion{
+        .subresource = {.mipLevel = 2, .arrayLayer = 1},
+        .extent = {2, 2, 1},
+    };
+    submit_copy([&](rhi::CopyEncoder& copy) {
+        assert(copy
+                   .copy_buffer_to_texture(
+                       mipUpload, textureArray.value(),
+                       {.texture = mipLayerRegion})
+                   .ok());
+        assert(copy
+                   .copy_texture_to_buffer(
+                       textureArray.value(), mipReadback,
+                       {.texture = mipLayerRegion})
+                   .ok());
+    });
+    std::array<std::byte, mipLayerPixels.size()> mipLayerOutput{};
+    assert(mipReadback.read(0, mipLayerOutput).ok());
+    assert(mipLayerOutput == mipLayerPixels);
+
+    std::array<std::byte, 32> volumePixels{};
+    for (std::size_t index = 0; index < volumePixels.size(); ++index) {
+        volumePixels[index] =
+            std::byte{static_cast<unsigned char>(0x80u + index)};
+    }
+    auto volumeUpload = create_transfer_buffer(
+        volumePixels.size(), rhi::BufferUsage::copy_source,
+        rhi::MemoryDomain::upload);
+    auto volumeReadback = create_transfer_buffer(
+        volumePixels.size(), rhi::BufferUsage::copy_destination,
+        rhi::MemoryDomain::readback);
+    assert(volumeUpload.write(0, volumePixels).ok());
+    const rhi::TextureRegion volumeRegion{.extent = {2, 2, 2}};
+    submit_copy([&](rhi::CopyEncoder& copy) {
+        assert(copy
+                   .copy_buffer_to_texture(volumeUpload, texture3d.value(),
+                                           {.texture = volumeRegion})
+                   .ok());
+        assert(copy
+                   .copy_texture_to_buffer(texture3d.value(), volumeReadback,
+                                           {.texture = volumeRegion})
+                   .ok());
+    });
+    std::array<std::byte, volumePixels.size()> volumeOutput{};
+    assert(volumeReadback.read(0, volumeOutput).ok());
+    assert(volumeOutput == volumePixels);
+
+    auto compressed = device.create_texture({
+        .extent = {7, 7, 1},
+        .format = rhi::TextureFormat::bc1_rgba_unorm,
+        .usage = rhi::TextureUsage::copy_source |
+                 rhi::TextureUsage::copy_destination,
+    });
+    if (compressed.ok()) {
+        std::array<std::byte, 32> compressedBytes{};
+        for (std::size_t index = 0; index < compressedBytes.size(); ++index) {
+            compressedBytes[index] =
+                std::byte{static_cast<unsigned char>(index * 3u)};
+        }
+        auto compressedUpload = create_transfer_buffer(
+            compressedBytes.size(), rhi::BufferUsage::copy_source,
+            rhi::MemoryDomain::upload);
+        auto compressedReadback = create_transfer_buffer(
+            compressedBytes.size(), rhi::BufferUsage::copy_destination,
+            rhi::MemoryDomain::readback);
+        assert(compressedUpload.write(0, compressedBytes).ok());
+        const rhi::TextureRegion compressedRegion{.extent = {7, 7, 1}};
+        submit_copy([&](rhi::CopyEncoder& copy) {
+            assert(copy
+                       .copy_buffer_to_texture(
+                           compressedUpload, compressed.value(),
+                           {.texture = compressedRegion})
+                       .ok());
+            assert(copy
+                       .copy_texture_to_buffer(
+                           compressed.value(), compressedReadback,
+                           {.texture = compressedRegion})
+                       .ok());
+        });
+        std::array<std::byte, compressedBytes.size()> compressedOutput{};
+        assert(compressedReadback.read(0, compressedOutput).ok());
+        assert(compressedOutput == compressedBytes);
+    } else {
+        assert(compressed.status().code == rhi::StatusCode::unsupported);
+    }
+
+    auto clearTexture = device.create_texture({
+        .extent = {2, 2, 1},
+        .format = rhi::TextureFormat::rgba8_unorm,
+        .usage = rhi::TextureUsage::copy_source |
+                 rhi::TextureUsage::copy_destination,
+    });
+    auto clearReadback = create_transfer_buffer(
+        16, rhi::BufferUsage::copy_destination,
+        rhi::MemoryDomain::readback);
+    assert(clearTexture.ok());
+    submit_copy([&](rhi::CopyEncoder& copy) {
+        const rhi::TextureRegion region{.extent = {2, 2, 1}};
+        assert(copy
+                   .clear_texture(clearTexture.value(), region,
+                                  {.color = {.r = 1.0F,
+                                             .g = 0.5F,
+                                             .b = 0.0F,
+                                             .a = 1.0F}})
+                   .ok());
+        assert(copy
+                   .copy_texture_to_buffer(clearTexture.value(), clearReadback,
+                                           {.texture = region})
+                   .ok());
+    });
+    std::array<std::byte, 16> clearOutput{};
+    assert(clearReadback.read(0, clearOutput).ok());
+    for (std::size_t offset = 0; offset < clearOutput.size(); offset += 4) {
+        assert(clearOutput[offset] == std::byte{0xff});
+        assert(clearOutput[offset + 1] == std::byte{0x80});
+        assert(clearOutput[offset + 2] == std::byte{0x00});
+        assert(clearOutput[offset + 3] == std::byte{0xff});
+    }
+
+    auto blitSource = device.create_texture({
+        .extent = {2, 2, 1},
+        .format = rhi::TextureFormat::rgba8_unorm,
+        .usage = rhi::TextureUsage::copy_source |
+                 rhi::TextureUsage::copy_destination,
+    });
+    auto blitDestination = device.create_texture({
+        .extent = {4, 4, 1},
+        .format = rhi::TextureFormat::rgba8_unorm,
+        .usage = rhi::TextureUsage::copy_source |
+                 rhi::TextureUsage::copy_destination,
+    });
+    auto blitReadback = create_transfer_buffer(
+        64, rhi::BufferUsage::copy_destination,
+        rhi::MemoryDomain::readback);
+    assert(blitSource.ok() && blitDestination.ok());
+    submit_copy([&](rhi::CopyEncoder& copy) {
+        const rhi::TextureRegion sourceRegion{.extent = {2, 2, 1}};
+        const rhi::TextureRegion destinationRegion{.extent = {4, 4, 1}};
+        assert(copy
+                   .clear_texture(blitSource.value(), sourceRegion,
+                                  {.color = {.r = 0.25F,
+                                             .g = 0.5F,
+                                             .b = 0.75F,
+                                             .a = 1.0F}})
+                   .ok());
+        assert(copy
+                   .blit_texture(blitSource.value(), blitDestination.value(),
+                                 {.source = sourceRegion,
+                                  .destination = destinationRegion,
+                                  .filter = rhi::Filter::linear})
+                   .ok());
+        assert(copy
+                   .copy_texture_to_buffer(blitDestination.value(), blitReadback,
+                                           {.texture = destinationRegion})
+                   .ok());
+    });
+    std::array<std::byte, 64> blitOutput{};
+    assert(blitReadback.read(0, blitOutput).ok());
+    assert(blitOutput[0] == std::byte{0x40});
+    assert(blitOutput[1] == std::byte{0x80});
+    assert(blitOutput[2] == std::byte{0xbf});
+    assert(blitOutput[3] == std::byte{0xff});
+
+    auto multisample = device.create_texture({
+        .extent = {2, 2, 1},
+        .format = rhi::TextureFormat::rgba8_unorm,
+        .usage = rhi::TextureUsage::copy_source |
+                 rhi::TextureUsage::copy_destination,
+        .sampleCount = 4,
+    });
+    auto resolved = device.create_texture({
+        .extent = {2, 2, 1},
+        .format = rhi::TextureFormat::rgba8_unorm,
+        .usage = rhi::TextureUsage::copy_source |
+                 rhi::TextureUsage::copy_destination,
+    });
+    if (multisample.ok() && resolved.ok()) {
+        auto resolveReadback = create_transfer_buffer(
+            16, rhi::BufferUsage::copy_destination,
+            rhi::MemoryDomain::readback);
+        submit_copy([&](rhi::CopyEncoder& copy) {
+            const rhi::TextureRegion region{.extent = {2, 2, 1}};
+            assert(copy
+                       .clear_texture(multisample.value(), region,
+                                      {.color = {.r = 0.0F,
+                                                 .g = 1.0F,
+                                                 .b = 0.0F,
+                                                 .a = 1.0F}})
+                       .ok());
+            assert(copy
+                       .resolve_texture(multisample.value(), resolved.value(),
+                                        {.source = region,
+                                         .destination = region})
+                       .ok());
+            assert(copy
+                       .copy_texture_to_buffer(resolved.value(), resolveReadback,
+                                               {.texture = region})
+                       .ok());
+        });
+        std::array<std::byte, 16> resolveOutput{};
+        assert(resolveReadback.read(0, resolveOutput).ok());
+        assert(resolveOutput[0] == std::byte{0x00});
+        assert(resolveOutput[1] == std::byte{0xff});
+        assert(resolveOutput[2] == std::byte{0x00});
+        assert(resolveOutput[3] == std::byte{0xff});
+    } else {
+        assert(!multisample.ok());
+        assert(multisample.status().code == rhi::StatusCode::unsupported);
+    }
+
+    auto hostTexture = device.create_texture({
+        .extent = {2, 2, 1},
+        .usage = rhi::TextureUsage::copy_source,
+        .memory = rhi::MemoryDomain::upload,
+    });
+    assert(!hostTexture.ok());
+    assert(hostTexture.status().code == rhi::StatusCode::unsupported);
 }
 
 } // namespace
