@@ -14,6 +14,19 @@ The current branch adds shared EGL-owned GL/GLES buffers, mapping, and native
 copy/fill submission; textures, pipelines, synchronization, WSI, and broader
 platform work follow.
 
+## Delivery Workflow Update
+
+- AI-assisted implementation defaults to review-first delivery. Before an AI
+  implements a plan, the user selects review-first or commit-and-push delivery
+  and agrees the proposed cohesive or staged commit structure.
+- Every AI-authored commit is pushed to the same branch's configured upstream
+  immediately. A failed push leaves delivery incomplete; no later commit or
+  branch switch occurs before the push is recovered through an approved access
+  path.
+- Protected branches remain pull-request-only. The repository-local agent and
+  contributor guidance record the workflow; no RHI contract or backend
+  capability changed in this update.
+
 ## Latest Handoff
 
 - PR #46 is merged without closing issue #33. Vulkan buffer/texture and D3D12

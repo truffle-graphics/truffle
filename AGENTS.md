@@ -28,7 +28,25 @@ contributor-neutral defaults.
    - Before creating any AI-authored commit, update `docs/handoff.md`
    - Record changed status, decisions, verification, next steps, and open risks as applicable
    - Keep the handoff curated: do not add transcript dumps, secrets, or machine-private notes
-5. Delivery quality bar:
+5. Establish delivery policy before implementing a plan:
+   - Before implementing a plan, ask the user to select either review-first
+     delivery (leave all changes uncommitted) or commit-and-push delivery.
+     Never infer commit authorization from an implementation request alone.
+   - When offering commit-and-push delivery, recommend a commit topology that
+     matches the approved plan: one cohesive commit, or explicitly named,
+     independently validated phases. State the proposed contents and validation
+     boundary of every commit before implementation begins.
+   - If the user selects staged delivery, commit and push each approved phase
+     before starting the next one. Do not create empty checkpoint commits just
+     to match a plan step.
+   - A user authorization to commit also authorizes the required paired push;
+     there is no AI-authored "commit only" delivery mode. Push the same branch
+     to its configured upstream immediately after every AI-authored commit.
+   - If a push fails, report delivery as incomplete and retry through an
+     approved, configured access path. Do not make another commit, switch
+     branches, or claim the work is available on another machine until the
+     push succeeds. Do not substitute another remote without explicit approval.
+6. Delivery quality bar:
    - Keep changes small and focused
    - If work is tracked in GitHub Projects, implement only against a clear issue
    - Prefer small, unambiguous issues; split broad tasks into manageable subtasks
@@ -36,7 +54,7 @@ contributor-neutral defaults.
    - Exceptions are allowed for non-diff tasks, discovery-first work, or unavoidable architecture-level changes; document rationale in the issue or PR
    - Do not push directly to protected branches (`master`, `develop`); use PR flow even when operating with admin credentials or AI automation
    - Ensure lint/tests/build pass for touched areas
-6. Use detached implementation companion automation by default:
+7. Use detached implementation companion automation by default:
    - Feature, fix, refactor, and public contract work may be followed by
      background companion work instead of blocking the implementation session.
    - `.github/workflows/companion-automation.yml` classifies same-repository PR
@@ -54,4 +72,4 @@ contributor-neutral defaults.
      contracts, release/distribution behavior, or commit-ready AI handoff state
      changes.
    - GitHub Actions remains the detached validation gate.
-7. If local repo policy conflicts with doctrine snapshot, follow local repo files and call out the conflict explicitly.
+8. If local repo policy conflicts with doctrine snapshot, follow local repo files and call out the conflict explicitly.

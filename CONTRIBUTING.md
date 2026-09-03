@@ -22,6 +22,31 @@ messages, and signed repository history.
 - Run the relevant build and test checks before requesting merge.
 - Merge only signed commits into protected branches.
 
+## AI Planning And Delivery Authorization
+
+Before an AI implements an approved plan, the user must choose a delivery mode:
+
+- **Review-first (default):** implement and validate the plan, then leave the
+  changes uncommitted for review.
+- **Commit-and-push:** commit the approved work and immediately push the same
+  branch to its configured upstream.
+
+An implementation request alone does not authorize a commit. When
+commit-and-push delivery is requested, state and agree the proposed commit
+structure before implementation: either one cohesive commit or named,
+independently validated phases. Each phase must have a clear scope and
+validation boundary; do not create empty checkpoint commits merely to mirror a
+plan.
+
+Every AI-authored commit has an immediate paired push. There is no AI-authored
+"commit only" delivery mode. If a push fails, report the delivery as incomplete
+and retry through an approved, configured access path before making another
+commit, switching branches, or claiming the work is available from another
+machine. Do not substitute a different remote without explicit approval.
+
+Protected branches remain pull-request-only; this policy permits pushes only to
+the approved non-protected implementation branch.
+
 ## Stop And Resume
 
 Before switching machines or stopping active work:
@@ -29,7 +54,8 @@ Before switching machines or stopping active work:
 - Update `docs/handoff.md` with the current status, verification, and next steps.
 - Promote durable decisions from the handoff into project docs or ADRs.
 - Run the relevant build and test checks.
-- Commit and push the branch together with the handoff update.
+- For commit-and-push delivery, commit and push the branch together with the
+  handoff update, following the authorization and retry rules above.
 
 ## Commit Message Format
 
