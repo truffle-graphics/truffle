@@ -723,10 +723,12 @@ create_direct3d_pipeline(const std::shared_ptr<void> &nativeContext,
   }
   if (!desc.specializationConstants.empty() ||
       desc.rasterization.polygonMode == PolygonMode::point ||
-      desc.topology == PrimitiveTopology::patch_list) {
+      desc.topology == PrimitiveTopology::patch_list ||
+      has_dynamic_state(desc.dynamicState, DynamicState::depth_bias)) {
     return Status::failure(
         StatusCode::unsupported,
-        "D3D12 specialization, point polygon, or tessellation state is unsupported");
+        "D3D12 specialization, point polygon, tessellation, or dynamic depth-bias "
+        "state is unsupported");
   }
   std::array<std::shared_ptr<Direct3DShaderResource>, 2> shaders{vertex, fragment};
   auto rootResult = create_direct3d_root_layout(*context, shaders, layout, true);

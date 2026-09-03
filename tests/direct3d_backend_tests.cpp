@@ -711,6 +711,15 @@ float4 computed_ps() : SV_Target0 {
   });
   assert(!invalidPipeline.ok());
   assert(invalidPipeline.status().code == truffle::core::StatusCode::invalid_argument);
+  auto unsupportedDynamicBias = device.value().create_pipeline({
+      .vertexShader = &vertex,
+      .fragmentShader = &computedFragment,
+      .layout = &storagePipelineLayout.value(),
+      .colorTargets = {{.format = rhi::TextureFormat::rgba8_unorm}},
+      .dynamicState = rhi::DynamicState::depth_bias,
+  });
+  assert(!unsupportedDynamicBias.ok());
+  assert(unsupportedDynamicBias.status().code == truffle::core::StatusCode::unsupported);
   assert(!device.value().create_pipeline_cache().ok());
   assert(!device.value()
               .create_bindless_table({.layout = &storageLayout.value(), .capacity = 8})
@@ -724,6 +733,16 @@ struct MrtOutput {
   float4 second : SV_Target1;
 };
 
+struct VertexInput {
+  float2 position : TEXCOORD0;
+  float4 color : TEXCOORD1;
+};
+
+struct VertexOutput {
+  float4 position : SV_Position;
+  float4 color : TEXCOORD0;
+};
+
 float4 fullscreen_vs(uint vertexId : SV_VertexID) : SV_Position {
   const float2 positions[3] = {
       float2(-1.0, -1.0), float2(-1.0, 3.0), float2(3.0, -1.0)};
@@ -731,6 +750,15 @@ float4 fullscreen_vs(uint vertexId : SV_VertexID) : SV_Position {
 }
 
 float4 solid_ps() : SV_Target0 { return float4(0.25, 0.5, 0.75, 1.0); }
+
+VertexOutput vertex_input_vs(VertexInput input) {
+  VertexOutput output;
+  output.position = float4(input.position, 0.5, 1.0);
+  output.color = input.color;
+  return output;
+}
+
+float4 vertex_color_ps(VertexOutput input) : SV_Target0 { return input.color; }
 
 MrtOutput mrt_ps() {
   MrtOutput output;
@@ -791,6 +819,47 @@ MrtOutput mrt_ps() {
                                                     .storeOp = rhi::StoreOp::store}}});
     assert(render.ok());
     assert(render.value().bind_pipeline(pipeline.value()).ok());
+    assert(render.value().draw(3).ok());
+    assert(render.value().end().ok());
+  });
+  assert_solid_rgba8(
+      read_rgba8(device.value(), queue.value(), color.value(), width, height), width,
+      height, {std::byte{64}, std::byte{128}, std::byte{191}, std::byte{255}});
+
+  auto vertexInput =
+      make_hlsl_shader(device.value(), "D3D12 vertex input", rhi::ShaderStage::vertex,
+                       "vertex_input_vs", shaderSource);
+  auto vertexColor =
+      make_hlsl_shader(device.value(), "D3D12 vertex color", rhi::ShaderStage::fragment,
+                       "vertex_color_ps", shaderSource);
+  auto vertexPipeline = device.value().create_pipeline({
+      .vertexShader = &vertexInput,
+      .fragmentShader = &vertexColor,
+      .vertexBuffers =
+          {{.stride = 24,
+            .attributes =
+                {{.location = 0, .format = rhi::VertexFormat::float32x2, .offset = 0},
+                 {.location = 1, .format = rhi::VertexFormat::float32x4, .offset = 8}}}},
+      .colorTargets = {{.format = rhi::TextureFormat::rgba8_unorm,
+                        .blend = {.enabled = true}}},
+  });
+  const std::array<float, 18> vertexBytes{
+      -1.0F, -1.0F, 0.25F, 0.5F, 0.75F, 1.0F,  -1.0F, 3.0F,  0.25F,
+      0.5F,  0.75F, 1.0F,  3.0F, -1.0F, 0.25F, 0.5F,  0.75F, 1.0F,
+  };
+  auto vertexBuffer = device.value().create_buffer({
+      .size = sizeof(vertexBytes),
+      .usage = rhi::BufferUsage::vertex,
+      .memory = rhi::MemoryDomain::upload,
+  });
+  assert(vertexPipeline.ok() && vertexBuffer.ok());
+  assert(vertexBuffer.value().write(0, std::as_bytes(std::span{vertexBytes})).ok());
+  submit(device.value(), queue.value(), [&](rhi::CommandList &list) {
+    auto render = list.begin_rendering(
+        {.extent = {width, height}, .colorAttachments = {{.texture = &color.value()}}});
+    assert(render.ok());
+    assert(render.value().bind_pipeline(vertexPipeline.value()).ok());
+    assert(render.value().bind_vertex_buffer(0, vertexBuffer.value()).ok());
     assert(render.value().draw(3).ok());
     assert(render.value().end().ok());
   });

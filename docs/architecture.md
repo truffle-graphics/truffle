@@ -59,9 +59,10 @@ the cutover decision durable.
   adapter only after real native initialization and command or clear/readback
   smoke succeeds. Vulkan owns buffers, selected device-local 2D textures/views,
   and native transfers. D3D12 owns buffers, device-local textures, native
-  descriptor views, and native transfers; the EGL profiles own buffers/views
-  and native transfers. These remain narrow matrix foundations: shaders,
-  pipelines, synchronization, WSI, presentation, and unadvertised resource
+  descriptor views and transfers, packaged shaders, reflected root signatures,
+  graphics/compute pipelines, and native draw/dispatch commands; the EGL
+  profiles own buffers/views and native transfers. These remain narrow matrix
+  foundations: synchronization, WSI, presentation, and unadvertised resource
   operations are unsupported.
 - WebGPU and WebGL2 have explicit source targets. WebGPU remains unavailable;
   WebGL2 has an Emscripten context path but no browser evidence, so both remain

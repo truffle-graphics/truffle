@@ -16,6 +16,10 @@ Recorded authoring routes are Slang, HLSL, GLSL, GLSL ES, WGSL, and MSL.
 Accepted precompiled routes are SPIR-V, DXIL, Metal libraries, and
 backend-native source variants.
 
+The DXIL target may carry HLSL source only as a `native_override`. A Direct3D
+backend with its optional runtime compiler route may compile that override;
+precompiled and generated DXIL variants remain binary bytecode.
+
 A package may carry several target variants at once: SPIR-V, DXIL, MSL or
 `metallib`, WGSL, desktop GLSL, and GLSL ES. Selection is deterministic: a
 native override wins over a precompiled variant, which wins over a generated
@@ -66,8 +70,9 @@ expose that opt-in.
 - Corrupt, incompatible, capability-mismatched, and non-canonical packages fail
   with typed results.
 - `Device::create_shader(package, target, entry, stage, permutation)` consumes a
-  selected package variant without compiler linkage. The native Metal proof
-  creates MSL shaders and pipeline state from that selected package path.
+  selected package variant. The native Metal proof creates MSL shaders and
+  pipeline state from that path. The D3D12 proof retains offline DXIL or uses
+  the Windows SDK D3DCompiler for explicitly selected HLSL native overrides.
 - `truffle-shaderc` self-test and file-based assemble/inspect smoke tests run in
   CI when `TRUFFLE_BUILD_SHADERC=ON`.
 

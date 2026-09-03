@@ -49,11 +49,12 @@ Windows debug-layer WARP output evidence.
 - Issue #50 is implementing D3D12 HLSL/DXIL shader ownership, reflected root
   signatures, immutable bind groups and descriptor arrays, graphics/compute
   PSOs, render/depth attachments, MSAA resolve, draw/dispatch, and indirect
-  commands. Build `33762117716` passes the first native checkpoint for exact
-  triangle, indexed/instanced, indirect, MRT, and MSAA-resolve output. The next
-  checkpoint adds descriptor arrays, immutable samplers, dynamic offsets,
-  push constants, depth ordering, compute-to-render output, and negative
-  capability/layout cases; its Windows execution is pending.
+  commands. Build `33762763659` passes the expanded Windows debug-layer WARP
+  suite with exact triangle, textured descriptor-array/dynamic-offset output,
+  push-constant depth ordering, indexed/instanced/indirect draws, MRT,
+  MSAA-resolve, and compute-to-render output plus negative capability/layout
+  cases. Vertex-input/blend coverage and explicit dynamic-depth-bias rejection
+  pass the 36-test local suite and await the final cross-platform CI receipt.
 
 - PR #46 is merged without closing issue #33. Vulkan buffer/texture and D3D12
   buffer transfers are on `develop`; post-merge build run `33261566114` is green
@@ -266,7 +267,7 @@ because CMake does not discover `clang-format` on this host's `PATH`;
 
 ## Next Resume Steps
 
-1. Run #50's expanded Windows CI checkpoint, correct any Windows SDK,
+1. Run #50's final cross-platform CI checkpoint, correct any Windows SDK,
    golden-output, or debug-layer findings, then record the evidence and close
    the issue only after every acceptance case passes.
 2. Continue #33 only through its focused Project sub-issues; update issue and
@@ -292,10 +293,12 @@ because CMake does not discover `clang-format` on this host's `PATH`;
   or explicitly unsupported. EGL still proves initialization and a narrow smoke
   workload only.
 - D3D12 submission remains synchronous and fill commands allocate transient
-  upload resources per operation. Textures do not yet implement compressed,
-  multisampled, external, clear, resolve, or blit paths. Pooling and asynchronous
-  retirement belong to later performance slices after resource correctness is
-  evidenced.
+  upload resources per operation. Compressed, host-visible, external, and
+  copy-encoder clear/resolve/blit texture paths remain unsupported; multisampled
+  2D render/depth attachments and render-pass resolve are supported. Dynamic
+  depth bias, bindless tables, tessellation, indirect-count execution, and
+  pipeline caches remain explicit unsupported results. Pooling and asynchronous
+  retirement belong to later performance slices after correctness is evidenced.
 - Linux EGL context destruction is thread-sensitive. The synchronous matrix
   slice serializes and restores the context; asynchronous GL work needs a
   deliberate context-ownership model.
