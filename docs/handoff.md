@@ -27,6 +27,19 @@ platform work follow.
   contributor guidance record the workflow; no RHI contract or backend
   capability changed in this update.
 
+## Architecture Guardrail Update
+
+- `tools/check_architecture.py` now checks production CMake target dependencies
+  and public-header imports against Truffle's documented layer direction. CI
+  runs it on pull requests before platform build jobs.
+- The guard reports files at or above the 1,000-line review threshold without
+  failing or calling them God files. Every changed production file still gets a
+  cohesion review based on owner, lifecycle, and reason to change; small,
+  mixed-responsibility files are candidates too.
+- `docs/architecture-review.md` defines the required plan/review note and the
+  orchestrator boundary. The guard passed locally for 16 production targets,
+  18 direct target dependency declarations, and 76 public-header imports.
+
 ## Latest Handoff
 
 - PR #46 is merged without closing issue #33. Vulkan buffer/texture and D3D12
