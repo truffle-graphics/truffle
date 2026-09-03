@@ -95,7 +95,9 @@ validation-layer evidence without overstating runtime-dependent support.
   subresource row/depth pitches, preserves caller padding, flushes/invalidates
   non-coherent memory, and transitions queue work to host access. The Linux
   test requires an exact padded host-upload -> native image copy ->
-  host-readback round trip and verifies logical budget release. External
+  host-readback round trip and verifies logical budget release. PR #141 Build
+  `33817918711` passes package, macOS, Ubuntu, and Windows, including the Linux
+  validation-layer proof. External
   sharing remains deliberately unsupported because no Linux handle ownership
   contract is yet exposed by the backend.
 
