@@ -21,6 +21,11 @@ if(TRUFFLE_SHADERC_ENABLE_GLSLANG)
     add_subdirectory("${_truffle_glslang_dir}"
                      "${PROJECT_BINARY_DIR}/dependencies/glslang"
                      EXCLUDE_FROM_ALL)
+    # glslang assigns a Windows-only debug postfix inside its subdirectory even
+    # when the parent single-config build has no configuration. Keep producer
+    # and consumer artifact names aligned for MinGW and other Windows generators.
+    set_target_properties(glslang SPIRV glslang-default-resource-limits
+        PROPERTIES DEBUG_POSTFIX "")
 
     target_sources(truffle-shaderc PRIVATE glslang_compiler.cpp)
     target_link_libraries(truffle-shaderc PRIVATE

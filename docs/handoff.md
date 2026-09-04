@@ -22,7 +22,10 @@ Advance #73 with the pinned offline GLSL/GLSL ES to SPIR-V route required by
   an explicit optional tool flag; offline and package builds perform no fetch.
   The CLI compiles GLSL/GLSL ES to generated SPIR-V variants, records the exact
   compiler version/revision and bounded diagnostics, rejects invalid source,
-  and checks byte-for-byte package determinism. Native CI evidence is pending.
+  and checks byte-for-byte package determinism. Initial Build `33819736596`
+  passed package, macOS, and Ubuntu; Windows exposed glslang's child-scope debug
+  postfix mismatch under single-config MinGW. The integration now normalizes
+  only the three linked glslang artifact postfixes; replacement CI is pending.
 - Issue #129 completed the contributor-neutral planning workflow and the full
   RHI 1 backlog conversion without changing production code.
 - The public Truffle Project #5 contains 95 issues with Status, Phase,
