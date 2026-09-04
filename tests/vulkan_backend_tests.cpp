@@ -1,4 +1,5 @@
 #include "truffle/rhi/vulkan_backend.hpp"
+#include "truffle/rhi/shader_package.hpp"
 
 #include "native_backend_smoke.hpp"
 
@@ -8,9 +9,26 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <fstream>
+#include <iterator>
 #include <limits>
+#include <vector>
 
 namespace {
+
+#if defined(TRUFFLE_VULKAN_SHADER_PACKAGE_PATH)
+[[nodiscard]] std::vector<std::byte> read_shader_package() {
+    std::ifstream input{TRUFFLE_VULKAN_SHADER_PACKAGE_PATH, std::ios::binary};
+    assert(input);
+    const std::vector<char> contents{std::istreambuf_iterator<char>{input}, {}};
+    std::vector<std::byte> bytes(contents.size());
+    std::transform(contents.begin(), contents.end(), bytes.begin(),
+                   [](char value) {
+                       return std::byte{static_cast<unsigned char>(value)};
+                   });
+    return bytes;
+}
+#endif
 
 void verify_vulkan_buffers() {
     namespace rhi = truffle::rhi;
@@ -44,6 +62,42 @@ void verify_vulkan_buffers() {
     assert(deviceResult.ok());
     auto device = std::move(deviceResult).value();
     assert(device.memory_budget(rhi::MemoryDomain::device_local).ok());
+
+#if defined(TRUFFLE_VULKAN_SHADER_PACKAGE_PATH)
+    const auto packageBytes = read_shader_package();
+    auto packageResult = rhi::ShaderPackage::load(packageBytes);
+    assert(packageResult.ok());
+    auto shaderResult = device.create_shader(
+        packageResult.value(), rhi::ShaderTarget::spirv, "main",
+        rhi::ShaderStage::vertex);
+    assert(shaderResult.ok());
+
+    auto wrongFormatShader = device.create_shader({
+        .stage = rhi::ShaderStage::vertex,
+        .format = rhi::ShaderByteFormat::native_source,
+        .code = {std::byte{0x03}, std::byte{0x02}, std::byte{0x23},
+                 std::byte{0x07}},
+    });
+    assert(!wrongFormatShader.ok());
+    assert(wrongFormatShader.status().code == rhi::StatusCode::unsupported);
+    auto malformedShader = device.create_shader({
+        .stage = rhi::ShaderStage::vertex,
+        .format = rhi::ShaderByteFormat::spirv,
+        .code = {std::byte{0x00}, std::byte{0x00}, std::byte{0x00},
+                 std::byte{0x00}},
+    });
+    assert(!malformedShader.ok());
+    assert(malformedShader.status().code ==
+           rhi::StatusCode::invalid_argument);
+    auto partialWordShader = device.create_shader({
+        .stage = rhi::ShaderStage::vertex,
+        .format = rhi::ShaderByteFormat::spirv,
+        .code = {std::byte{0x03}, std::byte{0x02}, std::byte{0x23}},
+    });
+    assert(!partialWordShader.ok());
+    assert(partialWordShader.status().code ==
+           rhi::StatusCode::invalid_argument);
+#endif
 
     constexpr std::size_t byteCount = 64;
     auto uploadResult = device.create_buffer({

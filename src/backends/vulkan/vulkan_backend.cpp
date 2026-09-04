@@ -93,6 +93,30 @@ struct VulkanBufferResource {
     std::mutex mutex;
 };
 
+struct VulkanShaderResource {
+    VulkanShaderResource(std::shared_ptr<VulkanContext> contextValue,
+                         VkShaderModule moduleValue, ShaderDesc descValue)
+        : context(std::move(contextValue)), module(moduleValue),
+          desc(std::move(descValue)) {}
+
+    ~VulkanShaderResource() {
+        if (!context || context->device == VK_NULL_HANDLE ||
+            module == VK_NULL_HANDLE) {
+            return;
+        }
+        std::lock_guard lock{context->mutex};
+        context->deviceTable.vkDestroyShaderModule(context->device, module,
+                                                    nullptr);
+    }
+
+    VulkanShaderResource(const VulkanShaderResource&) = delete;
+    VulkanShaderResource& operator=(const VulkanShaderResource&) = delete;
+
+    std::shared_ptr<VulkanContext> context;
+    VkShaderModule module = VK_NULL_HANDLE;
+    ShaderDesc desc;
+};
+
 struct VulkanFormat {
     VkFormat format = VK_FORMAT_UNDEFINED;
     VkImageAspectFlags aspects = 0;
@@ -492,6 +516,60 @@ struct VulkanProbe {
         context->deviceTable.vkFreeMemory(context->device, memory, nullptr);
         return Status::failure(StatusCode::out_of_memory,
                                "Vulkan buffer resource allocation failed");
+    }
+}
+
+[[nodiscard]] Result<std::shared_ptr<void>> create_vulkan_shader(
+    const std::shared_ptr<void>& nativeContext, const ShaderDesc& desc) {
+    constexpr std::uint32_t spirvMagic = 0x07230203u;
+    const auto context = std::static_pointer_cast<VulkanContext>(nativeContext);
+    if (!context || context->device == VK_NULL_HANDLE) {
+        return Status::failure(StatusCode::device_lost,
+                               "the Vulkan native context is unavailable");
+    }
+    if (desc.format != ShaderByteFormat::spirv) {
+        return Status::failure(StatusCode::unsupported,
+                               "Vulkan accepts SPIR-V shader variants");
+    }
+    if (desc.code.empty() || desc.code.size() % sizeof(std::uint32_t) != 0) {
+        return Status::failure(
+            StatusCode::invalid_argument,
+            "Vulkan SPIR-V shader bytecode must contain complete words");
+    }
+
+    std::vector<std::uint32_t> words(desc.code.size() / sizeof(std::uint32_t));
+    std::memcpy(words.data(), desc.code.data(), desc.code.size());
+    if (words.front() != spirvMagic) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "Vulkan shader bytecode has no SPIR-V magic");
+    }
+
+    const VkShaderModuleCreateInfo moduleInfo{
+        .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .codeSize = desc.code.size(),
+        .pCode = words.data(),
+    };
+    VkShaderModule module = VK_NULL_HANDLE;
+    std::lock_guard lock{context->mutex};
+    const auto result = context->deviceTable.vkCreateShaderModule(
+        context->device, &moduleInfo, nullptr, &module);
+    if (result != VK_SUCCESS) {
+        const auto code = result == VK_ERROR_OUT_OF_HOST_MEMORY
+                              ? StatusCode::out_of_memory
+                              : StatusCode::invalid_argument;
+        return vulkan_failure(code,
+                              "Vulkan shader-module creation failed", result);
+    }
+    try {
+        return std::static_pointer_cast<void>(
+            std::make_shared<VulkanShaderResource>(context, module, desc));
+    } catch (const std::bad_alloc&) {
+        context->deviceTable.vkDestroyShaderModule(context->device, module,
+                                                    nullptr);
+        return Status::failure(StatusCode::out_of_memory,
+                               "Vulkan shader resource allocation failed");
     }
 }
 
@@ -2317,6 +2395,7 @@ Result<Instance> create_vulkan_instance(const InstanceDesc& desc) {
     config.createTextureView = &create_vulkan_texture_view;
     config.writeTexture = &write_vulkan_texture;
     config.readTexture = &read_vulkan_texture;
+    config.createShader = &create_vulkan_shader;
     config.nativeSubmit = &submit_vulkan_commands;
     return detail::create_foundation_instance(desc, std::move(config));
 }

@@ -73,6 +73,10 @@ endif()
 if(TRUFFLE_BUILD_BACKEND_VULKAN)
     add_executable(truffle_vulkan_tests vulkan_backend_tests.cpp)
     target_link_libraries(truffle_vulkan_tests PRIVATE truffle_backend_vulkan)
+    if(TRUFFLE_BUILD_SHADERC AND TRUFFLE_SHADERC_ENABLE_GLSLANG)
+        target_compile_definitions(truffle_vulkan_tests PRIVATE
+            "TRUFFLE_VULKAN_SHADER_PACKAGE_PATH=\"${PROJECT_BINARY_DIR}/shaderc-glslang-smoke/triangle-a.truffle-shader\"")
+    endif()
     add_test(NAME truffle_vulkan_tests COMMAND truffle_vulkan_tests)
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID)
         set_tests_properties(truffle_vulkan_tests PROPERTIES
@@ -243,6 +247,12 @@ if(TRUFFLE_BUILD_SHADERC)
                 "-DTRUFFLE_SHADERC=$<TARGET_FILE:truffle-shaderc>"
                 "-DTRUFFLE_SHADERC_TEST_DIR=${PROJECT_BINARY_DIR}/shaderc-glslang-smoke"
                 -P "${PROJECT_SOURCE_DIR}/cmake/ShadercGlslangSmoke.cmake")
+        set_tests_properties(truffle_shaderc_glslang_smoke PROPERTIES
+                             FIXTURES_SETUP vulkan_spirv_package)
+        if(TRUFFLE_BUILD_BACKEND_VULKAN)
+            set_tests_properties(truffle_vulkan_tests PROPERTIES
+                                 FIXTURES_REQUIRED vulkan_spirv_package)
+        endif()
     endif()
 endif()
 

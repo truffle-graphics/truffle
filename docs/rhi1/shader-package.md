@@ -75,6 +75,8 @@ expose that opt-in.
   selected package variant. The native Metal proof creates MSL shaders and
   pipeline state from that path. The D3D12 proof retains offline DXIL or uses
   the Windows SDK D3DCompiler for explicitly selected HLSL native overrides.
+  The Vulkan proof creates an owned `VkShaderModule` from the generated SPIR-V
+  package while keeping pipeline capability separately gated.
 - `truffle-shaderc` self-test and file-based assemble/inspect smoke tests run in
   CI when `TRUFFLE_BUILD_SHADERC=ON`.
 - With `TRUFFLE_SHADERC_ENABLE_GLSLANG=ON`, CI compiles a representative shader
