@@ -47,12 +47,18 @@ as an unused framework.
 ### Shader tooling
 
 The optional dependency-free `truffle-shaderc` assembly target consumes
-precompiled or backend-native variants without a compiler library. Future
-source-to-target routes may use pinned Slang, DXC, glslang, SPIR-V Tools,
-SPIRV-Cross, and Tint submodules, enabled individually. No compiler submodule is
-introduced before its route exists, and configure never downloads it. Runtime
-packages do not acquire the compiler toolchain. Runtime source compilation is
-an explicit optional feature; production packages prefer offline variants.
+precompiled or backend-native variants without a compiler library. Its first
+source route is enabled independently with `TRUFFLE_SHADERC_ENABLE_GLSLANG` and
+compiles GLSL or GLSL ES to SPIR-V using the pinned `vendor/glslang` source.
+Future routes may use pinned Slang, DXC, SPIR-V Tools, SPIRV-Cross, and Tint
+submodules, enabled individually. No compiler submodule is introduced before
+its route exists, and configure never downloads it. Runtime packages do not
+acquire the compiler toolchain. Runtime source compilation is an explicit
+optional feature; production packages prefer offline variants.
+
+| Dependency | Pin | Upstream and license | Consumer and update policy |
+|---|---|---|---|
+| glslang | `16.5.0` / `a8d28bd082bff18ffbe80996e922b012f915cf07` | `KhronosGroup/glslang`; upstream `LICENSE.txt` contains BSD-2-Clause, BSD-3-Clause, MIT, and Apache-2.0 notices. | Private to `truffle-shaderc` when its GLSL route is enabled. No local patches. Update by reviewing release notes and licenses, advancing the submodule, then running deterministic compile, invalid-source, package, and native Vulkan consumers. |
 
 ### Validation and tests
 

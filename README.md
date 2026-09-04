@@ -101,8 +101,10 @@ cmake --build --preset dev
 ctest --preset dev
 ```
 
-The checked-in presets build the optional `truffle-shaderc` package assembler.
-Other consumers can opt in with `-DTRUFFLE_BUILD_SHADERC=ON`; the runtime RHI
+The checked-in presets build the optional `truffle-shaderc` package assembler
+and its pinned offline GLSL/GLSL ES to SPIR-V route. Other consumers can opt in
+to the dependency-free assembler with `-DTRUFFLE_BUILD_SHADERC=ON`, then enable
+glslang explicitly with `-DTRUFFLE_SHADERC_ENABLE_GLSLANG=ON`; the runtime RHI
 never gains a compiler dependency.
 
 `truffle-rhi-doctor --strict --json <path>` records the declared matrix and the

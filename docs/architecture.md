@@ -162,8 +162,10 @@ The complete policy and dependency groups are in
 RHI consumes a format-neutral `ShaderPackage`. The optional host-side
 `truffle-shaderc` tool assembles and appends precompiled or backend-native
 variants into deterministic multi-target packages while recording authoring
-language and compiler provenance. Runtime compilation is optional, and target
-variants must agree on normalized reflection.
+language and compiler provenance. A separately enabled, target-private glslang
+dependency adds offline GLSL/GLSL ES to SPIR-V compilation without changing the
+runtime or exported package dependencies. Runtime compilation is optional, and
+target variants must agree on normalized reflection.
 
 See [the shader package contract](rhi1/shader-package.md).
 
