@@ -19,9 +19,11 @@ bindings, pipelines, and execution while preserving capability-gated claims.
   inputs before native creation, copies package bytes into aligned words, and
   destroys modules through the device dispatch under the context lock. The
   Linux native test consumes the deterministic vertex package produced by the
-  pinned glslang fixture; the fixture is an explicit CTest dependency. Local
-  warning-as-error compilation and all 37 tests pass. This checkpoint does not
-  advertise binding, graphics, or compute capability and does not close #53.
+  pinned glslang fixture; the fixture is an explicit CTest dependency. Build
+  `33823883160` passes package, macOS, Ubuntu, and Windows; Ubuntu creates the
+  native module under Vulkan validation. Local warning-as-error compilation and
+  all 37 tests also pass. This checkpoint does not advertise binding, graphics,
+  or compute capability and does not close #53.
   The Vulkan backend owns the native module and depends only on RHI's existing
   ShaderPackage-selected `ShaderDesc`; no public contract changes.
 - #73's first compiler route is merged by PR #143 at `0e25fd0e`. Final PR-head
