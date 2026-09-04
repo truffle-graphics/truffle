@@ -25,7 +25,11 @@ Advance #73 with the pinned offline GLSL/GLSL ES to SPIR-V route required by
   and checks byte-for-byte package determinism. Initial Build `33819736596`
   passed package, macOS, and Ubuntu; Windows exposed glslang's child-scope debug
   postfix mismatch under single-config MinGW. The integration now normalizes
-  only the three linked glslang artifact postfixes; replacement CI is pending.
+  only the three linked glslang artifact postfixes. Replacement Build
+  `33819959268` passes package, macOS, Ubuntu, and Windows, including generated
+  GLSL/GLSL ES packages, deterministic repetition, invalid-source diagnostics,
+  and the existing native backend lanes. Issue #73 remains open for additional
+  compiler routes and consuming-backend conformance.
 - Issue #129 completed the contributor-neutral planning workflow and the full
   RHI 1 backlog conversion without changing production code.
 - The public Truffle Project #5 contains 95 issues with Status, Phase,
