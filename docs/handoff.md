@@ -27,7 +27,10 @@ output while keeping depth/MRT/MSAA separately gated.
   reached Ubuntu compilation and exposed test calls that omitted required
   public indirect-command arguments; the tests now state the exact offset,
   indexed mode, draw count, stride, and dispatch offset. Ubuntu Vulkan
-  validation remains the required native evidence before merge.
+  validation in replacement Build `33941005375` proves the exact texture,
+  indexed/instanced/indirect draw, and indirect-compute results; package,
+  macOS, Ubuntu, and Windows lanes all pass. The separate companion-routing
+  failure is the known non-gating automation defect tracked by #131.
 - `feat/rhi1-vulkan-graphics` implements the first bounded Vulkan graphics
   checkpoint for #53. Generated vertex and fragment SPIR-V packages create an
   owned native graphics pipeline and compatible render pass. Submission creates

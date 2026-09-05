@@ -68,9 +68,10 @@ This verifies:
 - `Truffle::BackendMetal`, `Truffle::BackendVulkan`, and
   `Truffle::BackendOpenGL` are exported when enabled at configure time.
 - `Truffle::BackendDirect3D` is exported when enabled at configure time.
-- Only Metal currently calls a native graphics API. The Vulkan, OpenGL, and
-  Direct3D exports return `unsupported` and report no adapters; they must not be
-  presented as native backend packages.
+- Enabled Metal, Vulkan, OpenGL, OpenGL ES, and Direct3D targets call their
+  native graphics APIs on the repository's proven host lanes. Backend-platform
+  maturity and individual capabilities remain authoritative: unproven platform
+  rows stay `source_only`, and unsupported operations fail explicitly.
 - RHI 1 packaging will acquire dependencies only for enabled backends and will
   publish maturity per backend-platform pair rather than one aggregate support
   claim.

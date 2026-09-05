@@ -25,11 +25,15 @@ the graphics queue. The backend owns its Vulkan allocation boundary directly:
 it queries memory requirements and memory types, allocates and binds each
 resource, and releases the allocation with the resource. Logical budget
 reservation occurs before native allocation and rejects exhaustion
-deterministically. Sampler creation is gated with ordinary bind groups and is
-therefore owned by the binding/pipeline slice. RHI 1 exposes no buffer-device-
-address contract. External sharing remains unadvertised until platform handle
-types and ownership are defined. Shaders, pipelines, synchronization, WSI, and
-presentation remain unsupported.
+deterministically. The backend owns samplers, descriptor-set and pipeline
+layouts, shader modules, compute pipelines, and one-color single-sample
+graphics pipelines. Generated SPIR-V fixtures prove sampled-texture/sampler and
+storage-buffer bindings, push constants, direct/indirect compute, and
+direct/indexed/instanced/indirect triangle output with exact readback. Depth
+attachments, MRT, MSAA graphics pipelines, indirect-count, synchronization
+primitives, WSI, and presentation remain unsupported. RHI 1 exposes no
+buffer-device-address contract. External sharing remains unadvertised until
+platform handle types and ownership are defined.
 Other platforms remain `source_only`, including Apple until a pinned MoltenVK
 group and execution lane exist. Shared logical validation belongs to Null and
 is never used to simulate Vulkan behavior.
