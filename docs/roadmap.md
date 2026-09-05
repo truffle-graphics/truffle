@@ -112,6 +112,8 @@ Tracked by #33.
 - [x] Complete D3D12 DXGI presentation through #52.
 - [ ] Complete Vulkan baseline capability and Linux, Windows, Android, and
   MoltenVK platform lanes through #53-#59.
+  - [x] Complete Linux Vulkan ShaderPackage bindings and graphics/compute
+    pipelines with deterministic native output through #53.
 - [ ] Complete OpenGL/OpenGL ES resources, pipelines, synchronization, and
   desktop/Android presentation through #60-#64.
 - [ ] Complete WebGPU and WebGL2 runtime, rendering, browser presentation, and

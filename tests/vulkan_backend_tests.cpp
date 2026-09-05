@@ -57,6 +57,10 @@ void verify_vulkan_buffers() {
     assert(info.pipelines.multipleRenderTargets);
     assert(info.pipelines.depthStencil);
     assert(info.pipelines.multisample);
+    assert(!info.bindings.bindlessTables);
+    assert(!info.bindings.updateAfterBind);
+    assert(!info.pipelines.indirectCount);
+    assert(!info.pipelines.pipelineCache);
     assert(info.pipelines.maxColorAttachments >= 2);
 
     auto deviceResult = adapter.request_device({
@@ -66,6 +70,15 @@ void verify_vulkan_buffers() {
     assert(deviceResult.ok());
     auto device = std::move(deviceResult).value();
     assert(device.memory_budget(rhi::MemoryDomain::device_local).ok());
+    auto updateAfterBindArena = device.create_descriptor_arena({
+        .updateAfterBind = true,
+    });
+    assert(!updateAfterBindArena.ok());
+    assert(updateAfterBindArena.status().code == rhi::StatusCode::unsupported);
+    auto unsupportedPipelineCache = device.create_pipeline_cache({});
+    assert(!unsupportedPipelineCache.ok());
+    assert(unsupportedPipelineCache.status().code ==
+           rhi::StatusCode::unsupported);
 
 #if defined(TRUFFLE_VULKAN_SHADER_PACKAGE_PATH)
     const auto packageBytes =
@@ -227,6 +240,25 @@ void verify_vulkan_buffers() {
                           .draw_indirect(indirectBuffer, 0, false, 1,
                                          4 * sizeof(std::uint32_t))
                           .ok());
+           }) == expectedTrianglePixel);
+    auto indirectCountBufferResult = device.create_buffer({
+        .size = sizeof(std::uint32_t),
+        .usage = rhi::BufferUsage::indirect,
+        .memory = rhi::MemoryDomain::upload,
+    });
+    assert(indirectCountBufferResult.ok());
+    auto indirectCountBuffer = std::move(indirectCountBufferResult).value();
+    const std::array<std::uint32_t, 1> indirectCount{1};
+    assert(indirectCountBuffer
+               .write(0, std::as_bytes(std::span{indirectCount}))
+               .ok());
+    assert(render_and_read(trianglePipeline, [&](rhi::RenderEncoder& render) {
+               const auto status = render.draw_indirect_count(
+                   indirectBuffer, 0, indirectCountBuffer, 0, 1,
+                   4 * sizeof(std::uint32_t), false);
+               assert(!status.ok());
+               assert(status.code == rhi::StatusCode::unsupported);
+               assert(render.draw(3).ok());
            }) == expectedTrianglePixel);
 
     const std::array<std::byte, 4> greenPixel{
@@ -587,6 +619,12 @@ void verify_vulkan_buffers() {
         rhi::ShaderStage::compute);
     assert(computeShaderResult.ok());
     auto computeShader = std::move(computeShaderResult).value();
+    auto missingLayoutPipeline = device.create_compute_pipeline({
+        .computeShader = &computeShader,
+    });
+    assert(!missingLayoutPipeline.ok());
+    assert(missingLayoutPipeline.status().code ==
+           rhi::StatusCode::invalid_argument);
     auto storageLayoutResult = device.create_bind_group_layout({
         .group = 0,
         .entries = {{.binding = 0,
@@ -596,6 +634,34 @@ void verify_vulkan_buffers() {
     });
     assert(storageLayoutResult.ok());
     auto storageLayout = std::move(storageLayoutResult).value();
+    auto unsupportedBindlessTable = device.create_bindless_table({
+        .layout = &storageLayout,
+        .capacity = 16,
+    });
+    assert(!unsupportedBindlessTable.ok());
+    assert(unsupportedBindlessTable.status().code ==
+           rhi::StatusCode::unsupported);
+    auto wrongTypeLayoutResult = device.create_bind_group_layout({
+        .group = 0,
+        .entries = {{.binding = 0,
+                     .type = rhi::BindingType::sampler,
+                     .visibility = rhi::ShaderStageMask::compute}},
+    });
+    assert(wrongTypeLayoutResult.ok());
+    auto wrongTypeLayout = std::move(wrongTypeLayoutResult).value();
+    auto mismatchedPipelineLayoutResult = device.create_pipeline_layout({
+        .bindGroupLayouts = {&wrongTypeLayout},
+    });
+    assert(mismatchedPipelineLayoutResult.ok());
+    auto mismatchedPipelineLayout =
+        std::move(mismatchedPipelineLayoutResult).value();
+    auto mismatchedPipeline = device.create_compute_pipeline({
+        .computeShader = &computeShader,
+        .layout = &mismatchedPipelineLayout,
+    });
+    assert(!mismatchedPipeline.ok());
+    assert(mismatchedPipeline.status().code ==
+           rhi::StatusCode::invalid_argument);
     auto computeLayoutResult = device.create_pipeline_layout({
         .bindGroupLayouts = {&storageLayout},
     });
@@ -607,6 +673,30 @@ void verify_vulkan_buffers() {
     });
     assert(computePipelineResult.ok());
     auto computePipeline = std::move(computePipelineResult).value();
+    auto remappedDesc = reflectedComputeResult.value().desc();
+    remappedDesc.remaps = {{
+        .target = rhi::ShaderTarget::spirv,
+        .stage = rhi::ShaderStage::compute,
+        .group = 0,
+        .binding = 0,
+        .nativeGroup = 0,
+        .nativeBinding = 1,
+    }};
+    auto remappedPackageResult =
+        rhi::ShaderPackage::create(std::move(remappedDesc));
+    assert(remappedPackageResult.ok());
+    auto remappedShaderResult = device.create_shader(
+        remappedPackageResult.value(), rhi::ShaderTarget::spirv, "main",
+        rhi::ShaderStage::compute);
+    assert(remappedShaderResult.ok());
+    auto remappedShader = std::move(remappedShaderResult).value();
+    auto unsupportedRemappedPipeline = device.create_compute_pipeline({
+        .computeShader = &remappedShader,
+        .layout = &computeLayout,
+    });
+    assert(!unsupportedRemappedPipeline.ok());
+    assert(unsupportedRemappedPipeline.status().code ==
+           rhi::StatusCode::unsupported);
     assert(computePipeline.preferred_workgroup_size() ==
            rhi::Extent3D(4, 1, 1));
     auto storageResult = device.create_buffer({
@@ -686,6 +776,167 @@ void verify_vulkan_buffers() {
                      std::as_writable_bytes(std::span{indirectComputeOutput}))
                .ok());
     assert(indirectComputeOutput == expectedCompute);
+
+    assert(storage
+               .write(0, std::as_bytes(std::span{clearedCompute}))
+               .ok());
+    assert(computeList.reset().ok());
+    assert(computeList.begin().ok());
+    auto retainedComputeResult = computeList.begin_compute();
+    assert(retainedComputeResult.ok());
+    auto retainedCompute = std::move(retainedComputeResult).value();
+    assert(retainedCompute.bind_pipeline(computePipeline).ok());
+    assert(retainedCompute.bind_group(0, group).ok());
+    assert(retainedCompute.dispatch(4, 1, 1).ok());
+    assert(retainedCompute.end().ok());
+    assert(computeList.end().ok());
+    assert(arena.reset().ok());
+    std::array<rhi::CommandList*, 1> retainedLists{&computeList};
+    assert(computeQueue.submit(retainedLists).ok());
+    std::array<std::uint32_t, 4> retainedOutput{};
+    assert(storage
+               .read(0, std::as_writable_bytes(std::span{retainedOutput}))
+               .ok());
+    assert(retainedOutput == expectedCompute);
+
+    assert(computeList.reset().ok());
+    assert(computeList.begin().ok());
+    auto retiredComputeResult = computeList.begin_compute();
+    assert(retiredComputeResult.ok());
+    auto retiredCompute = std::move(retiredComputeResult).value();
+    assert(retiredCompute.bind_pipeline(computePipeline).ok());
+    const auto retiredBind = retiredCompute.bind_group(0, group);
+    assert(!retiredBind.ok());
+    assert(retiredBind.code == rhi::StatusCode::invalid_argument);
+    auto replacementGroupResult = device.create_bind_group({
+        .layout = &storageLayout,
+        .arena = &arena,
+        .entries = {{.binding = 0, .buffer = &storage, .size = 16}},
+    });
+    assert(replacementGroupResult.ok());
+    auto replacementGroup = std::move(replacementGroupResult).value();
+    assert(retiredCompute.bind_group(0, replacementGroup).ok());
+    assert(retiredCompute.dispatch(4, 1, 1).ok());
+    assert(retiredCompute.end().ok());
+    assert(computeList.end().ok());
+    std::array<rhi::CommandList*, 1> replacementLists{&computeList};
+    assert(computeQueue.submit(replacementLists).ok());
+
+#if defined(TRUFFLE_VULKAN_COMPUTE_COLOR_FRAGMENT_PACKAGE_PATH) &&            \
+    defined(TRUFFLE_VULKAN_FRAGMENT_PACKAGE_PATH) &&                          \
+    defined(TRUFFLE_VULKAN_SHADER_PACKAGE_PATH)
+    const auto computeColorBytes =
+        read_shader_package(TRUFFLE_VULKAN_COMPUTE_COLOR_FRAGMENT_PACKAGE_PATH);
+    auto computeColorPackageResult =
+        rhi::ShaderPackage::load(computeColorBytes);
+    assert(computeColorPackageResult.ok());
+    auto computeColorDesc = computeColorPackageResult.value().desc();
+    computeColorDesc.variants[0].reflection.bindings = {
+        {.name = "inputData",
+         .stage = rhi::ShaderStage::fragment,
+         .type = rhi::ResourceBindingType::buffer,
+         .group = 0,
+         .binding = 0,
+         .minimumSize = 16,
+         .readOnly = true},
+    };
+    auto reflectedComputeColorPackage =
+        rhi::ShaderPackage::create(std::move(computeColorDesc));
+    assert(reflectedComputeColorPackage.ok());
+    auto computeColorShaderResult = device.create_shader(
+        reflectedComputeColorPackage.value(), rhi::ShaderTarget::spirv, "main",
+        rhi::ShaderStage::fragment);
+    assert(computeColorShaderResult.ok());
+    auto computeColorShader = std::move(computeColorShaderResult).value();
+    auto sharedStorageLayoutResult = device.create_bind_group_layout({
+        .group = 0,
+        .entries = {{.binding = 0,
+                     .type = rhi::BindingType::storage_buffer,
+                     .visibility = rhi::ShaderStageMask::compute |
+                                   rhi::ShaderStageMask::fragment,
+                     .minimumBufferSize = 16}},
+    });
+    assert(sharedStorageLayoutResult.ok());
+    auto sharedStorageLayout =
+        std::move(sharedStorageLayoutResult).value();
+    auto sharedPipelineLayoutResult = device.create_pipeline_layout({
+        .bindGroupLayouts = {&sharedStorageLayout},
+    });
+    assert(sharedPipelineLayoutResult.ok());
+    auto sharedPipelineLayout =
+        std::move(sharedPipelineLayoutResult).value();
+    auto sharedComputePipelineResult = device.create_compute_pipeline({
+        .computeShader = &computeShader,
+        .layout = &sharedPipelineLayout,
+    });
+    auto computeColorPipelineResult = device.create_pipeline({
+        .vertexShader = &vertexShader,
+        .fragmentShader = &computeColorShader,
+        .layout = &sharedPipelineLayout,
+        .colorTargets = {{.format = rhi::TextureFormat::rgba8_unorm}},
+    });
+    auto sharedArenaResult = device.create_descriptor_arena();
+    assert(sharedComputePipelineResult.ok() &&
+           computeColorPipelineResult.ok() && sharedArenaResult.ok());
+    auto sharedComputePipeline =
+        std::move(sharedComputePipelineResult).value();
+    auto computeColorPipeline =
+        std::move(computeColorPipelineResult).value();
+    auto sharedArena = std::move(sharedArenaResult).value();
+    auto sharedGroupResult = device.create_bind_group({
+        .layout = &sharedStorageLayout,
+        .arena = &sharedArena,
+        .entries = {{.binding = 0, .buffer = &storage, .size = 16}},
+    });
+    assert(sharedGroupResult.ok());
+    auto sharedGroup = std::move(sharedGroupResult).value();
+    assert(storage
+               .write(0, std::as_bytes(std::span{clearedCompute}))
+               .ok());
+    assert(triangleList.reset().ok());
+    assert(triangleList.begin().ok());
+    auto orderedComputeResult = triangleList.begin_compute();
+    assert(orderedComputeResult.ok());
+    auto orderedCompute = std::move(orderedComputeResult).value();
+    assert(orderedCompute.bind_pipeline(sharedComputePipeline).ok());
+    assert(orderedCompute.bind_group(0, sharedGroup).ok());
+    assert(orderedCompute.dispatch(4, 1, 1).ok());
+    assert(orderedCompute.end().ok());
+    auto orderedRenderResult = triangleList.begin_rendering({
+        .extent = {triangleSize, triangleSize},
+        .colorAttachments = {{.texture = &triangleTarget,
+                              .clear = {0.0F, 0.0F, 0.0F, 1.0F}}},
+    });
+    assert(orderedRenderResult.ok());
+    auto orderedRender = std::move(orderedRenderResult).value();
+    assert(orderedRender.bind_pipeline(computeColorPipeline).ok());
+    assert(orderedRender.bind_group(0, sharedGroup).ok());
+    assert(orderedRender.draw(3).ok());
+    assert(orderedRender.end().ok());
+    auto orderedCopyResult = triangleList.begin_copy();
+    assert(orderedCopyResult.ok());
+    auto orderedCopy = std::move(orderedCopyResult).value();
+    assert(orderedCopy
+               .copy_texture_to_buffer(
+                   triangleTarget, triangleReadback,
+                   {.layout = {.bytesPerRow = triangleRowPitch,
+                               .rowsPerImage = triangleSize},
+                    .texture = {.extent = {triangleSize, triangleSize, 1}}})
+               .ok());
+    assert(orderedCopy.end().ok());
+    assert(triangleList.end().ok());
+    std::array<rhi::CommandList*, 1> orderedLists{&triangleList};
+    assert(triangleQueue.submit(orderedLists).ok());
+    std::array<std::byte, 4> orderedPixel{};
+    assert(triangleReadback
+               .read((triangleSize / 2) * triangleRowPitch +
+                         (triangleSize / 2) * 4,
+                     orderedPixel)
+               .ok());
+    const std::array<std::byte, 4> expectedOrderedPixel{
+        std::byte{0}, std::byte{0}, std::byte{255}, std::byte{255}};
+    assert(orderedPixel == expectedOrderedPixel);
+#endif
 #endif
 
     constexpr std::size_t byteCount = 64;
