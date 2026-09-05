@@ -319,15 +319,20 @@ inline void verify_native_texture_backend(rhi::Result<rhi::Instance> result,
         .extent = {2, 2, 2},
         .usage = rhi::TextureUsage::copy_destination,
     });
+    auto shareable = device.create_texture({
+        .extent = {2, 2, 1},
+        .usage = rhi::TextureUsage::copy_destination,
+        .shareable = true,
+    });
     auto external = device.create_texture({
         .extent = {2, 2, 1},
         .usage = rhi::TextureUsage::copy_destination,
         .memory = rhi::MemoryDomain::external,
-        .shareable = true,
     });
-    assert(!unsupported3d.ok() && !external.ok());
+    assert(!unsupported3d.ok() && !shareable.ok() && !external.ok());
     assert(unsupported3d.status().code == rhi::StatusCode::unsupported);
-    assert(external.status().code == rhi::StatusCode::unsupported);
+    assert(shareable.status().code == rhi::StatusCode::unsupported);
+    assert(external.status().code == rhi::StatusCode::invalid_argument);
 }
 
 } // namespace truffle::tests

@@ -32,8 +32,14 @@ views, samplers, transfers, state isolation, and exact native output evidence.
   before reaching it because ordinary binding objects were not advertised.
   Both profiles now expose the conservative logical bind-group baseline and
   bounded limits required to create sampler objects; the shared test asserts
-  that prerequisite explicitly. Replacement Linux desktop GL/GLES native
-  output evidence remains pending CI. Texture views, extended shapes/formats,
+  that prerequisite explicitly. Replacement Build `33962339263` then passed
+  the sampler and every native texture operation but caught an incorrect test
+  expectation at the final external-memory boundary: ordinary creation with
+  the external memory domain is contractually invalid because imports must use
+  `import_texture`, whereas a shareable ordinary allocation is the operation
+  that reports unsupported on these profiles. The test now covers both results
+  separately. Final Linux desktop GL/GLES evidence remains pending CI. Texture
+  views, extended shapes/formats,
   depth/stencil, and multisample resolve remain inside open issue #60 for the
   next checkpoint.
 - `feat/rhi1-vulkan-linux-wsi` implements the Linux Vulkan presentation path
