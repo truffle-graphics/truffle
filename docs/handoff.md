@@ -29,6 +29,10 @@ binding/pipeline mismatch, optional-feature, and descriptor-lifetime evidence.
   contracts plus pinned Vulkan/glslang inputs, and there is no public API
   change. The local pinned-glslang build and all 37 tests pass; Ubuntu Vulkan
   validation is required before updating the final evidence and closing #53.
+  Initial Build `33942881518` reached the native lifetime case and confirmed
+  the retired group is rejected by the public encoder's stale-object guard as
+  `invalid_argument`, before the lower-level arena epoch check; the assertion
+  now matches that documented API boundary.
 - `feat/rhi1-vulkan-depth-mrt-msaa` generalizes Vulkan graphics-pipeline and
   submission render-pass compatibility from one single-sample color target to
   multiple color targets, an optional depth/stencil attachment, and explicit

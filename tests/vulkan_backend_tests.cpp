@@ -807,7 +807,7 @@ void verify_vulkan_buffers() {
     assert(retiredCompute.bind_pipeline(computePipeline).ok());
     const auto retiredBind = retiredCompute.bind_group(0, group);
     assert(!retiredBind.ok());
-    assert(retiredBind.code == rhi::StatusCode::invalid_state);
+    assert(retiredBind.code == rhi::StatusCode::invalid_argument);
     auto replacementGroupResult = device.create_bind_group({
         .layout = &storageLayout,
         .arena = &arena,
