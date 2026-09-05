@@ -39,8 +39,16 @@ readback/present, resize recreation, and validation-layer CI evidence.
   that timeout, suboptimal, out-of-date, surface-loss, allocation, and device-
   loss outcomes cross the public boundary correctly; retryable presentation
   failures preserve the acquired image, while replacement statuses release it.
-  These typed-status additions await the final receipt CI. The support matrix
-  and roadmap claim only the evidenced native XCB path.
+  Initial receipt Build `33946162926` exposed three real portability defects:
+  native swapchain image counts can exceed the requested minimum, Vulkan 1.1
+  instances must enable the promoted timeline extension, and never-presented
+  swapchain images begin undefined. The foundation now accepts backend-native
+  image indices, extension selection follows the requested instance version,
+  and each image receives a one-time undefined-to-present transition after its
+  first native acquire. The same log also exposed combined depth/stencil layout
+  transitions using only one aspect without the separate-layout feature; such
+  barriers now cover both aspects. These corrections await replacement CI.
+  The support matrix and roadmap claim only the evidenced native XCB path.
 - `fix/rhi1-vulkan-device-loss` closes the final #54 acceptance gap found after
   PR #150 merged. A private, non-installed Vulkan test hook injects submission
   device loss; the native suite proves the submitting device becomes lost,

@@ -726,6 +726,7 @@ struct VulkanSwapchainResource {
     VkFormat format = VK_FORMAT_UNDEFINED;
     VkExtent2D extent{};
     std::vector<VkImage> images;
+    std::vector<bool> imageInitialized;
     std::uint32_t acquiredImage = 0;
     bool acquired = false;
     std::mutex mutex;
@@ -2773,6 +2774,17 @@ struct VulkanRenderPassDepthStencil {
     return VK_IMAGE_LAYOUT_GENERAL;
 }
 
+[[nodiscard]] VkImageAspectFlags vulkan_barrier_aspects(
+    const VulkanTextureResource& texture,
+    VkImageAspectFlags requested) noexcept {
+    constexpr auto combined =
+        VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+    return (texture.format.aspects & combined) == combined &&
+                   (requested & combined) != 0
+               ? combined
+               : requested;
+}
+
 [[nodiscard]] VkPipelineStageFlags vulkan_layout_stage(
     VkImageLayout layout) noexcept {
     switch (layout) {
@@ -2819,7 +2831,8 @@ void transition_vulkan_texture(VulkanContext& context,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .image = texture.image,
         .subresourceRange = {
-            .aspectMask = vulkan_aspect(subresource.aspect),
+            .aspectMask = vulkan_barrier_aspects(
+                texture, vulkan_aspect(subresource.aspect)),
             .baseMipLevel = subresource.mipLevel,
             .levelCount = 1,
             .baseArrayLayer = subresource.arrayLayer,
@@ -2889,7 +2902,8 @@ void transition_vulkan_texture(VulkanContext& context,
                     .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                     .image = texture->image,
                     .subresourceRange = {
-                        .aspectMask = vulkan_aspect(barrier.range.aspects),
+                        .aspectMask = vulkan_barrier_aspects(
+                            *texture, vulkan_aspect(barrier.range.aspects)),
                         .baseMipLevel = mipLevel,
                         .levelCount = 1,
                         .baseArrayLayer = arrayLayer,
@@ -4343,7 +4357,8 @@ void prepare_vulkan_binding_images(VulkanContext& context,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .image = texture.image,
             .subresourceRange = {
-                .aspectMask = vulkan_aspect(subresource.aspect),
+                .aspectMask = vulkan_barrier_aspects(
+                    texture, vulkan_aspect(subresource.aspect)),
                 .baseMipLevel = subresource.mipLevel,
                 .levelCount = 1,
                 .baseArrayLayer = subresource.arrayLayer,
@@ -4765,6 +4780,97 @@ void prepare_vulkan_binding_images(VulkanContext& context,
     return VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
 }
 
+[[nodiscard]] Status initialize_vulkan_swapchain_images(
+    VulkanContext& context, std::span<const VkImage> images) {
+    const VkCommandPoolCreateInfo poolInfo{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
+        .queueFamilyIndex = context.queue_family(QueueKind::graphics),
+    };
+    VkCommandPool pool = VK_NULL_HANDLE;
+    auto result = context.deviceTable.vkCreateCommandPool(
+        context.device, &poolInfo, nullptr, &pool);
+    VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+    if (result == VK_SUCCESS) {
+        const VkCommandBufferAllocateInfo allocationInfo{
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+            .pNext = nullptr,
+            .commandPool = pool,
+            .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+            .commandBufferCount = 1,
+        };
+        result = context.deviceTable.vkAllocateCommandBuffers(
+            context.device, &allocationInfo, &commandBuffer);
+    }
+    if (result == VK_SUCCESS) {
+        const VkCommandBufferBeginInfo beginInfo{
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+            .pNext = nullptr,
+            .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+            .pInheritanceInfo = nullptr,
+        };
+        result = context.deviceTable.vkBeginCommandBuffer(commandBuffer,
+                                                          &beginInfo);
+    }
+    if (result == VK_SUCCESS) {
+        std::vector<VkImageMemoryBarrier> barriers;
+        barriers.reserve(images.size());
+        for (const auto image : images) {
+            barriers.push_back({
+                .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                .pNext = nullptr,
+                .srcAccessMask = 0,
+                .dstAccessMask = 0,
+                .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+                .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .image = image,
+                .subresourceRange = {
+                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .baseMipLevel = 0,
+                    .levelCount = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1,
+                },
+            });
+        }
+        context.deviceTable.vkCmdPipelineBarrier(
+            commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr,
+            static_cast<std::uint32_t>(barriers.size()), barriers.data());
+        result = context.deviceTable.vkEndCommandBuffer(commandBuffer);
+    }
+    if (result == VK_SUCCESS) {
+        const VkSubmitInfo submitInfo{
+            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .pNext = nullptr,
+            .waitSemaphoreCount = 0,
+            .pWaitSemaphores = nullptr,
+            .pWaitDstStageMask = nullptr,
+            .commandBufferCount = 1,
+            .pCommandBuffers = &commandBuffer,
+            .signalSemaphoreCount = 0,
+            .pSignalSemaphores = nullptr,
+        };
+        result = context.deviceTable.vkQueueSubmit(
+            context.queue(QueueKind::graphics), 1, &submitInfo,
+            VK_NULL_HANDLE);
+    }
+    if (result == VK_SUCCESS) {
+        result = context.deviceTable.vkQueueWaitIdle(
+            context.queue(QueueKind::graphics));
+    }
+    if (pool != VK_NULL_HANDLE) {
+        context.deviceTable.vkDestroyCommandPool(context.device, pool, nullptr);
+    }
+    return result == VK_SUCCESS
+               ? Status::success()
+               : vulkan_wsi_failure(
+                     "Vulkan swapchain image initialization failed", result);
+}
+
 [[nodiscard]] Status recreate_vulkan_swapchain(
     VulkanSwapchainResource& swapchain, Extent2D requestedExtent) {
     auto& context = *swapchain.context;
@@ -4914,6 +5020,7 @@ void prepare_vulkan_binding_images(VulkanContext& context,
     swapchain.format = selectedFormat->format;
     swapchain.extent = extent;
     swapchain.images = std::move(images);
+    swapchain.imageInitialized.assign(swapchain.images.size(), false);
     swapchain.desc.extent = {extent.width, extent.height};
     swapchain.acquired = false;
     return Status::success();
@@ -5027,6 +5134,15 @@ void prepare_vulkan_binding_images(VulkanContext& context,
     if (result != VK_SUCCESS || imageIndex >= swapchain->images.size()) {
         return vulkan_wsi_failure("Vulkan swapchain image acquisition failed",
                                   result);
+    }
+    if (!swapchain->imageInitialized[imageIndex]) {
+        const std::span<const VkImage> image{
+            &swapchain->images[imageIndex], 1};
+        if (auto status = initialize_vulkan_swapchain_images(context, image);
+            !status.ok()) {
+            return status;
+        }
+        swapchain->imageInitialized[imageIndex] = true;
     }
     const auto publicFormat = vulkan_format(swapchain->desc.format);
     TextureDesc textureDesc{
@@ -5470,8 +5586,7 @@ void prepare_vulkan_binding_images(VulkanContext& context,
 #endif
         }
     }
-    const bool timelineCore =
-        context->properties.apiVersion >= VK_API_VERSION_1_2;
+    const bool timelineCore = applicationInfo.apiVersion >= VK_API_VERSION_1_2;
     context->timelineSemaphores =
         timelineFeatures.timelineSemaphore == VK_TRUE &&
         (timelineCore || timelineExtension);
