@@ -9,11 +9,23 @@ rather than growing a historical transcript here.
 
 ## Current Focus
 
-Advance #53 through native Vulkan bindings, compute pipelines, and exact
-storage-buffer execution before promoting the separately gated graphics path.
+Advance #53 through native Vulkan graphics pipelines and exact render-target
+output while keeping depth/MRT/MSAA and indirect paths separately gated.
 
 ## Latest Handoff
 
+- `feat/rhi1-vulkan-graphics` implements the first bounded Vulkan graphics
+  checkpoint for #53. Generated vertex and fragment SPIR-V packages create an
+  owned native graphics pipeline and compatible render pass. Submission creates
+  transient attachment views/framebuffers, records clear and direct draw
+  commands, transitions the render target for copy, and reads back the center
+  pixel exactly. The backend advertises one single-sample color target and
+  direct graphics only; depth/stencil, MRT, MSAA, indirect commands, pipeline
+  caches, and non-identity remaps remain false or unsupported. Ownership stays
+  in `src/backends/vulkan`; it consumes only RHI contracts and the existing
+  pinned Vulkan/glslang dependencies, with no public API change. The local
+  warnings-as-errors build and all 36 host tests pass; Linux Vulkan validation
+  is the native evidence gate before documentation or capability claims merge.
 - `feat/rhi1-vulkan-bindings` adds the next bounded #53 checkpoint. Vulkan now
   creates native samplers, descriptor-set/pipeline layouts, compute pipelines,
   per-submission descriptor pools/sets, push constants, and direct dispatch on
