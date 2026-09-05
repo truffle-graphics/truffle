@@ -54,6 +54,10 @@ void verify_vulkan_buffers() {
     assert(info.resources.textureResolve);
     assert(info.resources.textureBlitNearest);
     assert(info.resources.textureBlitLinear);
+    assert(info.pipelines.multipleRenderTargets);
+    assert(info.pipelines.depthStencil);
+    assert(info.pipelines.multisample);
+    assert(info.pipelines.maxColorAttachments >= 2);
 
     auto deviceResult = adapter.request_device({
         .requiredFeatures = {rhi::Feature::transfer,
@@ -225,6 +229,8 @@ void verify_vulkan_buffers() {
                           .ok());
            }) == expectedTrianglePixel);
 
+    const std::array<std::byte, 4> greenPixel{
+        std::byte{0}, std::byte{255}, std::byte{0}, std::byte{255}};
 #if defined(TRUFFLE_VULKAN_TEXTURED_FRAGMENT_PACKAGE_PATH)
     const auto texturedPackageBytes =
         read_shader_package(TRUFFLE_VULKAN_TEXTURED_FRAGMENT_PACKAGE_PATH);
@@ -293,8 +299,6 @@ void verify_vulkan_buffers() {
     assert(sampledTextureResult.ok() && sampledUploadResult.ok());
     auto sampledTexture = std::move(sampledTextureResult).value();
     auto sampledUpload = std::move(sampledUploadResult).value();
-    const std::array<std::byte, 4> greenPixel{
-        std::byte{0}, std::byte{255}, std::byte{0}, std::byte{255}};
     assert(sampledUpload.write(0, greenPixel).ok());
     assert(triangleList.reset().ok());
     assert(triangleList.begin().ok());
@@ -333,6 +337,200 @@ void verify_vulkan_buffers() {
                assert(render.draw(3).ok());
            }) == greenPixel);
 #endif
+
+    auto depthPipelineResult = device.create_pipeline({
+        .vertexShader = &vertexShader,
+        .fragmentShader = &fragmentShader,
+        .colorTargets = {{.format = rhi::TextureFormat::rgba8_unorm}},
+        .depthStencil = {
+            .format = rhi::TextureFormat::depth32_float,
+            .depthWriteEnabled = true,
+            .depthCompare = rhi::CompareOp::less,
+        },
+    });
+    auto depthTargetResult = device.create_texture({
+        .extent = {triangleSize, triangleSize, 1},
+        .format = rhi::TextureFormat::depth32_float,
+        .usage = rhi::TextureUsage::depth_stencil_attachment,
+    });
+    assert(depthPipelineResult.ok() && depthTargetResult.ok());
+    auto depthPipeline = std::move(depthPipelineResult).value();
+    auto depthTarget = std::move(depthTargetResult).value();
+    const auto render_with_depth = [&](float clearDepth) {
+        assert(triangleList.reset().ok());
+        assert(triangleList.begin().ok());
+        auto renderResult = triangleList.begin_rendering({
+            .extent = {triangleSize, triangleSize},
+            .colorAttachments = {{.texture = &triangleTarget,
+                                  .clear = {0.0F, 0.0F, 0.0F, 1.0F}}},
+            .depthStencilAttachment = {
+                .texture = &depthTarget,
+                .clearDepth = clearDepth,
+            },
+        });
+        assert(renderResult.ok());
+        auto render = std::move(renderResult).value();
+        assert(render.bind_pipeline(depthPipeline).ok());
+        assert(render.draw(3).ok());
+        assert(render.end().ok());
+        auto copyResult = triangleList.begin_copy();
+        assert(copyResult.ok());
+        auto copy = std::move(copyResult).value();
+        assert(copy
+                   .copy_texture_to_buffer(
+                       triangleTarget, triangleReadback,
+                       {.layout = {.bytesPerRow = triangleRowPitch,
+                                   .rowsPerImage = triangleSize},
+                        .texture = {
+                            .extent = {triangleSize, triangleSize, 1}}})
+                   .ok());
+        assert(copy.end().ok());
+        assert(triangleList.end().ok());
+        std::array<rhi::CommandList*, 1> lists{&triangleList};
+        assert(triangleQueue.submit(lists).ok());
+        std::array<std::byte, 4> pixel{};
+        assert(triangleReadback
+                   .read((triangleSize / 2) * triangleRowPitch +
+                             (triangleSize / 2) * 4,
+                         pixel)
+                   .ok());
+        return pixel;
+    };
+    assert(render_with_depth(1.0F) == expectedTrianglePixel);
+    const std::array<std::byte, 4> blackPixel{
+        std::byte{0}, std::byte{0}, std::byte{0}, std::byte{255}};
+    assert(render_with_depth(0.0F) == blackPixel);
+
+#if defined(TRUFFLE_VULKAN_MRT_FRAGMENT_PACKAGE_PATH)
+    const auto mrtPackageBytes =
+        read_shader_package(TRUFFLE_VULKAN_MRT_FRAGMENT_PACKAGE_PATH);
+    auto mrtPackageResult = rhi::ShaderPackage::load(mrtPackageBytes);
+    assert(mrtPackageResult.ok());
+    auto mrtShaderResult = device.create_shader(
+        mrtPackageResult.value(), rhi::ShaderTarget::spirv, "main",
+        rhi::ShaderStage::fragment);
+    assert(mrtShaderResult.ok());
+    auto mrtShader = std::move(mrtShaderResult).value();
+    auto mrtPipelineResult = device.create_pipeline({
+        .vertexShader = &vertexShader,
+        .fragmentShader = &mrtShader,
+        .colorTargets = {{.format = rhi::TextureFormat::rgba8_unorm},
+                         {.format = rhi::TextureFormat::rgba8_unorm}},
+    });
+    auto secondTargetResult = device.create_texture({
+        .extent = {triangleSize, triangleSize, 1},
+        .format = rhi::TextureFormat::rgba8_unorm,
+        .usage = rhi::TextureUsage::color_attachment |
+                 rhi::TextureUsage::copy_source,
+    });
+    auto secondReadbackResult = device.create_buffer({
+        .size = triangleRowPitch * triangleSize,
+        .usage = rhi::BufferUsage::copy_destination,
+        .memory = rhi::MemoryDomain::readback,
+    });
+    assert(mrtPipelineResult.ok() && secondTargetResult.ok() &&
+           secondReadbackResult.ok());
+    auto mrtPipeline = std::move(mrtPipelineResult).value();
+    auto secondTarget = std::move(secondTargetResult).value();
+    auto secondReadback = std::move(secondReadbackResult).value();
+    assert(triangleList.reset().ok());
+    assert(triangleList.begin().ok());
+    auto mrtRenderResult = triangleList.begin_rendering({
+        .extent = {triangleSize, triangleSize},
+        .colorAttachments = {{.texture = &triangleTarget},
+                             {.texture = &secondTarget}},
+    });
+    assert(mrtRenderResult.ok());
+    auto mrtRender = std::move(mrtRenderResult).value();
+    assert(mrtRender.bind_pipeline(mrtPipeline).ok());
+    assert(mrtRender.draw(3).ok());
+    assert(mrtRender.end().ok());
+    auto mrtCopyResult = triangleList.begin_copy();
+    assert(mrtCopyResult.ok());
+    auto mrtCopy = std::move(mrtCopyResult).value();
+    const rhi::BufferTextureCopyRegion mrtRegion{
+        .layout = {.bytesPerRow = triangleRowPitch,
+                   .rowsPerImage = triangleSize},
+        .texture = {.extent = {triangleSize, triangleSize, 1}},
+    };
+    assert(mrtCopy
+               .copy_texture_to_buffer(triangleTarget, triangleReadback,
+                                       mrtRegion)
+               .ok());
+    assert(mrtCopy
+               .copy_texture_to_buffer(secondTarget, secondReadback, mrtRegion)
+               .ok());
+    assert(mrtCopy.end().ok());
+    assert(triangleList.end().ok());
+    std::array<rhi::CommandList*, 1> mrtLists{&triangleList};
+    assert(triangleQueue.submit(mrtLists).ok());
+    std::array<std::byte, 4> firstMrtPixel{};
+    std::array<std::byte, 4> secondMrtPixel{};
+    const auto centerOffset = (triangleSize / 2) * triangleRowPitch +
+                              (triangleSize / 2) * 4;
+    assert(triangleReadback.read(centerOffset, firstMrtPixel).ok());
+    assert(secondReadback.read(centerOffset, secondMrtPixel).ok());
+    assert(firstMrtPixel == expectedTrianglePixel);
+    assert(secondMrtPixel == greenPixel);
+#endif
+
+    auto multisampleTargetResult = device.create_texture({
+        .extent = {triangleSize, triangleSize, 1},
+        .format = rhi::TextureFormat::rgba8_unorm,
+        .usage = rhi::TextureUsage::color_attachment,
+        .sampleCount = 4,
+    });
+    auto resolveTargetResult = device.create_texture({
+        .extent = {triangleSize, triangleSize, 1},
+        .format = rhi::TextureFormat::rgba8_unorm,
+        .usage = rhi::TextureUsage::color_attachment |
+                 rhi::TextureUsage::copy_source,
+    });
+    auto multisamplePipelineResult = device.create_pipeline({
+        .vertexShader = &vertexShader,
+        .fragmentShader = &fragmentShader,
+        .colorTargets = {{.format = rhi::TextureFormat::rgba8_unorm}},
+        .multisample = {.sampleCount = 4},
+    });
+    assert(multisampleTargetResult.ok() && resolveTargetResult.ok() &&
+           multisamplePipelineResult.ok());
+    auto multisampleTarget = std::move(multisampleTargetResult).value();
+    auto resolveTarget = std::move(resolveTargetResult).value();
+    auto multisamplePipeline =
+        std::move(multisamplePipelineResult).value();
+    assert(triangleList.reset().ok());
+    assert(triangleList.begin().ok());
+    auto multisampleRenderResult = triangleList.begin_rendering({
+        .extent = {triangleSize, triangleSize},
+        .colorAttachments = {{.texture = &multisampleTarget,
+                              .resolveTexture = &resolveTarget}},
+    });
+    assert(multisampleRenderResult.ok());
+    auto multisampleRender = std::move(multisampleRenderResult).value();
+    assert(multisampleRender.bind_pipeline(multisamplePipeline).ok());
+    assert(multisampleRender.draw(3).ok());
+    assert(multisampleRender.end().ok());
+    auto multisampleCopyResult = triangleList.begin_copy();
+    assert(multisampleCopyResult.ok());
+    auto multisampleCopy = std::move(multisampleCopyResult).value();
+    assert(multisampleCopy
+               .copy_texture_to_buffer(
+                   resolveTarget, triangleReadback,
+                   {.layout = {.bytesPerRow = triangleRowPitch,
+                               .rowsPerImage = triangleSize},
+                    .texture = {.extent = {triangleSize, triangleSize, 1}}})
+               .ok());
+    assert(multisampleCopy.end().ok());
+    assert(triangleList.end().ok());
+    std::array<rhi::CommandList*, 1> multisampleLists{&triangleList};
+    assert(triangleQueue.submit(multisampleLists).ok());
+    std::array<std::byte, 4> multisamplePixel{};
+    assert(triangleReadback
+               .read((triangleSize / 2) * triangleRowPitch +
+                         (triangleSize / 2) * 4,
+                     multisamplePixel)
+               .ok());
+    assert(multisamplePixel == expectedTrianglePixel);
 #endif
 
     auto wrongFormatShader = device.create_shader({
@@ -719,8 +917,10 @@ void verify_vulkan_buffers() {
     assert(info.pipelines.compute);
     assert(info.pipelines.graphics);
     assert(info.pipelines.indirect);
-    assert(info.pipelines.maxColorAttachments == 1);
-    assert(!info.pipelines.multipleRenderTargets);
+    assert(info.pipelines.maxColorAttachments >= 2);
+    assert(info.pipelines.multipleRenderTargets);
+    assert(info.pipelines.depthStencil);
+    assert(info.pipelines.multisample);
     auto sampler = device.create_sampler({});
     assert(sampler.ok());
     auto anisotropicSampler = device.create_sampler({.maxAnisotropy = 2.0F});

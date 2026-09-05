@@ -80,6 +80,37 @@ if(NOT _fragment_result EQUAL 0)
         "fragment GLSL to SPIR-V compilation failed: ${_fragment_output}${_fragment_error}")
 endif()
 
+set(_mrt_fragment "${TRUFFLE_SHADERC_TEST_DIR}/mrt.frag")
+set(_mrt_fragment_package
+    "${TRUFFLE_SHADERC_TEST_DIR}/mrt-fragment.truffle-shader")
+file(WRITE "${_mrt_fragment}"
+    "#version 450\n"
+    "layout(location = 0) out vec4 firstColor;\n"
+    "layout(location = 1) out vec4 secondColor;\n"
+    "void main() {\n"
+    "  firstColor = vec4(1.0, 0.0, 0.0, 1.0);\n"
+    "  secondColor = vec4(0.0, 1.0, 0.0, 1.0);\n"
+    "}\n")
+file(SHA256 "${_mrt_fragment}" _mrt_fragment_hash)
+execute_process(
+    COMMAND "${TRUFFLE_SHADERC}"
+        --compile
+        --name mrt-fragment
+        --target spirv
+        --stage fragment
+        --entry main
+        --input "${_mrt_fragment}"
+        --output "${_mrt_fragment_package}"
+        --source-hash "${_mrt_fragment_hash}"
+        --source-language glsl
+    RESULT_VARIABLE _mrt_fragment_result
+    OUTPUT_VARIABLE _mrt_fragment_output
+    ERROR_VARIABLE _mrt_fragment_error)
+if(NOT _mrt_fragment_result EQUAL 0)
+    message(FATAL_ERROR
+        "MRT fragment compilation failed: ${_mrt_fragment_output}${_mrt_fragment_error}")
+endif()
+
 set(_textured_fragment "${TRUFFLE_SHADERC_TEST_DIR}/textured.frag")
 set(_textured_fragment_package
     "${TRUFFLE_SHADERC_TEST_DIR}/textured-fragment.truffle-shader")

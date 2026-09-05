@@ -9,11 +9,33 @@ rather than growing a historical transcript here.
 
 ## Current Focus
 
-Advance #53 through native Vulkan graphics pipelines and exact render-target
-output while keeping depth/MRT/MSAA separately gated.
+Advance #53 through native Vulkan depth/stencil, MRT, and MSAA render paths
+with exact Linux-native output.
 
 ## Latest Handoff
 
+- `feat/rhi1-vulkan-depth-mrt-msaa` generalizes Vulkan graphics-pipeline and
+  submission render-pass compatibility from one single-sample color target to
+  multiple color targets, an optional depth/stencil attachment, and explicit
+  multisample resolves. Native pipeline state now maps depth comparison/write
+  and stencil faces, while unsupported depth clamp, non-fill rasterization,
+  tessellation, and indirect-count remain deterministic failures. A generated
+  two-output fragment package drives exact red/green MRT readback; depth-clear
+  cases prove pass/fail output, and a four-sample target resolves to an exact
+  red pixel. Capabilities are promoted from hardware limits only with these
+  paths present. Ownership remains in `src/backends/vulkan`, dependencies stay
+  limited to RHI contracts and pinned Vulkan/glslang inputs, and the public API
+  is unchanged. Both local warning-enabled builds pass; all 36 normal tests and
+  all 37 pinned-glslang tests pass. Initial Build `33942096908` reached the
+  native suite and exposed a stale single-target assertion plus a sampled-image
+  layout barrier recorded inside an active render pass. Capability assertions
+  now match the promoted limits, and descriptor images are transitioned at the
+  render/compute encoder boundary before native pass execution. Ubuntu Vulkan
+  validation in replacement Build `33942299645` proves exact depth pass/fail,
+  two-target red/green output, and four-sample resolve with clean validation;
+  package, macOS, Ubuntu, and Windows lanes all pass. The separate
+  companion-routing failure is the known non-gating automation defect tracked
+  by #131.
 - `feat/rhi1-vulkan-graphics-expanded` extends #53's proven ordinary graphics
   slice with a generated sampled-texture fragment package, reflected texture
   and sampler descriptors, graphics bind-group encoding, direct indexed and
