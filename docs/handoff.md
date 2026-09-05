@@ -10,10 +10,21 @@ rather than growing a historical transcript here.
 ## Current Focus
 
 Advance #53 through native Vulkan graphics pipelines and exact render-target
-output while keeping depth/MRT/MSAA and indirect paths separately gated.
+output while keeping depth/MRT/MSAA separately gated.
 
 ## Latest Handoff
 
+- `feat/rhi1-vulkan-graphics-expanded` extends #53's proven ordinary graphics
+  slice with a generated sampled-texture fragment package, reflected texture
+  and sampler descriptors, graphics bind-group encoding, direct indexed and
+  indirect draw commands, and dispatch-indirect. The Linux-native suite uploads
+  an exact green texel, samples it into the triangle target, verifies indexed
+  and indirect red triangles, and reruns the storage-buffer compute fixture via
+  indirect dimensions. Vulkan advertises indirect commands only after this
+  native gate; indirect-count remains unsupported. Ownership and dependencies
+  remain backend-local with no public API effect. The local warnings-as-errors
+  build and all 36 configured host tests pass; Ubuntu Vulkan validation is the
+  required native evidence before merge.
 - `feat/rhi1-vulkan-graphics` implements the first bounded Vulkan graphics
   checkpoint for #53. Generated vertex and fragment SPIR-V packages create an
   owned native graphics pipeline and compatible render pass. Submission creates

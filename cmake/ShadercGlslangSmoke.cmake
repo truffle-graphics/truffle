@@ -80,6 +80,35 @@ if(NOT _fragment_result EQUAL 0)
         "fragment GLSL to SPIR-V compilation failed: ${_fragment_output}${_fragment_error}")
 endif()
 
+set(_textured_fragment "${TRUFFLE_SHADERC_TEST_DIR}/textured.frag")
+set(_textured_fragment_package
+    "${TRUFFLE_SHADERC_TEST_DIR}/textured-fragment.truffle-shader")
+file(WRITE "${_textured_fragment}"
+    "#version 450\n"
+    "layout(set = 0, binding = 0) uniform texture2D sourceTexture;\n"
+    "layout(set = 0, binding = 1) uniform sampler sourceSampler;\n"
+    "layout(location = 0) out vec4 outputColor;\n"
+    "void main() { outputColor = texture(sampler2D(sourceTexture, sourceSampler), vec2(0.5)); }\n")
+file(SHA256 "${_textured_fragment}" _textured_fragment_hash)
+execute_process(
+    COMMAND "${TRUFFLE_SHADERC}"
+        --compile
+        --name textured-fragment
+        --target spirv
+        --stage fragment
+        --entry main
+        --input "${_textured_fragment}"
+        --output "${_textured_fragment_package}"
+        --source-hash "${_textured_fragment_hash}"
+        --source-language glsl
+    RESULT_VARIABLE _textured_fragment_result
+    OUTPUT_VARIABLE _textured_fragment_output
+    ERROR_VARIABLE _textured_fragment_error)
+if(NOT _textured_fragment_result EQUAL 0)
+    message(FATAL_ERROR
+        "textured fragment compilation failed: ${_textured_fragment_output}${_textured_fragment_error}")
+endif()
+
 execute_process(
     COMMAND "${TRUFFLE_SHADERC}" --inspect "${_package_a}"
     RESULT_VARIABLE _inspect_result

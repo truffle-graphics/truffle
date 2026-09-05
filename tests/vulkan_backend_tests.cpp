@@ -152,6 +152,184 @@ void verify_vulkan_buffers() {
     const std::array<std::byte, 4> expectedTrianglePixel{
         std::byte{255}, std::byte{0}, std::byte{0}, std::byte{255}};
     assert(trianglePixel == expectedTrianglePixel);
+
+    const auto render_and_read = [&](rhi::Pipeline& pipeline, auto&& encode) {
+        assert(triangleList.reset().ok());
+        assert(triangleList.begin().ok());
+        auto renderResult = triangleList.begin_rendering({
+            .extent = {triangleSize, triangleSize},
+            .colorAttachments = {{.texture = &triangleTarget,
+                                  .clear = {0.0F, 0.0F, 0.0F, 1.0F}}},
+        });
+        assert(renderResult.ok());
+        auto render = std::move(renderResult).value();
+        assert(render.bind_pipeline(pipeline).ok());
+        encode(render);
+        assert(render.end().ok());
+        auto copyResult = triangleList.begin_copy();
+        assert(copyResult.ok());
+        auto copy = std::move(copyResult).value();
+        assert(copy
+                   .copy_texture_to_buffer(
+                       triangleTarget, triangleReadback,
+                       {.layout = {.bytesPerRow = triangleRowPitch,
+                                   .rowsPerImage = triangleSize},
+                        .texture = {
+                            .extent = {triangleSize, triangleSize, 1}}})
+                   .ok());
+        assert(copy.end().ok());
+        assert(triangleList.end().ok());
+        std::array<rhi::CommandList*, 1> lists{&triangleList};
+        assert(triangleQueue.submit(lists).ok());
+        std::array<std::byte, 4> pixel{};
+        assert(triangleReadback
+                   .read((triangleSize / 2) * triangleRowPitch +
+                             (triangleSize / 2) * 4,
+                         pixel)
+                   .ok());
+        return pixel;
+    };
+
+    auto indexBufferResult = device.create_buffer({
+        .size = 3 * sizeof(std::uint16_t),
+        .usage = rhi::BufferUsage::index,
+        .memory = rhi::MemoryDomain::upload,
+    });
+    assert(indexBufferResult.ok());
+    auto indexBuffer = std::move(indexBufferResult).value();
+    const std::array<std::uint16_t, 3> indices{0, 1, 2};
+    assert(indexBuffer.write(0, std::as_bytes(std::span{indices})).ok());
+    assert(render_and_read(trianglePipeline, [&](rhi::RenderEncoder& render) {
+               assert(render
+                          .bind_index_buffer(indexBuffer, 0,
+                                             rhi::IndexFormat::uint16)
+                          .ok());
+               assert(render.draw_indexed(3, 2).ok());
+           }) == expectedTrianglePixel);
+
+    auto indirectBufferResult = device.create_buffer({
+        .size = 4 * sizeof(std::uint32_t),
+        .usage = rhi::BufferUsage::indirect,
+        .memory = rhi::MemoryDomain::upload,
+    });
+    assert(indirectBufferResult.ok());
+    auto indirectBuffer = std::move(indirectBufferResult).value();
+    const std::array<std::uint32_t, 4> indirectCommand{3, 1, 0, 0};
+    assert(indirectBuffer
+               .write(0, std::as_bytes(std::span{indirectCommand}))
+               .ok());
+    assert(render_and_read(trianglePipeline, [&](rhi::RenderEncoder& render) {
+               assert(render.draw_indirect(indirectBuffer).ok());
+           }) == expectedTrianglePixel);
+
+#if defined(TRUFFLE_VULKAN_TEXTURED_FRAGMENT_PACKAGE_PATH)
+    const auto texturedPackageBytes =
+        read_shader_package(TRUFFLE_VULKAN_TEXTURED_FRAGMENT_PACKAGE_PATH);
+    auto texturedPackageResult =
+        rhi::ShaderPackage::load(texturedPackageBytes);
+    assert(texturedPackageResult.ok());
+    auto texturedDesc = texturedPackageResult.value().desc();
+    texturedDesc.variants[0].reflection.bindings = {
+        {.name = "sourceTexture",
+         .stage = rhi::ShaderStage::fragment,
+         .type = rhi::ResourceBindingType::texture,
+         .group = 0,
+         .binding = 0},
+        {.name = "sourceSampler",
+         .stage = rhi::ShaderStage::fragment,
+         .type = rhi::ResourceBindingType::sampler,
+         .group = 0,
+         .binding = 1},
+    };
+    auto reflectedTexturedPackage =
+        rhi::ShaderPackage::create(std::move(texturedDesc));
+    assert(reflectedTexturedPackage.ok());
+    auto texturedShaderResult = device.create_shader(
+        reflectedTexturedPackage.value(), rhi::ShaderTarget::spirv, "main",
+        rhi::ShaderStage::fragment);
+    assert(texturedShaderResult.ok());
+    auto texturedShader = std::move(texturedShaderResult).value();
+    auto sampledLayoutResult = device.create_bind_group_layout({
+        .group = 0,
+        .entries = {
+            {.binding = 0,
+             .type = rhi::BindingType::sampled_texture,
+             .visibility = rhi::ShaderStageMask::fragment},
+            {.binding = 1,
+             .type = rhi::BindingType::sampler,
+             .visibility = rhi::ShaderStageMask::fragment},
+        },
+    });
+    assert(sampledLayoutResult.ok());
+    auto sampledLayout = std::move(sampledLayoutResult).value();
+    auto texturedPipelineLayoutResult = device.create_pipeline_layout({
+        .bindGroupLayouts = {&sampledLayout},
+    });
+    assert(texturedPipelineLayoutResult.ok());
+    auto texturedPipelineLayout =
+        std::move(texturedPipelineLayoutResult).value();
+    auto texturedPipelineResult = device.create_pipeline({
+        .vertexShader = &vertexShader,
+        .fragmentShader = &texturedShader,
+        .layout = &texturedPipelineLayout,
+        .colorTargets = {{.format = rhi::TextureFormat::rgba8_unorm}},
+    });
+    assert(texturedPipelineResult.ok());
+    auto texturedPipeline = std::move(texturedPipelineResult).value();
+    auto sampledTextureResult = device.create_texture({
+        .extent = {1, 1, 1},
+        .format = rhi::TextureFormat::rgba8_unorm,
+        .usage = rhi::TextureUsage::sampled |
+                 rhi::TextureUsage::copy_destination,
+    });
+    auto sampledUploadResult = device.create_buffer({
+        .size = 4,
+        .usage = rhi::BufferUsage::copy_source,
+        .memory = rhi::MemoryDomain::upload,
+    });
+    assert(sampledTextureResult.ok() && sampledUploadResult.ok());
+    auto sampledTexture = std::move(sampledTextureResult).value();
+    auto sampledUpload = std::move(sampledUploadResult).value();
+    const std::array<std::byte, 4> greenPixel{
+        std::byte{0}, std::byte{255}, std::byte{0}, std::byte{255}};
+    assert(sampledUpload.write(0, greenPixel).ok());
+    assert(triangleList.reset().ok());
+    assert(triangleList.begin().ok());
+    auto uploadCopyResult = triangleList.begin_copy();
+    assert(uploadCopyResult.ok());
+    auto uploadCopy = std::move(uploadCopyResult).value();
+    assert(uploadCopy
+               .copy_buffer_to_texture(
+                   sampledUpload, sampledTexture,
+                   {.texture = {.extent = {1, 1, 1}}})
+               .ok());
+    assert(uploadCopy.end().ok());
+    assert(triangleList.end().ok());
+    std::array<rhi::CommandList*, 1> uploadLists{&triangleList};
+    assert(triangleQueue.submit(uploadLists).ok());
+    auto sampledViewResult = device.create_texture_view(sampledTexture);
+    auto sampledSamplerResult = device.create_sampler({});
+    auto sampledArenaResult = device.create_descriptor_arena();
+    assert(sampledViewResult.ok() && sampledSamplerResult.ok() &&
+           sampledArenaResult.ok());
+    auto sampledView = std::move(sampledViewResult).value();
+    auto sampledSampler = std::move(sampledSamplerResult).value();
+    auto sampledArena = std::move(sampledArenaResult).value();
+    auto sampledGroupResult = device.create_bind_group({
+        .layout = &sampledLayout,
+        .arena = &sampledArena,
+        .entries = {
+            {.binding = 0, .textureView = &sampledView},
+            {.binding = 1, .sampler = &sampledSampler},
+        },
+    });
+    assert(sampledGroupResult.ok());
+    auto sampledGroup = std::move(sampledGroupResult).value();
+    assert(render_and_read(texturedPipeline, [&](rhi::RenderEncoder& render) {
+               assert(render.bind_group(0, sampledGroup).ok());
+               assert(render.draw(3).ok());
+           }) == greenPixel);
+#endif
 #endif
 
     auto wrongFormatShader = device.create_shader({
@@ -274,6 +452,39 @@ void verify_vulkan_buffers() {
     const std::array<std::uint32_t, 4> expectedCompute{
         0x10203040u, 0x11213141u, 0x12223242u, 0x13233343u};
     assert(computeOutput == expectedCompute);
+    auto dispatchIndirectResult = device.create_buffer({
+        .size = 3 * sizeof(std::uint32_t),
+        .usage = rhi::BufferUsage::indirect,
+        .memory = rhi::MemoryDomain::upload,
+    });
+    assert(dispatchIndirectResult.ok());
+    auto dispatchIndirect = std::move(dispatchIndirectResult).value();
+    const std::array<std::uint32_t, 3> dispatchArguments{4, 1, 1};
+    assert(dispatchIndirect
+               .write(0, std::as_bytes(std::span{dispatchArguments}))
+               .ok());
+    std::array<std::uint32_t, 4> clearedCompute{};
+    assert(storage
+               .write(0, std::as_bytes(std::span{clearedCompute}))
+               .ok());
+    assert(computeList.reset().ok());
+    assert(computeList.begin().ok());
+    auto indirectComputeResult = computeList.begin_compute();
+    assert(indirectComputeResult.ok());
+    auto indirectCompute = std::move(indirectComputeResult).value();
+    assert(indirectCompute.bind_pipeline(computePipeline).ok());
+    assert(indirectCompute.bind_group(0, group).ok());
+    assert(indirectCompute.dispatch_indirect(dispatchIndirect).ok());
+    assert(indirectCompute.end().ok());
+    assert(computeList.end().ok());
+    std::array<rhi::CommandList*, 1> indirectComputeLists{&computeList};
+    assert(computeQueue.submit(indirectComputeLists).ok());
+    std::array<std::uint32_t, 4> indirectComputeOutput{};
+    assert(storage
+               .read(0,
+                     std::as_writable_bytes(std::span{indirectComputeOutput}))
+               .ok());
+    assert(indirectComputeOutput == expectedCompute);
 #endif
 
     constexpr std::size_t byteCount = 64;
@@ -504,6 +715,7 @@ void verify_vulkan_buffers() {
     assert(info.bindings.pushConstants);
     assert(info.pipelines.compute);
     assert(info.pipelines.graphics);
+    assert(info.pipelines.indirect);
     assert(info.pipelines.maxColorAttachments == 1);
     assert(!info.pipelines.multipleRenderTargets);
     auto sampler = device.create_sampler({});
