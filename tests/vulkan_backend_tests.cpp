@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -33,7 +34,8 @@ namespace {
 void verify_vulkan_buffers() {
     namespace rhi = truffle::rhi;
 
-    auto instanceResult = rhi::create_vulkan_instance();
+    auto instanceResult =
+        rhi::create_vulkan_instance({.enableValidation = true});
     assert(instanceResult.ok());
     auto instance = std::move(instanceResult).value();
     auto adapterResult = instance.adapter(0);
@@ -62,10 +64,16 @@ void verify_vulkan_buffers() {
     assert(!info.pipelines.indirectCount);
     assert(!info.pipelines.pipelineCache);
     assert(info.pipelines.maxColorAttachments >= 2);
+    assert(std::find(info.supportedFeatures.begin(),
+                     info.supportedFeatures.end(),
+                     rhi::Feature::timestamp_queries) !=
+           info.supportedFeatures.end());
 
     auto deviceResult = adapter.request_device({
         .requiredFeatures = {rhi::Feature::transfer,
-                             rhi::Feature::memory_budget},
+                             rhi::Feature::compute,
+                             rhi::Feature::memory_budget,
+                             rhi::Feature::timestamp_queries},
     });
     assert(deviceResult.ok());
     auto device = std::move(deviceResult).value();
@@ -169,6 +177,250 @@ void verify_vulkan_buffers() {
     const std::array<std::byte, 4> expectedTrianglePixel{
         std::byte{255}, std::byte{0}, std::byte{0}, std::byte{255}};
     assert(trianglePixel == expectedTrianglePixel);
+
+    constexpr std::size_t synchronizedBytes = 64;
+    std::array<std::byte, synchronizedBytes> synchronizedExpected{};
+    for (std::size_t index = 0; index < synchronizedExpected.size(); ++index) {
+        synchronizedExpected[index] =
+            std::byte{static_cast<unsigned char>(index * 5u + 7u)};
+    }
+    auto synchronizedUpload = device.create_buffer({
+        .size = synchronizedBytes,
+        .usage = rhi::BufferUsage::copy_source,
+        .memory = rhi::MemoryDomain::upload,
+    });
+    auto synchronizedIntermediate = device.create_buffer({
+        .size = synchronizedBytes,
+        .usage = rhi::BufferUsage::copy_source |
+                 rhi::BufferUsage::copy_destination,
+    });
+    auto synchronizedReadback = device.create_buffer({
+        .size = synchronizedBytes,
+        .usage = rhi::BufferUsage::copy_destination,
+        .memory = rhi::MemoryDomain::readback,
+    });
+    assert(synchronizedUpload.ok() && synchronizedIntermediate.ok() &&
+           synchronizedReadback.ok());
+    assert(synchronizedUpload.value()
+               .write(0, std::as_bytes(std::span{synchronizedExpected}))
+               .ok());
+    auto transferQueue = device.queue(rhi::QueueKind::transfer);
+    auto transferPool = device.create_command_pool(rhi::QueueKind::transfer);
+    auto synchronizationComputeQueue = device.queue(rhi::QueueKind::compute);
+    assert(transferQueue.ok() && transferPool.ok() &&
+           synchronizationComputeQueue.ok());
+    auto firstSynchronized = transferPool.value().allocate();
+    auto secondSynchronized = trianglePool.allocate();
+    auto trailingSynchronized = trianglePool.allocate();
+    assert(firstSynchronized.ok() && secondSynchronized.ok() &&
+           trailingSynchronized.ok());
+    assert(firstSynchronized.value().begin().ok());
+    auto firstSynchronizedCopy = firstSynchronized.value().begin_copy();
+    assert(firstSynchronizedCopy.ok());
+    assert(firstSynchronizedCopy.value()
+               .copy_buffer(synchronizedUpload.value(), 0,
+                            synchronizedIntermediate.value(), 0,
+                            synchronizedBytes)
+               .ok());
+    assert(firstSynchronizedCopy.value().end().ok());
+    rhi::BarrierBatch copyBarrier;
+    copyBarrier.buffers.push_back({
+        .buffer = &synchronizedIntermediate.value(),
+        .sourceStages = rhi::PipelineStage::copy,
+        .destinationStages = rhi::PipelineStage::copy,
+        .sourceAccess = rhi::Access::transfer_write,
+        .destinationAccess = rhi::Access::transfer_read,
+        .transferOwnership = true,
+        .sourceQueue = rhi::QueueKind::transfer,
+        .destinationQueue = rhi::QueueKind::graphics,
+    });
+    assert(firstSynchronized.value().barrier(copyBarrier).ok());
+    assert(firstSynchronized.value().end().ok());
+    assert(secondSynchronized.value().begin().ok());
+    auto secondSynchronizedCopy = secondSynchronized.value().begin_copy();
+    assert(secondSynchronizedCopy.ok());
+    assert(secondSynchronizedCopy.value()
+               .copy_buffer(synchronizedIntermediate.value(), 0,
+                            synchronizedReadback.value(), 0,
+                            synchronizedBytes)
+               .ok());
+    assert(secondSynchronizedCopy.value().end().ok());
+    assert(secondSynchronized.value().end().ok());
+    assert(trailingSynchronized.value().begin().ok());
+    assert(trailingSynchronized.value().end().ok());
+    auto timeline = device.create_semaphore();
+    auto completion = device.create_fence();
+    assert(timeline.ok() && completion.ok());
+    std::array<rhi::CommandList*, 1> transferLists{
+        &firstSynchronized.value()};
+    const std::array<rhi::SemaphoreSignal, 1> transferSignal{{
+        {.semaphore = &timeline.value(), .value = 3},
+    }};
+    assert(transferQueue.value()
+               .submit({.commandLists = transferLists,
+                        .signals = transferSignal})
+               .ok());
+    std::array<rhi::CommandList*, 2> synchronizedLists{
+        &secondSynchronized.value(), &trailingSynchronized.value()};
+    const std::array<rhi::SemaphoreWait, 1> synchronizedWait{{
+        {.semaphore = &timeline.value(),
+         .value = 3,
+         .stages = rhi::PipelineStage::copy},
+    }};
+    const std::array<rhi::SemaphoreSignal, 1> synchronizedSignal{{
+        {.semaphore = &timeline.value(), .value = 4},
+    }};
+    assert(triangleQueue
+               .submit({.commandLists = synchronizedLists,
+                        .waits = synchronizedWait,
+                        .signals = synchronizedSignal,
+                        .signalFence = &completion.value(),
+                        .signalFenceValue = 7})
+               .ok());
+    assert(timeline.value().value() == 4);
+    assert(completion.value().completed_value() == 7);
+    assert(completion.value().wait(7, std::chrono::nanoseconds{1}).ok());
+    const auto fenceTimeout =
+        completion.value().wait(8, std::chrono::nanoseconds{1});
+    assert(!fenceTimeout.ok());
+    assert(fenceTimeout.code == rhi::StatusCode::timeout);
+    std::array<std::byte, synchronizedBytes> synchronizedOutput{};
+    assert(synchronizedReadback.value().read(0, synchronizedOutput).ok());
+    assert(synchronizedOutput == synchronizedExpected);
+
+    auto transitionedTexture = device.create_texture({
+        .extent = {2, 2, 1},
+        .format = rhi::TextureFormat::rgba8_unorm,
+        .usage = rhi::TextureUsage::sampled |
+                 rhi::TextureUsage::copy_destination,
+    });
+    auto aliasBefore = device.create_buffer({
+        .size = 16,
+        .usage = rhi::BufferUsage::copy_destination,
+    });
+    auto aliasAfter = device.create_buffer({
+        .size = 16,
+        .usage = rhi::BufferUsage::copy_source,
+    });
+    assert(transitionedTexture.ok() && aliasBefore.ok() && aliasAfter.ok());
+    auto explicitBarrierList = trianglePool.allocate();
+    assert(explicitBarrierList.ok());
+    assert(explicitBarrierList.value().begin().ok());
+    rhi::BarrierBatch explicitBarriers;
+    explicitBarriers.textures.push_back({
+        .texture = &transitionedTexture.value(),
+        .range = {.aspects = rhi::TextureAspect::color},
+        .oldLayout = rhi::TextureLayout::undefined,
+        .newLayout = rhi::TextureLayout::shader_read_only,
+        .sourceStages = rhi::PipelineStage::top,
+        .destinationStages = rhi::PipelineStage::fragment_shader,
+        .sourceAccess = rhi::Access::none,
+        .destinationAccess = rhi::Access::shader_read,
+    });
+    explicitBarriers.aliasing.push_back({
+        .beforeBuffer = &aliasBefore.value(),
+        .afterBuffer = &aliasAfter.value(),
+        .sourceStages = rhi::PipelineStage::copy,
+        .destinationStages = rhi::PipelineStage::copy,
+    });
+    assert(explicitBarrierList.value().barrier(explicitBarriers).ok());
+    assert(explicitBarrierList.value().end().ok());
+    std::array<rhi::CommandList*, 1> explicitBarrierLists{
+        &explicitBarrierList.value()};
+    assert(triangleQueue.submit(explicitBarrierLists).ok());
+
+    auto blockedTimeline = device.create_semaphore();
+    auto waitingList = trianglePool.allocate();
+    assert(blockedTimeline.ok() && waitingList.ok());
+    assert(waitingList.value().begin().ok());
+    assert(waitingList.value().end().ok());
+    std::array<rhi::CommandList*, 1> waitingLists{&waitingList.value()};
+    const std::array<rhi::SemaphoreWait, 1> blockedWait{{
+        {.semaphore = &blockedTimeline.value(), .value = 1},
+    }};
+    const auto waitTimeout = triangleQueue.submit({
+        .commandLists = waitingLists,
+        .waits = blockedWait,
+        .waitTimeout = std::chrono::nanoseconds{1},
+    });
+    assert(!waitTimeout.ok());
+    assert(waitTimeout.code == rhi::StatusCode::timeout);
+    assert(waitingList.value().state() == rhi::CommandListState::executable);
+    auto releaseList = trianglePool.allocate();
+    assert(releaseList.ok());
+    assert(releaseList.value().begin().ok());
+    assert(releaseList.value().end().ok());
+    std::array<rhi::CommandList*, 1> releaseLists{&releaseList.value()};
+    const std::array<rhi::SemaphoreSignal, 1> releaseSignal{{
+        {.semaphore = &blockedTimeline.value(), .value = 1},
+    }};
+    assert(triangleQueue
+               .submit({.commandLists = releaseLists,
+                        .signals = releaseSignal})
+               .ok());
+    assert(triangleQueue
+               .submit({.commandLists = waitingLists,
+                        .waits = blockedWait,
+                        .waitTimeout = std::chrono::milliseconds{1}})
+               .ok());
+
+    auto timestamps = device.create_query_pool({
+        .type = rhi::QueryType::timestamp,
+        .count = 2,
+    });
+    auto occlusion = device.create_query_pool({
+        .type = rhi::QueryType::occlusion,
+        .count = 1,
+    });
+    auto queryReadback = device.create_buffer({
+        .size = 3 * sizeof(std::uint64_t),
+        .usage = rhi::BufferUsage::copy_destination,
+        .memory = rhi::MemoryDomain::readback,
+    });
+    assert(timestamps.ok() && occlusion.ok() && queryReadback.ok());
+    auto unsupportedStatistics = device.create_query_pool({
+        .type = rhi::QueryType::pipeline_statistics,
+        .count = 1,
+    });
+    assert(!unsupportedStatistics.ok());
+    assert(unsupportedStatistics.status().code == rhi::StatusCode::unsupported);
+    auto queryList = trianglePool.allocate();
+    assert(queryList.ok());
+    assert(queryList.value().begin().ok());
+    assert(queryList.value().write_timestamp(timestamps.value(), 0).ok());
+    auto queryRender = queryList.value().begin_rendering({
+        .extent = {triangleSize, triangleSize},
+        .colorAttachments = {{.texture = &triangleTarget}},
+    });
+    assert(queryRender.ok());
+    assert(queryRender.value()
+               .begin_occlusion_query(occlusion.value(), 0)
+               .ok());
+    assert(queryRender.value().bind_pipeline(trianglePipeline).ok());
+    assert(queryRender.value().draw(3).ok());
+    assert(queryRender.value().end_occlusion_query().ok());
+    assert(queryRender.value().end().ok());
+    assert(queryList.value().write_timestamp(timestamps.value(), 1).ok());
+    assert(queryList.value()
+               .resolve_queries(timestamps.value(), 0, 2,
+                                queryReadback.value())
+               .ok());
+    assert(queryList.value()
+               .resolve_queries(occlusion.value(), 0, 1,
+                                queryReadback.value(),
+                                2 * sizeof(std::uint64_t))
+               .ok());
+    assert(queryList.value().end().ok());
+    std::array<rhi::CommandList*, 1> queryLists{&queryList.value()};
+    assert(triangleQueue.submit(queryLists).ok());
+    std::array<std::uint64_t, 3> queryResults{};
+    assert(queryReadback.value()
+               .read(0, std::as_writable_bytes(std::span{queryResults}))
+               .ok());
+    assert(queryResults[0] != 0);
+    assert(queryResults[1] >= queryResults[0]);
+    assert(queryResults[2] > 0);
+    assert(queryResults[2] <= triangleSize * triangleSize);
 
     const auto render_and_read = [&](rhi::Pipeline& pipeline, auto&& encode) {
         assert(triangleList.reset().ok());

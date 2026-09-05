@@ -9,11 +9,36 @@ rather than growing a historical transcript here.
 
 ## Current Focus
 
-Close #53 through native Vulkan compute-to-render ordering plus deterministic
-binding/pipeline mismatch, optional-feature, and descriptor-lifetime evidence.
+Close #54 through native Vulkan queue-family discovery, synchronization,
+barrier, timeline-semaphore, fence, and query evidence.
 
 ## Latest Handoff
 
+- `feat/rhi1-vulkan-sync-foundation` implements #54's native Vulkan baseline.
+  Queue kind is now carried through the internal submission boundary; Vulkan
+  discovers graphics, compute, and transfer families, creates one queue for
+  each distinct family, and uses concurrent sharing for resources visible to
+  multiple families. Explicit buffer, per-subresource texture, and aliasing
+  barriers map portable stages, access masks, and layouts to Vulkan. Native
+  timeline semaphores use Vulkan 1.2 or `VK_KHR_timeline_semaphore`; timestamp
+  and occlusion pools reset, record, availability-wait, and resolve 64-bit
+  results. The public fence remains the foundation's conservative completed-
+  submission timeline because Vulkan submission waits for queue idle before
+  returning. The validation-enabled native test proves transfer-to-graphics
+  semaphore ordering, multi-list submission, logical ownership, exact buffer
+  output, fence timeout/retry, explicit barrier classes, timestamp ordering,
+  nonzero bounded occlusion, and deterministic unsupported pipeline statistics.
+  The internal queue-kind parameter is threaded through the other native
+  backends without changing the public API. Ownership stays in RHI foundation
+  and `src/backends/vulkan`; dependencies remain the existing RHI contract and
+  pinned Vulkan headers/volk. The local build and all 37 tests pass. Initial
+  Build `33944445340` reached GCC and MinGW compilation and identified two
+  warnings-as-errors: an enum/flag conditional needed an explicit Vulkan flag
+  cast, and the Vulkan features wrapper needed an explicit zero initializer.
+  Both portability fixes are applied. Replacement Build `33944555436` passes
+  package, macOS, Ubuntu, and Windows; the Ubuntu validation lane proves the
+  native cross-queue, barrier, timeline, fence, and query paths. The separate
+  companion-routing failure remains the non-gating defect tracked by #131.
 - `feat/rhi1-vulkan-graphics-closeout` completes #53's remaining acceptance
   surface. A generated fragment package reads the storage buffer written by a
   preceding compute dispatch in the same command list and produces an exact

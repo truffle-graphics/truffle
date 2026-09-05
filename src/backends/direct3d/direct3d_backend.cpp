@@ -2954,6 +2954,7 @@ record_direct3d_commands(Direct3DContext &context, ID3D12GraphicsCommandList &co
 
 [[nodiscard]] Status
 submit_direct3d_commands(const std::shared_ptr<void> &nativeContext,
+                         QueueKind,
                          std::span<const detail::NativeCommand> commands,
                          std::span<const detail::NativeSemaphorePoint> waits,
                          std::span<const detail::NativeSemaphorePoint> signals) {

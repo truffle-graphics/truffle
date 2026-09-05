@@ -3156,9 +3156,9 @@ struct Factory {
                 ++transferCount;
             }
         }
-        if (auto status = runtime.config.nativeSubmit(runtime.config.nativeContext,
-                                                      nativeCommands, nativeWaits,
-                                                      nativeSignals);
+        if (auto status = runtime.config.nativeSubmit(
+                runtime.config.nativeContext, queue->kind, nativeCommands,
+                nativeWaits, nativeSignals);
             !status.ok()) {
             if (status.code == StatusCode::device_lost) {
                 queue->device->lost.store(true);

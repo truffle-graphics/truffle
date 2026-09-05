@@ -57,7 +57,10 @@ for each backend/platform pair:
   indirect compute reproduces the direct storage-buffer result, depth testing
   proves exact pass/fail output, two render targets produce independent exact
   colors, four-sample rendering resolves to exact output, and compute-to-render
-  ordering produces an exact storage-driven fragment result.
+  ordering produces an exact storage-driven fragment result. Discovered
+  graphics/compute/transfer queues execute timeline-semaphore-connected work;
+  explicit buffer, texture, and aliasing barriers plus native timestamp and
+  occlusion query resolves are validation-tested.
 - `truffle_backend_direct3d` initializes the Windows SDK D3D12 WARP device,
   owns upload/readback and default-heap buffers plus device-local textures and
   descriptor views, consumes packaged native HLSL or offline DXIL, maps logical

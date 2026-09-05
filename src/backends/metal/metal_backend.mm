@@ -1658,6 +1658,7 @@ struct MetalFormat {
 
 [[nodiscard]] Status submit_metal_commands(
     const std::shared_ptr<void>&,
+    QueueKind,
     std::span<const detail::NativeCommand> commands,
     std::span<const detail::NativeSemaphorePoint> waits,
     std::span<const detail::NativeSemaphorePoint> signals) {
