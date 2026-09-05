@@ -137,7 +137,8 @@ inline void verify_native_buffer_backend(rhi::Result<rhi::Instance> result,
 
 inline void verify_native_texture_backend(rhi::Result<rhi::Instance> result,
                                           rhi::BackendKind backend,
-                                          rhi::PlatformKind platform) {
+                                          rhi::PlatformKind platform,
+                                          const std::size_t* diagnostics = nullptr) {
     assert(result.ok());
     auto instance = std::move(result).value();
     auto adapterResult = instance.adapter(0);
@@ -149,7 +150,11 @@ inline void verify_native_texture_backend(rhi::Result<rhi::Instance> result,
     assert(info.resources.textureClear && info.resources.textureBlitNearest &&
            info.resources.textureBlitLinear);
     assert(info.bindings.ordinaryBindGroups);
-    assert(!info.resources.textureResolve && !info.resources.externalImport &&
+    const bool desktopGl = backend == rhi::BackendKind::opengl;
+    assert(info.resources.textureViews == desktopGl);
+    assert(info.resources.textureResolve == desktopGl);
+    assert(info.name.find("KHR_debug") != std::string::npos);
+    assert(!info.resources.externalImport &&
            !info.resources.externalExport);
 
     auto deviceResult = adapter.request_device({
@@ -198,8 +203,12 @@ inline void verify_native_texture_backend(rhi::Result<rhi::Instance> result,
     auto upload = std::move(uploadResult).value();
     auto readback = std::move(readbackResult).value();
     auto unsupportedView = device.create_texture_view(source);
-    assert(!unsupportedView.ok());
-    assert(unsupportedView.status().code == rhi::StatusCode::unsupported);
+    if (desktopGl) {
+        assert(unsupportedView.ok());
+    } else {
+        assert(!unsupportedView.ok());
+        assert(unsupportedView.status().code == rhi::StatusCode::unsupported);
+    }
 
     std::array<std::byte, byteCount> expected{};
     for (std::size_t row = 0; row < height; ++row) {
@@ -314,10 +323,33 @@ inline void verify_native_texture_backend(rhi::Result<rhi::Instance> result,
                .ok());
     assert(output == expected);
 
-    auto unsupported3d = device.create_texture({
-        .dimension = rhi::TextureDimension::d3,
-        .extent = {2, 2, 2},
+    auto unsupported1d = device.create_texture({
+        .dimension = rhi::TextureDimension::d1,
+        .extent = {2, 1, 1},
         .usage = rhi::TextureUsage::copy_destination,
+    });
+    auto arrayTexture = device.create_texture({
+        .extent = {8, 8, 1},
+        .usage = rhi::TextureUsage::copy_source |
+                 rhi::TextureUsage::copy_destination,
+        .mipLevels = 3,
+        .arrayLayers = 2,
+        .memory = rhi::MemoryDomain::readback,
+    });
+    auto volumeTexture = device.create_texture({
+        .dimension = rhi::TextureDimension::d3,
+        .extent = {4, 4, 2},
+        .usage = rhi::TextureUsage::copy_source |
+                 rhi::TextureUsage::copy_destination,
+        .memory = rhi::MemoryDomain::readback,
+    });
+    auto cubeTexture = device.create_texture({
+        .dimension = rhi::TextureDimension::cube,
+        .extent = {4, 4, 1},
+        .usage = rhi::TextureUsage::copy_source |
+                 rhi::TextureUsage::copy_destination,
+        .arrayLayers = 6,
+        .memory = rhi::MemoryDomain::readback,
     });
     auto shareable = device.create_texture({
         .extent = {2, 2, 1},
@@ -329,10 +361,175 @@ inline void verify_native_texture_backend(rhi::Result<rhi::Instance> result,
         .usage = rhi::TextureUsage::copy_destination,
         .memory = rhi::MemoryDomain::external,
     });
-    assert(!unsupported3d.ok() && !shareable.ok() && !external.ok());
-    assert(unsupported3d.status().code == rhi::StatusCode::unsupported);
+    assert(!unsupported1d.ok() && arrayTexture.ok() && volumeTexture.ok() &&
+           cubeTexture.ok() && !shareable.ok() && !external.ok());
+    assert(unsupported1d.status().code == rhi::StatusCode::unsupported);
     assert(shareable.status().code == rhi::StatusCode::unsupported);
     assert(external.status().code == rhi::StatusCode::invalid_argument);
+
+    std::array<std::byte, 4u * 4u * 4u> slice{};
+    for (std::size_t index = 0; index < slice.size(); ++index) {
+        slice[index] = std::byte{static_cast<unsigned char>(index * 7u + 3u)};
+    }
+    const rhi::TextureRegion arrayRegion{
+        .subresource = {.aspect = rhi::TextureAspect::color,
+                        .mipLevel = 1,
+                        .arrayLayer = 1},
+        .extent = {4, 4, 1},
+    };
+    assert(arrayTexture.value().write(arrayRegion, slice).ok());
+    std::array<std::byte, slice.size()> sliceOutput{};
+    assert(arrayTexture.value().read(arrayRegion, sliceOutput).ok());
+    assert(sliceOutput == slice);
+
+    std::array<std::byte, slice.size() * 2u> volume{};
+    for (std::size_t index = 0; index < volume.size(); ++index) {
+        volume[index] =
+            std::byte{static_cast<unsigned char>(index * 5u + 0x21u)};
+    }
+    const rhi::TextureRegion volumeRegion{
+        .subresource = {.aspect = rhi::TextureAspect::color},
+        .extent = {4, 4, 2},
+    };
+    assert(volumeTexture.value()
+               .write(volumeRegion, volume,
+                      {.bytesPerRow = 16, .rowsPerImage = 4})
+               .ok());
+    const rhi::TextureRegion secondVolumeSlice{
+        .subresource = {.aspect = rhi::TextureAspect::color},
+        .origin = {0, 0, 1},
+        .extent = {4, 4, 1},
+    };
+    sliceOutput.fill(std::byte{0});
+    assert(volumeTexture.value().read(secondVolumeSlice, sliceOutput).ok());
+    assert(std::equal(sliceOutput.begin(), sliceOutput.end(),
+                      volume.begin() + slice.size()));
+
+    const rhi::TextureRegion cubeFace{
+        .subresource = {.aspect = rhi::TextureAspect::color,
+                        .arrayLayer = 4},
+        .extent = {4, 4, 1},
+    };
+    assert(cubeTexture.value().write(cubeFace, slice).ok());
+    sliceOutput.fill(std::byte{0});
+    assert(cubeTexture.value().read(cubeFace, sliceOutput).ok());
+    assert(sliceOutput == slice);
+
+    auto depthTexture = device.create_texture({
+        .extent = {4, 4, 1},
+        .format = rhi::TextureFormat::depth16_unorm,
+        .usage = rhi::TextureUsage::depth_stencil_attachment |
+                 rhi::TextureUsage::copy_source,
+        .memory = rhi::MemoryDomain::readback,
+    });
+    assert(depthTexture.ok());
+    const rhi::TextureRegion depthRegion{
+        .subresource = {.aspect = rhi::TextureAspect::depth},
+        .extent = {4, 4, 1},
+    };
+    submit_copy([&](rhi::CopyEncoder& copy) {
+        assert(copy.clear_texture(depthTexture.value(), depthRegion,
+                                  {.depth = 0.5F})
+                   .ok());
+    });
+    std::array<std::uint16_t, 16> depthValues{};
+    assert(depthTexture.value()
+               .read(depthRegion, std::as_writable_bytes(
+                                      std::span{depthValues}))
+               .ok());
+    assert(std::ranges::all_of(depthValues, [](std::uint16_t value) {
+        return value >= 32767u && value <= 32768u;
+    }));
+
+    auto depthStencilTexture = device.create_texture({
+        .extent = {4, 4, 1},
+        .format = rhi::TextureFormat::depth24_unorm_stencil8,
+        .usage = rhi::TextureUsage::depth_stencil_attachment |
+                 rhi::TextureUsage::copy_source,
+        .memory = rhi::MemoryDomain::readback,
+    });
+    assert(depthStencilTexture.ok());
+    const rhi::TextureRegion depthStencilRegion{
+        .subresource = {
+            .aspect = rhi::TextureAspect::depth | rhi::TextureAspect::stencil},
+        .extent = {4, 4, 1},
+    };
+    submit_copy([&](rhi::CopyEncoder& copy) {
+        assert(copy.clear_texture(depthStencilTexture.value(),
+                                  depthStencilRegion,
+                                  {.depth = 0.25F, .stencil = 37})
+                   .ok());
+    });
+    const rhi::TextureRegion stencilRegion{
+        .subresource = {.aspect = rhi::TextureAspect::stencil},
+        .extent = {4, 4, 1},
+    };
+    std::array<std::byte, 16> stencilValues{};
+    assert(depthStencilTexture.value().read(stencilRegion, stencilValues).ok());
+    assert(std::ranges::all_of(stencilValues, [](std::byte value) {
+        return std::to_integer<unsigned char>(value) == 37u;
+    }));
+
+    auto multisample = device.create_texture({
+        .extent = {4, 4, 1},
+        .usage = rhi::TextureUsage::color_attachment |
+                 rhi::TextureUsage::copy_source,
+        .sampleCount = 4,
+    });
+    const rhi::TextureRegion color4Region{
+        .subresource = {.aspect = rhi::TextureAspect::color},
+        .extent = {4, 4, 1},
+    };
+    if (desktopGl) {
+        assert(multisample.ok());
+        auto resolved = device.create_texture({
+            .extent = {4, 4, 1},
+            .usage = rhi::TextureUsage::copy_destination |
+                     rhi::TextureUsage::copy_source,
+            .memory = rhi::MemoryDomain::readback,
+        });
+        assert(resolved.ok());
+        submit_copy([&](rhi::CopyEncoder& copy) {
+            assert(copy.clear_texture(multisample.value(), color4Region,
+                                      {.color = {0.25F, 0.5F, 0.75F, 1.0F}})
+                       .ok());
+            assert(copy.resolve_texture(
+                           multisample.value(), resolved.value(),
+                           {.source = color4Region,
+                            .destination = color4Region})
+                       .ok());
+        });
+        std::array<std::byte, slice.size()> resolvedOutput{};
+        assert(resolved.value().read(color4Region, resolvedOutput).ok());
+        for (std::size_t pixel = 0; pixel < 16; ++pixel) {
+            const auto offset = pixel * 4u;
+            assert(std::to_integer<unsigned char>(resolvedOutput[offset]) ==
+                   64u);
+            assert(std::to_integer<unsigned char>(resolvedOutput[offset + 1]) ==
+                   128u);
+            assert(std::to_integer<unsigned char>(resolvedOutput[offset + 2]) ==
+                   191u);
+            assert(std::to_integer<unsigned char>(resolvedOutput[offset + 3]) ==
+                   255u);
+        }
+    } else {
+        assert(!multisample.ok());
+        assert(multisample.status().code == rhi::StatusCode::unsupported);
+    }
+
+    const auto uploadBudget = device.memory_budget(rhi::MemoryDomain::upload);
+    const auto readbackBudget =
+        device.memory_budget(rhi::MemoryDomain::readback);
+    assert(uploadBudget.ok() && readbackBudget.ok());
+    assert(uploadBudget.value().budgetBytes > 0 &&
+           readbackBudget.value().budgetBytes > 0);
+    if (diagnostics != nullptr) {
+        assert(*diagnostics == 0);
+    }
+}
+
+inline void count_native_diagnostic(const rhi::BackendDiagnostic&, void* data) {
+    ++*static_cast<std::size_t*>(data);
 }
 
 } // namespace truffle::tests

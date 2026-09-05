@@ -4,14 +4,18 @@
 
 int main() {
 #ifdef TRUFFLE_EXPECT_EGL_OPENGLES
+    std::size_t diagnostics = 0;
     truffle::tests::verify_native_buffer_backend(
         truffle::rhi::create_opengles_instance(),
         truffle::rhi::BackendKind::opengles,
         truffle::rhi::PlatformKind::linux_host);
     truffle::tests::verify_native_texture_backend(
-        truffle::rhi::create_opengles_instance(),
+        truffle::rhi::create_opengles_instance({
+            .debugCallback = &truffle::tests::count_native_diagnostic,
+            .debugUserData = &diagnostics,
+        }),
         truffle::rhi::BackendKind::opengles,
-        truffle::rhi::PlatformKind::linux_host);
+        truffle::rhi::PlatformKind::linux_host, &diagnostics);
 #else
     const auto result = truffle::rhi::create_opengles_instance();
     truffle::tests::verify_unavailable_backend(result);

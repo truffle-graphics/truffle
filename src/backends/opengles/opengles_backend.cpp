@@ -11,7 +11,7 @@ namespace truffle::rhi {
 
 Result<Instance> create_opengles_instance(const InstanceDesc& desc) {
 #ifdef TRUFFLE_HAS_EGL_OPENGLES
-    auto probe = detail::egl_probe::initialize();
+    auto probe = detail::egl_probe::initialize(desc);
     if (!probe.ok()) {
         return probe.status();
     }

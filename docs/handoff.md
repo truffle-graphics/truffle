@@ -14,6 +14,41 @@ views, samplers, transfers, state isolation, and exact native output evidence.
 
 ## Latest Handoff
 
+- `feat/rhi1-gl-extended-resources` continues #60 from the merged 2D transfer
+  checkpoint. The shared EGL implementation now selects immutable targets for
+  2D arrays, mip chains, 3D textures, cube/cube-array textures, and desktop GL
+  multisample textures; both profiles own core depth16 and depth24/stencil8,
+  while desktop GL additionally owns its core 32-bit depth variants. Uploads
+  honor row and image pitch, and framebuffer attachment selects the requested
+  array layer, volume slice, cube face, and color/depth/stencil aspect. Desktop
+  GL exposes runtime-gated core texture views and multisample resolves; GLES
+  continues to report both explicitly unsupported. Validation-enabled contexts
+  install KHR_debug when the driver exposes it and route API errors through the
+  existing instance callback. Shared native tests exercise separate profile
+  capability snapshots, exact mip/array/3D/cube/depth paths, desktop resolve,
+  GLES negative MSAA/view behavior, external boundaries, memory budgets, and a
+  zero-error debug receipt. Ownership remains in the shared GL-family backend,
+  dependencies remain system EGL/GL only, and the public RHI contract is
+  unchanged. Local cross-platform compilation and the existing 37-test suite
+  pass. Initial Build `33963590121` reached the Linux GLES translation unit and
+  caught two profile-header assumptions: Ubuntu's GLES 3 headers omit KHR_debug
+  typedefs/constants and `GL_PACK_IMAGE_HEIGHT`. The shared code now uses the
+  specification values with a local callback signature, and skips the pack-
+  image state that GLES does not expose because readback is deliberately one
+  slice at a time. Replacement Build `33963718837` passes all four lanes; its
+  Ubuntu lane compiles both profiles and passes the extended exact native suite
+  with KHR_debug enabled. A final packed depth/stencil assertion now clears both
+  aspects and reads stencil independently, while direct multisample transfer
+  attempts return unsupported and require the advertised resolve path. Build
+  `33964084454` caught that Ubuntu's GLES headers also omit the core numeric
+  `GL_STENCIL_INDEX` token even though the transfer path can name it. The shared
+  profile constants now supply that specification value locally. Final Build
+  `33964186004` passes package, macOS, Ubuntu, and Windows. The Ubuntu log proves
+  both GL-family native suites, including independent packed-stencil readback,
+  desktop multisample resolve, profile-specific negatives, and zero KHR_debug
+  error callbacks. Support matrix, resources, roadmap, README, and project
+  context now carry the same capability boundary. #60 is ready to close when
+  this PR merges; #61 is the next P0 GL-family slice.
 - `feat/rhi1-gl-resources` starts #60 with a shared 2D texture checkpoint for
   both Linux EGL profiles. The backend now owns immutable uncompressed color
   textures and sampler objects, rejects external and unsupported shapes
