@@ -83,6 +83,7 @@ struct WebGlProbe {
 
 [[nodiscard]] Status submit_webgl2_commands(
     const std::shared_ptr<void>& nativeContext,
+    QueueKind,
     std::span<const detail::NativeCommand> commands,
     std::span<const detail::NativeSemaphorePoint> waits,
     std::span<const detail::NativeSemaphorePoint> signals) {

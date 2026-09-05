@@ -441,6 +441,7 @@ struct Probe {
 
 [[nodiscard]] inline Status submit(
     const std::shared_ptr<void>& nativeContext,
+    QueueKind,
     std::span<const NativeCommand> commands,
     std::span<const NativeSemaphorePoint> waits,
     std::span<const NativeSemaphorePoint> signals) {

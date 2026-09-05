@@ -228,7 +228,7 @@ struct FoundationBackendConfig {
     Status (*resizeSwapchain)(const std::shared_ptr<void>&, Extent2D) = nullptr;
     Status (*presentSwapchain)(const std::shared_ptr<void>&, std::uint32_t,
                                std::span<const NativeSemaphorePoint>) = nullptr;
-    Status (*nativeSubmit)(const std::shared_ptr<void>&,
+    Status (*nativeSubmit)(const std::shared_ptr<void>&, QueueKind,
                            std::span<const NativeCommand>,
                            std::span<const NativeSemaphorePoint>,
                            std::span<const NativeSemaphorePoint>) = nullptr;

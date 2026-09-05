@@ -12,6 +12,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace truffle::rhi {
@@ -44,15 +45,43 @@ struct VulkanContext {
     VkInstance instance = VK_NULL_HANDLE;
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
     VkDevice device = VK_NULL_HANDLE;
-    VkQueue queue = VK_NULL_HANDLE;
-    std::uint32_t queueFamily = 0;
+    std::array<VkQueue, 3> queues{};
+    std::array<std::uint32_t, 3> queueFamilies{
+        VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED,
+        VK_QUEUE_FAMILY_IGNORED};
+    std::array<bool, 3> queueTimestampQueries{};
     VkPhysicalDeviceProperties properties{};
     VkPhysicalDeviceMemoryProperties memoryProperties{};
     bool independentBlend = false;
+    bool timelineSemaphores = false;
+    bool timestampQueries = false;
     VolkInstanceTable instanceTable{};
     VolkDeviceTable deviceTable{};
     std::mutex mutex;
+
+    [[nodiscard]] VkQueue queue(QueueKind kind) const noexcept {
+        return queues[static_cast<std::size_t>(kind)];
+    }
+
+    [[nodiscard]] std::uint32_t queue_family(QueueKind kind) const noexcept {
+        return queueFamilies[static_cast<std::size_t>(kind)];
+    }
 };
+
+[[nodiscard]] std::uint32_t vulkan_unique_queue_families(
+    const VulkanContext& context,
+    std::array<std::uint32_t, 3>& uniqueFamilies) noexcept {
+    std::uint32_t count = 0;
+    for (const auto family : context.queueFamilies) {
+        if (family == VK_QUEUE_FAMILY_IGNORED ||
+            std::find(uniqueFamilies.begin(), uniqueFamilies.begin() + count,
+                      family) != uniqueFamilies.begin() + count) {
+            continue;
+        }
+        uniqueFamilies[count++] = family;
+    }
+    return count;
+}
 
 struct VulkanBufferResource {
     VulkanBufferResource(std::shared_ptr<VulkanContext> contextValue,
@@ -93,6 +122,47 @@ struct VulkanBufferResource {
     bool hostCoherent = false;
     void* mapped = nullptr;
     std::mutex mutex;
+};
+
+struct VulkanSemaphoreResource {
+    VulkanSemaphoreResource(std::shared_ptr<VulkanContext> contextValue,
+                            VkSemaphore semaphoreValue)
+        : context(std::move(contextValue)), semaphore(semaphoreValue) {}
+
+    ~VulkanSemaphoreResource() {
+        if (!context || context->device == VK_NULL_HANDLE ||
+            semaphore == VK_NULL_HANDLE) {
+            return;
+        }
+        std::lock_guard lock{context->mutex};
+        context->deviceTable.vkDestroySemaphore(context->device, semaphore,
+                                                nullptr);
+    }
+
+    std::shared_ptr<VulkanContext> context;
+    VkSemaphore semaphore = VK_NULL_HANDLE;
+};
+
+struct VulkanQueryPoolResource {
+    VulkanQueryPoolResource(std::shared_ptr<VulkanContext> contextValue,
+                            VkQueryPool poolValue, QueryType typeValue,
+                            std::uint32_t countValue)
+        : context(std::move(contextValue)), pool(poolValue), type(typeValue),
+          count(countValue) {}
+
+    ~VulkanQueryPoolResource() {
+        if (!context || context->device == VK_NULL_HANDLE ||
+            pool == VK_NULL_HANDLE) {
+            return;
+        }
+        std::lock_guard lock{context->mutex};
+        context->deviceTable.vkDestroyQueryPool(context->device, pool, nullptr);
+    }
+
+    std::shared_ptr<VulkanContext> context;
+    VkQueryPool pool = VK_NULL_HANDLE;
+    QueryType type = QueryType::timestamp;
+    std::uint32_t count = 0;
 };
 
 struct VulkanShaderResource {
@@ -701,15 +771,20 @@ struct VulkanProbe {
         return Status::failure(StatusCode::invalid_argument,
                                "Vulkan buffer usage is empty");
     }
+    std::array<std::uint32_t, 3> queueFamilies{};
+    const auto queueFamilyCount =
+        vulkan_unique_queue_families(*context, queueFamilies);
     const VkBufferCreateInfo bufferInfo{
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
         .pNext = nullptr,
         .flags = 0,
         .size = static_cast<VkDeviceSize>(desc.size),
         .usage = usage,
-        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-        .queueFamilyIndexCount = 0,
-        .pQueueFamilyIndices = nullptr,
+        .sharingMode = queueFamilyCount > 1 ? VK_SHARING_MODE_CONCURRENT
+                                            : VK_SHARING_MODE_EXCLUSIVE,
+        .queueFamilyIndexCount = queueFamilyCount > 1 ? queueFamilyCount : 0,
+        .pQueueFamilyIndices =
+            queueFamilyCount > 1 ? queueFamilies.data() : nullptr,
     };
 
     VkBuffer buffer = VK_NULL_HANDLE;
@@ -1761,6 +1836,9 @@ struct VulkanRenderPassDepthStencil {
             "the Vulkan adapter does not support the requested texture shape");
     }
 
+    std::array<std::uint32_t, 3> queueFamilies{};
+    const auto queueFamilyCount =
+        vulkan_unique_queue_families(*context, queueFamilies);
     const VkImageCreateInfo imageInfo{
         .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
         .pNext = nullptr,
@@ -1773,9 +1851,11 @@ struct VulkanRenderPassDepthStencil {
         .samples = sampleCount,
         .tiling = tiling,
         .usage = usage,
-        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-        .queueFamilyIndexCount = 0,
-        .pQueueFamilyIndices = nullptr,
+        .sharingMode = queueFamilyCount > 1 ? VK_SHARING_MODE_CONCURRENT
+                                            : VK_SHARING_MODE_EXCLUSIVE,
+        .queueFamilyIndexCount = queueFamilyCount > 1 ? queueFamilyCount : 0,
+        .pQueueFamilyIndices =
+            queueFamilyCount > 1 ? queueFamilies.data() : nullptr,
         .initialLayout = tiling == VK_IMAGE_TILING_LINEAR
                              ? VK_IMAGE_LAYOUT_PREINITIALIZED
                              : VK_IMAGE_LAYOUT_UNDEFINED,
@@ -2248,6 +2328,42 @@ struct VulkanRenderPassDepthStencil {
             }
             case detail::NativeCommandKind::bind_group:
                 continue;
+            case detail::NativeCommandKind::write_timestamp:
+            case detail::NativeCommandKind::begin_occlusion_query:
+            case detail::NativeCommandKind::end_occlusion_query: {
+                const auto pool =
+                    std::static_pointer_cast<VulkanQueryPoolResource>(
+                        command.object);
+                const auto expected =
+                    command.kind == detail::NativeCommandKind::write_timestamp
+                        ? QueryType::timestamp
+                        : QueryType::occlusion;
+                if (!pool || pool->pool == VK_NULL_HANDLE ||
+                    pool->type != expected ||
+                    command.arguments[0] >= pool->count) {
+                    return Status::failure(StatusCode::invalid_argument,
+                                           "Vulkan query command is invalid");
+                }
+                continue;
+            }
+            case detail::NativeCommandKind::resolve_queries: {
+                const auto pool =
+                    std::static_pointer_cast<VulkanQueryPoolResource>(
+                        command.object);
+                const auto destination =
+                    std::static_pointer_cast<VulkanBufferResource>(
+                        command.secondaryObject);
+                if (!pool || pool->pool == VK_NULL_HANDLE || !destination ||
+                    destination->buffer == VK_NULL_HANDLE ||
+                    command.arguments[0] >= pool->count ||
+                    command.arguments[1] >
+                        pool->count - command.arguments[0]) {
+                    return Status::failure(
+                        StatusCode::invalid_argument,
+                        "Vulkan query resolve command is invalid");
+                }
+                continue;
+            }
             default:
                 return Status::failure(
                     StatusCode::unsupported,
@@ -2420,6 +2536,9 @@ struct VulkanRenderPassDepthStencil {
     case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
         return VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
                VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    case VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL:
+        return VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+               VK_ACCESS_SHADER_READ_BIT;
     case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
         return VK_ACCESS_SHADER_READ_BIT;
     case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
@@ -2429,6 +2548,151 @@ struct VulkanRenderPassDepthStencil {
     default:
         return 0;
     }
+}
+
+[[nodiscard]] VkPipelineStageFlags vulkan_pipeline_stages(
+    PipelineStage stages) noexcept {
+    VkPipelineStageFlags native = 0;
+    if (has_pipeline_stage(stages, PipelineStage::top)) {
+        native |= VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    }
+    if (has_pipeline_stage(stages, PipelineStage::draw_indirect)) {
+        native |= VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
+    }
+    if (has_pipeline_stage(stages, PipelineStage::vertex_input)) {
+        native |= VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
+    }
+    if (has_pipeline_stage(stages, PipelineStage::vertex_shader)) {
+        native |= VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
+    }
+    if (has_pipeline_stage(stages, PipelineStage::fragment_shader)) {
+        native |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    }
+    if (has_pipeline_stage(stages, PipelineStage::early_fragment_tests)) {
+        native |= VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    }
+    if (has_pipeline_stage(stages, PipelineStage::late_fragment_tests)) {
+        native |= VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+    }
+    if (has_pipeline_stage(stages, PipelineStage::color_attachment_output)) {
+        native |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    }
+    if (has_pipeline_stage(stages, PipelineStage::compute_shader)) {
+        native |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+    }
+    if (has_pipeline_stage(stages, PipelineStage::copy)) {
+        native |= VK_PIPELINE_STAGE_TRANSFER_BIT;
+    }
+    if (has_pipeline_stage(stages, PipelineStage::bottom)) {
+        native |= VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+    }
+    if (has_pipeline_stage(stages, PipelineStage::host)) {
+        native |= VK_PIPELINE_STAGE_HOST_BIT;
+    }
+    return native != 0 ? native : VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+}
+
+[[nodiscard]] VkPipelineStageFlagBits vulkan_timestamp_stage(
+    PipelineStage stages) noexcept {
+    const auto native = vulkan_pipeline_stages(stages);
+    constexpr std::array<VkPipelineStageFlagBits, 12> ordered{
+        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+        VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT,
+        VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
+        VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
+        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+        VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+        VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+        VK_PIPELINE_STAGE_HOST_BIT,
+    };
+    for (const auto stage : ordered) {
+        if ((native & stage) != 0) {
+            return stage;
+        }
+    }
+    return VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+}
+
+[[nodiscard]] VkAccessFlags vulkan_access(Access access) noexcept {
+    VkAccessFlags native = 0;
+    if (has_access(access, Access::indirect_read)) {
+        native |= VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
+    }
+    if (has_access(access, Access::index_read)) {
+        native |= VK_ACCESS_INDEX_READ_BIT;
+    }
+    if (has_access(access, Access::vertex_attribute_read)) {
+        native |= VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+    }
+    if (has_access(access, Access::uniform_read)) {
+        native |= VK_ACCESS_UNIFORM_READ_BIT;
+    }
+    if (has_access(access, Access::shader_read)) {
+        native |= VK_ACCESS_SHADER_READ_BIT;
+    }
+    if (has_access(access, Access::shader_write)) {
+        native |= VK_ACCESS_SHADER_WRITE_BIT;
+    }
+    if (has_access(access, Access::color_attachment_read)) {
+        native |= VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+    }
+    if (has_access(access, Access::color_attachment_write)) {
+        native |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    }
+    if (has_access(access, Access::depth_stencil_read)) {
+        native |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+    }
+    if (has_access(access, Access::depth_stencil_write)) {
+        native |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    }
+    if (has_access(access, Access::transfer_read)) {
+        native |= VK_ACCESS_TRANSFER_READ_BIT;
+    }
+    if (has_access(access, Access::transfer_write)) {
+        native |= VK_ACCESS_TRANSFER_WRITE_BIT;
+    }
+    if (has_access(access, Access::host_read)) {
+        native |= VK_ACCESS_HOST_READ_BIT;
+    }
+    if (has_access(access, Access::host_write)) {
+        native |= VK_ACCESS_HOST_WRITE_BIT;
+    }
+    if (has_access(access, Access::memory_read)) {
+        native |= VK_ACCESS_MEMORY_READ_BIT;
+    }
+    if (has_access(access, Access::memory_write)) {
+        native |= VK_ACCESS_MEMORY_WRITE_BIT;
+    }
+    return native;
+}
+
+[[nodiscard]] constexpr VkImageLayout vulkan_texture_layout(
+    TextureLayout layout) noexcept {
+    switch (layout) {
+    case TextureLayout::undefined:
+        return VK_IMAGE_LAYOUT_UNDEFINED;
+    case TextureLayout::general:
+        return VK_IMAGE_LAYOUT_GENERAL;
+    case TextureLayout::color_attachment:
+        return VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    case TextureLayout::depth_stencil_attachment:
+        return VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    case TextureLayout::depth_stencil_read_only:
+        return VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+    case TextureLayout::shader_read_only:
+        return VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    case TextureLayout::transfer_source:
+        return VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    case TextureLayout::transfer_destination:
+        return VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    case TextureLayout::present:
+        return VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    }
+    return VK_IMAGE_LAYOUT_GENERAL;
 }
 
 [[nodiscard]] VkPipelineStageFlags vulkan_layout_stage(
@@ -2442,6 +2706,7 @@ struct VulkanRenderPassDepthStencil {
     case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
         return VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
     case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+    case VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL:
         return VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
                VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
     case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
@@ -2488,6 +2753,94 @@ void transition_vulkan_texture(VulkanContext& context,
         commandBuffer, sourceStage, vulkan_layout_stage(newLayout), 0, 0,
         nullptr, 0, nullptr, 1, &barrier);
     oldLayout = newLayout;
+}
+
+[[nodiscard]] Status record_vulkan_barriers(
+    VulkanContext& context, VkCommandBuffer commandBuffer,
+    const detail::NativeCommand& command) {
+    for (const auto& barrier : command.bufferBarriers) {
+        const auto buffer =
+            std::static_pointer_cast<VulkanBufferResource>(barrier.buffer);
+        if (!buffer || buffer->buffer == VK_NULL_HANDLE) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Vulkan buffer barrier resource is invalid");
+        }
+        const VkBufferMemoryBarrier native{
+            .sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
+            .pNext = nullptr,
+            .srcAccessMask = vulkan_access(barrier.sourceAccess),
+            .dstAccessMask = vulkan_access(barrier.destinationAccess),
+            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+            .buffer = buffer->buffer,
+            .offset = static_cast<VkDeviceSize>(barrier.offset),
+            .size = barrier.size == whole_size
+                        ? VK_WHOLE_SIZE
+                        : static_cast<VkDeviceSize>(barrier.size),
+        };
+        context.deviceTable.vkCmdPipelineBarrier(
+            commandBuffer, vulkan_pipeline_stages(barrier.sourceStages),
+            vulkan_pipeline_stages(barrier.destinationStages), 0, 0, nullptr,
+            1, &native, 0, nullptr);
+    }
+    for (const auto& barrier : command.textureBarriers) {
+        const auto texture =
+            std::static_pointer_cast<VulkanTextureResource>(barrier.texture);
+        if (!texture || texture->image == VK_NULL_HANDLE) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Vulkan texture barrier resource is invalid");
+        }
+        std::lock_guard textureLock{texture->mutex};
+        const auto newLayout = vulkan_texture_layout(barrier.newLayout);
+        for (std::uint32_t layer = 0;
+             layer < barrier.range.arrayLayerCount; ++layer) {
+            for (std::uint32_t mip = 0; mip < barrier.range.mipLevelCount;
+                 ++mip) {
+                const auto mipLevel = barrier.range.baseMipLevel + mip;
+                const auto arrayLayer = barrier.range.baseArrayLayer + layer;
+                auto& currentLayout = texture->layouts[texture->layout_index(
+                    mipLevel, arrayLayer)];
+                const VkImageMemoryBarrier native{
+                    .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                    .pNext = nullptr,
+                    .srcAccessMask = vulkan_access(barrier.sourceAccess),
+                    .dstAccessMask = vulkan_access(barrier.destinationAccess),
+                    .oldLayout = currentLayout,
+                    .newLayout = newLayout,
+                    .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                    .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                    .image = texture->image,
+                    .subresourceRange = {
+                        .aspectMask = vulkan_aspect(barrier.range.aspects),
+                        .baseMipLevel = mipLevel,
+                        .levelCount = 1,
+                        .baseArrayLayer = arrayLayer,
+                        .layerCount = 1,
+                    },
+                };
+                context.deviceTable.vkCmdPipelineBarrier(
+                    commandBuffer,
+                    vulkan_pipeline_stages(barrier.sourceStages),
+                    vulkan_pipeline_stages(barrier.destinationStages), 0, 0,
+                    nullptr, 0, nullptr, 1, &native);
+                currentLayout = newLayout;
+            }
+        }
+    }
+    if (!command.aliasingBarriers.empty()) {
+        const VkMemoryBarrier native{
+            .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
+            .pNext = nullptr,
+            .srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_MEMORY_READ_BIT |
+                             VK_ACCESS_MEMORY_WRITE_BIT,
+        };
+        context.deviceTable.vkCmdPipelineBarrier(
+            commandBuffer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 1, &native, 0, nullptr, 0,
+            nullptr);
+    }
+    return Status::success();
 }
 
 struct VulkanSubmissionResources {
@@ -2988,10 +3341,36 @@ void prepare_vulkan_binding_images(VulkanContext& context,
                 }
             }
         };
+    std::vector<std::pair<VkQueryPool, std::uint32_t>> resetQueries;
+    for (const auto& command : commands) {
+        if (command.kind != detail::NativeCommandKind::write_timestamp &&
+            command.kind != detail::NativeCommandKind::begin_occlusion_query) {
+            continue;
+        }
+        const auto pool =
+            std::static_pointer_cast<VulkanQueryPoolResource>(command.object);
+        if (!pool || pool->pool == VK_NULL_HANDLE) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Vulkan query pool is invalid");
+        }
+        const auto query = static_cast<std::uint32_t>(command.arguments[0]);
+        const auto key = std::pair{pool->pool, query};
+        if (std::find(resetQueries.begin(), resetQueries.end(), key) ==
+            resetQueries.end()) {
+            context.deviceTable.vkCmdResetQueryPool(commandBuffer, pool->pool,
+                                                    query, 1);
+            resetQueries.push_back(key);
+        }
+    }
     for (std::size_t commandIndex = 0; commandIndex < commands.size();
          ++commandIndex) {
         const auto& command = commands[commandIndex];
         if (command.kind == detail::NativeCommandKind::barrier) {
+            if (auto status =
+                    record_vulkan_barriers(context, commandBuffer, command);
+                !status.ok()) {
+                return status;
+            }
             continue;
         }
         if (command.kind != detail::NativeCommandKind::transfer) {
@@ -3221,6 +3600,74 @@ void prepare_vulkan_binding_images(VulkanContext& context,
                     commandBuffer, buffer->buffer,
                     static_cast<VkDeviceSize>(command.arguments[0]));
                 recordedComputeWrite = true;
+                break;
+            }
+            case detail::NativeCommandKind::write_timestamp: {
+                const auto pool =
+                    std::static_pointer_cast<VulkanQueryPoolResource>(
+                        command.object);
+                if (!pool || pool->pool == VK_NULL_HANDLE ||
+                    pool->type != QueryType::timestamp) {
+                    return Status::failure(
+                        StatusCode::invalid_argument,
+                        "Vulkan timestamp query pool is invalid");
+                }
+                context.deviceTable.vkCmdWriteTimestamp(
+                    commandBuffer,
+                    vulkan_timestamp_stage(static_cast<PipelineStage>(
+                        command.arguments[1])),
+                    pool->pool,
+                    static_cast<std::uint32_t>(command.arguments[0]));
+                break;
+            }
+            case detail::NativeCommandKind::begin_occlusion_query:
+            case detail::NativeCommandKind::end_occlusion_query: {
+                const auto pool =
+                    std::static_pointer_cast<VulkanQueryPoolResource>(
+                        command.object);
+                if (!pool || pool->pool == VK_NULL_HANDLE ||
+                    pool->type != QueryType::occlusion) {
+                    return Status::failure(
+                        StatusCode::invalid_argument,
+                        "Vulkan occlusion query pool is invalid");
+                }
+                const auto query =
+                    static_cast<std::uint32_t>(command.arguments[0]);
+                if (command.kind ==
+                    detail::NativeCommandKind::begin_occlusion_query) {
+                    context.deviceTable.vkCmdBeginQuery(commandBuffer,
+                                                        pool->pool, query, 0);
+                } else {
+                    context.deviceTable.vkCmdEndQuery(commandBuffer,
+                                                      pool->pool, query);
+                }
+                break;
+            }
+            case detail::NativeCommandKind::resolve_queries: {
+                const auto pool =
+                    std::static_pointer_cast<VulkanQueryPoolResource>(
+                        command.object);
+                const auto destination =
+                    std::static_pointer_cast<VulkanBufferResource>(
+                        command.secondaryObject);
+                if (!pool || pool->pool == VK_NULL_HANDLE || !destination ||
+                    destination->buffer == VK_NULL_HANDLE) {
+                    return Status::failure(
+                        StatusCode::invalid_argument,
+                        "Vulkan query resolve resources are invalid");
+                }
+                context.deviceTable.vkCmdCopyQueryPoolResults(
+                    commandBuffer, pool->pool,
+                    static_cast<std::uint32_t>(command.arguments[0]),
+                    static_cast<std::uint32_t>(command.arguments[1]),
+                    destination->buffer,
+                    static_cast<VkDeviceSize>(command.arguments[2]),
+                    sizeof(std::uint64_t),
+                    VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
+                memory_barrier(VK_PIPELINE_STAGE_TRANSFER_BIT,
+                               VK_ACCESS_TRANSFER_WRITE_BIT,
+                               VK_PIPELINE_STAGE_HOST_BIT,
+                               VK_ACCESS_HOST_READ_BIT);
                 break;
             }
             default:
@@ -3578,13 +4025,22 @@ void prepare_vulkan_binding_images(VulkanContext& context,
 }
 
 [[nodiscard]] Status submit_vulkan_command_buffer(
-    VulkanContext& context, std::span<const detail::NativeCommand> commands) {
+    VulkanContext& context, QueueKind queueKind,
+    std::span<const detail::NativeCommand> commands,
+    std::span<const detail::NativeSemaphorePoint> waits,
+    std::span<const detail::NativeSemaphorePoint> signals) {
     if (auto status = validate_vulkan_commands(context, commands); !status.ok()) {
         return status;
     }
     VkCommandPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    poolInfo.queueFamilyIndex = context.queueFamily;
+    const auto queueFamily = context.queue_family(queueKind);
+    const auto queue = context.queue(queueKind);
+    if (queueFamily == VK_QUEUE_FAMILY_IGNORED || queue == VK_NULL_HANDLE) {
+        return Status::failure(StatusCode::unsupported,
+                               "the requested Vulkan queue is unavailable");
+    }
+    poolInfo.queueFamilyIndex = queueFamily;
     VkCommandPool pool = VK_NULL_HANDLE;
     auto result = context.deviceTable.vkCreateCommandPool(
         context.device, &poolInfo, nullptr, &pool);
@@ -3637,15 +4093,86 @@ void prepare_vulkan_binding_images(VulkanContext& context,
             result = context.deviceTable.vkEndCommandBuffer(commandBuffer);
         }
         if (result == VK_SUCCESS) {
+            std::vector<VkSemaphore> waitSemaphores;
+            std::vector<std::uint64_t> waitValues;
+            std::vector<VkPipelineStageFlags> waitStages;
+            std::vector<VkSemaphore> signalSemaphores;
+            std::vector<std::uint64_t> signalValues;
+            waitSemaphores.reserve(waits.size());
+            waitValues.reserve(waits.size());
+            waitStages.reserve(waits.size());
+            signalSemaphores.reserve(signals.size());
+            signalValues.reserve(signals.size());
+            for (const auto& wait : waits) {
+                const auto semaphore =
+                    std::static_pointer_cast<VulkanSemaphoreResource>(
+                        wait.semaphore);
+                if (!semaphore || semaphore->semaphore == VK_NULL_HANDLE) {
+                    destroy_vulkan_submission_resources(
+                        context, submissionResources);
+                    if (descriptorPool != VK_NULL_HANDLE) {
+                        context.deviceTable.vkDestroyDescriptorPool(
+                            context.device, descriptorPool, nullptr);
+                    }
+                    context.deviceTable.vkDestroyCommandPool(context.device,
+                                                              pool, nullptr);
+                    return Status::failure(
+                        StatusCode::invalid_argument,
+                        "Vulkan wait semaphore is invalid");
+                }
+                waitSemaphores.push_back(semaphore->semaphore);
+                waitValues.push_back(wait.value);
+                waitStages.push_back(vulkan_pipeline_stages(wait.stages));
+            }
+            for (const auto& signal : signals) {
+                const auto semaphore =
+                    std::static_pointer_cast<VulkanSemaphoreResource>(
+                        signal.semaphore);
+                if (!semaphore || semaphore->semaphore == VK_NULL_HANDLE) {
+                    destroy_vulkan_submission_resources(
+                        context, submissionResources);
+                    if (descriptorPool != VK_NULL_HANDLE) {
+                        context.deviceTable.vkDestroyDescriptorPool(
+                            context.device, descriptorPool, nullptr);
+                    }
+                    context.deviceTable.vkDestroyCommandPool(context.device,
+                                                              pool, nullptr);
+                    return Status::failure(
+                        StatusCode::invalid_argument,
+                        "Vulkan signal semaphore is invalid");
+                }
+                signalSemaphores.push_back(semaphore->semaphore);
+                signalValues.push_back(signal.value);
+            }
+            const VkTimelineSemaphoreSubmitInfo timelineInfo{
+                .sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
+                .pNext = nullptr,
+                .waitSemaphoreValueCount =
+                    static_cast<std::uint32_t>(waitValues.size()),
+                .pWaitSemaphoreValues = waitValues.data(),
+                .signalSemaphoreValueCount =
+                    static_cast<std::uint32_t>(signalValues.size()),
+                .pSignalSemaphoreValues = signalValues.data(),
+            };
             VkSubmitInfo submitInfo{};
             submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+            submitInfo.pNext = waits.empty() && signals.empty()
+                                   ? nullptr
+                                   : &timelineInfo;
+            submitInfo.waitSemaphoreCount =
+                static_cast<std::uint32_t>(waitSemaphores.size());
+            submitInfo.pWaitSemaphores = waitSemaphores.data();
+            submitInfo.pWaitDstStageMask = waitStages.data();
             submitInfo.commandBufferCount = 1;
             submitInfo.pCommandBuffers = &commandBuffer;
+            submitInfo.signalSemaphoreCount =
+                static_cast<std::uint32_t>(signalSemaphores.size());
+            submitInfo.pSignalSemaphores = signalSemaphores.data();
             result = context.deviceTable.vkQueueSubmit(
-                context.queue, 1, &submitInfo, VK_NULL_HANDLE);
+                queue, 1, &submitInfo, VK_NULL_HANDLE);
         }
         if (result == VK_SUCCESS) {
-            result = context.deviceTable.vkQueueWaitIdle(context.queue);
+            result = context.deviceTable.vkQueueWaitIdle(queue);
         }
         if (descriptorPool != VK_NULL_HANDLE) {
             context.deviceTable.vkDestroyDescriptorPool(
@@ -3698,7 +4225,7 @@ void prepare_vulkan_binding_images(VulkanContext& context,
     const TextureSubresource& subresource, bool write) {
     VkCommandPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    poolInfo.queueFamilyIndex = context.queueFamily;
+    poolInfo.queueFamilyIndex = context.queue_family(QueueKind::graphics);
     VkCommandPool pool = VK_NULL_HANDLE;
     auto result = context.deviceTable.vkCreateCommandPool(
         context.device, &poolInfo, nullptr, &pool);
@@ -3762,11 +4289,13 @@ void prepare_vulkan_binding_images(VulkanContext& context,
             .signalSemaphoreCount = 0,
             .pSignalSemaphores = nullptr,
         };
-        result = context.deviceTable.vkQueueSubmit(context.queue, 1, &submitInfo,
-                                                   VK_NULL_HANDLE);
+        result = context.deviceTable.vkQueueSubmit(
+            context.queue(QueueKind::graphics), 1, &submitInfo,
+            VK_NULL_HANDLE);
     }
     if (result == VK_SUCCESS) {
-        result = context.deviceTable.vkQueueWaitIdle(context.queue);
+        result = context.deviceTable.vkQueueWaitIdle(
+            context.queue(QueueKind::graphics));
     }
     if (result == VK_SUCCESS) {
         std::lock_guard textureLock{texture.mutex};
@@ -3968,6 +4497,86 @@ void prepare_vulkan_binding_images(VulkanContext& context,
                                              data.data(), data.size(), false);
 }
 
+[[nodiscard]] Result<std::shared_ptr<void>> create_vulkan_semaphore(
+    const std::shared_ptr<void>& nativeContext, const SemaphoreDesc& desc) {
+    const auto context = std::static_pointer_cast<VulkanContext>(nativeContext);
+    if (!context || context->device == VK_NULL_HANDLE) {
+        return Status::failure(StatusCode::device_lost,
+                               "the Vulkan native context is unavailable");
+    }
+    if (!context->timelineSemaphores) {
+        return Status::failure(
+            StatusCode::unsupported,
+            "Vulkan timeline semaphores are unavailable on this adapter");
+    }
+    const VkSemaphoreTypeCreateInfo typeInfo{
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO,
+        .pNext = nullptr,
+        .semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE,
+        .initialValue = desc.initialValue,
+    };
+    const VkSemaphoreCreateInfo createInfo{
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+        .pNext = &typeInfo,
+        .flags = 0,
+    };
+    VkSemaphore semaphore = VK_NULL_HANDLE;
+    std::lock_guard lock{context->mutex};
+    const auto result = context->deviceTable.vkCreateSemaphore(
+        context->device, &createInfo, nullptr, &semaphore);
+    if (result != VK_SUCCESS) {
+        return vulkan_failure(StatusCode::backend_error,
+                              "Vulkan timeline semaphore creation failed",
+                              result);
+    }
+    return std::static_pointer_cast<void>(
+        std::make_shared<VulkanSemaphoreResource>(context, semaphore));
+}
+
+[[nodiscard]] Result<std::shared_ptr<void>> create_vulkan_query_pool(
+    const std::shared_ptr<void>& nativeContext, const QueryPoolDesc& desc) {
+    const auto context = std::static_pointer_cast<VulkanContext>(nativeContext);
+    if (!context || context->device == VK_NULL_HANDLE) {
+        return Status::failure(StatusCode::device_lost,
+                               "the Vulkan native context is unavailable");
+    }
+    VkQueryType nativeType = VK_QUERY_TYPE_TIMESTAMP;
+    switch (desc.type) {
+    case QueryType::timestamp:
+        if (!context->timestampQueries) {
+            return Status::failure(
+                StatusCode::unsupported,
+                "Vulkan timestamp queries are unavailable on this queue");
+        }
+        break;
+    case QueryType::occlusion:
+        nativeType = VK_QUERY_TYPE_OCCLUSION;
+        break;
+    case QueryType::pipeline_statistics:
+        return Status::failure(
+            StatusCode::unsupported,
+            "Vulkan pipeline-statistics queries are not implemented");
+    }
+    const VkQueryPoolCreateInfo createInfo{
+        .sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .queryType = nativeType,
+        .queryCount = desc.count,
+        .pipelineStatistics = 0,
+    };
+    VkQueryPool pool = VK_NULL_HANDLE;
+    std::lock_guard lock{context->mutex};
+    const auto result = context->deviceTable.vkCreateQueryPool(
+        context->device, &createInfo, nullptr, &pool);
+    if (result != VK_SUCCESS) {
+        return vulkan_failure(StatusCode::backend_error,
+                              "Vulkan query-pool creation failed", result);
+    }
+    return std::static_pointer_cast<void>(std::make_shared<VulkanQueryPoolResource>(
+        context, pool, desc.type, desc.count));
+}
+
 [[nodiscard]] Result<VulkanProbe> initialize_vulkan(const InstanceDesc& desc) {
     const auto loaderResult = volkInitialize();
     if (loaderResult != VK_SUCCESS) {
@@ -4078,18 +4687,49 @@ void prepare_vulkan_binding_images(VulkanContext& context,
         std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
         context->instanceTable.vkGetPhysicalDeviceQueueFamilyProperties(
             physicalDevice, &queueFamilyCount, queueFamilies.data());
-        const auto graphics = std::find_if(
-            queueFamilies.begin(), queueFamilies.end(),
-            [](const VkQueueFamilyProperties& family) {
-                return family.queueCount != 0 &&
-                       (family.queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0;
-            });
-        if (graphics == queueFamilies.end()) {
+        const auto find_family = [&](VkQueueFlags required,
+                                     VkQueueFlags excluded) {
+            for (std::uint32_t index = 0; index < queueFamilyCount; ++index) {
+                const auto& family = queueFamilies[index];
+                if (family.queueCount != 0 &&
+                    (family.queueFlags & required) == required &&
+                    (family.queueFlags & excluded) == 0) {
+                    return index;
+                }
+            }
+            return VK_QUEUE_FAMILY_IGNORED;
+        };
+        const auto graphics = find_family(VK_QUEUE_GRAPHICS_BIT, 0);
+        if (graphics == VK_QUEUE_FAMILY_IGNORED) {
             continue;
         }
+        auto compute = find_family(VK_QUEUE_COMPUTE_BIT,
+                                   VK_QUEUE_GRAPHICS_BIT);
+        if (compute == VK_QUEUE_FAMILY_IGNORED) {
+            compute = find_family(VK_QUEUE_COMPUTE_BIT, 0);
+        }
+        auto transfer = find_family(
+            VK_QUEUE_TRANSFER_BIT,
+            VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT);
+        if (transfer == VK_QUEUE_FAMILY_IGNORED) {
+            transfer = find_family(VK_QUEUE_TRANSFER_BIT, 0);
+        }
         context->physicalDevice = physicalDevice;
-        context->queueFamily = static_cast<std::uint32_t>(
-            std::distance(queueFamilies.begin(), graphics));
+        context->queueFamilies[static_cast<std::size_t>(QueueKind::graphics)] =
+            graphics;
+        context->queueFamilies[static_cast<std::size_t>(QueueKind::compute)] =
+            compute;
+        context->queueFamilies[static_cast<std::size_t>(QueueKind::transfer)] =
+            transfer;
+        for (std::size_t index = 0; index < context->queueFamilies.size();
+             ++index) {
+            const auto family = context->queueFamilies[index];
+            context->queueTimestampQueries[index] =
+                family != VK_QUEUE_FAMILY_IGNORED &&
+                queueFamilies[family].timestampValidBits != 0;
+        }
+        context->timestampQueries = context->queueTimestampQueries[
+            static_cast<std::size_t>(QueueKind::graphics)];
         foundQueue = true;
         break;
     }
@@ -4098,9 +4738,21 @@ void prepare_vulkan_binding_images(VulkanContext& context,
                                "Vulkan reported no graphics queue family");
     }
 
-    VkPhysicalDeviceFeatures availableFeatures{};
-    context->instanceTable.vkGetPhysicalDeviceFeatures(
-        context->physicalDevice, &availableFeatures);
+    context->instanceTable.vkGetPhysicalDeviceProperties(
+        context->physicalDevice, &context->properties);
+    VkPhysicalDeviceTimelineSemaphoreFeatures timelineFeatures{
+        .sType =
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES,
+        .pNext = nullptr,
+        .timelineSemaphore = VK_FALSE,
+    };
+    VkPhysicalDeviceFeatures2 availableFeatures2{
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+        .pNext = &timelineFeatures,
+    };
+    context->instanceTable.vkGetPhysicalDeviceFeatures2(
+        context->physicalDevice, &availableFeatures2);
+    const auto& availableFeatures = availableFeatures2.features;
     VkPhysicalDeviceFeatures enabledFeatures{};
     enabledFeatures.textureCompressionBC =
         availableFeatures.textureCompressionBC;
@@ -4108,15 +4760,28 @@ void prepare_vulkan_binding_images(VulkanContext& context,
     context->independentBlend = availableFeatures.independentBlend;
 
     constexpr float queuePriority = 1.0F;
-    const VkDeviceQueueCreateInfo queueInfo{
-        .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-        .pNext = nullptr,
-        .flags = 0,
-        .queueFamilyIndex = context->queueFamily,
-        .queueCount = 1,
-        .pQueuePriorities = &queuePriority,
-    };
+    std::vector<std::uint32_t> uniqueQueueFamilies;
+    for (const auto family : context->queueFamilies) {
+        if (family != VK_QUEUE_FAMILY_IGNORED &&
+            std::find(uniqueQueueFamilies.begin(), uniqueQueueFamilies.end(),
+                      family) == uniqueQueueFamilies.end()) {
+            uniqueQueueFamilies.push_back(family);
+        }
+    }
+    std::vector<VkDeviceQueueCreateInfo> queueInfos;
+    queueInfos.reserve(uniqueQueueFamilies.size());
+    for (const auto family : uniqueQueueFamilies) {
+        queueInfos.push_back({
+            .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .queueFamilyIndex = family,
+            .queueCount = 1,
+            .pQueuePriorities = &queuePriority,
+        });
+    }
     std::vector<const char*> deviceExtensions;
+    bool timelineExtension = false;
     std::uint32_t deviceExtensionCount = 0;
     if (context->instanceTable.vkEnumerateDeviceExtensionProperties(
             context->physicalDevice, nullptr, &deviceExtensionCount, nullptr) ==
@@ -4138,14 +4803,38 @@ void prepare_vulkan_binding_images(VulkanContext& context,
             if (portability != availableDeviceExtensions.end()) {
                 deviceExtensions.push_back(portability_subset_extension);
             }
+            const auto timeline = std::find_if(
+                availableDeviceExtensions.begin(),
+                availableDeviceExtensions.end(),
+                [](const VkExtensionProperties& extension) {
+                    return std::strcmp(
+                               extension.extensionName,
+                               VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME) == 0;
+                });
+            timelineExtension = timeline != availableDeviceExtensions.end();
         }
     }
+    const bool timelineCore =
+        context->properties.apiVersion >= VK_API_VERSION_1_2;
+    context->timelineSemaphores =
+        timelineFeatures.timelineSemaphore == VK_TRUE &&
+        (timelineCore || timelineExtension);
+    if (context->timelineSemaphores && !timelineCore) {
+        deviceExtensions.push_back(VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME);
+    }
+    VkPhysicalDeviceTimelineSemaphoreFeatures enabledTimeline{
+        .sType =
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES,
+        .pNext = nullptr,
+        .timelineSemaphore = context->timelineSemaphores ? VK_TRUE : VK_FALSE,
+    };
     const VkDeviceCreateInfo deviceInfo{
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-        .pNext = nullptr,
+        .pNext = context->timelineSemaphores ? &enabledTimeline : nullptr,
         .flags = 0,
-        .queueCreateInfoCount = 1,
-        .pQueueCreateInfos = &queueInfo,
+        .queueCreateInfoCount =
+            static_cast<std::uint32_t>(queueInfos.size()),
+        .pQueueCreateInfos = queueInfos.data(),
         .enabledLayerCount = 0,
         .ppEnabledLayerNames = nullptr,
         .enabledExtensionCount =
@@ -4160,15 +4849,21 @@ void prepare_vulkan_binding_images(VulkanContext& context,
                               "Vulkan logical-device creation failed", result);
     }
     volkLoadDeviceTable(&context->deviceTable, context->device);
-    context->deviceTable.vkGetDeviceQueue(context->device, context->queueFamily,
-                                          0, &context->queue);
+    for (std::size_t index = 0; index < context->queueFamilies.size();
+         ++index) {
+        const auto family = context->queueFamilies[index];
+        if (family != VK_QUEUE_FAMILY_IGNORED) {
+            context->deviceTable.vkGetDeviceQueue(context->device, family, 0,
+                                                  &context->queues[index]);
+        }
+    }
 
-    if (auto status = submit_vulkan_command_buffer(*context, {}); !status.ok()) {
+    if (auto status = submit_vulkan_command_buffer(
+            *context, QueueKind::graphics, {}, {}, {});
+        !status.ok()) {
         return status;
     }
 
-    context->instanceTable.vkGetPhysicalDeviceProperties(
-        context->physicalDevice, &context->properties);
     context->instanceTable.vkGetPhysicalDeviceMemoryProperties(
         context->physicalDevice, &context->memoryProperties);
     VkDeviceSize deviceLocalBudget = 0;
@@ -4205,22 +4900,35 @@ void prepare_vulkan_binding_images(VulkanContext& context,
 
 [[nodiscard]] Status submit_vulkan_commands(
     const std::shared_ptr<void>& nativeContext,
+    QueueKind queueKind,
     std::span<const detail::NativeCommand> commands,
     std::span<const detail::NativeSemaphorePoint> waits,
     std::span<const detail::NativeSemaphorePoint> signals) {
-    if (!waits.empty() || !signals.empty()) {
-        return Status::failure(
-            StatusCode::unsupported,
-            "Vulkan timeline semaphore submission is not implemented");
-    }
     const auto context = std::static_pointer_cast<VulkanContext>(nativeContext);
     if (!context || context->device == VK_NULL_HANDLE ||
-        context->queue == VK_NULL_HANDLE) {
+        context->queue(queueKind) == VK_NULL_HANDLE) {
         return Status::failure(StatusCode::device_lost,
                                "the Vulkan native context is unavailable");
     }
+    if (!context->queueTimestampQueries[static_cast<std::size_t>(queueKind)] &&
+        std::any_of(commands.begin(), commands.end(),
+                    [](const detail::NativeCommand& command) {
+                        return command.kind ==
+                               detail::NativeCommandKind::write_timestamp;
+                    })) {
+        return Status::failure(
+            StatusCode::unsupported,
+            "the requested Vulkan queue does not support timestamp queries");
+    }
     std::lock_guard lock{context->mutex};
-    return submit_vulkan_command_buffer(*context, commands);
+    if ((!waits.empty() || !signals.empty()) &&
+        !context->timelineSemaphores) {
+        return Status::failure(
+            StatusCode::unsupported,
+            "Vulkan timeline semaphores are unavailable on this adapter");
+    }
+    return submit_vulkan_command_buffer(*context, queueKind, commands, waits,
+                                        signals);
 }
 
 } // namespace
@@ -4238,8 +4946,20 @@ Result<Instance> create_vulkan_instance(const InstanceDesc& desc) {
                           ? BackendMaturity::native_smoke
                           : BackendMaturity::source_only;
     config.adapterName = std::move(native.adapterName);
-    config.queueKinds = {QueueKind::graphics, QueueKind::compute};
+    config.queueKinds = {QueueKind::graphics};
+    if (native.context->queue(QueueKind::compute) != VK_NULL_HANDLE) {
+        config.queueKinds.push_back(QueueKind::compute);
+    }
+    if (native.context->queue(QueueKind::transfer) != VK_NULL_HANDLE) {
+        config.queueKinds.push_back(QueueKind::transfer);
+    }
     config.supportedFeatures = {Feature::transfer, Feature::memory_budget};
+    if (native.context->queue(QueueKind::compute) != VK_NULL_HANDLE) {
+        config.supportedFeatures.push_back(Feature::compute);
+    }
+    if (native.context->timestampQueries) {
+        config.supportedFeatures.push_back(Feature::timestamp_queries);
+    }
     config.resourceCapabilities = {
         .bufferViews = true,
         .textureViews = true,
@@ -4310,6 +5030,8 @@ Result<Instance> create_vulkan_instance(const InstanceDesc& desc) {
     config.createShader = &create_vulkan_shader;
     config.createPipeline = &create_vulkan_graphics_pipeline;
     config.createComputePipeline = &create_vulkan_compute_pipeline;
+    config.createSemaphore = &create_vulkan_semaphore;
+    config.createQueryPool = &create_vulkan_query_pool;
     config.nativeSubmit = &submit_vulkan_commands;
     return detail::create_foundation_instance(desc, std::move(config));
 }
