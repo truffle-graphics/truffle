@@ -220,7 +220,8 @@ struct FoundationBackendConfig {
         const std::shared_ptr<void>&, const SemaphoreDesc&) = nullptr;
     Result<std::shared_ptr<void>> (*createQueryPool)(
         const std::shared_ptr<void>&, const QueryPoolDesc&) = nullptr;
-    Result<std::shared_ptr<void>> (*createSurface)(const SurfaceDesc&) = nullptr;
+    Result<std::shared_ptr<void>> (*createSurface)(
+        const std::shared_ptr<void>&, const SurfaceDesc&) = nullptr;
     Result<std::shared_ptr<void>> (*createSwapchain)(
         const std::shared_ptr<void>&, const std::shared_ptr<void>&,
         const SwapchainDesc&) = nullptr;

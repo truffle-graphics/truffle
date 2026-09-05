@@ -86,8 +86,11 @@ if(TRUFFLE_BUILD_BACKEND_VULKAN)
     endif()
     add_test(NAME truffle_vulkan_tests COMMAND truffle_vulkan_tests)
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID)
+        find_library(TRUFFLE_XCB_LIBRARY xcb REQUIRED)
+        target_link_libraries(truffle_vulkan_tests
+                              PRIVATE "${TRUFFLE_XCB_LIBRARY}")
         set_tests_properties(truffle_vulkan_tests PROPERTIES
-                             LABELS "native-smoke;validation")
+                             LABELS "native-smoke;presentation;validation")
     endif()
 endif()
 

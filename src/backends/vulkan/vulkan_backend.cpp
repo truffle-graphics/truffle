@@ -21,9 +21,21 @@ namespace truffle::rhi {
 namespace detail {
 
 std::atomic<bool> gVulkanDeviceLossForTesting{false};
+std::atomic<VulkanAcquireFault> gVulkanAcquireFaultForTesting{
+    VulkanAcquireFault::none};
+std::atomic<VulkanPresentFault> gVulkanPresentFaultForTesting{
+    VulkanPresentFault::none};
 
 void set_vulkan_device_loss_for_testing(bool enabled) noexcept {
     gVulkanDeviceLossForTesting.store(enabled);
+}
+
+void set_vulkan_acquire_fault_for_testing(VulkanAcquireFault fault) noexcept {
+    gVulkanAcquireFaultForTesting.store(fault);
+}
+
+void set_vulkan_present_fault_for_testing(VulkanPresentFault fault) noexcept {
+    gVulkanPresentFaultForTesting.store(fault);
 }
 
 } // namespace detail
@@ -67,6 +79,7 @@ struct VulkanContext {
     bool independentBlend = false;
     bool timelineSemaphores = false;
     bool timestampQueries = false;
+    bool linuxWsi = false;
     VolkInstanceTable instanceTable{};
     VolkDeviceTable deviceTable{};
     std::mutex mutex;
@@ -622,12 +635,13 @@ struct VulkanTextureResource {
                           VkDeviceSize allocationSizeValue,
                           TextureDesc descValue, VulkanFormat formatValue,
                           bool hostVisibleValue, bool hostCoherentValue,
-                          void* mappedValue, VkImageLayout initialLayout)
+                          void* mappedValue, VkImageLayout initialLayout,
+                          bool ownsImageValue = true)
         : context(std::move(contextValue)), image(imageValue),
           memory(memoryValue), allocationSize(allocationSizeValue),
           desc(std::move(descValue)), format(formatValue),
           hostVisible(hostVisibleValue), hostCoherent(hostCoherentValue),
-          mapped(mappedValue),
+          mapped(mappedValue), ownsImage(ownsImageValue),
           layouts(static_cast<std::size_t>(desc.mipLevels) * desc.arrayLayers,
                   initialLayout) {}
 
@@ -641,7 +655,7 @@ struct VulkanTextureResource {
             context->deviceTable.vkUnmapMemory(context->device, memory);
             mapped = nullptr;
         }
-        if (image != VK_NULL_HANDLE) {
+        if (ownsImage && image != VK_NULL_HANDLE) {
             context->deviceTable.vkDestroyImage(context->device, image,
                                                  nullptr);
         }
@@ -664,9 +678,60 @@ struct VulkanTextureResource {
     bool hostVisible = false;
     bool hostCoherent = false;
     void* mapped = nullptr;
+    bool ownsImage = true;
     std::vector<VkImageLayout> layouts;
     std::mutex mutex;
 };
+
+#if defined(__linux__) && !defined(__ANDROID__)
+struct VulkanSurfaceResource {
+    VulkanSurfaceResource(std::shared_ptr<VulkanContext> contextValue,
+                          VkSurfaceKHR surfaceValue)
+        : context(std::move(contextValue)), surface(surfaceValue) {}
+
+    ~VulkanSurfaceResource() {
+        if (context && context->instance != VK_NULL_HANDLE &&
+            surface != VK_NULL_HANDLE) {
+            std::lock_guard lock{context->mutex};
+            context->instanceTable.vkDestroySurfaceKHR(context->instance,
+                                                       surface, nullptr);
+        }
+    }
+
+    std::shared_ptr<VulkanContext> context;
+    VkSurfaceKHR surface = VK_NULL_HANDLE;
+};
+
+struct VulkanSwapchainResource {
+    VulkanSwapchainResource(std::shared_ptr<VulkanContext> contextValue,
+                            std::shared_ptr<VulkanSurfaceResource> surfaceValue,
+                            SwapchainDesc descValue)
+        : context(std::move(contextValue)), surface(std::move(surfaceValue)),
+          desc(std::move(descValue)) {}
+
+    ~VulkanSwapchainResource() {
+        if (context && context->device != VK_NULL_HANDLE &&
+            swapchain != VK_NULL_HANDLE) {
+            std::lock_guard lock{context->mutex};
+            context->deviceTable.vkDeviceWaitIdle(context->device);
+            context->deviceTable.vkDestroySwapchainKHR(context->device,
+                                                       swapchain, nullptr);
+        }
+    }
+
+    std::shared_ptr<VulkanContext> context;
+    std::shared_ptr<VulkanSurfaceResource> surface;
+    SwapchainDesc desc;
+    VkSwapchainKHR swapchain = VK_NULL_HANDLE;
+    VkFormat format = VK_FORMAT_UNDEFINED;
+    VkExtent2D extent{};
+    std::vector<VkImage> images;
+    std::vector<bool> imageInitialized;
+    std::uint32_t acquiredImage = 0;
+    bool acquired = false;
+    std::mutex mutex;
+};
+#endif
 
 struct VulkanTextureViewResource {
     VulkanTextureViewResource(std::shared_ptr<VulkanTextureResource> textureValue,
@@ -2709,6 +2774,17 @@ struct VulkanRenderPassDepthStencil {
     return VK_IMAGE_LAYOUT_GENERAL;
 }
 
+[[nodiscard]] VkImageAspectFlags vulkan_barrier_aspects(
+    const VulkanTextureResource& texture,
+    VkImageAspectFlags requested) noexcept {
+    constexpr auto combined =
+        VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+    return (texture.format.aspects & combined) == combined &&
+                   (requested & combined) != 0
+               ? combined
+               : requested;
+}
+
 [[nodiscard]] VkPipelineStageFlags vulkan_layout_stage(
     VkImageLayout layout) noexcept {
     switch (layout) {
@@ -2755,7 +2831,8 @@ void transition_vulkan_texture(VulkanContext& context,
         .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
         .image = texture.image,
         .subresourceRange = {
-            .aspectMask = vulkan_aspect(subresource.aspect),
+            .aspectMask = vulkan_barrier_aspects(
+                texture, vulkan_aspect(subresource.aspect)),
             .baseMipLevel = subresource.mipLevel,
             .levelCount = 1,
             .baseArrayLayer = subresource.arrayLayer,
@@ -2825,7 +2902,8 @@ void transition_vulkan_texture(VulkanContext& context,
                     .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
                     .image = texture->image,
                     .subresourceRange = {
-                        .aspectMask = vulkan_aspect(barrier.range.aspects),
+                        .aspectMask = vulkan_barrier_aspects(
+                            *texture, vulkan_aspect(barrier.range.aspects)),
                         .baseMipLevel = mipLevel,
                         .levelCount = 1,
                         .baseArrayLayer = arrayLayer,
@@ -4279,7 +4357,8 @@ void prepare_vulkan_binding_images(VulkanContext& context,
             .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
             .image = texture.image,
             .subresourceRange = {
-                .aspectMask = vulkan_aspect(subresource.aspect),
+                .aspectMask = vulkan_barrier_aspects(
+                    texture, vulkan_aspect(subresource.aspect)),
                 .baseMipLevel = subresource.mipLevel,
                 .levelCount = 1,
                 .baseArrayLayer = subresource.arrayLayer,
@@ -4591,6 +4670,651 @@ void prepare_vulkan_binding_images(VulkanContext& context,
         context, pool, desc.type, desc.count));
 }
 
+#if defined(__linux__) && !defined(__ANDROID__)
+[[nodiscard]] Status vulkan_wsi_failure(std::string message, VkResult result) {
+    StatusCode code = StatusCode::backend_error;
+    switch (result) {
+    case VK_TIMEOUT:
+    case VK_NOT_READY:
+        code = StatusCode::timeout;
+        break;
+    case VK_SUBOPTIMAL_KHR:
+        code = StatusCode::suboptimal;
+        break;
+    case VK_ERROR_OUT_OF_DATE_KHR:
+        code = StatusCode::out_of_date;
+        break;
+    case VK_ERROR_SURFACE_LOST_KHR:
+        code = StatusCode::surface_lost;
+        break;
+    case VK_ERROR_DEVICE_LOST:
+        code = StatusCode::device_lost;
+        break;
+    case VK_ERROR_OUT_OF_HOST_MEMORY:
+    case VK_ERROR_OUT_OF_DEVICE_MEMORY:
+        code = StatusCode::out_of_memory;
+        break;
+    default:
+        break;
+    }
+    return vulkan_failure(code, std::move(message), result);
+}
+
+[[nodiscard]] Status vulkan_acquire_fault_status(
+    detail::VulkanAcquireFault fault) {
+    switch (fault) {
+    case detail::VulkanAcquireFault::timeout:
+        return Status::failure(StatusCode::timeout,
+                               "injected Vulkan acquisition timeout");
+    case detail::VulkanAcquireFault::out_of_date:
+        return Status::failure(StatusCode::out_of_date,
+                               "injected Vulkan out-of-date swapchain");
+    case detail::VulkanAcquireFault::surface_lost:
+        return Status::failure(StatusCode::surface_lost,
+                               "injected Vulkan surface loss");
+    case detail::VulkanAcquireFault::device_lost:
+        return Status::failure(StatusCode::device_lost,
+                               "injected Vulkan device loss");
+    case detail::VulkanAcquireFault::out_of_memory:
+        return Status::failure(StatusCode::out_of_memory,
+                               "injected Vulkan acquisition allocation failure");
+    case detail::VulkanAcquireFault::none:
+    case detail::VulkanAcquireFault::suboptimal:
+        return Status::success();
+    }
+    return Status::success();
+}
+
+[[nodiscard]] Status vulkan_present_fault_status(
+    detail::VulkanPresentFault fault) {
+    switch (fault) {
+    case detail::VulkanPresentFault::timeout:
+        return Status::failure(StatusCode::timeout,
+                               "injected Vulkan presentation timeout");
+    case detail::VulkanPresentFault::out_of_date:
+        return Status::failure(StatusCode::out_of_date,
+                               "injected Vulkan out-of-date presentation");
+    case detail::VulkanPresentFault::surface_lost:
+        return Status::failure(StatusCode::surface_lost,
+                               "injected Vulkan presentation surface loss");
+    case detail::VulkanPresentFault::device_lost:
+        return Status::failure(StatusCode::device_lost,
+                               "injected Vulkan presentation device loss");
+    case detail::VulkanPresentFault::out_of_memory:
+        return Status::failure(StatusCode::out_of_memory,
+                               "injected Vulkan presentation allocation failure");
+    case detail::VulkanPresentFault::suboptimal:
+        return Status::failure(StatusCode::suboptimal,
+                               "injected Vulkan suboptimal presentation");
+    case detail::VulkanPresentFault::none:
+        return Status::success();
+    }
+    return Status::success();
+}
+
+[[nodiscard]] VkPresentModeKHR vulkan_present_mode(PresentMode mode) noexcept {
+    switch (mode) {
+    case PresentMode::fifo:
+        return VK_PRESENT_MODE_FIFO_KHR;
+    case PresentMode::mailbox:
+        return VK_PRESENT_MODE_MAILBOX_KHR;
+    case PresentMode::immediate:
+        return VK_PRESENT_MODE_IMMEDIATE_KHR;
+    }
+    return VK_PRESENT_MODE_FIFO_KHR;
+}
+
+[[nodiscard]] VkCompositeAlphaFlagBitsKHR vulkan_composite_alpha(
+    VkCompositeAlphaFlagsKHR supported) noexcept {
+    constexpr std::array candidates{
+        VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+        VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR,
+        VK_COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR,
+        VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR,
+    };
+    for (const auto candidate : candidates) {
+        if ((supported & candidate) != 0) {
+            return candidate;
+        }
+    }
+    return VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+}
+
+[[nodiscard]] Status initialize_vulkan_swapchain_images(
+    VulkanContext& context, std::span<const VkImage> images) {
+    const VkCommandPoolCreateInfo poolInfo{
+        .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
+        .queueFamilyIndex = context.queue_family(QueueKind::graphics),
+    };
+    VkCommandPool pool = VK_NULL_HANDLE;
+    auto result = context.deviceTable.vkCreateCommandPool(
+        context.device, &poolInfo, nullptr, &pool);
+    VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+    if (result == VK_SUCCESS) {
+        const VkCommandBufferAllocateInfo allocationInfo{
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+            .pNext = nullptr,
+            .commandPool = pool,
+            .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+            .commandBufferCount = 1,
+        };
+        result = context.deviceTable.vkAllocateCommandBuffers(
+            context.device, &allocationInfo, &commandBuffer);
+    }
+    if (result == VK_SUCCESS) {
+        const VkCommandBufferBeginInfo beginInfo{
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+            .pNext = nullptr,
+            .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+            .pInheritanceInfo = nullptr,
+        };
+        result = context.deviceTable.vkBeginCommandBuffer(commandBuffer,
+                                                          &beginInfo);
+    }
+    if (result == VK_SUCCESS) {
+        std::vector<VkImageMemoryBarrier> barriers;
+        barriers.reserve(images.size());
+        for (const auto image : images) {
+            barriers.push_back({
+                .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                .pNext = nullptr,
+                .srcAccessMask = 0,
+                .dstAccessMask = 0,
+                .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+                .newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                .image = image,
+                .subresourceRange = {
+                    .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                    .baseMipLevel = 0,
+                    .levelCount = 1,
+                    .baseArrayLayer = 0,
+                    .layerCount = 1,
+                },
+            });
+        }
+        context.deviceTable.vkCmdPipelineBarrier(
+            commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, nullptr, 0, nullptr,
+            static_cast<std::uint32_t>(barriers.size()), barriers.data());
+        result = context.deviceTable.vkEndCommandBuffer(commandBuffer);
+    }
+    if (result == VK_SUCCESS) {
+        const VkSubmitInfo submitInfo{
+            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .pNext = nullptr,
+            .waitSemaphoreCount = 0,
+            .pWaitSemaphores = nullptr,
+            .pWaitDstStageMask = nullptr,
+            .commandBufferCount = 1,
+            .pCommandBuffers = &commandBuffer,
+            .signalSemaphoreCount = 0,
+            .pSignalSemaphores = nullptr,
+        };
+        result = context.deviceTable.vkQueueSubmit(
+            context.queue(QueueKind::graphics), 1, &submitInfo,
+            VK_NULL_HANDLE);
+    }
+    if (result == VK_SUCCESS) {
+        result = context.deviceTable.vkQueueWaitIdle(
+            context.queue(QueueKind::graphics));
+    }
+    if (pool != VK_NULL_HANDLE) {
+        context.deviceTable.vkDestroyCommandPool(context.device, pool, nullptr);
+    }
+    return result == VK_SUCCESS
+               ? Status::success()
+               : vulkan_wsi_failure(
+                     "Vulkan swapchain image initialization failed", result);
+}
+
+[[nodiscard]] Status recreate_vulkan_swapchain(
+    VulkanSwapchainResource& swapchain, Extent2D requestedExtent) {
+    auto& context = *swapchain.context;
+    VkBool32 presentSupported = VK_FALSE;
+    auto result = context.instanceTable.vkGetPhysicalDeviceSurfaceSupportKHR(
+        context.physicalDevice, context.queue_family(QueueKind::graphics),
+        swapchain.surface->surface, &presentSupported);
+    if (result != VK_SUCCESS) {
+        return vulkan_wsi_failure("Vulkan surface support query failed", result);
+    }
+    if (presentSupported != VK_TRUE) {
+        return Status::failure(
+            StatusCode::unsupported,
+            "the Vulkan graphics queue cannot present to this XCB surface");
+    }
+
+    VkSurfaceCapabilitiesKHR capabilities{};
+    result = context.instanceTable.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
+        context.physicalDevice, swapchain.surface->surface, &capabilities);
+    if (result != VK_SUCCESS) {
+        return vulkan_wsi_failure("Vulkan surface capability query failed",
+                                  result);
+    }
+    if ((capabilities.supportedUsageFlags &
+         (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+          VK_IMAGE_USAGE_TRANSFER_SRC_BIT)) !=
+        (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+         VK_IMAGE_USAGE_TRANSFER_SRC_BIT)) {
+        return Status::failure(
+            StatusCode::unsupported,
+            "the Vulkan surface cannot provide renderable readback images");
+    }
+
+    std::uint32_t formatCount = 0;
+    result = context.instanceTable.vkGetPhysicalDeviceSurfaceFormatsKHR(
+        context.physicalDevice, swapchain.surface->surface, &formatCount,
+        nullptr);
+    if (result != VK_SUCCESS || formatCount == 0) {
+        return vulkan_wsi_failure("Vulkan surface format query failed", result);
+    }
+    std::vector<VkSurfaceFormatKHR> formats(formatCount);
+    result = context.instanceTable.vkGetPhysicalDeviceSurfaceFormatsKHR(
+        context.physicalDevice, swapchain.surface->surface, &formatCount,
+        formats.data());
+    if (result != VK_SUCCESS) {
+        return vulkan_wsi_failure("Vulkan surface format enumeration failed",
+                                  result);
+    }
+    const auto requestedFormat = vulkan_format(swapchain.desc.format).format;
+    const auto selectedFormat = std::find_if(
+        formats.begin(), formats.end(), [requestedFormat](const auto& format) {
+            return format.format == requestedFormat &&
+                   format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+        });
+    if (requestedFormat == VK_FORMAT_UNDEFINED ||
+        selectedFormat == formats.end()) {
+        return Status::failure(StatusCode::unsupported,
+                               "the requested Vulkan swapchain format is unsupported");
+    }
+
+    std::uint32_t presentModeCount = 0;
+    result = context.instanceTable.vkGetPhysicalDeviceSurfacePresentModesKHR(
+        context.physicalDevice, swapchain.surface->surface, &presentModeCount,
+        nullptr);
+    if (result != VK_SUCCESS || presentModeCount == 0) {
+        return vulkan_wsi_failure("Vulkan present-mode query failed", result);
+    }
+    std::vector<VkPresentModeKHR> presentModes(presentModeCount);
+    result = context.instanceTable.vkGetPhysicalDeviceSurfacePresentModesKHR(
+        context.physicalDevice, swapchain.surface->surface, &presentModeCount,
+        presentModes.data());
+    if (result != VK_SUCCESS) {
+        return vulkan_wsi_failure("Vulkan present-mode enumeration failed",
+                                  result);
+    }
+    const auto selectedPresentMode = vulkan_present_mode(swapchain.desc.presentMode);
+    if (std::find(presentModes.begin(), presentModes.end(), selectedPresentMode) ==
+        presentModes.end()) {
+        return Status::failure(StatusCode::unsupported,
+                               "the requested Vulkan present mode is unsupported");
+    }
+
+    VkExtent2D extent = capabilities.currentExtent;
+    if (extent.width == std::numeric_limits<std::uint32_t>::max()) {
+        extent = {
+            std::clamp(requestedExtent.width, capabilities.minImageExtent.width,
+                       capabilities.maxImageExtent.width),
+            std::clamp(requestedExtent.height, capabilities.minImageExtent.height,
+                       capabilities.maxImageExtent.height),
+        };
+    }
+    if (extent.width == 0 || extent.height == 0) {
+        return Status::failure(StatusCode::out_of_date,
+                               "the Vulkan surface has a zero drawable extent");
+    }
+    auto imageCount = std::max(swapchain.desc.imageCount,
+                               capabilities.minImageCount);
+    if (capabilities.maxImageCount != 0) {
+        imageCount = std::min(imageCount, capabilities.maxImageCount);
+    }
+    const VkSwapchainCreateInfoKHR createInfo{
+        .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+        .pNext = nullptr,
+        .flags = 0,
+        .surface = swapchain.surface->surface,
+        .minImageCount = imageCount,
+        .imageFormat = selectedFormat->format,
+        .imageColorSpace = selectedFormat->colorSpace,
+        .imageExtent = extent,
+        .imageArrayLayers = 1,
+        .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+                      VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+        .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .queueFamilyIndexCount = 0,
+        .pQueueFamilyIndices = nullptr,
+        .preTransform = capabilities.currentTransform,
+        .compositeAlpha =
+            vulkan_composite_alpha(capabilities.supportedCompositeAlpha),
+        .presentMode = selectedPresentMode,
+        .clipped = VK_TRUE,
+        .oldSwapchain = swapchain.swapchain,
+    };
+    VkSwapchainKHR replacement = VK_NULL_HANDLE;
+    result = context.deviceTable.vkCreateSwapchainKHR(
+        context.device, &createInfo, nullptr, &replacement);
+    if (result != VK_SUCCESS) {
+        return vulkan_wsi_failure("Vulkan swapchain creation failed", result);
+    }
+    std::uint32_t nativeImageCount = 0;
+    result = context.deviceTable.vkGetSwapchainImagesKHR(
+        context.device, replacement, &nativeImageCount, nullptr);
+    std::vector<VkImage> images(nativeImageCount);
+    if (result == VK_SUCCESS && nativeImageCount != 0) {
+        result = context.deviceTable.vkGetSwapchainImagesKHR(
+            context.device, replacement, &nativeImageCount, images.data());
+    }
+    if (result != VK_SUCCESS || nativeImageCount == 0) {
+        context.deviceTable.vkDestroySwapchainKHR(context.device, replacement,
+                                                  nullptr);
+        return vulkan_wsi_failure("Vulkan swapchain image query failed", result);
+    }
+    if (swapchain.swapchain != VK_NULL_HANDLE) {
+        context.deviceTable.vkDestroySwapchainKHR(context.device,
+                                                  swapchain.swapchain, nullptr);
+    }
+    swapchain.swapchain = replacement;
+    swapchain.format = selectedFormat->format;
+    swapchain.extent = extent;
+    swapchain.images = std::move(images);
+    swapchain.imageInitialized.assign(swapchain.images.size(), false);
+    swapchain.desc.extent = {extent.width, extent.height};
+    swapchain.acquired = false;
+    return Status::success();
+}
+
+[[nodiscard]] Result<std::shared_ptr<void>> create_vulkan_surface(
+    const std::shared_ptr<void>& nativeContext, const SurfaceDesc& desc) {
+    const auto context = std::static_pointer_cast<VulkanContext>(nativeContext);
+    if (!context || context->instance == VK_NULL_HANDLE) {
+        return Status::failure(StatusCode::device_lost,
+                               "the Vulkan native context is unavailable");
+    }
+    if (!context->linuxWsi) {
+        return Status::failure(StatusCode::unsupported,
+                               "Vulkan XCB presentation is unavailable");
+    }
+    if (desc.native.kind != NativeSurfaceKind::xcb) {
+        return Status::failure(StatusCode::unsupported,
+                               "Linux Vulkan surfaces require XCB handles");
+    }
+    if (desc.native.display == nullptr || desc.native.handle == nullptr) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "Vulkan XCB connection and window handles are required");
+    }
+    const VkXcbSurfaceCreateInfoKHR createInfo{
+        .sType = VK_STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR,
+        .pNext = nullptr,
+        .flags = 0,
+        .connection = static_cast<xcb_connection_t*>(desc.native.display),
+        .window = static_cast<xcb_window_t>(
+            reinterpret_cast<std::uintptr_t>(desc.native.handle)),
+    };
+    VkSurfaceKHR surface = VK_NULL_HANDLE;
+    std::lock_guard lock{context->mutex};
+    const auto result = context->instanceTable.vkCreateXcbSurfaceKHR(
+        context->instance, &createInfo, nullptr, &surface);
+    if (result != VK_SUCCESS) {
+        return vulkan_wsi_failure("Vulkan XCB surface creation failed", result);
+    }
+    return std::static_pointer_cast<void>(
+        std::make_shared<VulkanSurfaceResource>(context, surface));
+}
+
+[[nodiscard]] Result<std::shared_ptr<void>> create_vulkan_swapchain(
+    const std::shared_ptr<void>& nativeContext,
+    const std::shared_ptr<void>& nativeSurface, const SwapchainDesc& desc) {
+    const auto context = std::static_pointer_cast<VulkanContext>(nativeContext);
+    const auto surface =
+        std::static_pointer_cast<VulkanSurfaceResource>(nativeSurface);
+    if (!context || context->device == VK_NULL_HANDLE) {
+        return Status::failure(StatusCode::device_lost,
+                               "the Vulkan native context is unavailable");
+    }
+    if (!surface || surface->surface == VK_NULL_HANDLE) {
+        return Status::failure(StatusCode::surface_lost,
+                               "the Vulkan surface is unavailable");
+    }
+    auto swapchain =
+        std::make_shared<VulkanSwapchainResource>(context, surface, desc);
+    std::lock_guard lock{context->mutex};
+    if (auto status = recreate_vulkan_swapchain(*swapchain, desc.extent);
+        !status.ok()) {
+        return status;
+    }
+    return std::static_pointer_cast<void>(std::move(swapchain));
+}
+
+[[nodiscard]] Result<detail::NativeSwapchainImage> acquire_vulkan_swapchain(
+    const std::shared_ptr<void>& nativeSwapchain) {
+    const auto swapchain =
+        std::static_pointer_cast<VulkanSwapchainResource>(nativeSwapchain);
+    if (!swapchain || !swapchain->context ||
+        swapchain->swapchain == VK_NULL_HANDLE) {
+        return Status::failure(StatusCode::surface_lost,
+                               "the Vulkan swapchain is unavailable");
+    }
+    const auto fault = detail::gVulkanAcquireFaultForTesting.load();
+    if (fault != detail::VulkanAcquireFault::none &&
+        fault != detail::VulkanAcquireFault::suboptimal) {
+        return vulkan_acquire_fault_status(fault);
+    }
+    auto& context = *swapchain->context;
+    std::scoped_lock lock{context.mutex, swapchain->mutex};
+    if (swapchain->acquired) {
+        return Status::failure(StatusCode::invalid_state,
+                               "the Vulkan swapchain image is already acquired");
+    }
+    const VkFenceCreateInfo fenceInfo{
+        .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+    };
+    VkFence fence = VK_NULL_HANDLE;
+    auto result = context.deviceTable.vkCreateFence(context.device, &fenceInfo,
+                                                    nullptr, &fence);
+    if (result != VK_SUCCESS) {
+        return vulkan_wsi_failure("Vulkan acquire fence creation failed", result);
+    }
+    std::uint32_t imageIndex = 0;
+    result = context.deviceTable.vkAcquireNextImageKHR(
+        context.device, swapchain->swapchain,
+        std::numeric_limits<std::uint64_t>::max(), VK_NULL_HANDLE, fence,
+        &imageIndex);
+    const auto acquireResult = result;
+    if (result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR) {
+        result = context.deviceTable.vkWaitForFences(
+            context.device, 1, &fence, VK_TRUE,
+            std::numeric_limits<std::uint64_t>::max());
+    }
+    context.deviceTable.vkDestroyFence(context.device, fence, nullptr);
+    if (result != VK_SUCCESS || imageIndex >= swapchain->images.size()) {
+        return vulkan_wsi_failure("Vulkan swapchain image acquisition failed",
+                                  result);
+    }
+    if (!swapchain->imageInitialized[imageIndex]) {
+        const std::span<const VkImage> image{
+            &swapchain->images[imageIndex], 1};
+        if (auto status = initialize_vulkan_swapchain_images(context, image);
+            !status.ok()) {
+            return status;
+        }
+        swapchain->imageInitialized[imageIndex] = true;
+    }
+    const auto publicFormat = vulkan_format(swapchain->desc.format);
+    TextureDesc textureDesc{
+        .extent = {swapchain->extent.width, swapchain->extent.height, 1},
+        .format = swapchain->desc.format,
+        .usage = TextureUsage::color_attachment | TextureUsage::copy_source |
+                 TextureUsage::present,
+        .debugName = swapchain->desc.debugName + " image",
+    };
+    auto texture = std::make_shared<VulkanTextureResource>(
+        swapchain->context, swapchain->images[imageIndex], VK_NULL_HANDLE, 0,
+        std::move(textureDesc), publicFormat, false, false, nullptr,
+        VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, false);
+    swapchain->acquired = true;
+    swapchain->acquiredImage = imageIndex;
+    detail::NativeSwapchainImage acquired;
+    acquired.texture = std::static_pointer_cast<void>(std::move(texture));
+    acquired.imageIndex = imageIndex;
+    acquired.extent = {swapchain->extent.width, swapchain->extent.height};
+    if (acquireResult == VK_SUBOPTIMAL_KHR) {
+        acquired.status = vulkan_wsi_failure(
+            "the Vulkan swapchain is suboptimal", acquireResult);
+    } else if (fault == detail::VulkanAcquireFault::suboptimal) {
+        acquired.status = Status::failure(
+            StatusCode::suboptimal, "injected Vulkan suboptimal acquisition");
+    }
+    return acquired;
+}
+
+[[nodiscard]] Status resize_vulkan_swapchain(
+    const std::shared_ptr<void>& nativeSwapchain, Extent2D extent) {
+    const auto swapchain =
+        std::static_pointer_cast<VulkanSwapchainResource>(nativeSwapchain);
+    if (!swapchain || !swapchain->context ||
+        swapchain->swapchain == VK_NULL_HANDLE) {
+        return Status::failure(StatusCode::surface_lost,
+                               "the Vulkan swapchain is unavailable");
+    }
+    std::scoped_lock lock{swapchain->context->mutex, swapchain->mutex};
+    if (swapchain->acquired) {
+        return Status::failure(StatusCode::invalid_state,
+                               "the Vulkan swapchain image is still acquired");
+    }
+    const auto idle = swapchain->context->deviceTable.vkDeviceWaitIdle(
+        swapchain->context->device);
+    if (idle != VK_SUCCESS) {
+        return vulkan_wsi_failure("Vulkan swapchain resize wait failed", idle);
+    }
+    return recreate_vulkan_swapchain(*swapchain, extent);
+}
+
+[[nodiscard]] Status present_vulkan_swapchain(
+    const std::shared_ptr<void>& nativeSwapchain, std::uint32_t imageIndex,
+    std::span<const detail::NativeSemaphorePoint> waits) {
+    const auto swapchain =
+        std::static_pointer_cast<VulkanSwapchainResource>(nativeSwapchain);
+    if (!swapchain || !swapchain->context ||
+        swapchain->swapchain == VK_NULL_HANDLE) {
+        return Status::failure(StatusCode::surface_lost,
+                               "the Vulkan swapchain is unavailable");
+    }
+    auto& context = *swapchain->context;
+    std::scoped_lock lock{context.mutex, swapchain->mutex};
+    if (!swapchain->acquired || imageIndex != swapchain->acquiredImage) {
+        return Status::failure(StatusCode::invalid_state,
+                               "the Vulkan presentation image is not acquired");
+    }
+    const auto fault = detail::gVulkanPresentFaultForTesting.load();
+    if (fault != detail::VulkanPresentFault::none) {
+        const auto status = vulkan_present_fault_status(fault);
+        if (status.code == StatusCode::suboptimal ||
+            status.code == StatusCode::out_of_date) {
+            swapchain->acquired = false;
+        }
+        return status;
+    }
+    if (!waits.empty() && !context.timelineSemaphores) {
+        return Status::failure(
+            StatusCode::unsupported,
+            "Vulkan presentation waits require timeline semaphore support");
+    }
+
+    const VkSemaphoreCreateInfo semaphoreInfo{
+        .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+    };
+    VkSemaphore presentReady = VK_NULL_HANDLE;
+    auto result = context.deviceTable.vkCreateSemaphore(
+        context.device, &semaphoreInfo, nullptr, &presentReady);
+    if (result != VK_SUCCESS) {
+        return vulkan_wsi_failure(
+            "Vulkan presentation semaphore creation failed", result);
+    }
+    std::vector<VkSemaphore> waitSemaphores;
+    std::vector<std::uint64_t> waitValues;
+    std::vector<VkPipelineStageFlags> waitStages;
+    waitSemaphores.reserve(waits.size());
+    waitValues.reserve(waits.size());
+    waitStages.reserve(waits.size());
+    for (const auto& wait : waits) {
+        const auto semaphore =
+            std::static_pointer_cast<VulkanSemaphoreResource>(wait.semaphore);
+        if (!semaphore || semaphore->semaphore == VK_NULL_HANDLE) {
+            context.deviceTable.vkDestroySemaphore(context.device, presentReady,
+                                                    nullptr);
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Vulkan present semaphore is invalid");
+        }
+        waitSemaphores.push_back(semaphore->semaphore);
+        waitValues.push_back(wait.value);
+        waitStages.push_back(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+    }
+    const std::uint64_t binarySignalValue = 0;
+    const VkTimelineSemaphoreSubmitInfo timelineInfo{
+        .sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
+        .pNext = nullptr,
+        .waitSemaphoreValueCount =
+            static_cast<std::uint32_t>(waitValues.size()),
+        .pWaitSemaphoreValues = waitValues.data(),
+        .signalSemaphoreValueCount = 1,
+        .pSignalSemaphoreValues = &binarySignalValue,
+    };
+    const VkSubmitInfo submitInfo{
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .pNext = waits.empty() ? nullptr : &timelineInfo,
+        .waitSemaphoreCount =
+            static_cast<std::uint32_t>(waitSemaphores.size()),
+        .pWaitSemaphores = waitSemaphores.data(),
+        .pWaitDstStageMask = waitStages.data(),
+        .commandBufferCount = 0,
+        .pCommandBuffers = nullptr,
+        .signalSemaphoreCount = 1,
+        .pSignalSemaphores = &presentReady,
+    };
+    result = context.deviceTable.vkQueueSubmit(
+        context.queue(QueueKind::graphics), 1, &submitInfo, VK_NULL_HANDLE);
+    if (result == VK_SUCCESS) {
+        const VkPresentInfoKHR presentInfo{
+            .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+            .pNext = nullptr,
+            .waitSemaphoreCount = 1,
+            .pWaitSemaphores = &presentReady,
+            .swapchainCount = 1,
+            .pSwapchains = &swapchain->swapchain,
+            .pImageIndices = &imageIndex,
+            .pResults = nullptr,
+        };
+        result = context.deviceTable.vkQueuePresentKHR(
+            context.queue(QueueKind::graphics), &presentInfo);
+    }
+    const auto presentResult = result;
+    if (result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR ||
+        result == VK_ERROR_OUT_OF_DATE_KHR) {
+        const auto idle = context.deviceTable.vkQueueWaitIdle(
+            context.queue(QueueKind::graphics));
+        if (idle != VK_SUCCESS) {
+            result = idle;
+        }
+    }
+    context.deviceTable.vkDestroySemaphore(context.device, presentReady,
+                                            nullptr);
+    if (presentResult == VK_SUCCESS || presentResult == VK_SUBOPTIMAL_KHR ||
+        presentResult == VK_ERROR_OUT_OF_DATE_KHR) {
+        swapchain->acquired = false;
+    }
+    return result == VK_SUCCESS ? Status::success()
+                                : vulkan_wsi_failure(
+                                      "Vulkan presentation failed", result);
+}
+#endif
+
 [[nodiscard]] Result<VulkanProbe> initialize_vulkan(const InstanceDesc& desc) {
     const auto loaderResult = volkInitialize();
     if (loaderResult != VK_SUCCESS) {
@@ -4632,6 +5356,7 @@ void prepare_vulkan_binding_images(VulkanContext& context,
         .apiVersion = VK_API_VERSION_1_1,
     };
     std::vector<const char*> extensions;
+    bool linuxSurfaceExtensions = false;
     std::uint32_t extensionCount = 0;
     if (vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount,
                                                nullptr) == VK_SUCCESS &&
@@ -4652,6 +5377,22 @@ void prepare_vulkan_binding_images(VulkanContext& context,
                 extensions.push_back(
                     VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
             }
+#if defined(__linux__) && !defined(__ANDROID__)
+            const auto has_extension = [&](const char* name) {
+                return std::any_of(
+                    availableExtensions.begin(), availableExtensions.end(),
+                    [name](const VkExtensionProperties& extension) {
+                        return std::strcmp(extension.extensionName, name) == 0;
+                    });
+            };
+            linuxSurfaceExtensions =
+                has_extension(VK_KHR_SURFACE_EXTENSION_NAME) &&
+                has_extension(VK_KHR_XCB_SURFACE_EXTENSION_NAME);
+            if (linuxSurfaceExtensions) {
+                extensions.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
+                extensions.push_back(VK_KHR_XCB_SURFACE_EXTENSION_NAME);
+            }
+#endif
         }
     }
     const auto instanceFlags =
@@ -4677,6 +5418,7 @@ void prepare_vulkan_binding_images(VulkanContext& context,
                               "Vulkan instance creation failed", result);
     }
     volkLoadInstanceTable(&context->instanceTable, context->instance);
+    context->linuxWsi = linuxSurfaceExtensions;
 
     std::uint32_t physicalDeviceCount = 0;
     result = context->instanceTable.vkEnumeratePhysicalDevices(
@@ -4827,10 +5569,24 @@ void prepare_vulkan_binding_images(VulkanContext& context,
                                VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME) == 0;
                 });
             timelineExtension = timeline != availableDeviceExtensions.end();
+#if defined(__linux__) && !defined(__ANDROID__)
+            const auto swapchain = std::find_if(
+                availableDeviceExtensions.begin(),
+                availableDeviceExtensions.end(),
+                [](const VkExtensionProperties& extension) {
+                    return std::strcmp(extension.extensionName,
+                                       VK_KHR_SWAPCHAIN_EXTENSION_NAME) == 0;
+                });
+            if (context->linuxWsi &&
+                swapchain != availableDeviceExtensions.end()) {
+                deviceExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+            } else {
+                context->linuxWsi = false;
+            }
+#endif
         }
     }
-    const bool timelineCore =
-        context->properties.apiVersion >= VK_API_VERSION_1_2;
+    const bool timelineCore = applicationInfo.apiVersion >= VK_API_VERSION_1_2;
     context->timelineSemaphores =
         timelineFeatures.timelineSemaphore == VK_TRUE &&
         (timelineCore || timelineExtension);
@@ -4973,6 +5729,11 @@ Result<Instance> create_vulkan_instance(const InstanceDesc& desc) {
         config.queueKinds.push_back(QueueKind::transfer);
     }
     config.supportedFeatures = {Feature::transfer, Feature::memory_budget};
+#if defined(__linux__) && !defined(__ANDROID__)
+    if (native.context->linuxWsi) {
+        config.supportedFeatures.push_back(Feature::presentation);
+    }
+#endif
     if (native.context->queue(QueueKind::compute) != VK_NULL_HANDLE) {
         config.supportedFeatures.push_back(Feature::compute);
     }
@@ -5035,6 +5796,9 @@ Result<Instance> create_vulkan_instance(const InstanceDesc& desc) {
     };
     config.deviceLocalBudgetBytes = native.deviceLocalBudget;
     config.native = true;
+#if defined(__linux__) && !defined(__ANDROID__)
+    config.presentation = native.context->linuxWsi;
+#endif
     config.nativeContext = std::move(native.context);
     config.createBuffer = &create_vulkan_buffer;
     config.mapBuffer = &map_vulkan_buffer;
@@ -5053,6 +5817,13 @@ Result<Instance> create_vulkan_instance(const InstanceDesc& desc) {
     config.createComputePipeline = &create_vulkan_compute_pipeline;
     config.createSemaphore = &create_vulkan_semaphore;
     config.createQueryPool = &create_vulkan_query_pool;
+#if defined(__linux__) && !defined(__ANDROID__)
+    config.createSurface = &create_vulkan_surface;
+    config.createSwapchain = &create_vulkan_swapchain;
+    config.acquireSwapchain = &acquire_vulkan_swapchain;
+    config.resizeSwapchain = &resize_vulkan_swapchain;
+    config.presentSwapchain = &present_vulkan_swapchain;
+#endif
     config.nativeSubmit = &submit_vulkan_commands;
     return detail::create_foundation_instance(desc, std::move(config));
 }

@@ -10,11 +10,16 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <iterator>
 #include <limits>
 #include <vector>
+
+#if defined(__linux__) && !defined(__ANDROID__)
+#include <xcb/xcb.h>
+#endif
 
 namespace {
 
@@ -1836,11 +1841,344 @@ void verify_vulkan_buffers() {
     assert(!recoveredDevice.value().lost());
 }
 
+#if defined(__linux__) && !defined(__ANDROID__)
+class VulkanTestWindow {
+public:
+    VulkanTestWindow(std::uint32_t width, std::uint32_t height) {
+        connection_ = xcb_connect(nullptr, nullptr);
+        assert(connection_ != nullptr);
+        assert(xcb_connection_has_error(connection_) == 0);
+        const auto* setup = xcb_get_setup(connection_);
+        auto screens = xcb_setup_roots_iterator(setup);
+        assert(screens.rem != 0);
+        screen_ = screens.data;
+        window_ = xcb_generate_id(connection_);
+        constexpr std::uint32_t eventMask = XCB_EVENT_MASK_STRUCTURE_NOTIFY;
+        const std::array values{eventMask};
+        const auto cookie = xcb_create_window_checked(
+            connection_, XCB_COPY_FROM_PARENT, window_, screen_->root, 0, 0,
+            static_cast<std::uint16_t>(width),
+            static_cast<std::uint16_t>(height), 0,
+            XCB_WINDOW_CLASS_INPUT_OUTPUT, screen_->root_visual,
+            XCB_CW_EVENT_MASK, values.data());
+        auto* error = xcb_request_check(connection_, cookie);
+        assert(error == nullptr);
+        std::free(error);
+        xcb_map_window(connection_, window_);
+        assert(xcb_flush(connection_) > 0);
+    }
+
+    ~VulkanTestWindow() {
+        if (connection_ != nullptr) {
+            if (window_ != XCB_WINDOW_NONE) {
+                xcb_destroy_window(connection_, window_);
+                xcb_flush(connection_);
+            }
+            xcb_disconnect(connection_);
+        }
+    }
+
+    VulkanTestWindow(const VulkanTestWindow&) = delete;
+    VulkanTestWindow& operator=(const VulkanTestWindow&) = delete;
+
+    [[nodiscard]] xcb_connection_t* connection() const noexcept {
+        return connection_;
+    }
+
+    [[nodiscard]] xcb_window_t window() const noexcept { return window_; }
+
+    void resize(std::uint32_t width, std::uint32_t height) {
+        const std::array values{width, height};
+        const auto cookie = xcb_configure_window_checked(
+            connection_, window_, XCB_CONFIG_WINDOW_WIDTH |
+                                      XCB_CONFIG_WINDOW_HEIGHT,
+            values.data());
+        auto* error = xcb_request_check(connection_, cookie);
+        assert(error == nullptr);
+        std::free(error);
+        assert(xcb_flush(connection_) > 0);
+        const auto geometryCookie = xcb_get_geometry(connection_, window_);
+        auto* geometry = xcb_get_geometry_reply(connection_, geometryCookie,
+                                                &error);
+        assert(error == nullptr && geometry != nullptr);
+        assert(geometry->width == width && geometry->height == height);
+        std::free(error);
+        std::free(geometry);
+    }
+
+private:
+    xcb_connection_t* connection_ = nullptr;
+    xcb_screen_t* screen_ = nullptr;
+    xcb_window_t window_ = XCB_WINDOW_NONE;
+};
+
+struct VulkanPresentationContext {
+    truffle::rhi::Instance instance;
+    truffle::rhi::Adapter adapter;
+    truffle::rhi::Device device;
+    truffle::rhi::Queue queue;
+    truffle::rhi::CommandPool pool;
+};
+
+[[nodiscard]] VulkanPresentationContext create_vulkan_presentation_context() {
+    namespace rhi = truffle::rhi;
+    auto instance = rhi::create_vulkan_instance({.enableValidation = true});
+    assert(instance.ok());
+    auto adapter = instance.value().adapter(0);
+    assert(adapter.ok());
+    assert(adapter.value().info().presentation);
+    assert(std::find(adapter.value().info().supportedFeatures.begin(),
+                     adapter.value().info().supportedFeatures.end(),
+                     rhi::Feature::presentation) !=
+           adapter.value().info().supportedFeatures.end());
+    auto device = adapter.value().request_device({
+        .requiredFeatures = {rhi::Feature::presentation,
+                             rhi::Feature::transfer},
+    });
+    assert(device.ok());
+    auto queue = device.value().queue(rhi::QueueKind::graphics);
+    auto pool = device.value().create_command_pool(rhi::QueueKind::graphics);
+    assert(queue.ok() && pool.ok());
+    return {
+        .instance = std::move(instance).value(),
+        .adapter = std::move(adapter).value(),
+        .device = std::move(device).value(),
+        .queue = std::move(queue).value(),
+        .pool = std::move(pool).value(),
+    };
+}
+
+void render_readback_and_present(VulkanPresentationContext& context,
+                                 truffle::rhi::Swapchain& swapchain,
+                                 truffle::rhi::Extent2D extent) {
+    namespace rhi = truffle::rhi;
+    const auto rowBytes = static_cast<std::size_t>(extent.width) * 4u;
+    const auto rowPitch = (rowBytes + 255u) & ~std::size_t{255u};
+    auto acquired = swapchain.acquire_next_image();
+    assert(acquired.ok());
+    assert(acquired.image->desc().extent.width == extent.width);
+    assert(acquired.image->desc().extent.height == extent.height);
+    auto readback = context.device.create_buffer({
+        .size = rowPitch * extent.height,
+        .usage = rhi::BufferUsage::copy_destination,
+        .memory = rhi::MemoryDomain::readback,
+    });
+    auto rendered = context.device.create_semaphore();
+    auto list = context.pool.allocate();
+    assert(readback.ok() && rendered.ok() && list.ok());
+    assert(list.value().begin().ok());
+
+    rhi::BarrierBatch toRender;
+    toRender.textures.push_back({
+        .texture = acquired.image,
+        .oldLayout = rhi::TextureLayout::present,
+        .newLayout = rhi::TextureLayout::color_attachment,
+        .sourceStages = rhi::PipelineStage::top,
+        .destinationStages = rhi::PipelineStage::color_attachment_output,
+        .destinationAccess = rhi::Access::color_attachment_write,
+    });
+    assert(list.value().barrier(toRender).ok());
+    auto render = list.value().begin_rendering({
+        .extent = extent,
+        .colorAttachments = {{.texture = acquired.image,
+                              .clear = {0.25F, 0.5F, 0.75F, 1.0F}}},
+    });
+    assert(render.ok());
+    assert(render.value().end().ok());
+
+    rhi::BarrierBatch toCopy;
+    toCopy.textures.push_back({
+        .texture = acquired.image,
+        .oldLayout = rhi::TextureLayout::color_attachment,
+        .newLayout = rhi::TextureLayout::transfer_source,
+        .sourceStages = rhi::PipelineStage::color_attachment_output,
+        .destinationStages = rhi::PipelineStage::copy,
+        .sourceAccess = rhi::Access::color_attachment_write,
+        .destinationAccess = rhi::Access::transfer_read,
+    });
+    assert(list.value().barrier(toCopy).ok());
+    auto copy = list.value().begin_copy();
+    assert(copy.ok());
+    assert(copy.value()
+               .copy_texture_to_buffer(
+                   *acquired.image, readback.value(),
+                   {.layout = {.bytesPerRow = rowPitch,
+                               .rowsPerImage = extent.height},
+                    .texture = {
+                        .subresource = {.aspect = rhi::TextureAspect::color},
+                        .extent = {extent.width, extent.height, 1}}})
+               .ok());
+    assert(copy.value().end().ok());
+    rhi::BarrierBatch toPresent;
+    toPresent.textures.push_back({
+        .texture = acquired.image,
+        .oldLayout = rhi::TextureLayout::transfer_source,
+        .newLayout = rhi::TextureLayout::present,
+        .sourceStages = rhi::PipelineStage::copy,
+        .destinationStages = rhi::PipelineStage::bottom,
+        .sourceAccess = rhi::Access::transfer_read,
+    });
+    assert(list.value().barrier(toPresent).ok());
+    assert(list.value().end().ok());
+
+    std::array<rhi::CommandList*, 1> lists{&list.value()};
+    const std::array<rhi::SemaphoreWait, 1> acquireWaits{{
+        {.semaphore = acquired.available,
+         .value = acquired.availableValue,
+         .stages = rhi::PipelineStage::color_attachment_output},
+    }};
+    const std::array<rhi::SemaphoreSignal, 1> renderSignals{{
+        {.semaphore = &rendered.value(), .value = 1},
+    }};
+    assert(context.queue
+               .submit({.commandLists = lists,
+                        .waits = acquireWaits,
+                        .signals = renderSignals})
+               .ok());
+
+    std::vector<std::byte> pixels(rowPitch * extent.height);
+    assert(readback.value().read(0, pixels).ok());
+    const std::array expected{std::byte{191}, std::byte{128}, std::byte{64},
+                              std::byte{255}};
+    for (std::uint32_t row = 0; row < extent.height; ++row) {
+        for (std::uint32_t column = 0; column < extent.width; ++column) {
+            const auto offset = row * rowPitch + column * expected.size();
+            assert(std::equal(expected.begin(), expected.end(),
+                              pixels.begin() + offset));
+        }
+    }
+    const std::array<rhi::SemaphoreWait, 1> presentWaits{{
+        {.semaphore = &rendered.value(),
+         .value = 1,
+         .stages = rhi::PipelineStage::bottom},
+    }};
+    const auto presented = context.queue.present({
+        .swapchain = &swapchain,
+        .imageIndex = acquired.imageIndex,
+        .waits = presentWaits,
+    });
+    assert(presented.ok() || presented.code == rhi::StatusCode::suboptimal);
+}
+
+void verify_vulkan_presentation_statuses(VulkanPresentationContext& context,
+                                         truffle::rhi::Swapchain& swapchain) {
+    namespace rhi = truffle::rhi;
+    using rhi::detail::VulkanAcquireFault;
+    using rhi::detail::VulkanPresentFault;
+
+    for (const auto [fault, code] : std::array{
+             std::pair{VulkanAcquireFault::timeout, rhi::StatusCode::timeout},
+             std::pair{VulkanAcquireFault::out_of_date,
+                       rhi::StatusCode::out_of_date},
+             std::pair{VulkanAcquireFault::surface_lost,
+                       rhi::StatusCode::surface_lost},
+             std::pair{VulkanAcquireFault::out_of_memory,
+                       rhi::StatusCode::out_of_memory}}) {
+        rhi::detail::set_vulkan_acquire_fault_for_testing(fault);
+        assert(swapchain.acquire_next_image().status.code == code);
+    }
+    rhi::detail::set_vulkan_acquire_fault_for_testing(
+        VulkanAcquireFault::suboptimal);
+    auto suboptimalAcquire = swapchain.acquire_next_image();
+    assert(suboptimalAcquire.ok());
+    assert(suboptimalAcquire.status.code == rhi::StatusCode::suboptimal);
+    rhi::detail::set_vulkan_acquire_fault_for_testing(
+        VulkanAcquireFault::none);
+    assert(context.queue
+               .present(swapchain, suboptimalAcquire.imageIndex)
+               .ok());
+
+    for (const auto [fault, code] : std::array{
+             std::pair{VulkanPresentFault::timeout, rhi::StatusCode::timeout},
+             std::pair{VulkanPresentFault::surface_lost,
+                       rhi::StatusCode::surface_lost},
+             std::pair{VulkanPresentFault::out_of_memory,
+                       rhi::StatusCode::out_of_memory}}) {
+        auto acquired = swapchain.acquire_next_image();
+        assert(acquired.ok());
+        rhi::detail::set_vulkan_present_fault_for_testing(fault);
+        assert(context.queue.present(swapchain, acquired.imageIndex).code ==
+               code);
+        rhi::detail::set_vulkan_present_fault_for_testing(
+            VulkanPresentFault::none);
+        assert(context.queue.present(swapchain, acquired.imageIndex).ok());
+    }
+
+    for (const auto [fault, code] : std::array{
+             std::pair{VulkanPresentFault::out_of_date,
+                       rhi::StatusCode::out_of_date},
+             std::pair{VulkanPresentFault::suboptimal,
+                       rhi::StatusCode::suboptimal}}) {
+        auto acquired = swapchain.acquire_next_image();
+        assert(acquired.ok());
+        rhi::detail::set_vulkan_present_fault_for_testing(fault);
+        assert(context.queue.present(swapchain, acquired.imageIndex).code ==
+               code);
+        rhi::detail::set_vulkan_present_fault_for_testing(
+            VulkanPresentFault::none);
+    }
+
+    auto lostImage = swapchain.acquire_next_image();
+    assert(lostImage.ok());
+    rhi::detail::set_vulkan_present_fault_for_testing(
+        VulkanPresentFault::device_lost);
+    assert(context.queue.present(swapchain, lostImage.imageIndex).code ==
+           rhi::StatusCode::device_lost);
+    assert(context.device.lost());
+    rhi::detail::set_vulkan_present_fault_for_testing(
+        VulkanPresentFault::none);
+    auto recovered = context.adapter.request_device({
+        .requiredFeatures = {rhi::Feature::presentation},
+    });
+    assert(recovered.ok());
+    assert(!recovered.value().lost());
+}
+
+void verify_vulkan_presentation() {
+    namespace rhi = truffle::rhi;
+    auto context = create_vulkan_presentation_context();
+    VulkanTestWindow window{64, 48};
+
+    auto unsupported = context.device.create_surface({
+        .native = {.kind = rhi::NativeSurfaceKind::headless},
+        .initialExtent = {64, 48},
+    });
+    assert(unsupported.status().code == rhi::StatusCode::unsupported);
+
+    auto surface = context.device.create_surface({
+        .native = {.kind = rhi::NativeSurfaceKind::xcb,
+                   .handle = reinterpret_cast<void*>(
+                       static_cast<std::uintptr_t>(window.window())),
+                   .display = window.connection()},
+        .initialExtent = {64, 48},
+        .debugName = "Vulkan XCB test surface",
+    });
+    assert(surface.ok());
+    auto swapchain = context.device.create_swapchain(
+        surface.value(),
+        {.extent = {64, 48},
+         .format = rhi::TextureFormat::bgra8_unorm,
+         .presentMode = rhi::PresentMode::fifo,
+         .imageCount = 2,
+         .debugName = "Vulkan XCB test swapchain"});
+    assert(swapchain.ok());
+    render_readback_and_present(context, swapchain.value(), {64, 48});
+
+    window.resize(80, 60);
+    assert(swapchain.value().resize({80, 60}).ok());
+    render_readback_and_present(context, swapchain.value(), {80, 60});
+    verify_vulkan_presentation_statuses(context, swapchain.value());
+}
+#endif
+
 } // namespace
 
 int main() {
 #if defined(__linux__) && !defined(__ANDROID__)
     verify_vulkan_buffers();
+    if (std::getenv("DISPLAY") != nullptr) {
+        verify_vulkan_presentation();
+    }
 #else
     auto result = truffle::rhi::create_vulkan_instance();
     if (result.ok()) {

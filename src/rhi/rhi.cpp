@@ -2763,7 +2763,8 @@ struct Factory {
         if (runtime.config.createSurface == nullptr) {
             return unsupported(runtime, "surface creation");
         }
-        auto result = runtime.config.createSurface(desc);
+        auto result = runtime.config.createSurface(runtime.config.nativeContext,
+                                                   desc);
         if (!result.ok()) {
             return result.status();
         }
@@ -3236,7 +3237,9 @@ struct Factory {
         nativeWaits.push_back({semaphore->native, wait.value, wait.stages});
     }
     std::lock_guard lock{swapchain->mutex};
-    if (!swapchain->acquired || imageIndex >= swapchain->desc.imageCount) {
+    if (!swapchain->acquired ||
+        (runtime.config.logicalResources &&
+         imageIndex >= swapchain->desc.imageCount)) {
         return Status::failure(StatusCode::invalid_state,
                                "present requires an acquired swapchain image");
     }

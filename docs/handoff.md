@@ -9,11 +9,49 @@ rather than growing a historical transcript here.
 
 ## Current Focus
 
-Close #54 through native Vulkan queue-family discovery, synchronization,
-barrier, timeline-semaphore, fence, and query evidence.
+Close #57 through native Linux Vulkan XCB surface, swapchain, deterministic
+readback/present, resize recreation, and validation-layer CI evidence.
 
 ## Latest Handoff
 
+- `feat/rhi1-vulkan-linux-wsi` implements the Linux Vulkan presentation path
+  for #57 without adding a window framework. Hosts pass an owned XCB connection
+  and window through the existing `NativeSurface`; the backend enables
+  `VK_KHR_surface`, `VK_KHR_xcb_surface`, and `VK_KHR_swapchain` only when the
+  loader and adapter expose them. Surface capability, exact format, FIFO mode,
+  image-count, extent, usage, queue presentation support, acquire, present,
+  and resize/recreation are native and fail explicitly when unsupported.
+  Acquisition waits on a native fence before returning the already-complete
+  RHI acquire timeline point. Presentation bridges RHI timeline waits into a
+  WSI-required binary semaphore. Borrowed swapchain images retain native
+  present layout tracking but never destroy swapchain-owned `VkImage` handles.
+  A Linux-only XCB test creates its own tiny host window under `xvfb-run`,
+  clears a BGRA swapchain image, copies it into padded-row readback, checks every
+  pixel, presents it, resizes the host window, recreates the swapchain, and
+  repeats the exact proof. Unsupported surface kinds are also checked. The
+  internal surface callback now receives the already-existing native context;
+  Metal and D3D12 are threaded through with no public API change. The local
+  macOS build and all 37 configured tests pass. Build `33945857429` passes
+  package, macOS, Ubuntu, and Windows. Its Ubuntu lane compiles the Linux-only
+  path, runs the full native suite with Khronos validation, and then runs the
+  presentation-labeled Vulkan test through `xvfb-run`; both presentation tests
+  pass. Private, non-installed acquire/present fault hooks additionally verify
+  that timeout, suboptimal, out-of-date, surface-loss, allocation, and device-
+  loss outcomes cross the public boundary correctly; retryable presentation
+  failures preserve the acquired image, while replacement statuses release it.
+  Initial receipt Build `33946162926` exposed three real portability defects:
+  native swapchain image counts can exceed the requested minimum, Vulkan 1.1
+  instances must enable the promoted timeline extension, and never-presented
+  swapchain images begin undefined. The foundation now accepts backend-native
+  image indices, extension selection follows the requested instance version,
+  and each image receives a one-time undefined-to-present transition after its
+  first native acquire. The same log also exposed combined depth/stencil layout
+  transitions using only one aspect without the separate-layout feature; such
+  barriers now cover both aspects. Replacement Build `33961381232` passes
+  package, macOS, Ubuntu, and Windows. The Ubuntu log contains no Vulkan
+  validation errors; its native and Xvfb presentation suites pass, including
+  all typed recovery cases. The support matrix and roadmap claim only the
+  evidenced native XCB path.
 - `fix/rhi1-vulkan-device-loss` closes the final #54 acceptance gap found after
   PR #150 merged. A private, non-installed Vulkan test hook injects submission
   device loss; the native suite proves the submitting device becomes lost,
@@ -496,10 +534,10 @@ because CMake does not discover `clang-format` on this host's `PATH`;
 
 ## Next Resume Steps
 
-1. Run the final documentation receipt CI, merge PR #138, and close #52 with
-   Build `33815232612` as its native evidence; then begin the next dependency-
-   ready #33 sub-issue from the Project.
-2. Continue #33 only through its focused Project sub-issues; update issue and
+1. Run final documentation receipt CI, merge PR #152, close #57 with Build
+   `33945857429` as its native evidence, and move its Project item to Done.
+2. Continue #33 through its next dependency-ready focused Project sub-issue;
+   update issue and
    Project state whenever scope, evidence, or disposition changes.
 3. Keep WebGPU/WebGL2 and every unexecuted mobile/Apple/Vulkan platform at
    `source_only`; keep native slices at `native_smoke` until shared native
@@ -515,12 +553,11 @@ because CMake does not discover `clang-format` on this host's `PATH`;
   tracking; aliased heap allocations are not implemented.
 - Physical Metal device-removal evidence is not available in macOS CI; the
   private fault hook validates public loss-state behavior only.
-- Vulkan buffer copies/fills and buffer-image offsets currently follow Vulkan's
-  four-byte transfer alignment. The texture slice is limited to device-local,
-  single-sample 2D images and color transfers; host-visible images, compressed
-  copies, clears, resolves, blits, shaders, WSI, and presentation remain false
-  or explicitly unsupported. EGL still proves initialization and a narrow smoke
-  workload only.
+- Vulkan submission and presentation are synchronous correctness paths; async
+  throughput and deferred destruction remain later performance work. Linux WSI
+  currently supports XCB only. Wayland, Windows, Android, and MoltenVK surface
+  adapters remain open platform-specific work. EGL still proves only its
+  currently documented resource slice and surfaceless presentation baseline.
 - D3D12 submission remains synchronous and fill commands allocate transient
   upload resources per operation. Compressed, host-visible, external, and
   copy-encoder clear/resolve/blit texture paths remain unsupported; multisampled
