@@ -42,8 +42,13 @@ views, samplers, transfers, state isolation, and exact native output evidence.
   attempts return unsupported and require the advertised resolve path. Build
   `33964084454` caught that Ubuntu's GLES headers also omit the core numeric
   `GL_STENCIL_INDEX` token even though the transfer path can name it. The shared
-  profile constants now supply that specification value locally. Final
-  replacement evidence for the assertion remains pending CI.
+  profile constants now supply that specification value locally. Final Build
+  `33964186004` passes package, macOS, Ubuntu, and Windows. The Ubuntu log proves
+  both GL-family native suites, including independent packed-stencil readback,
+  desktop multisample resolve, profile-specific negatives, and zero KHR_debug
+  error callbacks. Support matrix, resources, roadmap, README, and project
+  context now carry the same capability boundary. #60 is ready to close when
+  this PR merges; #61 is the next P0 GL-family slice.
 - `feat/rhi1-gl-resources` starts #60 with a shared 2D texture checkpoint for
   both Linux EGL profiles. The backend now owns immutable uncompressed color
   textures and sampler objects, rejects external and unsupported shapes

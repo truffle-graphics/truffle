@@ -74,8 +74,11 @@ for each backend/platform pair:
   output.
 - `truffle_backend_opengl` and `truffle_backend_opengles` use Linux surfaceless
   EGL contexts and deterministic clear/readback smoke proofs. Both own mapped
-  and device-local buffers/views and prove native copy and byte-fill transfers;
-  texture, shader, pipeline, and presentation capabilities remain unsupported.
+  and device-local buffers/views, samplers, uncompressed color/depth/stencil
+  textures, mip/array/3D/cube transfers, exact clears, copies, and blits.
+  Desktop GL additionally owns core texture views and multisample resolve;
+  GLES reports those profile boundaries unsupported. Shader, pipeline,
+  synchronization, and presentation capabilities remain unsupported.
 - WebGPU remains an explicit `source_only` factory. WebGL2 has a browser-native
   context path when built with Emscripten but remains `source_only` until its
   browser CI evidence exists. Neither exposes a simulated adapter.

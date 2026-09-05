@@ -120,6 +120,8 @@ Tracked by #33.
     swapchain readback, and resize recreation through #57.
 - [ ] Complete OpenGL/OpenGL ES resources, pipelines, synchronization, and
   desktop/Android presentation through #60-#64.
+  - [x] Complete shared GL-family resources and transfers with separate desktop
+    GL/GLES capability and KHR_debug evidence through #60.
 - [ ] Complete WebGPU and WebGL2 runtime, rendering, browser presentation, and
   recovery through #65-#68 and #70.
 - [ ] Complete Metal macOS conformance plus Apple cross-build and runtime
