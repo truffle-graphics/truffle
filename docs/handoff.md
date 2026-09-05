@@ -26,8 +26,12 @@ with exact Linux-native output.
   paths present. Ownership remains in `src/backends/vulkan`, dependencies stay
   limited to RHI contracts and pinned Vulkan/glslang inputs, and the public API
   is unchanged. Both local warning-enabled builds pass; all 36 normal tests and
-  all 37 pinned-glslang tests pass. Ubuntu Vulkan validation is the required
-  native evidence before merge.
+  all 37 pinned-glslang tests pass. Initial Build `33942096908` reached the
+  native suite and exposed a stale single-target assertion plus a sampled-image
+  layout barrier recorded inside an active render pass. Capability assertions
+  now match the promoted limits, and descriptor images are transitioned at the
+  render/compute encoder boundary before native pass execution. Ubuntu Vulkan
+  validation remains the required native evidence before merge.
 - `feat/rhi1-vulkan-graphics-expanded` extends #53's proven ordinary graphics
   slice with a generated sampled-texture fragment package, reflected texture
   and sampler descriptors, graphics bind-group encoding, direct indexed and

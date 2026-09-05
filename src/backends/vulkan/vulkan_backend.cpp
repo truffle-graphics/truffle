@@ -2770,6 +2770,36 @@ void destroy_vulkan_submission_resources(
     return pool;
 }
 
+void prepare_vulkan_binding_images(VulkanContext& context,
+                                   VkCommandBuffer commandBuffer,
+                                   const detail::NativeCommand& command) {
+    for (const auto& binding : command.bindings) {
+        if (binding.type != BindingType::sampled_texture &&
+            binding.type != BindingType::storage_texture) {
+            continue;
+        }
+        const auto view = std::static_pointer_cast<VulkanTextureViewResource>(
+            binding.resource);
+        if (!view || !view->texture) {
+            continue;
+        }
+        const auto layout = binding.type == BindingType::sampled_texture
+                                ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                                : VK_IMAGE_LAYOUT_GENERAL;
+        const auto& range = view->desc.range;
+        for (std::uint32_t layer = 0; layer < range.arrayLayerCount; ++layer) {
+            for (std::uint32_t mip = 0; mip < range.mipLevelCount; ++mip) {
+                transition_vulkan_texture(
+                    context, commandBuffer, *view->texture,
+                    {.aspect = range.aspects,
+                     .mipLevel = range.baseMipLevel + mip,
+                     .arrayLayer = range.baseArrayLayer + layer},
+                    layout);
+            }
+        }
+    }
+}
+
 [[nodiscard]] Status encode_vulkan_bind_group(
     VulkanContext& context, VkCommandBuffer commandBuffer,
     VkDescriptorPool descriptorPool,
@@ -2848,18 +2878,6 @@ void destroy_vulkan_submission_resources(
             const auto layout = binding.type == BindingType::sampled_texture
                                     ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
                                     : VK_IMAGE_LAYOUT_GENERAL;
-            const auto& range = view->desc.range;
-            for (std::uint32_t layer = 0; layer < range.arrayLayerCount;
-                 ++layer) {
-                for (std::uint32_t mip = 0; mip < range.mipLevelCount; ++mip) {
-                    transition_vulkan_texture(
-                        context, commandBuffer, *view->texture,
-                        {.aspect = range.aspects,
-                         .mipLevel = range.baseMipLevel + mip,
-                         .arrayLayer = range.baseArrayLayer + layer},
-                        layout);
-                }
-            }
             imageInfos[index] = {
                 .sampler = VK_NULL_HANDLE,
                 .imageView = view->view,
@@ -2957,7 +2975,22 @@ void destroy_vulkan_submission_resources(
             commandBuffer, sourceStages, destinationStages, 0, 1, &barrier, 0,
             nullptr, 0, nullptr);
     };
-    for (const auto& command : commands) {
+    const auto prepare_encoder_images =
+        [&](std::size_t begin, detail::NativeCommandKind endKind) {
+            for (auto index = begin + 1; index < commands.size(); ++index) {
+                const auto& pending = commands[index];
+                if (pending.kind == endKind) {
+                    break;
+                }
+                if (pending.kind == detail::NativeCommandKind::bind_group) {
+                    prepare_vulkan_binding_images(context, commandBuffer,
+                                                  pending);
+                }
+            }
+        };
+    for (std::size_t commandIndex = 0; commandIndex < commands.size();
+         ++commandIndex) {
+        const auto& command = commands[commandIndex];
         if (command.kind == detail::NativeCommandKind::barrier) {
             continue;
         }
@@ -2966,6 +2999,8 @@ void destroy_vulkan_submission_resources(
             case detail::NativeCommandKind::begin_render:
                 graphicsPipeline.reset();
                 renderExtent = command.extent;
+                prepare_encoder_images(
+                    commandIndex, detail::NativeCommandKind::end_render);
                 if (auto status = begin_vulkan_render_pass(
                         context, commandBuffer, command, submissionResources);
                     !status.ok()) {
@@ -2979,6 +3014,8 @@ void destroy_vulkan_submission_resources(
                 break;
             case detail::NativeCommandKind::begin_compute:
                 computePipeline.reset();
+                prepare_encoder_images(
+                    commandIndex, detail::NativeCommandKind::end_compute);
                 break;
             case detail::NativeCommandKind::end_compute:
                 computePipeline.reset();

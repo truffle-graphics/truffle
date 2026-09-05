@@ -917,8 +917,10 @@ void verify_vulkan_buffers() {
     assert(info.pipelines.compute);
     assert(info.pipelines.graphics);
     assert(info.pipelines.indirect);
-    assert(info.pipelines.maxColorAttachments == 1);
-    assert(!info.pipelines.multipleRenderTargets);
+    assert(info.pipelines.maxColorAttachments >= 2);
+    assert(info.pipelines.multipleRenderTargets);
+    assert(info.pipelines.depthStencil);
+    assert(info.pipelines.multisample);
     auto sampler = device.create_sampler({});
     assert(sampler.ok());
     auto anisotropicSampler = device.create_sampler({.maxAnisotropy = 2.0F});
