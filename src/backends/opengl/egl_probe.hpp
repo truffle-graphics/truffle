@@ -76,16 +76,20 @@ struct Context {
 }
 
 #if defined(TRUFFLE_EGL_API_OPENGL)
-using DebugMessageCallbackProc = PFNGLDEBUGMESSAGECALLBACKPROC;
 inline constexpr GLenum debugOutput = GL_DEBUG_OUTPUT;
 inline constexpr GLenum debugOutputSynchronous = GL_DEBUG_OUTPUT_SYNCHRONOUS;
 inline constexpr GLenum debugTypeError = GL_DEBUG_TYPE_ERROR;
+inline constexpr GLenum packImageHeight = GL_PACK_IMAGE_HEIGHT;
 #else
-using DebugMessageCallbackProc = PFNGLDEBUGMESSAGECALLBACKKHRPROC;
-inline constexpr GLenum debugOutput = GL_DEBUG_OUTPUT_KHR;
-inline constexpr GLenum debugOutputSynchronous = GL_DEBUG_OUTPUT_SYNCHRONOUS_KHR;
-inline constexpr GLenum debugTypeError = GL_DEBUG_TYPE_ERROR_KHR;
+inline constexpr GLenum debugOutput = 0x92E0;
+inline constexpr GLenum debugOutputSynchronous = 0x8242;
+inline constexpr GLenum debugTypeError = 0x824C;
+inline constexpr GLenum packImageHeight = 0;
 #endif
+
+using DebugMessageFunction = void (*)(GLenum, GLenum, GLuint, GLenum, GLsizei,
+                                      const GLchar*, const void*);
+using DebugMessageCallbackProc = void (*)(DebugMessageFunction, const void*);
 
 inline void debug_message(GLenum source, GLenum type, GLuint id,
                           GLenum severity, GLsizei length,
@@ -719,12 +723,16 @@ inline void configure_pixel_store(GLenum alignmentName, GLenum rowLengthName,
                   bytesPerRow == 0
                       ? 0
                       : static_cast<GLint>(bytesPerRow / bytesPerPixel));
-    glPixelStorei(imageHeightName, static_cast<GLint>(rowsPerImage));
+    if (imageHeightName != 0) {
+        glPixelStorei(imageHeightName, static_cast<GLint>(rowsPerImage));
+    }
 }
 
 inline void reset_pixel_store(GLenum alignmentName, GLenum rowLengthName,
                               GLenum imageHeightName) {
-    glPixelStorei(imageHeightName, 0);
+    if (imageHeightName != 0) {
+        glPixelStorei(imageHeightName, 0);
+    }
     glPixelStorei(rowLengthName, 0);
     glPixelStorei(alignmentName, 4);
 }
@@ -886,7 +894,7 @@ inline void reset_pixel_store(GLenum alignmentName, GLenum rowLengthName,
                                   ? region.extent.height
                                   : layout.rowsPerImage;
     configure_pixel_store(GL_PACK_ALIGNMENT, GL_PACK_ROW_LENGTH,
-                          GL_PACK_IMAGE_HEIGHT, rowBytes, rowsPerImage,
+                          packImageHeight, rowBytes, rowsPerImage,
                           texture->format.bytesPerPixel);
     glReadPixels(static_cast<GLint>(region.origin.x),
                  static_cast<GLint>(region.origin.y),
@@ -895,7 +903,7 @@ inline void reset_pixel_store(GLenum alignmentName, GLenum rowLengthName,
                  texture->format.format, texture->format.type,
                  data.data() + layout.offset);
     reset_pixel_store(GL_PACK_ALIGNMENT, GL_PACK_ROW_LENGTH,
-                      GL_PACK_IMAGE_HEIGHT);
+                      packImageHeight);
     glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
     glDeleteFramebuffers(1, &framebuffer);
     glFinish();
@@ -1176,7 +1184,7 @@ struct Probe {
                                       ? region.extent.height
                                       : layout.rowsPerImage;
         configure_pixel_store(GL_PACK_ALIGNMENT, GL_PACK_ROW_LENGTH,
-                              GL_PACK_IMAGE_HEIGHT, rowBytes, rowsPerImage,
+                              packImageHeight, rowBytes, rowsPerImage,
                               sourceTexture->format.bytesPerPixel);
         const auto offset = transfer.bufferTexture.bufferOffset + layout.offset;
         glReadPixels(static_cast<GLint>(region.origin.x),
@@ -1186,7 +1194,7 @@ struct Probe {
                      sourceTexture->format.format, sourceTexture->format.type,
                      reinterpret_cast<void*>(offset));
         reset_pixel_store(GL_PACK_ALIGNMENT, GL_PACK_ROW_LENGTH,
-                          GL_PACK_IMAGE_HEIGHT);
+                          packImageHeight);
         glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
         glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
         glDeleteFramebuffers(1, &framebuffer);

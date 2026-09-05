@@ -30,7 +30,12 @@ views, samplers, transfers, state isolation, and exact native output evidence.
   zero-error debug receipt. Ownership remains in the shared GL-family backend,
   dependencies remain system EGL/GL only, and the public RHI contract is
   unchanged. Local cross-platform compilation and the existing 37-test suite
-  pass; Linux GL/GLES compilation and native evidence remain pending CI.
+  pass. Initial Build `33963590121` reached the Linux GLES translation unit and
+  caught two profile-header assumptions: Ubuntu's GLES 3 headers omit KHR_debug
+  typedefs/constants and `GL_PACK_IMAGE_HEIGHT`. The shared code now uses the
+  specification values with a local callback signature, and skips the pack-
+  image state that GLES does not expose because readback is deliberately one
+  slice at a time. Replacement native evidence remains pending CI.
 - `feat/rhi1-gl-resources` starts #60 with a shared 2D texture checkpoint for
   both Linux EGL profiles. The backend now owns immutable uncompressed color
   textures and sampler objects, rejects external and unsupported shapes
