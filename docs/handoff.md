@@ -9,11 +9,28 @@ rather than growing a historical transcript here.
 
 ## Current Focus
 
-Close #57 through native Linux Vulkan XCB surface, swapchain, deterministic
-readback/present, resize recreation, and validation-layer CI evidence.
+Close #60 through shared, capability-accurate OpenGL and OpenGL ES textures,
+views, samplers, transfers, state isolation, and exact native output evidence.
 
 ## Latest Handoff
 
+- `feat/rhi1-gl-resources` starts #60 with a shared 2D texture checkpoint for
+  both Linux EGL profiles. The backend now owns immutable uncompressed color
+  textures and sampler objects, rejects external and unsupported shapes
+  explicitly, and implements host texture read/write plus buffer-to-texture,
+  texture-to-buffer, texture copy, partial clear, and nearest/linear framebuffer
+  blit through profile-common APIs. Every operation binds its own buffer,
+  texture, framebuffer, and pixel-store state and restores transient pixel-
+  store/framebuffer bindings before completion. The shared native test checks
+  exact padded-row upload/copy/readback, exact clear pixels, linear-blit output,
+  host upload/readback, sampler creation, state rebinding across resources, and
+  negative view/3D/external paths independently on desktop GL and GLES. The
+  public contract is unchanged; ownership remains in the shared EGL backend
+  with only system EGL/GL dependencies. The local macOS build compiles all
+  cross-platform consumers; Linux desktop GL/GLES compilation and native
+  output evidence remain pending CI. Texture views, extended shapes/formats,
+  depth/stencil, and multisample resolve remain inside open issue #60 for the
+  next checkpoint.
 - `feat/rhi1-vulkan-linux-wsi` implements the Linux Vulkan presentation path
   for #57 without adding a window framework. Hosts pass an owned XCB connection
   and window through the existing `NativeSurface`; the backend enables
