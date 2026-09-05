@@ -29,6 +29,17 @@ Result<Instance> create_opengles_instance(const InstanceDesc& desc) {
         .hostCoherent = true,
         .bufferCopy = true,
         .bufferFill = true,
+        .bufferTextureCopy = true,
+        .textureCopy = true,
+        .textureClear = true,
+        .textureBlitNearest = true,
+        .textureBlitLinear = true,
+    };
+    config.bindingCapabilities = {
+        .ordinaryBindGroups = true,
+        .maxBindGroups = 4,
+        .maxBindingsPerGroup = 32,
+        .maxDescriptorsPerGroup = 32,
     };
     config.native = true;
     config.nativeContext = std::move(native.context);
@@ -39,6 +50,10 @@ Result<Instance> create_opengles_instance(const InstanceDesc& desc) {
     config.invalidateBuffer = &detail::egl_probe::buffer_range;
     config.writeBuffer = &detail::egl_probe::write_buffer;
     config.readBuffer = &detail::egl_probe::read_buffer;
+    config.createTexture = &detail::egl_probe::create_texture;
+    config.writeTexture = &detail::egl_probe::write_texture;
+    config.readTexture = &detail::egl_probe::read_texture;
+    config.createSampler = &detail::egl_probe::create_sampler;
     config.nativeSubmit = &detail::egl_probe::submit;
     return detail::create_foundation_instance(desc, std::move(config));
 #else

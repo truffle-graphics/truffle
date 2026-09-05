@@ -16,6 +16,7 @@
 #endif
 
 #include <array>
+#include <algorithm>
 #include <cstring>
 #include <memory>
 #include <mutex>
@@ -91,6 +92,167 @@ struct BufferResource {
     GLenum mappedTarget = GL_COPY_WRITE_BUFFER;
     std::mutex mutex;
 };
+
+struct TextureFormatInfo {
+    GLenum internalFormat = 0;
+    GLenum format = 0;
+    GLenum type = 0;
+    std::uint32_t bytesPerPixel = 0;
+};
+
+[[nodiscard]] inline TextureFormatInfo texture_format(TextureFormat format) {
+    switch (format) {
+    case TextureFormat::r8_unorm:
+        return {GL_R8, GL_RED, GL_UNSIGNED_BYTE, 1};
+    case TextureFormat::rg8_unorm:
+        return {GL_RG8, GL_RG, GL_UNSIGNED_BYTE, 2};
+    case TextureFormat::rgba8_unorm:
+        return {GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, 4};
+    case TextureFormat::rgba8_srgb:
+        return {GL_SRGB8_ALPHA8, GL_RGBA, GL_UNSIGNED_BYTE, 4};
+    case TextureFormat::rgba16_float:
+        return {GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, 8};
+    case TextureFormat::rgba32_float:
+        return {GL_RGBA32F, GL_RGBA, GL_FLOAT, 16};
+    default:
+        return {};
+    }
+}
+
+struct TextureResource {
+    ~TextureResource() {
+        if (!context || name == 0) {
+            return;
+        }
+        std::lock_guard lock{context->mutex};
+        if (make_current(*context).ok()) {
+            glDeleteTextures(1, &name);
+        }
+    }
+
+    std::shared_ptr<Context> context;
+    GLuint name = 0;
+    GLenum target = GL_TEXTURE_2D;
+    TextureDesc desc;
+    TextureFormatInfo format;
+};
+
+struct SamplerResource {
+    ~SamplerResource() {
+        if (!context || name == 0) {
+            return;
+        }
+        std::lock_guard lock{context->mutex};
+        if (make_current(*context).ok()) {
+            glDeleteSamplers(1, &name);
+        }
+    }
+
+    std::shared_ptr<Context> context;
+    GLuint name = 0;
+};
+
+[[nodiscard]] inline GLenum sampler_filter(Filter filter) noexcept {
+    return filter == Filter::linear ? GL_LINEAR : GL_NEAREST;
+}
+
+[[nodiscard]] inline GLenum sampler_address(SamplerAddressMode mode) noexcept {
+    switch (mode) {
+    case SamplerAddressMode::clamp_to_edge:
+        return GL_CLAMP_TO_EDGE;
+    case SamplerAddressMode::repeat:
+        return GL_REPEAT;
+    case SamplerAddressMode::mirror_repeat:
+        return GL_MIRRORED_REPEAT;
+    }
+    return GL_CLAMP_TO_EDGE;
+}
+
+[[nodiscard]] inline Result<std::shared_ptr<void>> create_texture(
+    const std::shared_ptr<void>& nativeContext, const TextureDesc& desc) {
+    const auto context = std::static_pointer_cast<Context>(nativeContext);
+    const auto format = texture_format(desc.format);
+    if (!context || context->context == EGL_NO_CONTEXT) {
+        return Status::failure(StatusCode::device_lost,
+                               "the EGL native context is unavailable");
+    }
+    if (desc.memory == MemoryDomain::external || desc.shareable) {
+        return Status::failure(StatusCode::unsupported,
+                               "EGL/GL external textures are not implemented");
+    }
+    if (desc.dimension != TextureDimension::d2 || desc.arrayLayers != 1 ||
+        desc.sampleCount != 1 || format.internalFormat == 0) {
+        return Status::failure(
+            StatusCode::unsupported,
+            "this EGL/GL texture shape or format is not implemented");
+    }
+    auto resource = std::make_shared<TextureResource>();
+    resource->context = context;
+    resource->desc = desc;
+    resource->format = format;
+    std::lock_guard lock{context->mutex};
+    if (auto status = make_current(*context); !status.ok()) {
+        return status;
+    }
+    glGenTextures(1, &resource->name);
+    glBindTexture(resource->target, resource->name);
+    glTexStorage2D(resource->target, static_cast<GLsizei>(desc.mipLevels),
+                   format.internalFormat, static_cast<GLsizei>(desc.extent.width),
+                   static_cast<GLsizei>(desc.extent.height));
+    glTexParameteri(resource->target, GL_TEXTURE_BASE_LEVEL, 0);
+    glTexParameteri(resource->target, GL_TEXTURE_MAX_LEVEL,
+                    static_cast<GLint>(desc.mipLevels - 1));
+    if (glGetError() != GL_NO_ERROR || resource->name == 0) {
+        if (resource->name != 0) {
+            glDeleteTextures(1, &resource->name);
+            resource->name = 0;
+        }
+        return Status::failure(StatusCode::backend_error,
+                               "EGL/GL texture allocation failed");
+    }
+    return std::static_pointer_cast<void>(std::move(resource));
+}
+
+[[nodiscard]] inline Result<std::shared_ptr<void>> create_sampler(
+    const std::shared_ptr<void>& nativeContext, const SamplerDesc& desc) {
+    const auto context = std::static_pointer_cast<Context>(nativeContext);
+    if (!context || context->context == EGL_NO_CONTEXT) {
+        return Status::failure(StatusCode::device_lost,
+                               "the EGL native context is unavailable");
+    }
+    if (desc.maxAnisotropy != 1.0F) {
+        return Status::failure(StatusCode::unsupported,
+                               "EGL/GL anisotropic sampling is not enabled");
+    }
+    auto resource = std::make_shared<SamplerResource>();
+    resource->context = context;
+    std::lock_guard lock{context->mutex};
+    if (auto status = make_current(*context); !status.ok()) {
+        return status;
+    }
+    glGenSamplers(1, &resource->name);
+    glSamplerParameteri(resource->name, GL_TEXTURE_MIN_FILTER,
+                        static_cast<GLint>(sampler_filter(desc.minFilter)));
+    glSamplerParameteri(resource->name, GL_TEXTURE_MAG_FILTER,
+                        static_cast<GLint>(sampler_filter(desc.magFilter)));
+    glSamplerParameteri(resource->name, GL_TEXTURE_WRAP_S,
+                        static_cast<GLint>(sampler_address(desc.addressU)));
+    glSamplerParameteri(resource->name, GL_TEXTURE_WRAP_T,
+                        static_cast<GLint>(sampler_address(desc.addressV)));
+    glSamplerParameteri(resource->name, GL_TEXTURE_WRAP_R,
+                        static_cast<GLint>(sampler_address(desc.addressW)));
+    glSamplerParameterf(resource->name, GL_TEXTURE_MIN_LOD, desc.lodMin);
+    glSamplerParameterf(resource->name, GL_TEXTURE_MAX_LOD, desc.lodMax);
+    if (glGetError() != GL_NO_ERROR || resource->name == 0) {
+        if (resource->name != 0) {
+            glDeleteSamplers(1, &resource->name);
+            resource->name = 0;
+        }
+        return Status::failure(StatusCode::backend_error,
+                               "EGL/GL sampler allocation failed");
+    }
+    return std::static_pointer_cast<void>(std::move(resource));
+}
 
 [[nodiscard]] inline GLenum buffer_usage_hint(MemoryDomain memory) {
     switch (memory) {
@@ -315,6 +477,163 @@ struct BufferResource {
                                  "EGL/GL buffer read failed");
 }
 
+[[nodiscard]] inline std::uint32_t mip_size(std::uint32_t size,
+                                            std::uint32_t mip) noexcept {
+    return std::max(1u, size >> mip);
+}
+
+[[nodiscard]] inline bool texture_region_supported(
+    const TextureResource& texture, const TextureRegion& region) noexcept {
+    return region.subresource.aspect == TextureAspect::color &&
+           region.subresource.mipLevel < texture.desc.mipLevels &&
+           region.subresource.arrayLayer == 0 && region.origin.z == 0 &&
+           region.extent.depth == 1 && region.extent.width != 0 &&
+           region.extent.height != 0 &&
+           region.origin.x <= mip_size(texture.desc.extent.width,
+                                       region.subresource.mipLevel) &&
+           region.extent.width <=
+               mip_size(texture.desc.extent.width,
+                        region.subresource.mipLevel) - region.origin.x &&
+           region.origin.y <= mip_size(texture.desc.extent.height,
+                                       region.subresource.mipLevel) &&
+           region.extent.height <=
+               mip_size(texture.desc.extent.height,
+                        region.subresource.mipLevel) - region.origin.y;
+}
+
+[[nodiscard]] inline bool texture_data_supported(
+    const TextureResource& texture, const TextureRegion& region,
+    const TextureDataLayout& layout, std::size_t dataSize) noexcept {
+    if (!texture_region_supported(texture, region) ||
+        texture.format.bytesPerPixel == 0) {
+        return false;
+    }
+    const auto tightRow = static_cast<std::size_t>(region.extent.width) *
+                          texture.format.bytesPerPixel;
+    const auto rowBytes = layout.bytesPerRow == 0 ? tightRow
+                                                   : layout.bytesPerRow;
+    if (rowBytes < tightRow ||
+        rowBytes % texture.format.bytesPerPixel != 0 ||
+        layout.offset > dataSize) {
+        return false;
+    }
+    const auto required = static_cast<std::size_t>(region.extent.height - 1u) *
+                              rowBytes +
+                          tightRow;
+    return required <= dataSize - layout.offset;
+}
+
+inline void configure_pixel_store(GLenum alignmentName, GLenum rowLengthName,
+                                  std::size_t bytesPerRow,
+                                  std::uint32_t bytesPerPixel) {
+    glPixelStorei(alignmentName, 1);
+    glPixelStorei(rowLengthName,
+                  bytesPerRow == 0
+                      ? 0
+                      : static_cast<GLint>(bytesPerRow / bytesPerPixel));
+}
+
+inline void reset_pixel_store(GLenum alignmentName, GLenum rowLengthName) {
+    glPixelStorei(rowLengthName, 0);
+    glPixelStorei(alignmentName, 4);
+}
+
+[[nodiscard]] inline Status attach_color_texture(
+    GLenum framebufferTarget, const TextureResource& texture,
+    const TextureRegion& region) {
+    glFramebufferTexture2D(framebufferTarget, GL_COLOR_ATTACHMENT0,
+                           texture.target, texture.name,
+                           static_cast<GLint>(region.subresource.mipLevel));
+    return glCheckFramebufferStatus(framebufferTarget) ==
+                   GL_FRAMEBUFFER_COMPLETE
+               ? Status::success()
+               : Status::failure(StatusCode::backend_validation_failed,
+                                 "EGL/GL texture framebuffer is incomplete");
+}
+
+[[nodiscard]] inline Status write_texture(
+    const std::shared_ptr<void>& nativeResource, const TextureRegion& region,
+    std::span<const std::byte> data, const TextureDataLayout& layout) {
+    const auto texture =
+        std::static_pointer_cast<TextureResource>(nativeResource);
+    if (!texture ||
+        !texture_data_supported(*texture, region, layout, data.size())) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "EGL/GL texture write region is invalid");
+    }
+    std::lock_guard lock{texture->context->mutex};
+    if (auto status = make_current(*texture->context); !status.ok()) {
+        return status;
+    }
+    const auto rowBytes = layout.bytesPerRow == 0
+                              ? static_cast<std::size_t>(region.extent.width) *
+                                    texture->format.bytesPerPixel
+                              : layout.bytesPerRow;
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+    glBindTexture(texture->target, texture->name);
+    configure_pixel_store(GL_UNPACK_ALIGNMENT, GL_UNPACK_ROW_LENGTH, rowBytes,
+                          texture->format.bytesPerPixel);
+    glTexSubImage2D(texture->target,
+                    static_cast<GLint>(region.subresource.mipLevel),
+                    static_cast<GLint>(region.origin.x),
+                    static_cast<GLint>(region.origin.y),
+                    static_cast<GLsizei>(region.extent.width),
+                    static_cast<GLsizei>(region.extent.height),
+                    texture->format.format, texture->format.type,
+                    data.data() + layout.offset);
+    reset_pixel_store(GL_UNPACK_ALIGNMENT, GL_UNPACK_ROW_LENGTH);
+    glFinish();
+    return glGetError() == GL_NO_ERROR
+               ? Status::success()
+               : Status::failure(StatusCode::backend_validation_failed,
+                                 "EGL/GL texture write reported an error");
+}
+
+[[nodiscard]] inline Status read_texture(
+    const std::shared_ptr<void>& nativeResource, const TextureRegion& region,
+    std::span<std::byte> data, const TextureDataLayout& layout) {
+    const auto texture =
+        std::static_pointer_cast<TextureResource>(nativeResource);
+    if (!texture ||
+        !texture_data_supported(*texture, region, layout, data.size())) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "EGL/GL texture read region is invalid");
+    }
+    std::lock_guard lock{texture->context->mutex};
+    if (auto status = make_current(*texture->context); !status.ok()) {
+        return status;
+    }
+    GLuint framebuffer = 0;
+    glGenFramebuffers(1, &framebuffer);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
+    if (auto status = attach_color_texture(GL_READ_FRAMEBUFFER, *texture, region);
+        !status.ok()) {
+        glDeleteFramebuffers(1, &framebuffer);
+        return status;
+    }
+    const auto rowBytes = layout.bytesPerRow == 0
+                              ? static_cast<std::size_t>(region.extent.width) *
+                                    texture->format.bytesPerPixel
+                              : layout.bytesPerRow;
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+    configure_pixel_store(GL_PACK_ALIGNMENT, GL_PACK_ROW_LENGTH, rowBytes,
+                          texture->format.bytesPerPixel);
+    glReadPixels(static_cast<GLint>(region.origin.x),
+                 static_cast<GLint>(region.origin.y),
+                 static_cast<GLsizei>(region.extent.width),
+                 static_cast<GLsizei>(region.extent.height),
+                 texture->format.format, texture->format.type,
+                 data.data() + layout.offset);
+    reset_pixel_store(GL_PACK_ALIGNMENT, GL_PACK_ROW_LENGTH);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+    glDeleteFramebuffers(1, &framebuffer);
+    glFinish();
+    return glGetError() == GL_NO_ERROR
+               ? Status::success()
+               : Status::failure(StatusCode::backend_validation_failed,
+                                 "EGL/GL texture read reported an error");
+}
+
 struct Probe {
     std::shared_ptr<Context> context;
     std::string adapterName;
@@ -439,6 +758,178 @@ struct Probe {
     return Probe{.context = std::move(native), .adapterName = std::move(name)};
 }
 
+[[nodiscard]] inline Status execute_texture_transfer(
+    const NativeTransfer& transfer) {
+    const auto sourceTexture =
+        std::static_pointer_cast<TextureResource>(transfer.source);
+    const auto destinationTexture =
+        std::static_pointer_cast<TextureResource>(transfer.destination);
+    const auto sourceBuffer =
+        std::static_pointer_cast<BufferResource>(transfer.source);
+    const auto destinationBuffer =
+        std::static_pointer_cast<BufferResource>(transfer.destination);
+
+    if (transfer.kind == NativeTransferKind::copy_buffer_to_texture) {
+        if (!sourceBuffer || !destinationTexture ||
+            !texture_region_supported(*destinationTexture,
+                                      transfer.bufferTexture.texture)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "EGL/GL buffer-to-texture resources are invalid");
+        }
+        const auto& region = transfer.bufferTexture.texture;
+        const auto& layout = transfer.bufferTexture.layout;
+        const auto rowBytes = layout.bytesPerRow == 0
+                                  ? static_cast<std::size_t>(region.extent.width) *
+                                        destinationTexture->format.bytesPerPixel
+                                  : layout.bytesPerRow;
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, sourceBuffer->name);
+        glBindTexture(destinationTexture->target, destinationTexture->name);
+        configure_pixel_store(GL_UNPACK_ALIGNMENT, GL_UNPACK_ROW_LENGTH,
+                              rowBytes,
+                              destinationTexture->format.bytesPerPixel);
+        const auto offset = transfer.bufferTexture.bufferOffset + layout.offset;
+        glTexSubImage2D(
+            destinationTexture->target,
+            static_cast<GLint>(region.subresource.mipLevel),
+            static_cast<GLint>(region.origin.x),
+            static_cast<GLint>(region.origin.y),
+            static_cast<GLsizei>(region.extent.width),
+            static_cast<GLsizei>(region.extent.height),
+            destinationTexture->format.format, destinationTexture->format.type,
+            reinterpret_cast<const void*>(offset));
+        reset_pixel_store(GL_UNPACK_ALIGNMENT, GL_UNPACK_ROW_LENGTH);
+        glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+    } else if (transfer.kind == NativeTransferKind::copy_texture_to_buffer) {
+        if (!sourceTexture || !destinationBuffer ||
+            !texture_region_supported(*sourceTexture,
+                                      transfer.bufferTexture.texture)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "EGL/GL texture-to-buffer resources are invalid");
+        }
+        GLuint framebuffer = 0;
+        glGenFramebuffers(1, &framebuffer);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
+        if (auto status = attach_color_texture(
+                GL_READ_FRAMEBUFFER, *sourceTexture,
+                transfer.bufferTexture.texture);
+            !status.ok()) {
+            glDeleteFramebuffers(1, &framebuffer);
+            return status;
+        }
+        const auto& region = transfer.bufferTexture.texture;
+        const auto& layout = transfer.bufferTexture.layout;
+        const auto rowBytes = layout.bytesPerRow == 0
+                                  ? static_cast<std::size_t>(region.extent.width) *
+                                        sourceTexture->format.bytesPerPixel
+                                  : layout.bytesPerRow;
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, destinationBuffer->name);
+        configure_pixel_store(GL_PACK_ALIGNMENT, GL_PACK_ROW_LENGTH, rowBytes,
+                              sourceTexture->format.bytesPerPixel);
+        const auto offset = transfer.bufferTexture.bufferOffset + layout.offset;
+        glReadPixels(static_cast<GLint>(region.origin.x),
+                     static_cast<GLint>(region.origin.y),
+                     static_cast<GLsizei>(region.extent.width),
+                     static_cast<GLsizei>(region.extent.height),
+                     sourceTexture->format.format, sourceTexture->format.type,
+                     reinterpret_cast<void*>(offset));
+        reset_pixel_store(GL_PACK_ALIGNMENT, GL_PACK_ROW_LENGTH);
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+        glDeleteFramebuffers(1, &framebuffer);
+    } else if (transfer.kind == NativeTransferKind::clear_texture) {
+        if (!destinationTexture ||
+            !texture_region_supported(*destinationTexture,
+                                      transfer.texture.destination)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "EGL/GL texture clear resource is invalid");
+        }
+        GLuint framebuffer = 0;
+        glGenFramebuffers(1, &framebuffer);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, framebuffer);
+        if (auto status = attach_color_texture(
+                GL_DRAW_FRAMEBUFFER, *destinationTexture,
+                transfer.texture.destination);
+            !status.ok()) {
+            glDeleteFramebuffers(1, &framebuffer);
+            return status;
+        }
+        const auto& region = transfer.texture.destination;
+        glEnable(GL_SCISSOR_TEST);
+        glScissor(static_cast<GLint>(region.origin.x),
+                  static_cast<GLint>(region.origin.y),
+                  static_cast<GLsizei>(region.extent.width),
+                  static_cast<GLsizei>(region.extent.height));
+        const std::array value{transfer.clear.color.r, transfer.clear.color.g,
+                               transfer.clear.color.b,
+                               transfer.clear.color.a};
+        glClearBufferfv(GL_COLOR, 0, value.data());
+        glDisable(GL_SCISSOR_TEST);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+        glDeleteFramebuffers(1, &framebuffer);
+    } else if (transfer.kind == NativeTransferKind::copy_texture ||
+               transfer.kind == NativeTransferKind::resolve_texture ||
+               transfer.kind == NativeTransferKind::blit_texture) {
+        if (!sourceTexture || !destinationTexture) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "EGL/GL texture copy resources are invalid");
+        }
+        const auto& source = transfer.kind == NativeTransferKind::blit_texture
+                                 ? transfer.blit.source
+                                 : transfer.texture.source;
+        const auto& destination =
+            transfer.kind == NativeTransferKind::blit_texture
+                ? transfer.blit.destination
+                : transfer.texture.destination;
+        if (!texture_region_supported(*sourceTexture, source) ||
+            !texture_region_supported(*destinationTexture, destination)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "EGL/GL texture copy regions are invalid");
+        }
+        std::array<GLuint, 2> framebuffers{};
+        glGenFramebuffers(static_cast<GLsizei>(framebuffers.size()),
+                          framebuffers.data());
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffers[0]);
+        auto status = attach_color_texture(GL_READ_FRAMEBUFFER, *sourceTexture,
+                                           source);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, framebuffers[1]);
+        if (status.ok()) {
+            status = attach_color_texture(GL_DRAW_FRAMEBUFFER,
+                                          *destinationTexture, destination);
+        }
+        if (!status.ok()) {
+            glDeleteFramebuffers(static_cast<GLsizei>(framebuffers.size()),
+                                 framebuffers.data());
+            return status;
+        }
+        const auto filter =
+            transfer.kind == NativeTransferKind::blit_texture &&
+                    transfer.blit.filter == Filter::linear
+                ? GL_LINEAR
+                : GL_NEAREST;
+        glBlitFramebuffer(
+            static_cast<GLint>(source.origin.x),
+            static_cast<GLint>(source.origin.y),
+            static_cast<GLint>(source.origin.x + source.extent.width),
+            static_cast<GLint>(source.origin.y + source.extent.height),
+            static_cast<GLint>(destination.origin.x),
+            static_cast<GLint>(destination.origin.y),
+            static_cast<GLint>(destination.origin.x + destination.extent.width),
+            static_cast<GLint>(destination.origin.y + destination.extent.height),
+            GL_COLOR_BUFFER_BIT, filter);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+        glDeleteFramebuffers(static_cast<GLsizei>(framebuffers.size()),
+                             framebuffers.data());
+    } else {
+        return Status::failure(StatusCode::unsupported,
+                               "this EGL/GL texture transfer is unsupported");
+    }
+    return glGetError() == GL_NO_ERROR
+               ? Status::success()
+               : Status::failure(StatusCode::backend_validation_failed,
+                                 "the native GL texture transfer reported an error");
+}
+
 [[nodiscard]] inline Status submit(
     const std::shared_ptr<void>& nativeContext,
     QueueKind,
@@ -464,12 +955,10 @@ struct Probe {
         if (command.kind == NativeCommandKind::barrier) {
             continue;
         }
-        if (command.kind != NativeCommandKind::transfer ||
-            (command.transfer.kind != NativeTransferKind::copy_buffer &&
-             command.transfer.kind != NativeTransferKind::fill_buffer)) {
+        if (command.kind != NativeCommandKind::transfer) {
             return Status::failure(
                 StatusCode::unsupported,
-                "the EGL/GL resource slice supports buffer transfers only");
+                "the EGL/GL resource slice supports transfer commands only");
         }
     }
     std::vector<GLuint> transients;
@@ -494,6 +983,17 @@ struct Probe {
                 static_cast<GLintptr>(transfer.buffer.sourceOffset),
                 static_cast<GLintptr>(transfer.buffer.destinationOffset),
                 static_cast<GLsizeiptr>(transfer.buffer.size));
+            continue;
+        }
+        if (transfer.kind != NativeTransferKind::fill_buffer) {
+            if (auto status = execute_texture_transfer(transfer);
+                !status.ok()) {
+                if (!transients.empty()) {
+                    glDeleteBuffers(static_cast<GLsizei>(transients.size()),
+                                    transients.data());
+                }
+                return status;
+            }
             continue;
         }
         const auto destination =

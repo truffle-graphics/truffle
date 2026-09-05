@@ -9,11 +9,41 @@ rather than growing a historical transcript here.
 
 ## Current Focus
 
-Close #57 through native Linux Vulkan XCB surface, swapchain, deterministic
-readback/present, resize recreation, and validation-layer CI evidence.
+Close #60 through shared, capability-accurate OpenGL and OpenGL ES textures,
+views, samplers, transfers, state isolation, and exact native output evidence.
 
 ## Latest Handoff
 
+- `feat/rhi1-gl-resources` starts #60 with a shared 2D texture checkpoint for
+  both Linux EGL profiles. The backend now owns immutable uncompressed color
+  textures and sampler objects, rejects external and unsupported shapes
+  explicitly, and implements host texture read/write plus buffer-to-texture,
+  texture-to-buffer, texture copy, partial clear, and nearest/linear framebuffer
+  blit through profile-common APIs. Every operation binds its own buffer,
+  texture, framebuffer, and pixel-store state and restores transient pixel-
+  store/framebuffer bindings before completion. The shared native test checks
+  exact padded-row upload/copy/readback, exact clear pixels, linear-blit output,
+  host upload/readback, sampler creation, state rebinding across resources, and
+  negative view/3D/external paths independently on desktop GL and GLES. The
+  public contract is unchanged; ownership remains in the shared EGL backend
+  with only system EGL/GL dependencies. Initial Build `33962059122` compiled
+  both profiles but exposed a capability wiring defect: the common sampler
+  factory correctly existed, but the foundation rejected sampler creation
+  before reaching it because ordinary binding objects were not advertised.
+  Both profiles now expose the conservative logical bind-group baseline and
+  bounded limits required to create sampler objects; the shared test asserts
+  that prerequisite explicitly. Replacement Build `33962339263` then passed
+  the sampler and every native texture operation but caught an incorrect test
+  expectation at the final external-memory boundary: ordinary creation with
+  the external memory domain is contractually invalid because imports must use
+  `import_texture`, whereas a shareable ordinary allocation is the operation
+  that reports unsupported on these profiles. The test now covers both results
+  separately. Final Build `33962754752` passes package, macOS, Ubuntu, and
+  Windows. Its Ubuntu native-smoke lane proves both desktop GL and GLES exact
+  transfer/clear/blit/readback results and the explicit unsupported boundaries.
+  Texture views, extended shapes/formats,
+  depth/stencil, and multisample resolve remain inside open issue #60 for the
+  next checkpoint.
 - `feat/rhi1-vulkan-linux-wsi` implements the Linux Vulkan presentation path
   for #57 without adding a window framework. Hosts pass an owned XCB connection
   and window through the existing `NativeSurface`; the backend enables
