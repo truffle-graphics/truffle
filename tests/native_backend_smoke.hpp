@@ -148,6 +148,7 @@ inline void verify_native_texture_backend(rhi::Result<rhi::Instance> result,
     assert(info.resources.bufferTextureCopy && info.resources.textureCopy);
     assert(info.resources.textureClear && info.resources.textureBlitNearest &&
            info.resources.textureBlitLinear);
+    assert(info.bindings.ordinaryBindGroups);
     assert(!info.resources.textureResolve && !info.resources.externalImport &&
            !info.resources.externalExport);
 

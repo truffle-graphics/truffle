@@ -26,9 +26,14 @@ views, samplers, transfers, state isolation, and exact native output evidence.
   host upload/readback, sampler creation, state rebinding across resources, and
   negative view/3D/external paths independently on desktop GL and GLES. The
   public contract is unchanged; ownership remains in the shared EGL backend
-  with only system EGL/GL dependencies. The local macOS build compiles all
-  cross-platform consumers; Linux desktop GL/GLES compilation and native
-  output evidence remain pending CI. Texture views, extended shapes/formats,
+  with only system EGL/GL dependencies. Initial Build `33962059122` compiled
+  both profiles but exposed a capability wiring defect: the common sampler
+  factory correctly existed, but the foundation rejected sampler creation
+  before reaching it because ordinary binding objects were not advertised.
+  Both profiles now expose the conservative logical bind-group baseline and
+  bounded limits required to create sampler objects; the shared test asserts
+  that prerequisite explicitly. Replacement Linux desktop GL/GLES native
+  output evidence remains pending CI. Texture views, extended shapes/formats,
   depth/stencil, and multisample resolve remain inside open issue #60 for the
   next checkpoint.
 - `feat/rhi1-vulkan-linux-wsi` implements the Linux Vulkan presentation path

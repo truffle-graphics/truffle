@@ -35,6 +35,12 @@ Result<Instance> create_opengl_instance(const InstanceDesc& desc) {
         .textureBlitNearest = true,
         .textureBlitLinear = true,
     };
+    config.bindingCapabilities = {
+        .ordinaryBindGroups = true,
+        .maxBindGroups = 4,
+        .maxBindingsPerGroup = 32,
+        .maxDescriptorsPerGroup = 32,
+    };
     config.native = true;
     config.nativeContext = std::move(native.context);
     config.createBuffer = &detail::egl_probe::create_buffer;
