@@ -108,7 +108,8 @@ RHI 1 owns mechanism rather than renderer policy:
   subresource and aliasing barriers, queue ownership transfers, and explicit
   wait/signal semaphore values;
 - query pools expose command-list timestamp writes, render-scoped occlusion
-  queries, and explicit 64-bit result resolution into buffers.
+  queries, explicit 64-bit result resolution into buffers, and an adapter
+  timestamp period for converting raw ticks to nanoseconds.
 
 Descriptor caching, admission, quota, eviction, recovery, and materialization
 policy belongs above RHI. The preliminary policy engine was deleted during the

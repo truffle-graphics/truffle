@@ -170,6 +170,7 @@ struct FoundationBackendConfig {
     std::string adapterName;
     std::vector<QueueKind> queueKinds;
     std::vector<Feature> supportedFeatures;
+    double timestampPeriodNanoseconds = 0.0;
     AdapterInfo::ResourceCapabilities resourceCapabilities;
     AdapterInfo::BindingCapabilities bindingCapabilities;
     AdapterInfo::PipelineCapabilities pipelineCapabilities;

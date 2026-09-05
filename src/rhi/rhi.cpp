@@ -1392,6 +1392,8 @@ struct Factory {
     info.presentation = runtime.config.presentation;
     info.queueKinds = runtime.config.queueKinds;
     info.supportedFeatures = runtime.config.supportedFeatures;
+    info.timestampPeriodNanoseconds =
+        runtime.config.timestampPeriodNanoseconds;
     info.resources = runtime.config.resourceCapabilities;
     info.bindings = runtime.config.bindingCapabilities;
     info.pipelines = runtime.config.pipelineCapabilities;

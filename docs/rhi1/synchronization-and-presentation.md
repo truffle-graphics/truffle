@@ -30,6 +30,8 @@ and `CommandList::resolve_queries()` writes packed 64-bit results into a buffer
 with `copy_destination` usage. Query type/index, nesting, resolution range,
 buffer usage, alignment, and availability are validated. Pipeline-statistics
 queries remain optional and fail when a backend does not implement them.
+`AdapterInfo::timestampPeriodNanoseconds` converts one raw timestamp tick to
+nanoseconds and is positive whenever `timestamp_queries` is advertised.
 
 ## Vulkan mapping
 
@@ -50,7 +52,8 @@ queries remain optional and fail when a backend does not implement them.
   timestamp bits. Timestamp and occlusion pools are reset before use and
   resolve packed 64-bit values with `VK_QUERY_RESULT_WAIT_BIT`, so unavailable
   results are never exposed as completed data. Pipeline statistics remain
-  unsupported.
+  unsupported. The adapter publishes Vulkan's native `timestampPeriod` for
+  calibration.
 
 ## Direct3D 12 mapping
 
@@ -67,7 +70,8 @@ queries remain optional and fail when a backend does not implement them.
   fallback.
 - Timestamp and occlusion pools map to D3D12 query heaps and resolve through
   `ResolveQueryData`. Timestamp stage hints identify command-stream placement;
-  D3D12 supplies no finer portable per-stage timestamp point.
+  D3D12 supplies no finer portable per-stage timestamp point. The adapter
+  publishes the inverse queue timestamp frequency as nanoseconds per tick.
 - Validation-enabled instances turn on both the D3D12 debug layer and
   GPU-based validation when the installed debug interface exposes it.
 - A `win32` surface borrows a live host-provided `HWND`; Truffle does not create

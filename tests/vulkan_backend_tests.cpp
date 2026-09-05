@@ -2,6 +2,7 @@
 #include "truffle/rhi/shader_package.hpp"
 
 #include "native_backend_smoke.hpp"
+#include "vulkan_backend_test.hpp"
 
 #include <algorithm>
 #include <array>
@@ -64,6 +65,7 @@ void verify_vulkan_buffers() {
     assert(!info.pipelines.indirectCount);
     assert(!info.pipelines.pipelineCache);
     assert(info.pipelines.maxColorAttachments >= 2);
+    assert(info.timestampPeriodNanoseconds > 0.0);
     assert(std::find(info.supportedFeatures.begin(),
                      info.supportedFeatures.end(),
                      rhi::Feature::timestamp_queries) !=
@@ -1814,6 +1816,24 @@ void verify_vulkan_buffers() {
     });
     assert(!externalTexture.ok());
     assert(externalTexture.status().code == rhi::StatusCode::unsupported);
+
+    auto lossList = pool.allocate();
+    assert(lossList.ok());
+    assert(lossList.value().begin().ok());
+    assert(lossList.value().end().ok());
+    std::array<rhi::CommandList*, 1> lossLists{&lossList.value()};
+    rhi::detail::set_vulkan_device_loss_for_testing(true);
+    assert(queue.submit(lossLists).code == rhi::StatusCode::device_lost);
+    assert(device.lost());
+    rhi::detail::set_vulkan_device_loss_for_testing(false);
+    assert(queue.submit(lossLists).code == rhi::StatusCode::device_lost);
+    auto recoveredDevice = adapter.request_device({
+        .requiredFeatures = {rhi::Feature::transfer,
+                             rhi::Feature::compute,
+                             rhi::Feature::timestamp_queries},
+    });
+    assert(recoveredDevice.ok());
+    assert(!recoveredDevice.value().lost());
 }
 
 } // namespace

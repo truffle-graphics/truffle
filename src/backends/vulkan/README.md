@@ -43,7 +43,9 @@ sharing across distinct families, maps explicit buffer/texture/aliasing
 barriers, owns timeline semaphores, and resolves native timestamp and occlusion
 queries. Validation proves cross-queue timeline ordering, multi-list execution,
 timeout retry, exact copied output, explicit transitions, timestamp ordering,
-and bounded nonzero occlusion. WSI and presentation remain unsupported. RHI 1
+timestamp-period calibration, bounded nonzero occlusion, and deterministic
+device-loss propagation plus fresh-device recovery. WSI and presentation
+remain unsupported. RHI 1
 exposes no buffer-device-address
 contract. External sharing remains unadvertised until platform handle types and
 ownership are defined.

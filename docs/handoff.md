@@ -14,6 +14,17 @@ barrier, timeline-semaphore, fence, and query evidence.
 
 ## Latest Handoff
 
+- `fix/rhi1-vulkan-device-loss` closes the final #54 acceptance gap found after
+  PR #150 merged. A private, non-installed Vulkan test hook injects submission
+  device loss; the native suite proves the submitting device becomes lost,
+  further work remains rejected after the hook is cleared, and a freshly
+  requested device recovers. `AdapterInfo::timestampPeriodNanoseconds` now
+  makes raw query ticks calibratable: Vulkan publishes native
+  `timestampPeriod`, D3D12 publishes the inverse queue frequency, and Null uses
+  one nanosecond per deterministic tick. Timestamp-capable adapter tests require
+  a positive period. The public addition is backend-neutral and belongs to the
+  RHI adapter contract; the fault hook remains Vulkan-private. The local build
+  and all 37 tests pass; CI evidence is pending.
 - `feat/rhi1-vulkan-sync-foundation` implements #54's native Vulkan baseline.
   Queue kind is now carried through the internal submission boundary; Vulkan
   discovers graphics, compute, and transfer families, creates one queue for

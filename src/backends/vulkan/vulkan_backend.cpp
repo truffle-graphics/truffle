@@ -1,11 +1,13 @@
 #include "truffle/rhi/vulkan_backend.hpp"
 
 #include "foundation_backend.hpp"
+#include "vulkan_backend_test.hpp"
 
 #include <volk.h>
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstring>
 #include <iterator>
 #include <limits>
@@ -16,6 +18,16 @@
 #include <vector>
 
 namespace truffle::rhi {
+namespace detail {
+
+std::atomic<bool> gVulkanDeviceLossForTesting{false};
+
+void set_vulkan_device_loss_for_testing(bool enabled) noexcept {
+    gVulkanDeviceLossForTesting.store(enabled);
+}
+
+} // namespace detail
+
 namespace {
 
 constexpr auto portability_subset_extension = "VK_KHR_portability_subset";
@@ -4907,6 +4919,10 @@ void prepare_vulkan_binding_images(VulkanContext& context,
     std::span<const detail::NativeCommand> commands,
     std::span<const detail::NativeSemaphorePoint> waits,
     std::span<const detail::NativeSemaphorePoint> signals) {
+    if (detail::gVulkanDeviceLossForTesting.load()) {
+        return Status::failure(StatusCode::device_lost,
+                               "injected Vulkan device loss");
+    }
     const auto context = std::static_pointer_cast<VulkanContext>(nativeContext);
     if (!context || context->device == VK_NULL_HANDLE ||
         context->queue(queueKind) == VK_NULL_HANDLE) {
@@ -4962,6 +4978,8 @@ Result<Instance> create_vulkan_instance(const InstanceDesc& desc) {
     }
     if (native.context->timestampQueries) {
         config.supportedFeatures.push_back(Feature::timestamp_queries);
+        config.timestampPeriodNanoseconds =
+            native.context->properties.limits.timestampPeriod;
     }
     config.resourceCapabilities = {
         .bufferViews = true,

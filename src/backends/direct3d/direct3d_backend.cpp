@@ -1654,6 +1654,7 @@ struct Direct3DProbe {
   std::shared_ptr<Direct3DContext> context;
   std::string adapterName;
   std::size_t deviceLocalBudget = 1024u * 1024u * 1024u;
+  double timestampPeriodNanoseconds = 0.0;
 };
 
 [[nodiscard]] bool direct3d_transfer_range_valid(const Direct3DBufferResource &resource,
@@ -2941,6 +2942,13 @@ record_direct3d_commands(Direct3DContext &context, ID3D12GraphicsCommandList &co
     return status;
   }
 
+  UINT64 timestampFrequency = 0;
+  result = context->queue->GetTimestampFrequency(&timestampFrequency);
+  if (FAILED(result) || timestampFrequency == 0) {
+    return direct3d_failure(StatusCode::backend_error,
+                            "D3D12 timestamp frequency query failed", result);
+  }
+
   DXGI_ADAPTER_DESC1 adapterDesc{};
   adapter->GetDesc1(&adapterDesc);
   return Direct3DProbe{
@@ -2949,6 +2957,8 @@ record_direct3d_commands(Direct3DContext &context, ID3D12GraphicsCommandList &co
       .deviceLocalBudget = adapterDesc.DedicatedVideoMemory != 0
                                ? adapterDesc.DedicatedVideoMemory
                                : 1024u * 1024u * 1024u,
+      .timestampPeriodNanoseconds =
+          1'000'000'000.0 / static_cast<double>(timestampFrequency),
   };
 }
 
@@ -3444,6 +3454,7 @@ Result<Instance> create_direct3d12_instance(const InstanceDesc &desc) {
       Feature::timestamp_queries, Feature::memory_budget,  Feature::descriptor_arrays,
       Feature::dynamic_offsets,   Feature::push_constants,
   };
+  config.timestampPeriodNanoseconds = native.timestampPeriodNanoseconds;
   config.resourceCapabilities = {
       .bufferViews = true,
       .textureViews = true,
