@@ -70,7 +70,11 @@ set(_compute_es_package "${TRUFFLE_SHADERC_TEST_DIR}/work-es.truffle-shader")
 file(WRITE "${_compute_es}"
     "#version 310 es\n"
     "layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;\n"
-    "void main() {}\n")
+    "layout(set = 0, binding = 0, std430) buffer Output { uint values[]; } outputData;\n"
+    "void main() {\n"
+    "  uint index = gl_GlobalInvocationID.x;\n"
+    "  outputData.values[index] = 0x10203040u + index * 0x01010101u;\n"
+    "}\n")
 file(SHA256 "${_compute_es}" _compute_es_hash)
 execute_process(
     COMMAND "${TRUFFLE_SHADERC}"

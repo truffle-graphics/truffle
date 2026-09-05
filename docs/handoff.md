@@ -9,11 +9,23 @@ rather than growing a historical transcript here.
 
 ## Current Focus
 
-Advance #53 from generated ShaderPackage consumption through native Vulkan
-bindings, pipelines, and execution while preserving capability-gated claims.
+Advance #53 through native Vulkan bindings, compute pipelines, and exact
+storage-buffer execution before promoting the separately gated graphics path.
 
 ## Latest Handoff
 
+- `feat/rhi1-vulkan-bindings` adds the next bounded #53 checkpoint. Vulkan now
+  creates native samplers, descriptor-set/pipeline layouts, compute pipelines,
+  per-submission descriptor pools/sets, push constants, and direct dispatch on
+  its shared graphics/compute queue. The generated GLSL ES fixture writes four
+  deterministic words through a reflected storage-buffer bind group; the Linux
+  lane must prove exact host readback under validation. Adapter limits drive
+  the reported binding/push-constant/workgroup limits. Non-identity SPIR-V
+  binding remaps, graphics pipelines, render passes, and indirect dispatch stay
+  explicitly unsupported. The backend owns all native objects and consumes
+  only existing RHI contracts plus pinned Vulkan dependencies; no public API
+  changes. Local warning-as-error compilation and all 37 tests pass, while this
+  host cannot execute the Linux-native dispatch path.
 - `feat/rhi1-vulkan-shader-modules` begins #53 with Vulkan-owned SPIR-V shader
   modules. The backend rejects non-SPIR-V, partial-word, and invalid-magic
   inputs before native creation, copies package bytes into aligned words, and

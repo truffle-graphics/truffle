@@ -17,8 +17,8 @@
 namespace {
 
 #if defined(TRUFFLE_VULKAN_SHADER_PACKAGE_PATH)
-[[nodiscard]] std::vector<std::byte> read_shader_package() {
-    std::ifstream input{TRUFFLE_VULKAN_SHADER_PACKAGE_PATH, std::ios::binary};
+[[nodiscard]] std::vector<std::byte> read_shader_package(const char* path) {
+    std::ifstream input{path, std::ios::binary};
     assert(input);
     const std::vector<char> contents{std::istreambuf_iterator<char>{input}, {}};
     std::vector<std::byte> bytes(contents.size());
@@ -64,7 +64,8 @@ void verify_vulkan_buffers() {
     assert(device.memory_budget(rhi::MemoryDomain::device_local).ok());
 
 #if defined(TRUFFLE_VULKAN_SHADER_PACKAGE_PATH)
-    const auto packageBytes = read_shader_package();
+    const auto packageBytes =
+        read_shader_package(TRUFFLE_VULKAN_SHADER_PACKAGE_PATH);
     auto packageResult = rhi::ShaderPackage::load(packageBytes);
     assert(packageResult.ok());
     auto shaderResult = device.create_shader(
@@ -97,6 +98,101 @@ void verify_vulkan_buffers() {
     assert(!partialWordShader.ok());
     assert(partialWordShader.status().code ==
            rhi::StatusCode::invalid_argument);
+#endif
+
+#if defined(TRUFFLE_VULKAN_COMPUTE_PACKAGE_PATH)
+    const auto generatedComputeBytes =
+        read_shader_package(TRUFFLE_VULKAN_COMPUTE_PACKAGE_PATH);
+    auto generatedComputeResult =
+        rhi::ShaderPackage::load(generatedComputeBytes);
+    assert(generatedComputeResult.ok());
+    auto computeDesc = generatedComputeResult.value().desc();
+    assert(computeDesc.variants.size() == 1);
+    computeDesc.variants[0].reflection.bindings = {
+        {.name = "outputData",
+         .stage = rhi::ShaderStage::compute,
+         .type = rhi::ResourceBindingType::buffer,
+         .group = 0,
+         .binding = 0,
+         .minimumSize = 16,
+         .readOnly = false},
+    };
+    computeDesc.variants[0].reflection.requiredWorkgroupSize = {1, 1, 1};
+    computeDesc.variants[0].reflection.preferredWorkgroupSize = {4, 1, 1};
+    auto reflectedComputeResult =
+        rhi::ShaderPackage::create(std::move(computeDesc));
+    assert(reflectedComputeResult.ok());
+    auto computeShaderResult = device.create_shader(
+        reflectedComputeResult.value(), rhi::ShaderTarget::spirv, "main",
+        rhi::ShaderStage::compute);
+    assert(computeShaderResult.ok());
+    auto computeShader = std::move(computeShaderResult).value();
+    auto storageLayoutResult = device.create_bind_group_layout({
+        .group = 0,
+        .entries = {{.binding = 0,
+                     .type = rhi::BindingType::storage_buffer,
+                     .visibility = rhi::ShaderStageMask::compute,
+                     .minimumBufferSize = 16}},
+    });
+    assert(storageLayoutResult.ok());
+    auto storageLayout = std::move(storageLayoutResult).value();
+    auto computeLayoutResult = device.create_pipeline_layout({
+        .bindGroupLayouts = {&storageLayout},
+    });
+    assert(computeLayoutResult.ok());
+    auto computeLayout = std::move(computeLayoutResult).value();
+    auto computePipelineResult = device.create_compute_pipeline({
+        .computeShader = &computeShader,
+        .layout = &computeLayout,
+    });
+    assert(computePipelineResult.ok());
+    auto computePipeline = std::move(computePipelineResult).value();
+    assert(computePipeline.preferred_workgroup_size() ==
+           rhi::Extent3D(4, 1, 1));
+    auto storageResult = device.create_buffer({
+        .size = 16,
+        .usage = rhi::BufferUsage::storage,
+        .memory = rhi::MemoryDomain::readback,
+    });
+    assert(storageResult.ok());
+    auto storage = std::move(storageResult).value();
+    auto arenaResult = device.create_descriptor_arena();
+    assert(arenaResult.ok());
+    auto arena = std::move(arenaResult).value();
+    auto groupResult = device.create_bind_group({
+        .layout = &storageLayout,
+        .arena = &arena,
+        .entries = {{.binding = 0, .buffer = &storage, .size = 16}},
+    });
+    assert(groupResult.ok());
+    auto group = std::move(groupResult).value();
+    auto computePoolResult =
+        device.create_command_pool(rhi::QueueKind::compute);
+    assert(computePoolResult.ok());
+    auto computePool = std::move(computePoolResult).value();
+    auto computeListResult = computePool.allocate();
+    assert(computeListResult.ok());
+    auto computeList = std::move(computeListResult).value();
+    assert(computeList.begin().ok());
+    auto computeEncoderResult = computeList.begin_compute();
+    assert(computeEncoderResult.ok());
+    auto compute = std::move(computeEncoderResult).value();
+    assert(compute.bind_pipeline(computePipeline).ok());
+    assert(compute.bind_group(0, group).ok());
+    assert(compute.dispatch(4, 1, 1).ok());
+    assert(compute.end().ok());
+    assert(computeList.end().ok());
+    auto computeQueueResult = device.queue(rhi::QueueKind::compute);
+    assert(computeQueueResult.ok());
+    auto computeQueue = std::move(computeQueueResult).value();
+    std::array<rhi::CommandList*, 1> computeLists{&computeList};
+    assert(computeQueue.submit(computeLists).ok());
+    std::array<std::uint32_t, 4> computeOutput{};
+    assert(storage.read(0, std::as_writable_bytes(std::span{computeOutput}))
+               .ok());
+    const std::array<std::uint32_t, 4> expectedCompute{
+        0x10203040u, 0x11213141u, 0x12223242u, 0x13233343u};
+    assert(computeOutput == expectedCompute);
 #endif
 
     constexpr std::size_t byteCount = 64;
@@ -322,8 +418,10 @@ void verify_vulkan_buffers() {
 
     assert(!info.bindings.ordinaryBindGroups);
     auto sampler = device.create_sampler({});
-    assert(!sampler.ok());
-    assert(sampler.status().code == rhi::StatusCode::unsupported);
+    assert(sampler.ok());
+    auto anisotropicSampler = device.create_sampler({.maxAnisotropy = 2.0F});
+    assert(!anisotropicSampler.ok());
+    assert(anisotropicSampler.status().code == rhi::StatusCode::unsupported);
 
     std::array<std::byte, 16> mipLayerPixels{};
     for (std::size_t index = 0; index < mipLayerPixels.size(); ++index) {
