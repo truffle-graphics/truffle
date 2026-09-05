@@ -2841,21 +2841,22 @@ void destroy_vulkan_submission_resources(
                            VK_ACCESS_TRANSFER_READ_BIT |
                                VK_ACCESS_TRANSFER_WRITE_BIT);
         } else {
-            const auto sourceStages =
-                (recordedComputeWrite ? VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
-                                      : 0u) |
-                (recordedRenderWrite
-                     ? VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
-                     : 0u);
-            const auto sourceAccess =
-                (recordedComputeWrite ? VK_ACCESS_SHADER_WRITE_BIT : 0u) |
-                (recordedRenderWrite
-                     ? VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
-                     : 0u);
-            memory_barrier(sourceStages != 0 ? sourceStages
-                                             : VK_PIPELINE_STAGE_HOST_BIT,
-                           sourceAccess != 0 ? sourceAccess
-                                             : VK_ACCESS_HOST_WRITE_BIT,
+            VkPipelineStageFlags sourceStages = 0;
+            VkAccessFlags sourceAccess = 0;
+            if (recordedComputeWrite) {
+                sourceStages |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+                sourceAccess |= VK_ACCESS_SHADER_WRITE_BIT;
+            }
+            if (recordedRenderWrite) {
+                sourceStages |=
+                    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+                sourceAccess |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            }
+            if (sourceStages == 0) {
+                sourceStages = VK_PIPELINE_STAGE_HOST_BIT;
+                sourceAccess = VK_ACCESS_HOST_WRITE_BIT;
+            }
+            memory_barrier(sourceStages, sourceAccess,
                            VK_PIPELINE_STAGE_TRANSFER_BIT,
                            VK_ACCESS_TRANSFER_READ_BIT |
                                VK_ACCESS_TRANSFER_WRITE_BIT);

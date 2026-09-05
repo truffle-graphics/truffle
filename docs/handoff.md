@@ -26,6 +26,9 @@ output while keeping depth/MRT/MSAA and indirect paths separately gated.
   pinned Vulkan/glslang dependencies, with no public API change. The local
   warnings-as-errors build and all 36 host tests pass; Linux Vulkan validation
   is the native evidence gate before documentation or capability claims merge.
+  Initial Build `33940133323` reached GCC and found enum-versus-flags
+  conditional expressions rejected by `-Werror`; stage/access mask assembly
+  now uses explicitly typed Vulkan flag variables.
 - `feat/rhi1-vulkan-bindings` adds the next bounded #53 checkpoint. Vulkan now
   creates native samplers, descriptor-set/pipeline layouts, compute pipelines,
   per-submission descriptor pools/sets, push constants, and direct dispatch on
