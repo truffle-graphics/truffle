@@ -29,11 +29,13 @@ deterministically. The backend owns samplers, descriptor-set and pipeline
 layouts, shader modules, compute pipelines, and one-color single-sample
 graphics pipelines. Generated SPIR-V fixtures prove sampled-texture/sampler and
 storage-buffer bindings, push constants, direct/indirect compute, and
-direct/indexed/instanced/indirect triangle output with exact readback. Depth
-attachments, MRT, MSAA graphics pipelines, indirect-count, synchronization
-primitives, WSI, and presentation remain unsupported. RHI 1 exposes no
-buffer-device-address contract. External sharing remains unadvertised until
-platform handle types and ownership are defined.
+direct/indexed/instanced/indirect triangle output with exact readback. Native
+depth/stencil state and attachments, multiple render targets, and multisample
+resolve are mapped through compatible transient render passes; Linux validation
+proves exact depth pass/fail, red/green MRT, and four-sample resolved output.
+Indirect-count, synchronization primitives, WSI, and presentation remain
+unsupported. RHI 1 exposes no buffer-device-address contract. External sharing
+remains unadvertised until platform handle types and ownership are defined.
 Other platforms remain `source_only`, including Apple until a pinned MoltenVK
 group and execution lane exist. Shared logical validation belongs to Null and
 is never used to simulate Vulkan behavior.

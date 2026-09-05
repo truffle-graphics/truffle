@@ -31,7 +31,11 @@ with exact Linux-native output.
   layout barrier recorded inside an active render pass. Capability assertions
   now match the promoted limits, and descriptor images are transitioned at the
   render/compute encoder boundary before native pass execution. Ubuntu Vulkan
-  validation remains the required native evidence before merge.
+  validation in replacement Build `33942299645` proves exact depth pass/fail,
+  two-target red/green output, and four-sample resolve with clean validation;
+  package, macOS, Ubuntu, and Windows lanes all pass. The separate
+  companion-routing failure is the known non-gating automation defect tracked
+  by #131.
 - `feat/rhi1-vulkan-graphics-expanded` extends #53's proven ordinary graphics
   slice with a generated sampled-texture fragment package, reflected texture
   and sampler descriptors, graphics bind-group encoding, direct indexed and
