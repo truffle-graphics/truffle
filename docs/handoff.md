@@ -9,11 +9,26 @@ rather than growing a historical transcript here.
 
 ## Current Focus
 
-Advance #53 through native Vulkan depth/stencil, MRT, and MSAA render paths
-with exact Linux-native output.
+Close #53 through native Vulkan compute-to-render ordering plus deterministic
+binding/pipeline mismatch, optional-feature, and descriptor-lifetime evidence.
 
 ## Latest Handoff
 
+- `feat/rhi1-vulkan-graphics-closeout` completes #53's remaining acceptance
+  surface. A generated fragment package reads the storage buffer written by a
+  preceding compute dispatch in the same command list and produces an exact
+  blue triangle; submission inserts compute-write to fragment-read visibility
+  before beginning the render pass. Native tests also prove that recorded bind
+  groups retain their resources across an arena reset, retired groups fail
+  deterministically, and replacement groups submit exact output. Missing and
+  wrong-type reflection layouts, non-identity SPIR-V remaps, update-after-bind,
+  bindless tables, pipeline caches, and indirect-count all return their
+  documented invalid/unsupported status without simulation. Pipeline-cache and
+  bindless execution remain untested because they remain unadvertised, as #53
+  requires. Ownership stays in `src/backends/vulkan`, dependencies remain RHI
+  contracts plus pinned Vulkan/glslang inputs, and there is no public API
+  change. The local pinned-glslang build and all 37 tests pass; Ubuntu Vulkan
+  validation is required before updating the final evidence and closing #53.
 - `feat/rhi1-vulkan-depth-mrt-msaa` generalizes Vulkan graphics-pipeline and
   submission render-pass compatibility from one single-sample color target to
   multiple color targets, an optional depth/stencil attachment, and explicit

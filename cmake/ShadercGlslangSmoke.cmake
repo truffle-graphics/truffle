@@ -111,6 +111,39 @@ if(NOT _mrt_fragment_result EQUAL 0)
         "MRT fragment compilation failed: ${_mrt_fragment_output}${_mrt_fragment_error}")
 endif()
 
+set(_compute_color_fragment
+    "${TRUFFLE_SHADERC_TEST_DIR}/compute-color.frag")
+set(_compute_color_fragment_package
+    "${TRUFFLE_SHADERC_TEST_DIR}/compute-color-fragment.truffle-shader")
+file(WRITE "${_compute_color_fragment}"
+    "#version 450\n"
+    "layout(set = 0, binding = 0, std430) readonly buffer Input { uint values[]; } inputData;\n"
+    "layout(location = 0) out vec4 outputColor;\n"
+    "void main() {\n"
+    "  outputColor = inputData.values[0] == 0x10203040u\n"
+    "      ? vec4(0.0, 0.0, 1.0, 1.0)\n"
+    "      : vec4(1.0, 0.0, 0.0, 1.0);\n"
+    "}\n")
+file(SHA256 "${_compute_color_fragment}" _compute_color_fragment_hash)
+execute_process(
+    COMMAND "${TRUFFLE_SHADERC}"
+        --compile
+        --name compute-color-fragment
+        --target spirv
+        --stage fragment
+        --entry main
+        --input "${_compute_color_fragment}"
+        --output "${_compute_color_fragment_package}"
+        --source-hash "${_compute_color_fragment_hash}"
+        --source-language glsl
+    RESULT_VARIABLE _compute_color_fragment_result
+    OUTPUT_VARIABLE _compute_color_fragment_output
+    ERROR_VARIABLE _compute_color_fragment_error)
+if(NOT _compute_color_fragment_result EQUAL 0)
+    message(FATAL_ERROR
+        "compute-to-render fragment compilation failed: ${_compute_color_fragment_output}${_compute_color_fragment_error}")
+endif()
+
 set(_textured_fragment "${TRUFFLE_SHADERC_TEST_DIR}/textured.frag")
 set(_textured_fragment_package
     "${TRUFFLE_SHADERC_TEST_DIR}/textured-fragment.truffle-shader")

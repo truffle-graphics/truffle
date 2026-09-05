@@ -2999,6 +2999,14 @@ void prepare_vulkan_binding_images(VulkanContext& context,
             case detail::NativeCommandKind::begin_render:
                 graphicsPipeline.reset();
                 renderExtent = command.extent;
+                if (recordedComputeWrite) {
+                    memory_barrier(
+                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                        VK_ACCESS_SHADER_WRITE_BIT,
+                        VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
+                            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                        VK_ACCESS_SHADER_READ_BIT);
+                }
                 prepare_encoder_images(
                     commandIndex, detail::NativeCommandKind::end_render);
                 if (auto status = begin_vulkan_render_pass(
