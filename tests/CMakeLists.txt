@@ -75,7 +75,8 @@ if(TRUFFLE_BUILD_BACKEND_VULKAN)
     target_link_libraries(truffle_vulkan_tests PRIVATE truffle_backend_vulkan)
     if(TRUFFLE_BUILD_SHADERC AND TRUFFLE_SHADERC_ENABLE_GLSLANG)
         target_compile_definitions(truffle_vulkan_tests PRIVATE
-            "TRUFFLE_VULKAN_SHADER_PACKAGE_PATH=\"${PROJECT_BINARY_DIR}/shaderc-glslang-smoke/triangle-a.truffle-shader\"")
+            "TRUFFLE_VULKAN_SHADER_PACKAGE_PATH=\"${PROJECT_BINARY_DIR}/shaderc-glslang-smoke/triangle-a.truffle-shader\""
+            "TRUFFLE_VULKAN_COMPUTE_PACKAGE_PATH=\"${PROJECT_BINARY_DIR}/shaderc-glslang-smoke/work-es.truffle-shader\"")
     endif()
     add_test(NAME truffle_vulkan_tests COMMAND truffle_vulkan_tests)
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID)

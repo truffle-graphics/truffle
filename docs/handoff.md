@@ -9,11 +9,37 @@ rather than growing a historical transcript here.
 
 ## Current Focus
 
-Advance #53 from generated ShaderPackage consumption through native Vulkan
-bindings, pipelines, and execution while preserving capability-gated claims.
+Advance #53 through native Vulkan bindings, compute pipelines, and exact
+storage-buffer execution before promoting the separately gated graphics path.
 
 ## Latest Handoff
 
+- `feat/rhi1-vulkan-bindings` adds the next bounded #53 checkpoint. Vulkan now
+  creates native samplers, descriptor-set/pipeline layouts, compute pipelines,
+  per-submission descriptor pools/sets, push constants, and direct dispatch on
+  its shared graphics/compute queue. The generated GLSL ES fixture writes four
+  deterministic words through a reflected storage-buffer bind group; the Linux
+  lane must prove exact host readback under validation. Adapter limits drive
+  the reported binding/push-constant/workgroup limits. Non-identity SPIR-V
+  binding remaps, graphics pipelines, render passes, and indirect dispatch stay
+  explicitly unsupported. The backend owns all native objects and consumes
+  only existing RHI contracts plus pinned Vulkan dependencies; no public API
+  changes. Local warning-as-error compilation and all 37 tests pass, while this
+  host cannot execute the Linux-native dispatch path. Initial Build
+  `33939023870` passed package, macOS, and Windows; Ubuntu reached native
+  validation and exposed three integration gaps: glslang emitted SPIR-V 1.6
+  for a Vulkan 1.1 device, transfer-only images lacked usage compatible with
+  the already-supported native views, and an old test assertion still expected
+  bind groups to be disabled. The compiler now targets Vulkan 1.1/SPIR-V 1.3,
+  view-created images carry an explicitly validated compatible usage, and the
+  capability assertions match the promoted compute slice. Replacement Build
+  `33939221825` proves the corrected compute path and exact readback in the
+  Ubuntu validation lane; package and Windows lanes also pass. Its first macOS
+  attempt encountered transient package-consumer output corruption (every
+  installed archive and the generated package-version file), despite the same
+  commit passing that test locally. The isolated macOS rerun passed without a
+  source change, so final Build `33939221825` is green across package, macOS,
+  Ubuntu, and Windows.
 - `feat/rhi1-vulkan-shader-modules` begins #53 with Vulkan-owned SPIR-V shader
   modules. The backend rejects non-SPIR-V, partial-word, and invalid-magic
   inputs before native creation, copies package bytes into aligned words, and

@@ -117,6 +117,59 @@ struct VulkanShaderResource {
     ShaderDesc desc;
 };
 
+struct VulkanSamplerResource {
+    VulkanSamplerResource(std::shared_ptr<VulkanContext> contextValue,
+                          VkSampler samplerValue)
+        : context(std::move(contextValue)), sampler(samplerValue) {}
+
+    ~VulkanSamplerResource() {
+        if (!context || context->device == VK_NULL_HANDLE ||
+            sampler == VK_NULL_HANDLE) {
+            return;
+        }
+        std::lock_guard lock{context->mutex};
+        context->deviceTable.vkDestroySampler(context->device, sampler,
+                                               nullptr);
+    }
+
+    std::shared_ptr<VulkanContext> context;
+    VkSampler sampler = VK_NULL_HANDLE;
+};
+
+struct VulkanComputePipelineResource {
+    VulkanComputePipelineResource(
+        std::shared_ptr<VulkanContext> contextValue,
+        std::vector<VkDescriptorSetLayout> setLayoutsValue,
+        VkPipelineLayout layoutValue, VkPipeline pipelineValue)
+        : context(std::move(contextValue)),
+          setLayouts(std::move(setLayoutsValue)), layout(layoutValue),
+          pipeline(pipelineValue) {}
+
+    ~VulkanComputePipelineResource() {
+        if (!context || context->device == VK_NULL_HANDLE) {
+            return;
+        }
+        std::lock_guard lock{context->mutex};
+        if (pipeline != VK_NULL_HANDLE) {
+            context->deviceTable.vkDestroyPipeline(context->device, pipeline,
+                                                    nullptr);
+        }
+        if (layout != VK_NULL_HANDLE) {
+            context->deviceTable.vkDestroyPipelineLayout(context->device,
+                                                          layout, nullptr);
+        }
+        for (const auto setLayout : setLayouts) {
+            context->deviceTable.vkDestroyDescriptorSetLayout(
+                context->device, setLayout, nullptr);
+        }
+    }
+
+    std::shared_ptr<VulkanContext> context;
+    std::vector<VkDescriptorSetLayout> setLayouts;
+    VkPipelineLayout layout = VK_NULL_HANDLE;
+    VkPipeline pipeline = VK_NULL_HANDLE;
+};
+
 struct VulkanFormat {
     VkFormat format = VK_FORMAT_UNDEFINED;
     VkImageAspectFlags aspects = 0;
@@ -259,6 +312,73 @@ struct VulkanFormat {
     return result;
 }
 
+[[nodiscard]] constexpr VkShaderStageFlags vulkan_shader_stages(
+    ShaderStageMask stages) noexcept {
+    VkShaderStageFlags native = 0;
+    if (has_stage(stages, ShaderStageMask::vertex)) {
+        native |= VK_SHADER_STAGE_VERTEX_BIT;
+    }
+    if (has_stage(stages, ShaderStageMask::fragment)) {
+        native |= VK_SHADER_STAGE_FRAGMENT_BIT;
+    }
+    if (has_stage(stages, ShaderStageMask::compute)) {
+        native |= VK_SHADER_STAGE_COMPUTE_BIT;
+    }
+    return native;
+}
+
+[[nodiscard]] constexpr VkDescriptorType vulkan_descriptor_type(
+    BindingType type) noexcept {
+    switch (type) {
+    case BindingType::uniform_buffer:
+        return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    case BindingType::storage_buffer:
+        return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    case BindingType::sampled_texture:
+        return VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+    case BindingType::storage_texture:
+        return VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    case BindingType::sampler:
+        return VK_DESCRIPTOR_TYPE_SAMPLER;
+    }
+    return VK_DESCRIPTOR_TYPE_MAX_ENUM;
+}
+
+[[nodiscard]] constexpr VkCompareOp vulkan_compare(CompareOp compare) noexcept {
+    switch (compare) {
+    case CompareOp::never:
+        return VK_COMPARE_OP_NEVER;
+    case CompareOp::less:
+        return VK_COMPARE_OP_LESS;
+    case CompareOp::equal:
+        return VK_COMPARE_OP_EQUAL;
+    case CompareOp::less_equal:
+        return VK_COMPARE_OP_LESS_OR_EQUAL;
+    case CompareOp::greater:
+        return VK_COMPARE_OP_GREATER;
+    case CompareOp::not_equal:
+        return VK_COMPARE_OP_NOT_EQUAL;
+    case CompareOp::greater_equal:
+        return VK_COMPARE_OP_GREATER_OR_EQUAL;
+    case CompareOp::always:
+        return VK_COMPARE_OP_ALWAYS;
+    }
+    return VK_COMPARE_OP_ALWAYS;
+}
+
+[[nodiscard]] constexpr VkSamplerAddressMode vulkan_sampler_address(
+    SamplerAddressMode mode) noexcept {
+    switch (mode) {
+    case SamplerAddressMode::clamp_to_edge:
+        return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    case SamplerAddressMode::repeat:
+        return VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    case SamplerAddressMode::mirror_repeat:
+        return VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
+    }
+    return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+}
+
 struct VulkanTextureResource {
     VulkanTextureResource(std::shared_ptr<VulkanContext> contextValue,
                           VkImage imageValue, VkDeviceMemory memoryValue,
@@ -313,8 +433,9 @@ struct VulkanTextureResource {
 
 struct VulkanTextureViewResource {
     VulkanTextureViewResource(std::shared_ptr<VulkanTextureResource> textureValue,
-                              VkImageView viewValue)
-        : texture(std::move(textureValue)), view(viewValue) {}
+                              VkImageView viewValue, TextureViewDesc descValue)
+        : texture(std::move(textureValue)), view(viewValue),
+          desc(std::move(descValue)) {}
 
     ~VulkanTextureViewResource() {
         if (!texture || !texture->context || view == VK_NULL_HANDLE) {
@@ -327,6 +448,7 @@ struct VulkanTextureViewResource {
 
     std::shared_ptr<VulkanTextureResource> texture;
     VkImageView view = VK_NULL_HANDLE;
+    TextureViewDesc desc;
 };
 
 [[nodiscard]] constexpr VkImageViewType vulkan_view_type(
@@ -573,6 +695,258 @@ struct VulkanProbe {
     }
 }
 
+[[nodiscard]] Result<std::shared_ptr<void>> create_vulkan_sampler(
+    const std::shared_ptr<void>& nativeContext, const SamplerDesc& desc) {
+    const auto context = std::static_pointer_cast<VulkanContext>(nativeContext);
+    if (!context || context->device == VK_NULL_HANDLE) {
+        return Status::failure(StatusCode::device_lost,
+                               "the Vulkan native context is unavailable");
+    }
+    if (desc.maxAnisotropy != 1.0F) {
+        return Status::failure(StatusCode::unsupported,
+                               "Vulkan anisotropic sampling is not enabled");
+    }
+    const VkSamplerCreateInfo samplerInfo{
+        .sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .magFilter = desc.magFilter == Filter::linear ? VK_FILTER_LINEAR
+                                                       : VK_FILTER_NEAREST,
+        .minFilter = desc.minFilter == Filter::linear ? VK_FILTER_LINEAR
+                                                       : VK_FILTER_NEAREST,
+        .mipmapMode = desc.mipFilter == Filter::linear
+                          ? VK_SAMPLER_MIPMAP_MODE_LINEAR
+                          : VK_SAMPLER_MIPMAP_MODE_NEAREST,
+        .addressModeU = vulkan_sampler_address(desc.addressU),
+        .addressModeV = vulkan_sampler_address(desc.addressV),
+        .addressModeW = vulkan_sampler_address(desc.addressW),
+        .mipLodBias = 0.0F,
+        .anisotropyEnable = VK_FALSE,
+        .maxAnisotropy = 1.0F,
+        .compareEnable = desc.compare == CompareOp::always ? VK_FALSE : VK_TRUE,
+        .compareOp = vulkan_compare(desc.compare),
+        .minLod = desc.lodMin,
+        .maxLod = desc.lodMax,
+        .borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK,
+        .unnormalizedCoordinates = VK_FALSE,
+    };
+    VkSampler sampler = VK_NULL_HANDLE;
+    std::lock_guard lock{context->mutex};
+    const auto result = context->deviceTable.vkCreateSampler(
+        context->device, &samplerInfo, nullptr, &sampler);
+    if (result != VK_SUCCESS) {
+        return vulkan_failure(
+            result == VK_ERROR_OUT_OF_HOST_MEMORY ||
+                    result == VK_ERROR_OUT_OF_DEVICE_MEMORY
+                ? StatusCode::out_of_memory
+                : StatusCode::backend_error,
+            "Vulkan sampler creation failed", result);
+    }
+    try {
+        return std::static_pointer_cast<void>(
+            std::make_shared<VulkanSamplerResource>(context, sampler));
+    } catch (const std::bad_alloc&) {
+        context->deviceTable.vkDestroySampler(context->device, sampler, nullptr);
+        return Status::failure(StatusCode::out_of_memory,
+                               "Vulkan sampler resource allocation failed");
+    }
+}
+
+struct VulkanPipelineLayoutObjects {
+    std::vector<VkDescriptorSetLayout> setLayouts;
+    VkPipelineLayout layout = VK_NULL_HANDLE;
+};
+
+void destroy_vulkan_pipeline_layout(VulkanContext& context,
+                                    VulkanPipelineLayoutObjects& objects) {
+    if (objects.layout != VK_NULL_HANDLE) {
+        context.deviceTable.vkDestroyPipelineLayout(context.device,
+                                                     objects.layout, nullptr);
+        objects.layout = VK_NULL_HANDLE;
+    }
+    for (const auto setLayout : objects.setLayouts) {
+        context.deviceTable.vkDestroyDescriptorSetLayout(
+            context.device, setLayout, nullptr);
+    }
+    objects.setLayouts.clear();
+}
+
+[[nodiscard]] Result<VulkanPipelineLayoutObjects>
+create_vulkan_pipeline_layout(VulkanContext& context,
+                              const detail::NativePipelineLayout& layout,
+                              const ShaderDesc& shader) {
+    for (const auto& mapping : shader.bindingMap) {
+        if (mapping.nativeGroup != mapping.group ||
+            mapping.nativeBinding != mapping.binding ||
+            mapping.nativeArrayElement != mapping.arrayElement) {
+            return Status::failure(
+                StatusCode::unsupported,
+                "Vulkan non-identity shader binding remaps are not implemented");
+        }
+    }
+
+    std::uint32_t setCount = 0;
+    for (const auto& group : layout.bindGroups) {
+        setCount = std::max(setCount, group.group + 1u);
+    }
+    std::vector<std::vector<VkDescriptorSetLayoutBinding>> nativeBindings(
+        setCount);
+    for (const auto& group : layout.bindGroups) {
+        auto& bindings = nativeBindings[group.group];
+        bindings.reserve(group.entries.size());
+        for (const auto& entry : group.entries) {
+            const auto descriptorType = vulkan_descriptor_type(entry.type);
+            const auto stageFlags = vulkan_shader_stages(entry.visibility);
+            if (descriptorType == VK_DESCRIPTOR_TYPE_MAX_ENUM ||
+                stageFlags == 0) {
+                return Status::failure(
+                    StatusCode::invalid_argument,
+                    "Vulkan pipeline layout contains an invalid binding");
+            }
+            bindings.push_back({
+                .binding = entry.binding,
+                .descriptorType = descriptorType,
+                .descriptorCount = entry.arrayCount,
+                .stageFlags = stageFlags,
+                .pImmutableSamplers = nullptr,
+            });
+        }
+    }
+
+    VulkanPipelineLayoutObjects objects;
+    objects.setLayouts.reserve(setCount);
+    for (const auto& bindings : nativeBindings) {
+        const VkDescriptorSetLayoutCreateInfo setInfo{
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .bindingCount = static_cast<std::uint32_t>(bindings.size()),
+            .pBindings = bindings.data(),
+        };
+        VkDescriptorSetLayout setLayout = VK_NULL_HANDLE;
+        const auto result = context.deviceTable.vkCreateDescriptorSetLayout(
+            context.device, &setInfo, nullptr, &setLayout);
+        if (result != VK_SUCCESS) {
+            destroy_vulkan_pipeline_layout(context, objects);
+            return vulkan_failure(StatusCode::backend_error,
+                                  "Vulkan descriptor-set layout creation failed",
+                                  result);
+        }
+        objects.setLayouts.push_back(setLayout);
+    }
+
+    std::vector<VkPushConstantRange> pushConstants;
+    pushConstants.reserve(layout.pushConstants.size());
+    for (const auto& range : layout.pushConstants) {
+        pushConstants.push_back({
+            .stageFlags = vulkan_shader_stages(shader_stage_mask(range.stage)),
+            .offset = range.offset,
+            .size = range.size,
+        });
+    }
+    const VkPipelineLayoutCreateInfo layoutInfo{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .setLayoutCount =
+            static_cast<std::uint32_t>(objects.setLayouts.size()),
+        .pSetLayouts = objects.setLayouts.data(),
+        .pushConstantRangeCount =
+            static_cast<std::uint32_t>(pushConstants.size()),
+        .pPushConstantRanges = pushConstants.data(),
+    };
+    const auto result = context.deviceTable.vkCreatePipelineLayout(
+        context.device, &layoutInfo, nullptr, &objects.layout);
+    if (result != VK_SUCCESS) {
+        destroy_vulkan_pipeline_layout(context, objects);
+        return vulkan_failure(StatusCode::backend_error,
+                              "Vulkan pipeline-layout creation failed", result);
+    }
+    return objects;
+}
+
+[[nodiscard]] Result<std::shared_ptr<void>> create_vulkan_compute_pipeline(
+    const std::shared_ptr<void>& nativeContext,
+    const ComputePipelineDesc& desc,
+    const detail::NativePipelineLayout& layout,
+    const std::shared_ptr<void>& shaderResource) {
+    const auto context = std::static_pointer_cast<VulkanContext>(nativeContext);
+    const auto shader =
+        std::static_pointer_cast<VulkanShaderResource>(shaderResource);
+    if (!context || context->device == VK_NULL_HANDLE || !shader ||
+        shader->module == VK_NULL_HANDLE ||
+        shader->desc.stage != ShaderStage::compute) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "Vulkan compute shader is invalid");
+    }
+
+    std::lock_guard lock{context->mutex};
+    auto layoutResult = create_vulkan_pipeline_layout(*context, layout,
+                                                       shader->desc);
+    if (!layoutResult.ok()) {
+        return layoutResult.status();
+    }
+    auto nativeLayout = std::move(layoutResult).value();
+
+    std::vector<VkSpecializationMapEntry> entries;
+    std::vector<std::uint32_t> values;
+    entries.reserve(desc.specializationConstants.size());
+    values.reserve(desc.specializationConstants.size());
+    for (const auto& value : desc.specializationConstants) {
+        entries.push_back({
+            .constantID = value.id,
+            .offset = static_cast<std::uint32_t>(values.size() *
+                                                 sizeof(std::uint32_t)),
+            .size = sizeof(std::uint32_t),
+        });
+        values.push_back(value.valueBits);
+    }
+    const VkSpecializationInfo specialization{
+        .mapEntryCount = static_cast<std::uint32_t>(entries.size()),
+        .pMapEntries = entries.data(),
+        .dataSize = values.size() * sizeof(std::uint32_t),
+        .pData = values.data(),
+    };
+    const VkPipelineShaderStageCreateInfo stage{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .stage = VK_SHADER_STAGE_COMPUTE_BIT,
+        .module = shader->module,
+        .pName = shader->desc.entryPoint.c_str(),
+        .pSpecializationInfo = entries.empty() ? nullptr : &specialization,
+    };
+    const VkComputePipelineCreateInfo pipelineInfo{
+        .sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .stage = stage,
+        .layout = nativeLayout.layout,
+        .basePipelineHandle = VK_NULL_HANDLE,
+        .basePipelineIndex = -1,
+    };
+    VkPipeline pipeline = VK_NULL_HANDLE;
+    const auto result = context->deviceTable.vkCreateComputePipelines(
+        context->device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline);
+    if (result != VK_SUCCESS) {
+        destroy_vulkan_pipeline_layout(*context, nativeLayout);
+        return vulkan_failure(StatusCode::backend_error,
+                              "Vulkan compute-pipeline creation failed", result);
+    }
+    try {
+        return std::static_pointer_cast<void>(
+            std::make_shared<VulkanComputePipelineResource>(
+                context, std::move(nativeLayout.setLayouts),
+                nativeLayout.layout, pipeline));
+    } catch (const std::bad_alloc&) {
+        context->deviceTable.vkDestroyPipeline(context->device, pipeline,
+                                                nullptr);
+        destroy_vulkan_pipeline_layout(*context, nativeLayout);
+        return Status::failure(StatusCode::out_of_memory,
+                               "Vulkan compute-pipeline allocation failed");
+    }
+}
+
 [[nodiscard]] VkImageUsageFlags vulkan_texture_usage(TextureUsage usage) {
     VkImageUsageFlags native = 0;
     if (has_usage(usage, TextureUsage::sampled)) {
@@ -647,15 +1021,27 @@ struct VulkanProbe {
             "this Vulkan texture shape, format, sample count, or memory mode "
             "is unsupported");
     }
-    const auto usage = vulkan_texture_usage(desc.usage);
+    auto usage = vulkan_texture_usage(desc.usage);
     if (usage == 0) {
         return Status::failure(StatusCode::invalid_argument,
                                "Vulkan texture usage is empty");
     }
+    constexpr auto viewCompatibleUsage =
+        VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT |
+        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
+        VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+    if ((usage & viewCompatibleUsage) == 0) {
+        usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+    }
     VkFormatProperties properties{};
     context->instanceTable.vkGetPhysicalDeviceFormatProperties(
         context->physicalDevice, format.format, &properties);
-    const auto requiredFeatures = required_format_features(desc.usage);
+    auto requiredFeatures = required_format_features(desc.usage);
+    if (!has_usage(desc.usage, TextureUsage::sampled) &&
+        (vulkan_texture_usage(desc.usage) & viewCompatibleUsage) == 0) {
+        requiredFeatures |= VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
+    }
     const auto availableFeatures = tiling == VK_IMAGE_TILING_OPTIMAL
                                        ? properties.optimalTilingFeatures
                                        : properties.linearTilingFeatures;
@@ -837,7 +1223,7 @@ struct VulkanProbe {
     }
     try {
         return std::static_pointer_cast<void>(
-            std::make_shared<VulkanTextureViewResource>(texture, view));
+            std::make_shared<VulkanTextureViewResource>(texture, view, desc));
     } catch (const std::bad_alloc&) {
         texture->context->deviceTable.vkDestroyImageView(
             texture->context->device, view, nullptr);
@@ -1111,9 +1497,31 @@ struct VulkanProbe {
             continue;
         }
         if (command.kind != detail::NativeCommandKind::transfer) {
-            return Status::failure(
-                StatusCode::unsupported,
-                "the Vulkan resource slice supports transfer command lists only");
+            switch (command.kind) {
+            case detail::NativeCommandKind::begin_compute:
+            case detail::NativeCommandKind::end_compute:
+            case detail::NativeCommandKind::push_constants:
+            case detail::NativeCommandKind::dispatch:
+                continue;
+            case detail::NativeCommandKind::bind_compute_pipeline: {
+                const auto pipeline =
+                    std::static_pointer_cast<VulkanComputePipelineResource>(
+                        command.object);
+                if (!pipeline || pipeline->pipeline == VK_NULL_HANDLE ||
+                    pipeline->layout == VK_NULL_HANDLE) {
+                    return Status::failure(
+                        StatusCode::invalid_argument,
+                        "Vulkan compute-pipeline command is invalid");
+                }
+                continue;
+            }
+            case detail::NativeCommandKind::bind_group:
+                continue;
+            default:
+                return Status::failure(
+                    StatusCode::unsupported,
+                    "this Vulkan command kind is not implemented");
+            }
         }
         const auto& transfer = command.transfer;
         switch (transfer.kind) {
@@ -1334,6 +1742,176 @@ void transition_vulkan_texture(VulkanContext& context,
     oldLayout = newLayout;
 }
 
+[[nodiscard]] Result<VkDescriptorPool> create_vulkan_descriptor_pool(
+    VulkanContext& context,
+    std::span<const detail::NativeCommand> commands) {
+    std::array<std::uint32_t, 5> counts{};
+    std::uint32_t setCount = 0;
+    for (const auto& command : commands) {
+        if (command.kind != detail::NativeCommandKind::bind_group) {
+            continue;
+        }
+        ++setCount;
+        for (const auto& binding : command.bindings) {
+            ++counts[static_cast<std::size_t>(binding.type)];
+        }
+    }
+    if (setCount == 0) {
+        return VkDescriptorPool{VK_NULL_HANDLE};
+    }
+    std::vector<VkDescriptorPoolSize> sizes;
+    for (std::size_t index = 0; index < counts.size(); ++index) {
+        if (counts[index] == 0) {
+            continue;
+        }
+        sizes.push_back({
+            .type = vulkan_descriptor_type(static_cast<BindingType>(index)),
+            .descriptorCount = counts[index],
+        });
+    }
+    const VkDescriptorPoolCreateInfo poolInfo{
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .maxSets = setCount,
+        .poolSizeCount = static_cast<std::uint32_t>(sizes.size()),
+        .pPoolSizes = sizes.data(),
+    };
+    VkDescriptorPool pool = VK_NULL_HANDLE;
+    const auto result = context.deviceTable.vkCreateDescriptorPool(
+        context.device, &poolInfo, nullptr, &pool);
+    if (result != VK_SUCCESS) {
+        return vulkan_failure(StatusCode::out_of_memory,
+                              "Vulkan descriptor-pool creation failed", result);
+    }
+    return pool;
+}
+
+[[nodiscard]] Status encode_vulkan_bind_group(
+    VulkanContext& context, VkCommandBuffer commandBuffer,
+    VkDescriptorPool descriptorPool,
+    const VulkanComputePipelineResource& pipeline,
+    const detail::NativeCommand& command) {
+    const auto group = static_cast<std::uint32_t>(command.arguments[0]);
+    if (descriptorPool == VK_NULL_HANDLE ||
+        group >= pipeline.setLayouts.size()) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "Vulkan bind-group set is unavailable");
+    }
+    const VkDescriptorSetAllocateInfo allocateInfo{
+        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .pNext = nullptr,
+        .descriptorPool = descriptorPool,
+        .descriptorSetCount = 1,
+        .pSetLayouts = &pipeline.setLayouts[group],
+    };
+    VkDescriptorSet set = VK_NULL_HANDLE;
+    auto result = context.deviceTable.vkAllocateDescriptorSets(
+        context.device, &allocateInfo, &set);
+    if (result != VK_SUCCESS) {
+        return vulkan_failure(StatusCode::out_of_memory,
+                              "Vulkan descriptor-set allocation failed", result);
+    }
+
+    std::vector<VkDescriptorBufferInfo> bufferInfos(command.bindings.size());
+    std::vector<VkDescriptorImageInfo> imageInfos(command.bindings.size());
+    std::vector<VkWriteDescriptorSet> writes;
+    writes.reserve(command.bindings.size());
+    for (std::size_t index = 0; index < command.bindings.size(); ++index) {
+        const auto& binding = command.bindings[index];
+        if (binding.group != group) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Vulkan bind-group resources disagree on set");
+        }
+        VkWriteDescriptorSet write{
+            .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .pNext = nullptr,
+            .dstSet = set,
+            .dstBinding = binding.binding,
+            .dstArrayElement = binding.arrayElement,
+            .descriptorCount = 1,
+            .descriptorType = vulkan_descriptor_type(binding.type),
+            .pImageInfo = nullptr,
+            .pBufferInfo = nullptr,
+            .pTexelBufferView = nullptr,
+        };
+        switch (binding.type) {
+        case BindingType::uniform_buffer:
+        case BindingType::storage_buffer: {
+            const auto buffer =
+                std::static_pointer_cast<VulkanBufferResource>(binding.resource);
+            if (!buffer || buffer->buffer == VK_NULL_HANDLE ||
+                binding.offset > buffer->logicalSize ||
+                binding.size > buffer->logicalSize - binding.offset) {
+                return Status::failure(StatusCode::invalid_argument,
+                                       "Vulkan buffer descriptor is invalid");
+            }
+            bufferInfos[index] = {
+                .buffer = buffer->buffer,
+                .offset = static_cast<VkDeviceSize>(binding.offset),
+                .range = static_cast<VkDeviceSize>(binding.size),
+            };
+            write.pBufferInfo = &bufferInfos[index];
+            break;
+        }
+        case BindingType::sampled_texture:
+        case BindingType::storage_texture: {
+            const auto view = std::static_pointer_cast<VulkanTextureViewResource>(
+                binding.resource);
+            if (!view || view->view == VK_NULL_HANDLE || !view->texture) {
+                return Status::failure(StatusCode::invalid_argument,
+                                       "Vulkan image descriptor is invalid");
+            }
+            const auto layout = binding.type == BindingType::sampled_texture
+                                    ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                                    : VK_IMAGE_LAYOUT_GENERAL;
+            const auto& range = view->desc.range;
+            for (std::uint32_t layer = 0; layer < range.arrayLayerCount;
+                 ++layer) {
+                for (std::uint32_t mip = 0; mip < range.mipLevelCount; ++mip) {
+                    transition_vulkan_texture(
+                        context, commandBuffer, *view->texture,
+                        {.aspect = range.aspects,
+                         .mipLevel = range.baseMipLevel + mip,
+                         .arrayLayer = range.baseArrayLayer + layer},
+                        layout);
+                }
+            }
+            imageInfos[index] = {
+                .sampler = VK_NULL_HANDLE,
+                .imageView = view->view,
+                .imageLayout = layout,
+            };
+            write.pImageInfo = &imageInfos[index];
+            break;
+        }
+        case BindingType::sampler: {
+            const auto sampler =
+                std::static_pointer_cast<VulkanSamplerResource>(binding.resource);
+            if (!sampler || sampler->sampler == VK_NULL_HANDLE) {
+                return Status::failure(StatusCode::invalid_argument,
+                                       "Vulkan sampler descriptor is invalid");
+            }
+            imageInfos[index] = {
+                .sampler = sampler->sampler,
+                .imageView = VK_NULL_HANDLE,
+                .imageLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+            };
+            write.pImageInfo = &imageInfos[index];
+            break;
+        }
+        }
+        writes.push_back(write);
+    }
+    context.deviceTable.vkUpdateDescriptorSets(
+        context.device, static_cast<std::uint32_t>(writes.size()),
+        writes.data(), 0, nullptr);
+    context.deviceTable.vkCmdBindDescriptorSets(
+        commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+        pipeline.layout, group, 1, &set, 0, nullptr);
+    return Status::success();
+}
+
 [[nodiscard]] VkBufferImageCopy vulkan_buffer_image_copy(
     const BufferTextureCopyRegion& region,
     const VulkanTextureResource& texture) {
@@ -1373,8 +1951,11 @@ void transition_vulkan_texture(VulkanContext& context,
 
 [[nodiscard]] Status record_vulkan_commands(
     VulkanContext& context, VkCommandBuffer commandBuffer,
+    VkDescriptorPool descriptorPool,
     std::span<const detail::NativeCommand> commands) {
     bool recordedTransfer = false;
+    bool recordedComputeWrite = false;
+    std::shared_ptr<VulkanComputePipelineResource> computePipeline;
     const auto memory_barrier = [&](VkPipelineStageFlags sourceStages,
                                     VkAccessFlags sourceAccess,
                                     VkPipelineStageFlags destinationStages,
@@ -1394,9 +1975,61 @@ void transition_vulkan_texture(VulkanContext& context,
             continue;
         }
         if (command.kind != detail::NativeCommandKind::transfer) {
-            return Status::failure(
-                StatusCode::unsupported,
-                "the Vulkan resource slice supports transfer command lists only");
+            switch (command.kind) {
+            case detail::NativeCommandKind::begin_compute:
+                computePipeline.reset();
+                break;
+            case detail::NativeCommandKind::end_compute:
+                break;
+            case detail::NativeCommandKind::bind_compute_pipeline:
+                computePipeline =
+                    std::static_pointer_cast<VulkanComputePipelineResource>(
+                        command.object);
+                context.deviceTable.vkCmdBindPipeline(
+                    commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+                    computePipeline->pipeline);
+                break;
+            case detail::NativeCommandKind::bind_group:
+                if (!computePipeline) {
+                    return Status::failure(
+                        StatusCode::invalid_state,
+                        "Vulkan bind group requires a compute pipeline");
+                }
+                if (auto status = encode_vulkan_bind_group(
+                        context, commandBuffer, descriptorPool,
+                        *computePipeline, command);
+                    !status.ok()) {
+                    return status;
+                }
+                break;
+            case detail::NativeCommandKind::push_constants:
+                if (!computePipeline) {
+                    return Status::failure(
+                        StatusCode::invalid_state,
+                        "Vulkan push constants require a compute pipeline");
+                }
+                context.deviceTable.vkCmdPushConstants(
+                    commandBuffer, computePipeline->layout,
+                    vulkan_shader_stages(static_cast<ShaderStageMask>(
+                        command.arguments[0])),
+                    static_cast<std::uint32_t>(command.arguments[1]),
+                    static_cast<std::uint32_t>(command.bytes.size()),
+                    command.bytes.data());
+                break;
+            case detail::NativeCommandKind::dispatch:
+                context.deviceTable.vkCmdDispatch(
+                    commandBuffer,
+                    static_cast<std::uint32_t>(command.arguments[0]),
+                    static_cast<std::uint32_t>(command.arguments[1]),
+                    static_cast<std::uint32_t>(command.arguments[2]));
+                recordedComputeWrite = true;
+                break;
+            default:
+                return Status::failure(
+                    StatusCode::unsupported,
+                    "this Vulkan command kind is not implemented");
+            }
+            continue;
         }
         const auto& transfer = command.transfer;
         if (recordedTransfer) {
@@ -1406,8 +2039,11 @@ void transition_vulkan_texture(VulkanContext& context,
                            VK_ACCESS_TRANSFER_READ_BIT |
                                VK_ACCESS_TRANSFER_WRITE_BIT);
         } else {
-            memory_barrier(VK_PIPELINE_STAGE_HOST_BIT,
-                           VK_ACCESS_HOST_WRITE_BIT,
+            memory_barrier(recordedComputeWrite
+                               ? VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
+                               : VK_PIPELINE_STAGE_HOST_BIT,
+                           recordedComputeWrite ? VK_ACCESS_SHADER_WRITE_BIT
+                                                : VK_ACCESS_HOST_WRITE_BIT,
                            VK_PIPELINE_STAGE_TRANSFER_BIT,
                            VK_ACCESS_TRANSFER_READ_BIT |
                                VK_ACCESS_TRANSFER_WRITE_BIT);
@@ -1723,6 +2359,10 @@ void transition_vulkan_texture(VulkanContext& context,
         memory_barrier(VK_PIPELINE_STAGE_TRANSFER_BIT,
                        VK_ACCESS_TRANSFER_WRITE_BIT,
                        VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
+    } else if (recordedComputeWrite) {
+        memory_barrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                       VK_ACCESS_SHADER_WRITE_BIT, VK_PIPELINE_STAGE_HOST_BIT,
+                       VK_ACCESS_HOST_READ_BIT);
     }
     return Status::success();
 }
@@ -1759,27 +2399,44 @@ void transition_vulkan_texture(VulkanContext& context,
                                                           &beginInfo);
     }
     if (result == VK_SUCCESS) {
+        auto descriptorPoolResult =
+            create_vulkan_descriptor_pool(context, commands);
+        if (!descriptorPoolResult.ok()) {
+            context.deviceTable.vkDestroyCommandPool(context.device, pool,
+                                                      nullptr);
+            return descriptorPoolResult.status();
+        }
+        const auto descriptorPool = descriptorPoolResult.value();
         if (auto status = record_vulkan_commands(context, commandBuffer,
+                                                 descriptorPool,
                                                  commands);
             !status.ok()) {
+            if (descriptorPool != VK_NULL_HANDLE) {
+                context.deviceTable.vkDestroyDescriptorPool(
+                    context.device, descriptorPool, nullptr);
+            }
             context.deviceTable.vkDestroyCommandPool(context.device, pool,
                                                       nullptr);
             return status;
         }
-    }
-    if (result == VK_SUCCESS) {
-        result = context.deviceTable.vkEndCommandBuffer(commandBuffer);
-    }
-    if (result == VK_SUCCESS) {
-        VkSubmitInfo submitInfo{};
-        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &commandBuffer;
-        result = context.deviceTable.vkQueueSubmit(context.queue, 1, &submitInfo,
-                                                   VK_NULL_HANDLE);
-    }
-    if (result == VK_SUCCESS) {
-        result = context.deviceTable.vkQueueWaitIdle(context.queue);
+        if (result == VK_SUCCESS) {
+            result = context.deviceTable.vkEndCommandBuffer(commandBuffer);
+        }
+        if (result == VK_SUCCESS) {
+            VkSubmitInfo submitInfo{};
+            submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+            submitInfo.commandBufferCount = 1;
+            submitInfo.pCommandBuffers = &commandBuffer;
+            result = context.deviceTable.vkQueueSubmit(
+                context.queue, 1, &submitInfo, VK_NULL_HANDLE);
+        }
+        if (result == VK_SUCCESS) {
+            result = context.deviceTable.vkQueueWaitIdle(context.queue);
+        }
+        if (descriptorPool != VK_NULL_HANDLE) {
+            context.deviceTable.vkDestroyDescriptorPool(
+                context.device, descriptorPool, nullptr);
+        }
     }
     context.deviceTable.vkDestroyCommandPool(context.device, pool, nullptr);
     if (result == VK_ERROR_DEVICE_LOST) {
@@ -2364,7 +3021,7 @@ Result<Instance> create_vulkan_instance(const InstanceDesc& desc) {
                           ? BackendMaturity::native_smoke
                           : BackendMaturity::source_only;
     config.adapterName = std::move(native.adapterName);
-    config.queueKinds = {QueueKind::graphics};
+    config.queueKinds = {QueueKind::graphics, QueueKind::compute};
     config.supportedFeatures = {Feature::transfer, Feature::memory_budget};
     config.resourceCapabilities = {
         .bufferViews = true,
@@ -2381,6 +3038,42 @@ Result<Instance> create_vulkan_instance(const InstanceDesc& desc) {
         .externalImport = false,
         .externalExport = false,
     };
+    const auto& limits = native.context->properties.limits;
+    config.bindingCapabilities = {
+        .ordinaryBindGroups = true,
+        .descriptorArrays = true,
+        .dynamicOffsets = true,
+        .immutableSamplers = true,
+        .pushConstants = true,
+        .bindlessTables = false,
+        .updateAfterBind = false,
+        .maxBindGroups = std::min(limits.maxBoundDescriptorSets, 8u),
+        .maxBindingsPerGroup = std::min(limits.maxPerStageResources, 64u),
+        .maxDescriptorsPerGroup = std::min(limits.maxPerStageResources, 64u),
+        .maxPushConstantBytes = limits.maxPushConstantsSize,
+        .minUniformBufferOffsetAlignment = static_cast<std::uint32_t>(
+            limits.minUniformBufferOffsetAlignment),
+        .minStorageBufferOffsetAlignment = static_cast<std::uint32_t>(
+            limits.minStorageBufferOffsetAlignment),
+    };
+    config.pipelineCapabilities = {
+        .graphics = false,
+        .compute = true,
+        .multipleRenderTargets = false,
+        .depthStencil = false,
+        .multisample = false,
+        .tessellation = false,
+        .indirect = false,
+        .indirectCount = false,
+        .pipelineCache = false,
+        .maxColorAttachments = 0,
+        .maxVertexBuffers = 0,
+        .maxViewports = 0,
+        .maxComputeWorkgroupSize = {limits.maxComputeWorkGroupSize[0],
+                                    limits.maxComputeWorkGroupSize[1],
+                                    limits.maxComputeWorkGroupSize[2]},
+        .maxComputeInvocations = limits.maxComputeWorkGroupInvocations,
+    };
     config.deviceLocalBudgetBytes = native.deviceLocalBudget;
     config.native = true;
     config.nativeContext = std::move(native.context);
@@ -2395,7 +3088,9 @@ Result<Instance> create_vulkan_instance(const InstanceDesc& desc) {
     config.createTextureView = &create_vulkan_texture_view;
     config.writeTexture = &write_vulkan_texture;
     config.readTexture = &read_vulkan_texture;
+    config.createSampler = &create_vulkan_sampler;
     config.createShader = &create_vulkan_shader;
+    config.createComputePipeline = &create_vulkan_compute_pipeline;
     config.nativeSubmit = &submit_vulkan_commands;
     return detail::create_foundation_instance(desc, std::move(config));
 }
