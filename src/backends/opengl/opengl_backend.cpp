@@ -42,6 +42,12 @@ Result<Instance> create_opengl_instance(const InstanceDesc& desc) {
         .maxBindingsPerGroup = 32,
         .maxDescriptorsPerGroup = 32,
     };
+    config.pipelineCapabilities = {
+        .graphics = true,
+        .maxColorAttachments = 1,
+        .maxVertexBuffers = 0,
+        .maxViewports = 1,
+    };
     config.native = true;
     config.nativeContext = std::move(native.context);
     config.createBuffer = &detail::egl_probe::create_buffer;
@@ -56,6 +62,9 @@ Result<Instance> create_opengl_instance(const InstanceDesc& desc) {
     config.writeTexture = &detail::egl_probe::write_texture;
     config.readTexture = &detail::egl_probe::read_texture;
     config.createSampler = &detail::egl_probe::create_sampler;
+    config.createShader = &detail::egl_probe::create_shader;
+    config.createPipeline = &detail::egl_probe::create_pipeline;
+    config.createComputePipeline = &detail::egl_probe::create_compute_pipeline;
     config.nativeSubmit = &detail::egl_probe::submit;
     return detail::create_foundation_instance(desc, std::move(config));
 #else
