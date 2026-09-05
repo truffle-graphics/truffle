@@ -416,7 +416,13 @@ void verify_vulkan_buffers() {
     assert(!hostMultisample.ok());
     assert(hostMultisample.status().code == rhi::StatusCode::unsupported);
 
-    assert(!info.bindings.ordinaryBindGroups);
+    assert(info.bindings.ordinaryBindGroups);
+    assert(info.bindings.descriptorArrays);
+    assert(info.bindings.dynamicOffsets);
+    assert(info.bindings.immutableSamplers);
+    assert(info.bindings.pushConstants);
+    assert(info.pipelines.compute);
+    assert(!info.pipelines.graphics);
     auto sampler = device.create_sampler({});
     assert(sampler.ok());
     auto anisotropicSampler = device.create_sampler({.maxAnisotropy = 2.0F});

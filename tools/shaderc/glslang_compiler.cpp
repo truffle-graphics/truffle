@@ -112,9 +112,9 @@ rhi::Result<GlslangOutput> compile_glsl_to_spirv(
         .language = GLSLANG_SOURCE_GLSL,
         .stage = nativeStage,
         .client = GLSLANG_CLIENT_VULKAN,
-        .client_version = GLSLANG_TARGET_VULKAN_1_3,
+        .client_version = GLSLANG_TARGET_VULKAN_1_1,
         .target_language = GLSLANG_TARGET_SPV,
-        .target_language_version = GLSLANG_TARGET_SPV_1_6,
+        .target_language_version = GLSLANG_TARGET_SPV_1_3,
         .code = sourceStorage.c_str(),
         .default_version = embeddedProfile ? 310 : 450,
         .default_profile = embeddedProfile ? GLSLANG_ES_PROFILE

@@ -25,7 +25,14 @@ storage-buffer execution before promoting the separately gated graphics path.
   explicitly unsupported. The backend owns all native objects and consumes
   only existing RHI contracts plus pinned Vulkan dependencies; no public API
   changes. Local warning-as-error compilation and all 37 tests pass, while this
-  host cannot execute the Linux-native dispatch path.
+  host cannot execute the Linux-native dispatch path. Initial Build
+  `33939023870` passed package, macOS, and Windows; Ubuntu reached native
+  validation and exposed three integration gaps: glslang emitted SPIR-V 1.6
+  for a Vulkan 1.1 device, transfer-only images lacked usage compatible with
+  the already-supported native views, and an old test assertion still expected
+  bind groups to be disabled. The compiler now targets Vulkan 1.1/SPIR-V 1.3,
+  view-created images carry an explicitly validated compatible usage, and the
+  capability assertions match the promoted compute slice.
 - `feat/rhi1-vulkan-shader-modules` begins #53 with Vulkan-owned SPIR-V shader
   modules. The backend rejects non-SPIR-V, partial-word, and invalid-magic
   inputs before native creation, copies package bytes into aligned words, and

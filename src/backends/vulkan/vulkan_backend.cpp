@@ -1021,15 +1021,27 @@ create_vulkan_pipeline_layout(VulkanContext& context,
             "this Vulkan texture shape, format, sample count, or memory mode "
             "is unsupported");
     }
-    const auto usage = vulkan_texture_usage(desc.usage);
+    auto usage = vulkan_texture_usage(desc.usage);
     if (usage == 0) {
         return Status::failure(StatusCode::invalid_argument,
                                "Vulkan texture usage is empty");
     }
+    constexpr auto viewCompatibleUsage =
+        VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT |
+        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+        VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
+        VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+    if ((usage & viewCompatibleUsage) == 0) {
+        usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
+    }
     VkFormatProperties properties{};
     context->instanceTable.vkGetPhysicalDeviceFormatProperties(
         context->physicalDevice, format.format, &properties);
-    const auto requiredFeatures = required_format_features(desc.usage);
+    auto requiredFeatures = required_format_features(desc.usage);
+    if (!has_usage(desc.usage, TextureUsage::sampled) &&
+        (vulkan_texture_usage(desc.usage) & viewCompatibleUsage) == 0) {
+        requiredFeatures |= VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
+    }
     const auto availableFeatures = tiling == VK_IMAGE_TILING_OPTIMAL
                                        ? properties.optimalTilingFeatures
                                        : properties.linearTilingFeatures;
