@@ -38,8 +38,10 @@ views, samplers, transfers, state isolation, and exact native output evidence.
   the external memory domain is contractually invalid because imports must use
   `import_texture`, whereas a shareable ordinary allocation is the operation
   that reports unsupported on these profiles. The test now covers both results
-  separately. Final Linux desktop GL/GLES evidence remains pending CI. Texture
-  views, extended shapes/formats,
+  separately. Final Build `33962754752` passes package, macOS, Ubuntu, and
+  Windows. Its Ubuntu native-smoke lane proves both desktop GL and GLES exact
+  transfer/clear/blit/readback results and the explicit unsupported boundaries.
+  Texture views, extended shapes/formats,
   depth/stencil, and multisample resolve remain inside open issue #60 for the
   next checkpoint.
 - `feat/rhi1-vulkan-linux-wsi` implements the Linux Vulkan presentation path
