@@ -29,8 +29,12 @@ shaders, binding layouts, graphics/compute pipelines, and exact output evidence.
   triangle, render an exact red center pixel, and require zero KHR_debug
   callbacks independently for desktop GL and GLES. Ownership remains in the
   shared GL-family backend, system EGL/GL are the only native dependencies, and
-  the public contract is unchanged. Local cross-platform compilation passes;
-  Linux profile compilation and exact native output remain pending CI.
+  the public contract is unchanged. Local cross-platform compilation passes.
+  Initial Build `33965142135` reached Linux and caught that the configured GLES
+  3.0 headers omit the compute-stage token. Because compute remains deliberately
+  unadvertised in this checkpoint, the GLES stage mapper now rejects it without
+  referencing a later-profile declaration. Replacement Linux compilation and
+  exact native output remain pending CI.
 - `feat/rhi1-gl-extended-resources` continues #60 from the merged 2D transfer
   checkpoint. The shared EGL implementation now selects immutable targets for
   2D arrays, mip chains, 3D textures, cube/cube-array textures, and desktop GL

@@ -303,7 +303,11 @@ struct PipelineResource {
     case ShaderStage::fragment:
         return GL_FRAGMENT_SHADER;
     case ShaderStage::compute:
+#if defined(TRUFFLE_EGL_API_OPENGL)
         return GL_COMPUTE_SHADER;
+#else
+        return 0;
+#endif
     }
     return 0;
 }
