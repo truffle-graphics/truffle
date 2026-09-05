@@ -136,16 +136,23 @@ struct VulkanSamplerResource {
     VkSampler sampler = VK_NULL_HANDLE;
 };
 
-struct VulkanComputePipelineResource {
-    VulkanComputePipelineResource(
+struct VulkanPipelineResource {
+    VulkanPipelineResource(
         std::shared_ptr<VulkanContext> contextValue,
         std::vector<VkDescriptorSetLayout> setLayoutsValue,
-        VkPipelineLayout layoutValue, VkPipeline pipelineValue)
+        VkPipelineLayout layoutValue, VkPipeline pipelineValue,
+        VkPipelineBindPoint bindPointValue,
+        VkRenderPass renderPassValue = VK_NULL_HANDLE,
+        bool automaticViewportValue = false,
+        bool automaticScissorValue = false)
         : context(std::move(contextValue)),
           setLayouts(std::move(setLayoutsValue)), layout(layoutValue),
-          pipeline(pipelineValue) {}
+          pipeline(pipelineValue), bindPoint(bindPointValue),
+          renderPass(renderPassValue),
+          automaticViewport(automaticViewportValue),
+          automaticScissor(automaticScissorValue) {}
 
-    ~VulkanComputePipelineResource() {
+    ~VulkanPipelineResource() {
         if (!context || context->device == VK_NULL_HANDLE) {
             return;
         }
@@ -158,6 +165,10 @@ struct VulkanComputePipelineResource {
             context->deviceTable.vkDestroyPipelineLayout(context->device,
                                                           layout, nullptr);
         }
+        if (renderPass != VK_NULL_HANDLE) {
+            context->deviceTable.vkDestroyRenderPass(context->device,
+                                                     renderPass, nullptr);
+        }
         for (const auto setLayout : setLayouts) {
             context->deviceTable.vkDestroyDescriptorSetLayout(
                 context->device, setLayout, nullptr);
@@ -168,6 +179,10 @@ struct VulkanComputePipelineResource {
     std::vector<VkDescriptorSetLayout> setLayouts;
     VkPipelineLayout layout = VK_NULL_HANDLE;
     VkPipeline pipeline = VK_NULL_HANDLE;
+    VkPipelineBindPoint bindPoint = VK_PIPELINE_BIND_POINT_COMPUTE;
+    VkRenderPass renderPass = VK_NULL_HANDLE;
+    bool automaticViewport = false;
+    bool automaticScissor = false;
 };
 
 struct VulkanFormat {
@@ -364,6 +379,121 @@ struct VulkanFormat {
         return VK_COMPARE_OP_ALWAYS;
     }
     return VK_COMPARE_OP_ALWAYS;
+}
+
+[[nodiscard]] constexpr VkPrimitiveTopology vulkan_topology(
+    PrimitiveTopology topology) noexcept {
+    switch (topology) {
+    case PrimitiveTopology::triangle_list:
+        return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    case PrimitiveTopology::triangle_strip:
+        return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+    case PrimitiveTopology::line_list:
+        return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+    case PrimitiveTopology::point_list:
+        return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
+    case PrimitiveTopology::patch_list:
+        return VK_PRIMITIVE_TOPOLOGY_PATCH_LIST;
+    }
+    return VK_PRIMITIVE_TOPOLOGY_MAX_ENUM;
+}
+
+[[nodiscard]] constexpr VkPolygonMode vulkan_polygon_mode(
+    PolygonMode mode) noexcept {
+    switch (mode) {
+    case PolygonMode::fill:
+        return VK_POLYGON_MODE_FILL;
+    case PolygonMode::line:
+        return VK_POLYGON_MODE_LINE;
+    case PolygonMode::point:
+        return VK_POLYGON_MODE_POINT;
+    }
+    return VK_POLYGON_MODE_MAX_ENUM;
+}
+
+[[nodiscard]] constexpr VkCullModeFlags vulkan_cull_mode(
+    CullMode mode) noexcept {
+    switch (mode) {
+    case CullMode::none:
+        return VK_CULL_MODE_NONE;
+    case CullMode::front:
+        return VK_CULL_MODE_FRONT_BIT;
+    case CullMode::back:
+        return VK_CULL_MODE_BACK_BIT;
+    }
+    return VK_CULL_MODE_NONE;
+}
+
+[[nodiscard]] constexpr VkFrontFace vulkan_front_face(
+    FrontFace face) noexcept {
+    return face == FrontFace::clockwise ? VK_FRONT_FACE_CLOCKWISE
+                                        : VK_FRONT_FACE_COUNTER_CLOCKWISE;
+}
+
+[[nodiscard]] constexpr VkBlendFactor vulkan_blend_factor(
+    BlendFactor factor) noexcept {
+    switch (factor) {
+    case BlendFactor::zero:
+        return VK_BLEND_FACTOR_ZERO;
+    case BlendFactor::one:
+        return VK_BLEND_FACTOR_ONE;
+    case BlendFactor::source_color:
+        return VK_BLEND_FACTOR_SRC_COLOR;
+    case BlendFactor::one_minus_source_color:
+        return VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR;
+    case BlendFactor::destination_color:
+        return VK_BLEND_FACTOR_DST_COLOR;
+    case BlendFactor::one_minus_destination_color:
+        return VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR;
+    case BlendFactor::source_alpha:
+        return VK_BLEND_FACTOR_SRC_ALPHA;
+    case BlendFactor::one_minus_source_alpha:
+        return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+    case BlendFactor::destination_alpha:
+        return VK_BLEND_FACTOR_DST_ALPHA;
+    case BlendFactor::one_minus_destination_alpha:
+        return VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;
+    }
+    return VK_BLEND_FACTOR_MAX_ENUM;
+}
+
+[[nodiscard]] constexpr VkBlendOp vulkan_blend_op(BlendOp operation) noexcept {
+    switch (operation) {
+    case BlendOp::add:
+        return VK_BLEND_OP_ADD;
+    case BlendOp::subtract:
+        return VK_BLEND_OP_SUBTRACT;
+    case BlendOp::reverse_subtract:
+        return VK_BLEND_OP_REVERSE_SUBTRACT;
+    case BlendOp::minimum:
+        return VK_BLEND_OP_MIN;
+    case BlendOp::maximum:
+        return VK_BLEND_OP_MAX;
+    }
+    return VK_BLEND_OP_MAX_ENUM;
+}
+
+[[nodiscard]] constexpr VkFormat vulkan_vertex_format(
+    VertexFormat format) noexcept {
+    switch (format) {
+    case VertexFormat::float32:
+        return VK_FORMAT_R32_SFLOAT;
+    case VertexFormat::float32x2:
+        return VK_FORMAT_R32G32_SFLOAT;
+    case VertexFormat::float32x3:
+        return VK_FORMAT_R32G32B32_SFLOAT;
+    case VertexFormat::float32x4:
+        return VK_FORMAT_R32G32B32A32_SFLOAT;
+    case VertexFormat::uint32:
+        return VK_FORMAT_R32_UINT;
+    case VertexFormat::uint32x2:
+        return VK_FORMAT_R32G32_UINT;
+    case VertexFormat::uint32x3:
+        return VK_FORMAT_R32G32B32_UINT;
+    case VertexFormat::uint32x4:
+        return VK_FORMAT_R32G32B32A32_UINT;
+    }
+    return VK_FORMAT_UNDEFINED;
 }
 
 [[nodiscard]] constexpr VkSamplerAddressMode vulkan_sampler_address(
@@ -774,14 +904,20 @@ void destroy_vulkan_pipeline_layout(VulkanContext& context,
 [[nodiscard]] Result<VulkanPipelineLayoutObjects>
 create_vulkan_pipeline_layout(VulkanContext& context,
                               const detail::NativePipelineLayout& layout,
-                              const ShaderDesc& shader) {
-    for (const auto& mapping : shader.bindingMap) {
-        if (mapping.nativeGroup != mapping.group ||
-            mapping.nativeBinding != mapping.binding ||
-            mapping.nativeArrayElement != mapping.arrayElement) {
-            return Status::failure(
-                StatusCode::unsupported,
-                "Vulkan non-identity shader binding remaps are not implemented");
+                              std::span<const ShaderDesc* const> shaders) {
+    for (const auto* shader : shaders) {
+        if (shader == nullptr) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "Vulkan pipeline shader is null");
+        }
+        for (const auto& mapping : shader->bindingMap) {
+            if (mapping.nativeGroup != mapping.group ||
+                mapping.nativeBinding != mapping.binding ||
+                mapping.nativeArrayElement != mapping.arrayElement) {
+                return Status::failure(
+                    StatusCode::unsupported,
+                    "Vulkan non-identity shader binding remaps are not implemented");
+            }
         }
     }
 
@@ -881,8 +1017,9 @@ create_vulkan_pipeline_layout(VulkanContext& context,
     }
 
     std::lock_guard lock{context->mutex};
-    auto layoutResult = create_vulkan_pipeline_layout(*context, layout,
-                                                       shader->desc);
+    const std::array<const ShaderDesc*, 1> shaders{&shader->desc};
+    auto layoutResult =
+        create_vulkan_pipeline_layout(*context, layout, shaders);
     if (!layoutResult.ok()) {
         return layoutResult.status();
     }
@@ -935,15 +1072,369 @@ create_vulkan_pipeline_layout(VulkanContext& context,
     }
     try {
         return std::static_pointer_cast<void>(
-            std::make_shared<VulkanComputePipelineResource>(
+            std::make_shared<VulkanPipelineResource>(
                 context, std::move(nativeLayout.setLayouts),
-                nativeLayout.layout, pipeline));
+                nativeLayout.layout, pipeline,
+                VK_PIPELINE_BIND_POINT_COMPUTE));
     } catch (const std::bad_alloc&) {
         context->deviceTable.vkDestroyPipeline(context->device, pipeline,
                                                 nullptr);
         destroy_vulkan_pipeline_layout(*context, nativeLayout);
         return Status::failure(StatusCode::out_of_memory,
                                "Vulkan compute-pipeline allocation failed");
+    }
+}
+
+[[nodiscard]] Result<VkRenderPass> create_vulkan_color_render_pass(
+    VulkanContext& context, VkFormat format, VkAttachmentLoadOp loadOp,
+    VkAttachmentStoreOp storeOp) {
+    const VkAttachmentDescription attachment{
+        .flags = 0,
+        .format = format,
+        .samples = VK_SAMPLE_COUNT_1_BIT,
+        .loadOp = loadOp,
+        .storeOp = storeOp,
+        .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+        .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+        .initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+    };
+    const VkAttachmentReference colorReference{
+        .attachment = 0,
+        .layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+    };
+    const VkSubpassDescription subpass{
+        .flags = 0,
+        .pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+        .inputAttachmentCount = 0,
+        .pInputAttachments = nullptr,
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &colorReference,
+        .pResolveAttachments = nullptr,
+        .pDepthStencilAttachment = nullptr,
+        .preserveAttachmentCount = 0,
+        .pPreserveAttachments = nullptr,
+    };
+    const VkSubpassDependency dependency{
+        .srcSubpass = VK_SUBPASS_EXTERNAL,
+        .dstSubpass = 0,
+        .srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        .dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        .srcAccessMask = 0,
+        .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
+                         VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+        .dependencyFlags = 0,
+    };
+    const VkRenderPassCreateInfo renderPassInfo{
+        .sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .attachmentCount = 1,
+        .pAttachments = &attachment,
+        .subpassCount = 1,
+        .pSubpasses = &subpass,
+        .dependencyCount = 1,
+        .pDependencies = &dependency,
+    };
+    VkRenderPass renderPass = VK_NULL_HANDLE;
+    const auto result = context.deviceTable.vkCreateRenderPass(
+        context.device, &renderPassInfo, nullptr, &renderPass);
+    if (result != VK_SUCCESS) {
+        return vulkan_failure(StatusCode::backend_error,
+                              "Vulkan render-pass creation failed", result);
+    }
+    return renderPass;
+}
+
+[[nodiscard]] Result<std::shared_ptr<void>> create_vulkan_graphics_pipeline(
+    const std::shared_ptr<void>& nativeContext, const PipelineDesc& desc,
+    const detail::NativePipelineLayout& layout,
+    const std::shared_ptr<void>& vertexResource,
+    const std::shared_ptr<void>& fragmentResource) {
+    const auto context = std::static_pointer_cast<VulkanContext>(nativeContext);
+    const auto vertex =
+        std::static_pointer_cast<VulkanShaderResource>(vertexResource);
+    const auto fragment =
+        std::static_pointer_cast<VulkanShaderResource>(fragmentResource);
+    if (!context || context->device == VK_NULL_HANDLE || !vertex || !fragment ||
+        vertex->module == VK_NULL_HANDLE || fragment->module == VK_NULL_HANDLE ||
+        vertex->desc.stage != ShaderStage::vertex ||
+        fragment->desc.stage != ShaderStage::fragment ||
+        desc.colorTargets.size() != 1 ||
+        desc.depthStencil.format != TextureFormat::unknown ||
+        desc.multisample.sampleCount != 1 ||
+        desc.topology == PrimitiveTopology::patch_list) {
+        return Status::failure(
+            StatusCode::unsupported,
+            "this Vulkan graphics-pipeline configuration is unsupported");
+    }
+
+    std::lock_guard lock{context->mutex};
+    const std::array<const ShaderDesc*, 2> shaders{&vertex->desc,
+                                                   &fragment->desc};
+    auto layoutResult =
+        create_vulkan_pipeline_layout(*context, layout, shaders);
+    if (!layoutResult.ok()) {
+        return layoutResult.status();
+    }
+    auto nativeLayout = std::move(layoutResult).value();
+    const auto colorFormat = vulkan_format(desc.colorTargets.front().format);
+    auto renderPassResult = create_vulkan_color_render_pass(
+        *context, colorFormat.format, VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+        VK_ATTACHMENT_STORE_OP_STORE);
+    if (!renderPassResult.ok()) {
+        destroy_vulkan_pipeline_layout(*context, nativeLayout);
+        return renderPassResult.status();
+    }
+    const auto renderPass = renderPassResult.value();
+
+    std::vector<VkSpecializationMapEntry> specializationEntries;
+    std::vector<std::uint32_t> specializationValues;
+    specializationEntries.reserve(desc.specializationConstants.size());
+    specializationValues.reserve(desc.specializationConstants.size());
+    for (const auto& value : desc.specializationConstants) {
+        specializationEntries.push_back({
+            .constantID = value.id,
+            .offset = static_cast<std::uint32_t>(
+                specializationValues.size() * sizeof(std::uint32_t)),
+            .size = sizeof(std::uint32_t),
+        });
+        specializationValues.push_back(value.valueBits);
+    }
+    const VkSpecializationInfo specialization{
+        .mapEntryCount =
+            static_cast<std::uint32_t>(specializationEntries.size()),
+        .pMapEntries = specializationEntries.data(),
+        .dataSize = specializationValues.size() * sizeof(std::uint32_t),
+        .pData = specializationValues.data(),
+    };
+    const std::array<VkPipelineShaderStageCreateInfo, 2> stages{{
+        {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .stage = VK_SHADER_STAGE_VERTEX_BIT,
+            .module = vertex->module,
+            .pName = vertex->desc.entryPoint.c_str(),
+            .pSpecializationInfo = specializationEntries.empty()
+                                       ? nullptr
+                                       : &specialization,
+        },
+        {
+            .sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+            .module = fragment->module,
+            .pName = fragment->desc.entryPoint.c_str(),
+            .pSpecializationInfo = specializationEntries.empty()
+                                       ? nullptr
+                                       : &specialization,
+        },
+    }};
+
+    std::vector<VkVertexInputBindingDescription> vertexBindings;
+    std::vector<VkVertexInputAttributeDescription> vertexAttributes;
+    for (std::uint32_t binding = 0; binding < desc.vertexBuffers.size();
+         ++binding) {
+        const auto& source = desc.vertexBuffers[binding];
+        vertexBindings.push_back({
+            .binding = binding,
+            .stride = source.stride,
+            .inputRate = source.stepMode == VertexStepMode::instance
+                             ? VK_VERTEX_INPUT_RATE_INSTANCE
+                             : VK_VERTEX_INPUT_RATE_VERTEX,
+        });
+        for (const auto& attribute : source.attributes) {
+            vertexAttributes.push_back({
+                .location = attribute.location,
+                .binding = binding,
+                .format = vulkan_vertex_format(attribute.format),
+                .offset = attribute.offset,
+            });
+        }
+    }
+    const VkPipelineVertexInputStateCreateInfo vertexInput{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .vertexBindingDescriptionCount =
+            static_cast<std::uint32_t>(vertexBindings.size()),
+        .pVertexBindingDescriptions = vertexBindings.data(),
+        .vertexAttributeDescriptionCount =
+            static_cast<std::uint32_t>(vertexAttributes.size()),
+        .pVertexAttributeDescriptions = vertexAttributes.data(),
+    };
+    const VkPipelineInputAssemblyStateCreateInfo inputAssembly{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .topology = vulkan_topology(desc.topology),
+        .primitiveRestartEnable = VK_FALSE,
+    };
+
+    const bool dynamicViewport =
+        desc.viewports.empty() ||
+        has_dynamic_state(desc.dynamicState, DynamicState::viewport);
+    const bool dynamicScissor =
+        desc.scissors.empty() ||
+        has_dynamic_state(desc.dynamicState, DynamicState::scissor);
+    std::vector<VkViewport> viewports;
+    for (const auto& viewport : desc.viewports) {
+        viewports.push_back({viewport.x, viewport.y, viewport.width,
+                             viewport.height, viewport.minimumDepth,
+                             viewport.maximumDepth});
+    }
+    if (viewports.empty()) {
+        viewports.push_back({0.0F, 0.0F, 1.0F, 1.0F, 0.0F, 1.0F});
+    }
+    std::vector<VkRect2D> scissors;
+    for (const auto& scissor : desc.scissors) {
+        scissors.push_back({
+            {scissor.x, scissor.y}, {scissor.width, scissor.height}});
+    }
+    if (scissors.empty()) {
+        scissors.push_back({{0, 0}, {1, 1}});
+    }
+    const VkPipelineViewportStateCreateInfo viewportState{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .viewportCount = static_cast<std::uint32_t>(viewports.size()),
+        .pViewports = viewports.data(),
+        .scissorCount = static_cast<std::uint32_t>(scissors.size()),
+        .pScissors = scissors.data(),
+    };
+    std::vector<VkDynamicState> dynamicStates;
+    if (dynamicViewport) {
+        dynamicStates.push_back(VK_DYNAMIC_STATE_VIEWPORT);
+    }
+    if (dynamicScissor) {
+        dynamicStates.push_back(VK_DYNAMIC_STATE_SCISSOR);
+    }
+    if (has_dynamic_state(desc.dynamicState, DynamicState::blend_constant)) {
+        dynamicStates.push_back(VK_DYNAMIC_STATE_BLEND_CONSTANTS);
+    }
+    if (has_dynamic_state(desc.dynamicState, DynamicState::stencil_reference)) {
+        dynamicStates.push_back(VK_DYNAMIC_STATE_STENCIL_REFERENCE);
+    }
+    if (has_dynamic_state(desc.dynamicState, DynamicState::depth_bias)) {
+        dynamicStates.push_back(VK_DYNAMIC_STATE_DEPTH_BIAS);
+    }
+    const VkPipelineDynamicStateCreateInfo dynamicState{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .dynamicStateCount = static_cast<std::uint32_t>(dynamicStates.size()),
+        .pDynamicStates = dynamicStates.data(),
+    };
+    const VkPipelineRasterizationStateCreateInfo rasterization{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .depthClampEnable =
+            desc.rasterization.depthClampEnabled ? VK_TRUE : VK_FALSE,
+        .rasterizerDiscardEnable = VK_FALSE,
+        .polygonMode = vulkan_polygon_mode(desc.rasterization.polygonMode),
+        .cullMode = vulkan_cull_mode(desc.rasterization.cullMode),
+        .frontFace = vulkan_front_face(desc.rasterization.frontFace),
+        .depthBiasEnable =
+            (desc.rasterization.depthBias != 0.0F ||
+             desc.rasterization.depthBiasSlopeScale != 0.0F ||
+             desc.rasterization.depthBiasClamp != 0.0F ||
+             has_dynamic_state(desc.dynamicState, DynamicState::depth_bias))
+                ? VK_TRUE
+                : VK_FALSE,
+        .depthBiasConstantFactor = desc.rasterization.depthBias,
+        .depthBiasClamp = desc.rasterization.depthBiasClamp,
+        .depthBiasSlopeFactor = desc.rasterization.depthBiasSlopeScale,
+        .lineWidth = 1.0F,
+    };
+    const VkPipelineMultisampleStateCreateInfo multisample{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT,
+        .sampleShadingEnable = VK_FALSE,
+        .minSampleShading = 0.0F,
+        .pSampleMask = &desc.multisample.sampleMask,
+        .alphaToCoverageEnable =
+            desc.multisample.alphaToCoverageEnabled ? VK_TRUE : VK_FALSE,
+        .alphaToOneEnable = VK_FALSE,
+    };
+    const auto& target = desc.colorTargets.front();
+    const VkPipelineColorBlendAttachmentState colorBlend{
+        .blendEnable = target.blend.enabled ? VK_TRUE : VK_FALSE,
+        .srcColorBlendFactor = vulkan_blend_factor(
+            target.blend.color.sourceFactor),
+        .dstColorBlendFactor = vulkan_blend_factor(
+            target.blend.color.destinationFactor),
+        .colorBlendOp = vulkan_blend_op(target.blend.color.operation),
+        .srcAlphaBlendFactor = vulkan_blend_factor(
+            target.blend.alpha.sourceFactor),
+        .dstAlphaBlendFactor = vulkan_blend_factor(
+            target.blend.alpha.destinationFactor),
+        .alphaBlendOp = vulkan_blend_op(target.blend.alpha.operation),
+        .colorWriteMask = target.writeMask,
+    };
+    const VkPipelineColorBlendStateCreateInfo colorBlendState{
+        .sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .logicOpEnable = VK_FALSE,
+        .logicOp = VK_LOGIC_OP_COPY,
+        .attachmentCount = 1,
+        .pAttachments = &colorBlend,
+        .blendConstants = {desc.blendConstant[0], desc.blendConstant[1],
+                           desc.blendConstant[2], desc.blendConstant[3]},
+    };
+    const VkGraphicsPipelineCreateInfo pipelineInfo{
+        .sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .stageCount = static_cast<std::uint32_t>(stages.size()),
+        .pStages = stages.data(),
+        .pVertexInputState = &vertexInput,
+        .pInputAssemblyState = &inputAssembly,
+        .pTessellationState = nullptr,
+        .pViewportState = &viewportState,
+        .pRasterizationState = &rasterization,
+        .pMultisampleState = &multisample,
+        .pDepthStencilState = nullptr,
+        .pColorBlendState = &colorBlendState,
+        .pDynamicState = dynamicStates.empty() ? nullptr : &dynamicState,
+        .layout = nativeLayout.layout,
+        .renderPass = renderPass,
+        .subpass = 0,
+        .basePipelineHandle = VK_NULL_HANDLE,
+        .basePipelineIndex = -1,
+    };
+    VkPipeline pipeline = VK_NULL_HANDLE;
+    const auto result = context->deviceTable.vkCreateGraphicsPipelines(
+        context->device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline);
+    if (result != VK_SUCCESS) {
+        context->deviceTable.vkDestroyRenderPass(context->device, renderPass,
+                                                 nullptr);
+        destroy_vulkan_pipeline_layout(*context, nativeLayout);
+        return vulkan_failure(StatusCode::backend_error,
+                              "Vulkan graphics-pipeline creation failed",
+                              result);
+    }
+    try {
+        return std::static_pointer_cast<void>(
+            std::make_shared<VulkanPipelineResource>(
+                context, std::move(nativeLayout.setLayouts),
+                nativeLayout.layout, pipeline,
+                VK_PIPELINE_BIND_POINT_GRAPHICS, renderPass, dynamicViewport,
+                dynamicScissor));
+    } catch (const std::bad_alloc&) {
+        context->deviceTable.vkDestroyPipeline(context->device, pipeline,
+                                                nullptr);
+        context->deviceTable.vkDestroyRenderPass(context->device, renderPass,
+                                                 nullptr);
+        destroy_vulkan_pipeline_layout(*context, nativeLayout);
+        return Status::failure(StatusCode::out_of_memory,
+                               "Vulkan graphics-pipeline allocation failed");
     }
 }
 
@@ -1498,20 +1989,47 @@ create_vulkan_pipeline_layout(VulkanContext& context,
         }
         if (command.kind != detail::NativeCommandKind::transfer) {
             switch (command.kind) {
+            case detail::NativeCommandKind::begin_render:
+            case detail::NativeCommandKind::end_render:
             case detail::NativeCommandKind::begin_compute:
             case detail::NativeCommandKind::end_compute:
             case detail::NativeCommandKind::push_constants:
+            case detail::NativeCommandKind::set_viewports:
+            case detail::NativeCommandKind::set_scissors:
+            case detail::NativeCommandKind::set_blend_constant:
+            case detail::NativeCommandKind::set_stencil_reference:
+            case detail::NativeCommandKind::set_depth_bias:
+            case detail::NativeCommandKind::draw:
+            case detail::NativeCommandKind::draw_indexed:
             case detail::NativeCommandKind::dispatch:
                 continue;
+            case detail::NativeCommandKind::bind_graphics_pipeline:
             case detail::NativeCommandKind::bind_compute_pipeline: {
                 const auto pipeline =
-                    std::static_pointer_cast<VulkanComputePipelineResource>(
+                    std::static_pointer_cast<VulkanPipelineResource>(
                         command.object);
                 if (!pipeline || pipeline->pipeline == VK_NULL_HANDLE ||
-                    pipeline->layout == VK_NULL_HANDLE) {
+                    pipeline->layout == VK_NULL_HANDLE ||
+                    (command.kind ==
+                             detail::NativeCommandKind::bind_graphics_pipeline &&
+                     pipeline->bindPoint != VK_PIPELINE_BIND_POINT_GRAPHICS) ||
+                    (command.kind ==
+                             detail::NativeCommandKind::bind_compute_pipeline &&
+                     pipeline->bindPoint != VK_PIPELINE_BIND_POINT_COMPUTE)) {
                     return Status::failure(
                         StatusCode::invalid_argument,
-                        "Vulkan compute-pipeline command is invalid");
+                        "Vulkan pipeline command is invalid");
+                }
+                continue;
+            }
+            case detail::NativeCommandKind::bind_vertex_buffer:
+            case detail::NativeCommandKind::bind_index_buffer: {
+                const auto buffer =
+                    std::static_pointer_cast<VulkanBufferResource>(
+                        command.object);
+                if (!buffer || buffer->buffer == VK_NULL_HANDLE) {
+                    return Status::failure(StatusCode::invalid_argument,
+                                           "Vulkan bound buffer is invalid");
                 }
                 continue;
             }
@@ -1683,6 +2201,14 @@ create_vulkan_pipeline_layout(VulkanContext& context,
         return VK_ACCESS_HOST_WRITE_BIT;
     case VK_IMAGE_LAYOUT_GENERAL:
         return VK_ACCESS_HOST_READ_BIT | VK_ACCESS_HOST_WRITE_BIT;
+    case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+        return VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
+               VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+        return VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
+               VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+        return VK_ACCESS_SHADER_READ_BIT;
     case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
         return VK_ACCESS_TRANSFER_READ_BIT;
     case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
@@ -1700,6 +2226,15 @@ create_vulkan_pipeline_layout(VulkanContext& context,
     case VK_IMAGE_LAYOUT_PREINITIALIZED:
     case VK_IMAGE_LAYOUT_GENERAL:
         return VK_PIPELINE_STAGE_HOST_BIT;
+    case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+        return VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+        return VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
+               VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+    case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+        return VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
+               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+               VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
     default:
         return VK_PIPELINE_STAGE_TRANSFER_BIT;
     }
@@ -1737,9 +2272,134 @@ void transition_vulkan_texture(VulkanContext& context,
     };
     const auto sourceStage = vulkan_layout_stage(oldLayout);
     context.deviceTable.vkCmdPipelineBarrier(
-        commandBuffer, sourceStage, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0,
+        commandBuffer, sourceStage, vulkan_layout_stage(newLayout), 0, 0,
         nullptr, 0, nullptr, 1, &barrier);
     oldLayout = newLayout;
+}
+
+struct VulkanSubmissionResources {
+    std::vector<VkImageView> attachmentViews;
+    std::vector<VkRenderPass> renderPasses;
+    std::vector<VkFramebuffer> framebuffers;
+};
+
+void destroy_vulkan_submission_resources(
+    VulkanContext& context, VulkanSubmissionResources& resources) {
+    for (const auto framebuffer : resources.framebuffers) {
+        context.deviceTable.vkDestroyFramebuffer(context.device, framebuffer,
+                                                 nullptr);
+    }
+    for (const auto renderPass : resources.renderPasses) {
+        context.deviceTable.vkDestroyRenderPass(context.device, renderPass,
+                                                nullptr);
+    }
+    for (const auto view : resources.attachmentViews) {
+        context.deviceTable.vkDestroyImageView(context.device, view, nullptr);
+    }
+    resources = {};
+}
+
+[[nodiscard]] Status begin_vulkan_render_pass(
+    VulkanContext& context, VkCommandBuffer commandBuffer,
+    const detail::NativeCommand& command,
+    VulkanSubmissionResources& resources) {
+    if (command.colorAttachments.size() != 1 ||
+        command.colorAttachments.front().resolveTexture ||
+        command.depthStencilAttachment.texture) {
+        return Status::failure(
+            StatusCode::unsupported,
+            "this Vulkan render-pass attachment configuration is unsupported");
+    }
+    const auto texture = std::static_pointer_cast<VulkanTextureResource>(
+        command.colorAttachments.front().texture);
+    if (!texture || texture->image == VK_NULL_HANDLE ||
+        texture->desc.sampleCount != 1 ||
+        texture->format.aspects != VK_IMAGE_ASPECT_COLOR_BIT) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "Vulkan color attachment is invalid");
+    }
+    transition_vulkan_texture(context, commandBuffer, *texture,
+                              {.aspect = TextureAspect::color},
+                              VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    const VkImageViewCreateInfo viewInfo{
+        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .image = texture->image,
+        .viewType = VK_IMAGE_VIEW_TYPE_2D,
+        .format = texture->format.format,
+        .components = {VK_COMPONENT_SWIZZLE_IDENTITY,
+                       VK_COMPONENT_SWIZZLE_IDENTITY,
+                       VK_COMPONENT_SWIZZLE_IDENTITY,
+                       VK_COMPONENT_SWIZZLE_IDENTITY},
+        .subresourceRange = {
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .baseMipLevel = 0,
+            .levelCount = 1,
+            .baseArrayLayer = 0,
+            .layerCount = 1,
+        },
+    };
+    VkImageView view = VK_NULL_HANDLE;
+    auto result = context.deviceTable.vkCreateImageView(
+        context.device, &viewInfo, nullptr, &view);
+    if (result != VK_SUCCESS) {
+        return vulkan_failure(StatusCode::backend_error,
+                              "Vulkan attachment-view creation failed", result);
+    }
+    const auto& attachment = command.colorAttachments.front();
+    auto renderPassResult = create_vulkan_color_render_pass(
+        context, texture->format.format,
+        attachment.loadOp == LoadOp::clear
+            ? VK_ATTACHMENT_LOAD_OP_CLEAR
+            : attachment.loadOp == LoadOp::load ? VK_ATTACHMENT_LOAD_OP_LOAD
+                                                : VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+        attachment.storeOp == StoreOp::store
+            ? VK_ATTACHMENT_STORE_OP_STORE
+            : VK_ATTACHMENT_STORE_OP_DONT_CARE);
+    if (!renderPassResult.ok()) {
+        context.deviceTable.vkDestroyImageView(context.device, view, nullptr);
+        return renderPassResult.status();
+    }
+    const auto renderPass = renderPassResult.value();
+    const VkFramebufferCreateInfo framebufferInfo{
+        .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+        .pNext = nullptr,
+        .flags = 0,
+        .renderPass = renderPass,
+        .attachmentCount = 1,
+        .pAttachments = &view,
+        .width = command.extent.width,
+        .height = command.extent.height,
+        .layers = 1,
+    };
+    VkFramebuffer framebuffer = VK_NULL_HANDLE;
+    result = context.deviceTable.vkCreateFramebuffer(
+        context.device, &framebufferInfo, nullptr, &framebuffer);
+    if (result != VK_SUCCESS) {
+        context.deviceTable.vkDestroyRenderPass(context.device, renderPass,
+                                                nullptr);
+        context.deviceTable.vkDestroyImageView(context.device, view, nullptr);
+        return vulkan_failure(StatusCode::backend_error,
+                              "Vulkan framebuffer creation failed", result);
+    }
+    resources.attachmentViews.push_back(view);
+    resources.renderPasses.push_back(renderPass);
+    resources.framebuffers.push_back(framebuffer);
+    const VkClearValue clear{{{attachment.clear.r, attachment.clear.g,
+                               attachment.clear.b, attachment.clear.a}}};
+    const VkRenderPassBeginInfo beginInfo{
+        .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+        .pNext = nullptr,
+        .renderPass = renderPass,
+        .framebuffer = framebuffer,
+        .renderArea = {{0, 0}, {command.extent.width, command.extent.height}},
+        .clearValueCount = 1,
+        .pClearValues = &clear,
+    };
+    context.deviceTable.vkCmdBeginRenderPass(
+        commandBuffer, &beginInfo, VK_SUBPASS_CONTENTS_INLINE);
+    return Status::success();
 }
 
 [[nodiscard]] Result<VkDescriptorPool> create_vulkan_descriptor_pool(
@@ -1790,7 +2450,7 @@ void transition_vulkan_texture(VulkanContext& context,
 [[nodiscard]] Status encode_vulkan_bind_group(
     VulkanContext& context, VkCommandBuffer commandBuffer,
     VkDescriptorPool descriptorPool,
-    const VulkanComputePipelineResource& pipeline,
+    const VulkanPipelineResource& pipeline,
     const detail::NativeCommand& command) {
     const auto group = static_cast<std::uint32_t>(command.arguments[0]);
     if (descriptorPool == VK_NULL_HANDLE ||
@@ -1907,7 +2567,7 @@ void transition_vulkan_texture(VulkanContext& context,
         context.device, static_cast<std::uint32_t>(writes.size()),
         writes.data(), 0, nullptr);
     context.deviceTable.vkCmdBindDescriptorSets(
-        commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+        commandBuffer, pipeline.bindPoint,
         pipeline.layout, group, 1, &set, 0, nullptr);
     return Status::success();
 }
@@ -1952,10 +2612,14 @@ void transition_vulkan_texture(VulkanContext& context,
 [[nodiscard]] Status record_vulkan_commands(
     VulkanContext& context, VkCommandBuffer commandBuffer,
     VkDescriptorPool descriptorPool,
-    std::span<const detail::NativeCommand> commands) {
+    std::span<const detail::NativeCommand> commands,
+    VulkanSubmissionResources& submissionResources) {
     bool recordedTransfer = false;
     bool recordedComputeWrite = false;
-    std::shared_ptr<VulkanComputePipelineResource> computePipeline;
+    bool recordedRenderWrite = false;
+    std::shared_ptr<VulkanPipelineResource> computePipeline;
+    std::shared_ptr<VulkanPipelineResource> graphicsPipeline;
+    Extent2D renderExtent{};
     const auto memory_barrier = [&](VkPipelineStageFlags sourceStages,
                                     VkAccessFlags sourceAccess,
                                     VkPipelineStageFlags destinationStages,
@@ -1976,45 +2640,183 @@ void transition_vulkan_texture(VulkanContext& context,
         }
         if (command.kind != detail::NativeCommandKind::transfer) {
             switch (command.kind) {
+            case detail::NativeCommandKind::begin_render:
+                graphicsPipeline.reset();
+                renderExtent = command.extent;
+                if (auto status = begin_vulkan_render_pass(
+                        context, commandBuffer, command, submissionResources);
+                    !status.ok()) {
+                    return status;
+                }
+                break;
+            case detail::NativeCommandKind::end_render:
+                context.deviceTable.vkCmdEndRenderPass(commandBuffer);
+                graphicsPipeline.reset();
+                recordedRenderWrite = true;
+                break;
             case detail::NativeCommandKind::begin_compute:
                 computePipeline.reset();
                 break;
             case detail::NativeCommandKind::end_compute:
+                computePipeline.reset();
+                break;
+            case detail::NativeCommandKind::bind_graphics_pipeline:
+                graphicsPipeline =
+                    std::static_pointer_cast<VulkanPipelineResource>(
+                        command.object);
+                context.deviceTable.vkCmdBindPipeline(
+                    commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                    graphicsPipeline->pipeline);
+                if (graphicsPipeline->automaticViewport) {
+                    const VkViewport viewport{0.0F, 0.0F,
+                                              static_cast<float>(
+                                                  renderExtent.width),
+                                              static_cast<float>(
+                                                  renderExtent.height),
+                                              0.0F, 1.0F};
+                    context.deviceTable.vkCmdSetViewport(commandBuffer, 0, 1,
+                                                         &viewport);
+                }
+                if (graphicsPipeline->automaticScissor) {
+                    const VkRect2D scissor{{0, 0},
+                                           {renderExtent.width,
+                                            renderExtent.height}};
+                    context.deviceTable.vkCmdSetScissor(commandBuffer, 0, 1,
+                                                        &scissor);
+                }
                 break;
             case detail::NativeCommandKind::bind_compute_pipeline:
                 computePipeline =
-                    std::static_pointer_cast<VulkanComputePipelineResource>(
+                    std::static_pointer_cast<VulkanPipelineResource>(
                         command.object);
                 context.deviceTable.vkCmdBindPipeline(
                     commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
                     computePipeline->pipeline);
                 break;
             case detail::NativeCommandKind::bind_group:
-                if (!computePipeline) {
+                if (!computePipeline && !graphicsPipeline) {
                     return Status::failure(
                         StatusCode::invalid_state,
-                        "Vulkan bind group requires a compute pipeline");
+                        "Vulkan bind group requires a pipeline");
                 }
                 if (auto status = encode_vulkan_bind_group(
                         context, commandBuffer, descriptorPool,
-                        *computePipeline, command);
+                        graphicsPipeline ? *graphicsPipeline : *computePipeline,
+                        command);
                     !status.ok()) {
                     return status;
                 }
                 break;
             case detail::NativeCommandKind::push_constants:
-                if (!computePipeline) {
+                if (!computePipeline && !graphicsPipeline) {
                     return Status::failure(
                         StatusCode::invalid_state,
-                        "Vulkan push constants require a compute pipeline");
+                        "Vulkan push constants require a pipeline");
                 }
+                {
+                    const auto& pipeline =
+                        graphicsPipeline ? graphicsPipeline : computePipeline;
                 context.deviceTable.vkCmdPushConstants(
-                    commandBuffer, computePipeline->layout,
+                    commandBuffer, pipeline->layout,
                     vulkan_shader_stages(static_cast<ShaderStageMask>(
                         command.arguments[0])),
                     static_cast<std::uint32_t>(command.arguments[1]),
                     static_cast<std::uint32_t>(command.bytes.size()),
                     command.bytes.data());
+                }
+                break;
+            case detail::NativeCommandKind::bind_vertex_buffer: {
+                const auto buffer =
+                    std::static_pointer_cast<VulkanBufferResource>(
+                        command.object);
+                const auto nativeOffset =
+                    static_cast<VkDeviceSize>(command.arguments[1]);
+                context.deviceTable.vkCmdBindVertexBuffers(
+                    commandBuffer,
+                    static_cast<std::uint32_t>(command.arguments[0]), 1,
+                    &buffer->buffer, &nativeOffset);
+                break;
+            }
+            case detail::NativeCommandKind::bind_index_buffer: {
+                const auto buffer =
+                    std::static_pointer_cast<VulkanBufferResource>(
+                        command.object);
+                context.deviceTable.vkCmdBindIndexBuffer(
+                    commandBuffer, buffer->buffer,
+                    static_cast<VkDeviceSize>(command.arguments[0]),
+                    static_cast<IndexFormat>(command.arguments[1]) ==
+                            IndexFormat::uint16
+                        ? VK_INDEX_TYPE_UINT16
+                        : VK_INDEX_TYPE_UINT32);
+                break;
+            }
+            case detail::NativeCommandKind::set_viewports: {
+                std::vector<VkViewport> viewports;
+                viewports.reserve(command.viewports.size());
+                for (const auto& viewport : command.viewports) {
+                    viewports.push_back({viewport.x, viewport.y,
+                                         viewport.width, viewport.height,
+                                         viewport.minimumDepth,
+                                         viewport.maximumDepth});
+                }
+                context.deviceTable.vkCmdSetViewport(
+                    commandBuffer,
+                    static_cast<std::uint32_t>(command.arguments[0]),
+                    static_cast<std::uint32_t>(viewports.size()),
+                    viewports.data());
+                break;
+            }
+            case detail::NativeCommandKind::set_scissors: {
+                std::vector<VkRect2D> scissors;
+                scissors.reserve(command.scissors.size());
+                for (const auto& scissor : command.scissors) {
+                    scissors.push_back({{scissor.x, scissor.y},
+                                        {scissor.width, scissor.height}});
+                }
+                context.deviceTable.vkCmdSetScissor(
+                    commandBuffer,
+                    static_cast<std::uint32_t>(command.arguments[0]),
+                    static_cast<std::uint32_t>(scissors.size()),
+                    scissors.data());
+                break;
+            }
+            case detail::NativeCommandKind::set_blend_constant: {
+                std::array<float, 4> color{};
+                std::memcpy(color.data(), command.bytes.data(),
+                            sizeof(color));
+                context.deviceTable.vkCmdSetBlendConstants(commandBuffer,
+                                                            color.data());
+                break;
+            }
+            case detail::NativeCommandKind::set_stencil_reference:
+                context.deviceTable.vkCmdSetStencilReference(
+                    commandBuffer, VK_STENCIL_FACE_FRONT_AND_BACK,
+                    static_cast<std::uint32_t>(command.arguments[0]));
+                break;
+            case detail::NativeCommandKind::set_depth_bias: {
+                std::array<float, 3> values{};
+                std::memcpy(values.data(), command.bytes.data(),
+                            sizeof(values));
+                context.deviceTable.vkCmdSetDepthBias(
+                    commandBuffer, values[0], values[2], values[1]);
+                break;
+            }
+            case detail::NativeCommandKind::draw:
+                context.deviceTable.vkCmdDraw(
+                    commandBuffer,
+                    static_cast<std::uint32_t>(command.arguments[0]),
+                    static_cast<std::uint32_t>(command.arguments[1]),
+                    static_cast<std::uint32_t>(command.arguments[2]),
+                    static_cast<std::uint32_t>(command.arguments[3]));
+                break;
+            case detail::NativeCommandKind::draw_indexed:
+                context.deviceTable.vkCmdDrawIndexed(
+                    commandBuffer,
+                    static_cast<std::uint32_t>(command.arguments[0]),
+                    static_cast<std::uint32_t>(command.arguments[1]),
+                    static_cast<std::uint32_t>(command.arguments[2]),
+                    static_cast<std::int32_t>(command.arguments[3]),
+                    static_cast<std::uint32_t>(command.arguments[4]));
                 break;
             case detail::NativeCommandKind::dispatch:
                 context.deviceTable.vkCmdDispatch(
@@ -2039,11 +2841,22 @@ void transition_vulkan_texture(VulkanContext& context,
                            VK_ACCESS_TRANSFER_READ_BIT |
                                VK_ACCESS_TRANSFER_WRITE_BIT);
         } else {
-            memory_barrier(recordedComputeWrite
-                               ? VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
-                               : VK_PIPELINE_STAGE_HOST_BIT,
-                           recordedComputeWrite ? VK_ACCESS_SHADER_WRITE_BIT
-                                                : VK_ACCESS_HOST_WRITE_BIT,
+            VkPipelineStageFlags sourceStages = 0;
+            VkAccessFlags sourceAccess = 0;
+            if (recordedComputeWrite) {
+                sourceStages |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+                sourceAccess |= VK_ACCESS_SHADER_WRITE_BIT;
+            }
+            if (recordedRenderWrite) {
+                sourceStages |=
+                    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+                sourceAccess |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            }
+            if (sourceStages == 0) {
+                sourceStages = VK_PIPELINE_STAGE_HOST_BIT;
+                sourceAccess = VK_ACCESS_HOST_WRITE_BIT;
+            }
+            memory_barrier(sourceStages, sourceAccess,
                            VK_PIPELINE_STAGE_TRANSFER_BIT,
                            VK_ACCESS_TRANSFER_READ_BIT |
                                VK_ACCESS_TRANSFER_WRITE_BIT);
@@ -2407,10 +3220,14 @@ void transition_vulkan_texture(VulkanContext& context,
             return descriptorPoolResult.status();
         }
         const auto descriptorPool = descriptorPoolResult.value();
+        VulkanSubmissionResources submissionResources;
         if (auto status = record_vulkan_commands(context, commandBuffer,
                                                  descriptorPool,
-                                                 commands);
+                                                 commands,
+                                                 submissionResources);
             !status.ok()) {
+            destroy_vulkan_submission_resources(context,
+                                                submissionResources);
             if (descriptorPool != VK_NULL_HANDLE) {
                 context.deviceTable.vkDestroyDescriptorPool(
                     context.device, descriptorPool, nullptr);
@@ -2437,6 +3254,7 @@ void transition_vulkan_texture(VulkanContext& context,
             context.deviceTable.vkDestroyDescriptorPool(
                 context.device, descriptorPool, nullptr);
         }
+        destroy_vulkan_submission_resources(context, submissionResources);
     }
     context.deviceTable.vkDestroyCommandPool(context.device, pool, nullptr);
     if (result == VK_ERROR_DEVICE_LOST) {
@@ -3057,7 +3875,7 @@ Result<Instance> create_vulkan_instance(const InstanceDesc& desc) {
             limits.minStorageBufferOffsetAlignment),
     };
     config.pipelineCapabilities = {
-        .graphics = false,
+        .graphics = true,
         .compute = true,
         .multipleRenderTargets = false,
         .depthStencil = false,
@@ -3066,9 +3884,9 @@ Result<Instance> create_vulkan_instance(const InstanceDesc& desc) {
         .indirect = false,
         .indirectCount = false,
         .pipelineCache = false,
-        .maxColorAttachments = 0,
-        .maxVertexBuffers = 0,
-        .maxViewports = 0,
+        .maxColorAttachments = 1,
+        .maxVertexBuffers = std::min(limits.maxVertexInputBindings, 16u),
+        .maxViewports = 1,
         .maxComputeWorkgroupSize = {limits.maxComputeWorkGroupSize[0],
                                     limits.maxComputeWorkGroupSize[1],
                                     limits.maxComputeWorkGroupSize[2]},
@@ -3090,6 +3908,7 @@ Result<Instance> create_vulkan_instance(const InstanceDesc& desc) {
     config.readTexture = &read_vulkan_texture;
     config.createSampler = &create_vulkan_sampler;
     config.createShader = &create_vulkan_shader;
+    config.createPipeline = &create_vulkan_graphics_pipeline;
     config.createComputePipeline = &create_vulkan_compute_pipeline;
     config.nativeSubmit = &submit_vulkan_commands;
     return detail::create_foundation_instance(desc, std::move(config));

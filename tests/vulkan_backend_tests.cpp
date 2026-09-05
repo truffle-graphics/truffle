@@ -72,6 +72,87 @@ void verify_vulkan_buffers() {
         packageResult.value(), rhi::ShaderTarget::spirv, "main",
         rhi::ShaderStage::vertex);
     assert(shaderResult.ok());
+    auto vertexShader = std::move(shaderResult).value();
+
+#if defined(TRUFFLE_VULKAN_FRAGMENT_PACKAGE_PATH)
+    const auto fragmentPackageBytes =
+        read_shader_package(TRUFFLE_VULKAN_FRAGMENT_PACKAGE_PATH);
+    auto fragmentPackageResult =
+        rhi::ShaderPackage::load(fragmentPackageBytes);
+    assert(fragmentPackageResult.ok());
+    auto fragmentShaderResult = device.create_shader(
+        fragmentPackageResult.value(), rhi::ShaderTarget::spirv, "main",
+        rhi::ShaderStage::fragment);
+    assert(fragmentShaderResult.ok());
+    auto fragmentShader = std::move(fragmentShaderResult).value();
+    auto trianglePipelineResult = device.create_pipeline({
+        .vertexShader = &vertexShader,
+        .fragmentShader = &fragmentShader,
+        .colorTargets = {{.format = rhi::TextureFormat::rgba8_unorm}},
+    });
+    assert(trianglePipelineResult.ok());
+    auto trianglePipeline = std::move(trianglePipelineResult).value();
+    constexpr std::uint32_t triangleSize = 16;
+    constexpr std::size_t triangleRowPitch = 256;
+    auto triangleTargetResult = device.create_texture({
+        .extent = {triangleSize, triangleSize, 1},
+        .format = rhi::TextureFormat::rgba8_unorm,
+        .usage = rhi::TextureUsage::color_attachment |
+                 rhi::TextureUsage::copy_source,
+    });
+    auto triangleReadbackResult = device.create_buffer({
+        .size = triangleRowPitch * triangleSize,
+        .usage = rhi::BufferUsage::copy_destination,
+        .memory = rhi::MemoryDomain::readback,
+    });
+    assert(triangleTargetResult.ok() && triangleReadbackResult.ok());
+    auto triangleTarget = std::move(triangleTargetResult).value();
+    auto triangleReadback = std::move(triangleReadbackResult).value();
+    auto trianglePoolResult =
+        device.create_command_pool(rhi::QueueKind::graphics);
+    assert(trianglePoolResult.ok());
+    auto trianglePool = std::move(trianglePoolResult).value();
+    auto triangleListResult = trianglePool.allocate();
+    assert(triangleListResult.ok());
+    auto triangleList = std::move(triangleListResult).value();
+    assert(triangleList.begin().ok());
+    auto triangleRenderResult = triangleList.begin_rendering({
+        .extent = {triangleSize, triangleSize},
+        .colorAttachments = {{.texture = &triangleTarget,
+                              .clear = {0.0F, 0.0F, 0.0F, 1.0F}}},
+    });
+    assert(triangleRenderResult.ok());
+    auto triangleRender = std::move(triangleRenderResult).value();
+    assert(triangleRender.bind_pipeline(trianglePipeline).ok());
+    assert(triangleRender.draw(3).ok());
+    assert(triangleRender.end().ok());
+    auto triangleCopyResult = triangleList.begin_copy();
+    assert(triangleCopyResult.ok());
+    auto triangleCopy = std::move(triangleCopyResult).value();
+    assert(triangleCopy
+               .copy_texture_to_buffer(
+                   triangleTarget, triangleReadback,
+                   {.layout = {.bytesPerRow = triangleRowPitch,
+                               .rowsPerImage = triangleSize},
+                    .texture = {.extent = {triangleSize, triangleSize, 1}}})
+               .ok());
+    assert(triangleCopy.end().ok());
+    assert(triangleList.end().ok());
+    auto triangleQueueResult = device.queue(rhi::QueueKind::graphics);
+    assert(triangleQueueResult.ok());
+    auto triangleQueue = std::move(triangleQueueResult).value();
+    std::array<rhi::CommandList*, 1> triangleLists{&triangleList};
+    assert(triangleQueue.submit(triangleLists).ok());
+    std::array<std::byte, 4> trianglePixel{};
+    assert(triangleReadback
+               .read((triangleSize / 2) * triangleRowPitch +
+                         (triangleSize / 2) * 4,
+                     trianglePixel)
+               .ok());
+    const std::array<std::byte, 4> expectedTrianglePixel{
+        std::byte{255}, std::byte{0}, std::byte{0}, std::byte{255}};
+    assert(trianglePixel == expectedTrianglePixel);
+#endif
 
     auto wrongFormatShader = device.create_shader({
         .stage = rhi::ShaderStage::vertex,
@@ -422,7 +503,9 @@ void verify_vulkan_buffers() {
     assert(info.bindings.immutableSamplers);
     assert(info.bindings.pushConstants);
     assert(info.pipelines.compute);
-    assert(!info.pipelines.graphics);
+    assert(info.pipelines.graphics);
+    assert(info.pipelines.maxColorAttachments == 1);
+    assert(!info.pipelines.multipleRenderTargets);
     auto sampler = device.create_sampler({});
     assert(sampler.ok());
     auto anisotropicSampler = device.create_sampler({.maxAnisotropy = 2.0F});

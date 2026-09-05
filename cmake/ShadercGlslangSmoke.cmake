@@ -53,6 +53,33 @@ if(NOT _package_a_hash STREQUAL _package_b_hash)
     message(FATAL_ERROR "GLSL compilation produced non-deterministic packages")
 endif()
 
+set(_fragment "${TRUFFLE_SHADERC_TEST_DIR}/triangle.frag")
+set(_fragment_package
+    "${TRUFFLE_SHADERC_TEST_DIR}/triangle-fragment.truffle-shader")
+file(WRITE "${_fragment}"
+    "#version 450\n"
+    "layout(location = 0) out vec4 outputColor;\n"
+    "void main() { outputColor = vec4(1.0, 0.0, 0.0, 1.0); }\n")
+file(SHA256 "${_fragment}" _fragment_hash)
+execute_process(
+    COMMAND "${TRUFFLE_SHADERC}"
+        --compile
+        --name triangle-fragment
+        --target spirv
+        --stage fragment
+        --entry main
+        --input "${_fragment}"
+        --output "${_fragment_package}"
+        --source-hash "${_fragment_hash}"
+        --source-language glsl
+    RESULT_VARIABLE _fragment_result
+    OUTPUT_VARIABLE _fragment_output
+    ERROR_VARIABLE _fragment_error)
+if(NOT _fragment_result EQUAL 0)
+    message(FATAL_ERROR
+        "fragment GLSL to SPIR-V compilation failed: ${_fragment_output}${_fragment_error}")
+endif()
+
 execute_process(
     COMMAND "${TRUFFLE_SHADERC}" --inspect "${_package_a}"
     RESULT_VARIABLE _inspect_result
