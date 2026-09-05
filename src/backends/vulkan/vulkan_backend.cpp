@@ -2003,6 +2003,18 @@ create_vulkan_pipeline_layout(VulkanContext& context,
             case detail::NativeCommandKind::draw_indexed:
             case detail::NativeCommandKind::dispatch:
                 continue;
+            case detail::NativeCommandKind::draw_indirect:
+            case detail::NativeCommandKind::dispatch_indirect: {
+                const auto buffer =
+                    std::static_pointer_cast<VulkanBufferResource>(
+                        command.object);
+                if (!buffer || buffer->buffer == VK_NULL_HANDLE) {
+                    return Status::failure(
+                        StatusCode::invalid_argument,
+                        "Vulkan indirect command buffer is invalid");
+                }
+                continue;
+            }
             case detail::NativeCommandKind::bind_graphics_pipeline:
             case detail::NativeCommandKind::bind_compute_pipeline: {
                 const auto pipeline =
@@ -2818,6 +2830,25 @@ void destroy_vulkan_submission_resources(
                     static_cast<std::int32_t>(command.arguments[3]),
                     static_cast<std::uint32_t>(command.arguments[4]));
                 break;
+            case detail::NativeCommandKind::draw_indirect: {
+                const auto buffer =
+                    std::static_pointer_cast<VulkanBufferResource>(
+                        command.object);
+                if (command.arguments[1] != 0) {
+                    context.deviceTable.vkCmdDrawIndexedIndirect(
+                        commandBuffer, buffer->buffer,
+                        static_cast<VkDeviceSize>(command.arguments[0]),
+                        static_cast<std::uint32_t>(command.arguments[2]),
+                        static_cast<std::uint32_t>(command.arguments[3]));
+                } else {
+                    context.deviceTable.vkCmdDrawIndirect(
+                        commandBuffer, buffer->buffer,
+                        static_cast<VkDeviceSize>(command.arguments[0]),
+                        static_cast<std::uint32_t>(command.arguments[2]),
+                        static_cast<std::uint32_t>(command.arguments[3]));
+                }
+                break;
+            }
             case detail::NativeCommandKind::dispatch:
                 context.deviceTable.vkCmdDispatch(
                     commandBuffer,
@@ -2826,6 +2857,16 @@ void destroy_vulkan_submission_resources(
                     static_cast<std::uint32_t>(command.arguments[2]));
                 recordedComputeWrite = true;
                 break;
+            case detail::NativeCommandKind::dispatch_indirect: {
+                const auto buffer =
+                    std::static_pointer_cast<VulkanBufferResource>(
+                        command.object);
+                context.deviceTable.vkCmdDispatchIndirect(
+                    commandBuffer, buffer->buffer,
+                    static_cast<VkDeviceSize>(command.arguments[0]));
+                recordedComputeWrite = true;
+                break;
+            }
             default:
                 return Status::failure(
                     StatusCode::unsupported,
@@ -3881,7 +3922,7 @@ Result<Instance> create_vulkan_instance(const InstanceDesc& desc) {
         .depthStencil = false,
         .multisample = false,
         .tessellation = false,
-        .indirect = false,
+        .indirect = true,
         .indirectCount = false,
         .pipelineCache = false,
         .maxColorAttachments = 1,

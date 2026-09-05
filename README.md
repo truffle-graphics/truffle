@@ -52,8 +52,10 @@ for each backend/platform pair:
   resolve, nearest/linear blit paths, immutable descriptor-backed bindings,
   push constants, and direct compute dispatch with exact storage-buffer
   readback. Generated vertex/fragment SPIR-V also drives a native single-color
-  graphics pipeline with exact render-target output; depth/MRT/MSAA and
-  indirect paths remain separately gated.
+  graphics pipeline with exact direct, indexed, and indirect render-target
+  output. Reflected sampled-texture/sampler bindings produce exact texel output,
+  and indirect compute reproduces the direct storage-buffer result;
+  depth/MRT/MSAA remain separately gated.
 - `truffle_backend_direct3d` initializes the Windows SDK D3D12 WARP device,
   owns upload/readback and default-heap buffers plus device-local textures and
   descriptor views, consumes packaged native HLSL or offline DXIL, maps logical
