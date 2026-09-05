@@ -39,8 +39,11 @@ views, samplers, transfers, state isolation, and exact native output evidence.
   Ubuntu lane compiles both profiles and passes the extended exact native suite
   with KHR_debug enabled. A final packed depth/stencil assertion now clears both
   aspects and reads stencil independently, while direct multisample transfer
-  attempts return unsupported and require the advertised resolve path. Final
-  replacement evidence for those assertions remains pending CI.
+  attempts return unsupported and require the advertised resolve path. Build
+  `33964084454` caught that Ubuntu's GLES headers also omit the core numeric
+  `GL_STENCIL_INDEX` token even though the transfer path can name it. The shared
+  profile constants now supply that specification value locally. Final
+  replacement evidence for the assertion remains pending CI.
 - `feat/rhi1-gl-resources` starts #60 with a shared 2D texture checkpoint for
   both Linux EGL profiles. The backend now owns immutable uncompressed color
   textures and sampler objects, rejects external and unsupported shapes

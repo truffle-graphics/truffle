@@ -80,11 +80,13 @@ inline constexpr GLenum debugOutput = GL_DEBUG_OUTPUT;
 inline constexpr GLenum debugOutputSynchronous = GL_DEBUG_OUTPUT_SYNCHRONOUS;
 inline constexpr GLenum debugTypeError = GL_DEBUG_TYPE_ERROR;
 inline constexpr GLenum packImageHeight = GL_PACK_IMAGE_HEIGHT;
+inline constexpr GLenum stencilIndex = GL_STENCIL_INDEX;
 #else
 inline constexpr GLenum debugOutput = 0x92E0;
 inline constexpr GLenum debugOutputSynchronous = 0x8242;
 inline constexpr GLenum debugTypeError = 0x824C;
 inline constexpr GLenum packImageHeight = 0;
+inline constexpr GLenum stencilIndex = 0x1901;
 #endif
 
 using DebugMessageFunction = void (*)(GLenum, GLenum, GLuint, GLenum, GLsizei,
@@ -192,7 +194,7 @@ struct TextureFormatInfo {
             result.type = GL_FLOAT;
             result.bytesPerPixel = sizeof(float);
         } else if (aspect == TextureAspect::stencil) {
-            result.format = GL_STENCIL_INDEX;
+            result.format = stencilIndex;
             result.type = GL_UNSIGNED_BYTE;
             result.bytesPerPixel = 1;
         }
