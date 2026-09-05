@@ -2589,7 +2589,9 @@ struct VulkanRenderPassDepthStencil {
     if (has_pipeline_stage(stages, PipelineStage::host)) {
         native |= VK_PIPELINE_STAGE_HOST_BIT;
     }
-    return native != 0 ? native : VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    return native != 0
+               ? native
+               : VkPipelineStageFlags{VK_PIPELINE_STAGE_ALL_COMMANDS_BIT};
 }
 
 [[nodiscard]] VkPipelineStageFlagBits vulkan_timestamp_stage(
@@ -4749,6 +4751,7 @@ void prepare_vulkan_binding_images(VulkanContext& context,
     VkPhysicalDeviceFeatures2 availableFeatures2{
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
         .pNext = &timelineFeatures,
+        .features = {},
     };
     context->instanceTable.vkGetPhysicalDeviceFeatures2(
         context->physicalDevice, &availableFeatures2);

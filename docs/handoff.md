@@ -31,8 +31,11 @@ barrier, timeline-semaphore, fence, and query evidence.
   The internal queue-kind parameter is threaded through the other native
   backends without changing the public API. Ownership stays in RHI foundation
   and `src/backends/vulkan`; dependencies remain the existing RHI contract and
-  pinned Vulkan headers/volk. The local build and all 37 tests pass; CI evidence
-  is pending.
+  pinned Vulkan headers/volk. The local build and all 37 tests pass. Initial
+  Build `33944445340` reached GCC and MinGW compilation and identified two
+  warnings-as-errors: an enum/flag conditional needed an explicit Vulkan flag
+  cast, and the Vulkan features wrapper needed an explicit zero initializer.
+  Both portability fixes are applied; replacement CI evidence is pending.
 - `feat/rhi1-vulkan-graphics-closeout` completes #53's remaining acceptance
   surface. A generated fragment package reads the storage buffer written by a
   preceding compute dispatch in the same command list and produces an exact
