@@ -532,4 +532,154 @@ inline void count_native_diagnostic(const rhi::BackendDiagnostic&, void* data) {
     ++*static_cast<std::size_t*>(data);
 }
 
+inline std::vector<std::byte> native_shader_bytes(std::string_view source) {
+    std::vector<std::byte> bytes(source.size());
+    std::transform(source.begin(), source.end(), bytes.begin(), [](char value) {
+        return std::byte{static_cast<unsigned char>(value)};
+    });
+    return bytes;
+}
+
+inline void verify_native_gl_graphics(rhi::Result<rhi::Instance> result,
+                                      rhi::BackendKind backend,
+                                      rhi::ShaderTarget target,
+                                      const std::size_t* diagnostics) {
+    assert(result.ok());
+    auto instance = std::move(result).value();
+    auto adapterResult = instance.adapter(0);
+    assert(adapterResult.ok());
+    auto adapter = std::move(adapterResult).value();
+    const auto info = adapter.info();
+    assert(info.backend == backend && info.pipelines.graphics);
+    assert(!info.pipelines.compute && !info.pipelines.depthStencil &&
+           !info.pipelines.multipleRenderTargets &&
+           !info.pipelines.multisample && !info.pipelines.indirect &&
+           !info.pipelines.tessellation);
+    assert(info.pipelines.maxColorAttachments == 1 &&
+           info.pipelines.maxVertexBuffers == 0 &&
+           info.pipelines.maxViewports == 1);
+    auto deviceResult = adapter.request_device();
+    assert(deviceResult.ok());
+    auto device = std::move(deviceResult).value();
+
+    const bool desktop = backend == rhi::BackendKind::opengl;
+    const std::string_view vertexSource = desktop ? R"GLSL(#version 450 core
+const vec2 positions[3] = vec2[3](vec2(-0.75, -0.75), vec2(0.75, -0.75), vec2(0.0, 0.75));
+void main() { gl_Position = vec4(positions[gl_VertexID], 0.0, 1.0); }
+)GLSL" : R"GLSL(#version 300 es
+precision highp float;
+const vec2 positions[3] = vec2[3](vec2(-0.75, -0.75), vec2(0.75, -0.75), vec2(0.0, 0.75));
+void main() { gl_Position = vec4(positions[gl_VertexID], 0.0, 1.0); }
+)GLSL";
+    const std::string_view fragmentSource = desktop ? R"GLSL(#version 450 core
+layout(location = 0) out vec4 outputColor;
+void main() { outputColor = vec4(1.0, 0.0, 0.0, 1.0); }
+)GLSL" : R"GLSL(#version 300 es
+precision highp float;
+layout(location = 0) out vec4 outputColor;
+void main() { outputColor = vec4(1.0, 0.0, 0.0, 1.0); }
+)GLSL";
+    rhi::ShaderPackageDesc packageDesc;
+    packageDesc.name = desktop ? "OpenGL native triangle proof"
+                               : "OpenGL ES native triangle proof";
+    packageDesc.sources = {
+        {.path = "native-triangle.vert",
+         .language = desktop ? rhi::ShaderSourceLanguage::glsl
+                             : rhi::ShaderSourceLanguage::glsl_es,
+         .sha256 = std::string(64, '0')},
+        {.path = "native-triangle.frag",
+         .language = desktop ? rhi::ShaderSourceLanguage::glsl
+                             : rhi::ShaderSourceLanguage::glsl_es,
+         .sha256 = std::string(64, '1')},
+    };
+    packageDesc.compilers = {
+        {.name = "repository native-source fixture", .version = "1"},
+    };
+    packageDesc.variants = {
+        {.target = target,
+         .format = rhi::ShaderByteFormat::native_source,
+         .kind = rhi::ShaderVariantKind::native_override,
+         .stage = rhi::ShaderStage::vertex,
+         .entryPoint = "main",
+         .code = native_shader_bytes(vertexSource)},
+        {.target = target,
+         .format = rhi::ShaderByteFormat::native_source,
+         .kind = rhi::ShaderVariantKind::native_override,
+         .stage = rhi::ShaderStage::fragment,
+         .entryPoint = "main",
+         .code = native_shader_bytes(fragmentSource)},
+    };
+    auto packageResult = rhi::ShaderPackage::create(std::move(packageDesc));
+    assert(packageResult.ok());
+    auto package = std::move(packageResult).value();
+    auto vertexResult = device.create_shader(
+        package, target, "main", rhi::ShaderStage::vertex);
+    auto fragmentResult = device.create_shader(
+        package, target, "main", rhi::ShaderStage::fragment);
+    assert(vertexResult.ok() && fragmentResult.ok());
+    auto vertex = std::move(vertexResult).value();
+    auto fragment = std::move(fragmentResult).value();
+    auto pipelineResult = device.create_pipeline({
+        .vertexShader = &vertex,
+        .fragmentShader = &fragment,
+        .colorTargets = {{.format = rhi::TextureFormat::rgba8_unorm}},
+    });
+    assert(pipelineResult.ok());
+    auto pipeline = std::move(pipelineResult).value();
+
+    constexpr std::uint32_t size = 16;
+    constexpr std::size_t rowPitch = 64;
+    auto targetResult = device.create_texture({
+        .extent = {size, size, 1},
+        .usage = rhi::TextureUsage::color_attachment |
+                 rhi::TextureUsage::copy_source,
+    });
+    auto readbackResult = device.create_buffer({
+        .size = rowPitch * size,
+        .usage = rhi::BufferUsage::copy_destination,
+        .memory = rhi::MemoryDomain::readback,
+    });
+    assert(targetResult.ok() && readbackResult.ok());
+    auto renderTarget = std::move(targetResult).value();
+    auto readback = std::move(readbackResult).value();
+    auto poolResult = device.create_command_pool(rhi::QueueKind::graphics);
+    auto queueResult = device.queue(rhi::QueueKind::graphics);
+    assert(poolResult.ok() && queueResult.ok());
+    auto pool = std::move(poolResult).value();
+    auto queue = std::move(queueResult).value();
+    auto listResult = pool.allocate();
+    assert(listResult.ok());
+    auto list = std::move(listResult).value();
+    assert(list.begin().ok());
+    auto renderResult = list.begin_rendering({
+        .extent = {size, size},
+        .colorAttachments = {{.texture = &renderTarget,
+                              .clear = {0.0F, 0.0F, 0.0F, 1.0F}}},
+    });
+    assert(renderResult.ok());
+    auto render = std::move(renderResult).value();
+    assert(render.bind_pipeline(pipeline).ok());
+    assert(render.draw(3).ok());
+    assert(render.end().ok());
+    auto copyResult = list.begin_copy();
+    assert(copyResult.ok());
+    auto copy = std::move(copyResult).value();
+    assert(copy.copy_texture_to_buffer(
+                   renderTarget, readback,
+                   {.layout = {.bytesPerRow = rowPitch, .rowsPerImage = size},
+                    .texture = {.extent = {size, size, 1}}})
+               .ok());
+    assert(copy.end().ok() && list.end().ok());
+    std::array<rhi::CommandList*, 1> lists{&list};
+    assert(queue.submit(lists).ok());
+    std::array<std::byte, 4> center{};
+    assert(readback.read((size / 2) * rowPitch + (size / 2) * 4, center).ok());
+    const std::array expected{std::byte{255}, std::byte{0}, std::byte{0},
+                              std::byte{255}};
+    assert(center == expected);
+    if (diagnostics != nullptr) {
+        assert(*diagnostics == 0);
+    }
+}
+
 } // namespace truffle::tests

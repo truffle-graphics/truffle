@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -260,6 +261,220 @@ struct SamplerResource {
     std::shared_ptr<Context> context;
     GLuint name = 0;
 };
+
+struct ShaderResource {
+    ~ShaderResource() {
+        if (!context || name == 0) {
+            return;
+        }
+        std::lock_guard lock{context->mutex};
+        if (make_current(*context).ok()) {
+            glDeleteShader(name);
+        }
+    }
+
+    std::shared_ptr<Context> context;
+    GLuint name = 0;
+    ShaderDesc desc;
+};
+
+struct PipelineResource {
+    ~PipelineResource() {
+        if (!context || program == 0) {
+            return;
+        }
+        std::lock_guard lock{context->mutex};
+        if (make_current(*context).ok()) {
+            glDeleteProgram(program);
+        }
+    }
+
+    std::shared_ptr<Context> context;
+    GLuint program = 0;
+    PipelineDesc graphics;
+    ComputePipelineDesc compute;
+    bool isCompute = false;
+};
+
+[[nodiscard]] inline GLenum shader_stage(ShaderStage stage) noexcept {
+    switch (stage) {
+    case ShaderStage::vertex:
+        return GL_VERTEX_SHADER;
+    case ShaderStage::fragment:
+        return GL_FRAGMENT_SHADER;
+    case ShaderStage::compute:
+#if defined(TRUFFLE_EGL_API_OPENGL)
+        return GL_COMPUTE_SHADER;
+#else
+        return 0;
+#endif
+    }
+    return 0;
+}
+
+[[nodiscard]] inline std::string shader_log(GLuint shader) {
+    GLint length = 0;
+    glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &length);
+    std::string log(static_cast<std::size_t>(std::max(0, length)), '\0');
+    if (length > 0) {
+        glGetShaderInfoLog(shader, length, nullptr, log.data());
+    }
+    while (!log.empty() && log.back() == '\0') {
+        log.pop_back();
+    }
+    return log;
+}
+
+[[nodiscard]] inline std::string program_log(GLuint program) {
+    GLint length = 0;
+    glGetProgramiv(program, GL_INFO_LOG_LENGTH, &length);
+    std::string log(static_cast<std::size_t>(std::max(0, length)), '\0');
+    if (length > 0) {
+        glGetProgramInfoLog(program, length, nullptr, log.data());
+    }
+    while (!log.empty() && log.back() == '\0') {
+        log.pop_back();
+    }
+    return log;
+}
+
+[[nodiscard]] inline Result<std::shared_ptr<void>> create_shader(
+    const std::shared_ptr<void>& nativeContext, const ShaderDesc& desc) {
+    const auto context = std::static_pointer_cast<Context>(nativeContext);
+    if (!context || context->context == EGL_NO_CONTEXT) {
+        return Status::failure(StatusCode::device_lost,
+                               "the EGL native context is unavailable");
+    }
+    if (desc.format != ShaderByteFormat::native_source ||
+        desc.entryPoint != "main" || desc.code.empty() ||
+        desc.code.size() > static_cast<std::size_t>(
+                               std::numeric_limits<GLint>::max())) {
+        return Status::failure(
+            StatusCode::unsupported,
+            "EGL/GL shaders require bounded native GLSL with entry point main");
+    }
+    const auto stage = shader_stage(desc.stage);
+    if (stage == 0) {
+        return Status::failure(StatusCode::unsupported,
+                               "the EGL/GL shader stage is unsupported");
+    }
+    auto shader = std::make_shared<ShaderResource>();
+    shader->context = context;
+    shader->desc = desc;
+    std::lock_guard lock{context->mutex};
+    if (auto status = make_current(*context); !status.ok()) {
+        return status;
+    }
+    shader->name = glCreateShader(stage);
+    const auto* source = reinterpret_cast<const GLchar*>(desc.code.data());
+    const auto length = static_cast<GLint>(desc.code.size());
+    glShaderSource(shader->name, 1, &source, &length);
+    glCompileShader(shader->name);
+    GLint compiled = GL_FALSE;
+    glGetShaderiv(shader->name, GL_COMPILE_STATUS, &compiled);
+    if (compiled != GL_TRUE) {
+        const auto log = shader_log(shader->name);
+        glDeleteShader(shader->name);
+        shader->name = 0;
+        return Status::failure(
+            StatusCode::backend_error,
+            log.empty() ? "EGL/GL shader compilation failed" : log);
+    }
+    return std::static_pointer_cast<void>(std::move(shader));
+}
+
+[[nodiscard]] inline Result<GLuint> link_program(
+    const std::shared_ptr<Context>& context,
+    std::span<const std::shared_ptr<ShaderResource>> shaders) {
+    const auto program = glCreateProgram();
+    for (const auto& shader : shaders) {
+        if (!shader || shader->context != context || shader->name == 0) {
+            glDeleteProgram(program);
+            return Status::failure(StatusCode::invalid_argument,
+                                   "EGL/GL pipeline shader is invalid");
+        }
+        glAttachShader(program, shader->name);
+    }
+    glLinkProgram(program);
+    GLint linked = GL_FALSE;
+    glGetProgramiv(program, GL_LINK_STATUS, &linked);
+    if (linked != GL_TRUE) {
+        const auto log = program_log(program);
+        glDeleteProgram(program);
+        return Status::failure(
+            StatusCode::backend_error,
+            log.empty() ? "EGL/GL program link failed" : log);
+    }
+    return program;
+}
+
+[[nodiscard]] inline Result<std::shared_ptr<void>> create_pipeline(
+    const std::shared_ptr<void>& nativeContext, const PipelineDesc& desc,
+    const NativePipelineLayout&, const std::shared_ptr<void>& nativeVertex,
+    const std::shared_ptr<void>& nativeFragment) {
+    const auto context = std::static_pointer_cast<Context>(nativeContext);
+    const auto vertex = std::static_pointer_cast<ShaderResource>(nativeVertex);
+    const auto fragment =
+        std::static_pointer_cast<ShaderResource>(nativeFragment);
+    if (!context || !vertex || !fragment || vertex->desc.stage != ShaderStage::vertex ||
+        fragment->desc.stage != ShaderStage::fragment) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "EGL/GL graphics shaders are invalid");
+    }
+#if defined(TRUFFLE_EGL_API_OPENGLES)
+    if (desc.rasterization.polygonMode != PolygonMode::fill) {
+        return Status::failure(StatusCode::unsupported,
+                               "GLES exposes filled polygon mode only");
+    }
+#endif
+    std::lock_guard lock{context->mutex};
+    if (auto status = make_current(*context); !status.ok()) {
+        return status;
+    }
+    const std::array shaders{vertex, fragment};
+    auto linked = link_program(context, shaders);
+    if (!linked.ok()) {
+        return linked.status();
+    }
+    auto pipeline = std::make_shared<PipelineResource>();
+    pipeline->context = context;
+    pipeline->program = linked.value();
+    pipeline->graphics = desc;
+    pipeline->graphics.vertexShader = nullptr;
+    pipeline->graphics.fragmentShader = nullptr;
+    pipeline->graphics.layout = nullptr;
+    pipeline->graphics.cache = nullptr;
+    return std::static_pointer_cast<void>(std::move(pipeline));
+}
+
+[[nodiscard]] inline Result<std::shared_ptr<void>> create_compute_pipeline(
+    const std::shared_ptr<void>& nativeContext, const ComputePipelineDesc& desc,
+    const NativePipelineLayout&, const std::shared_ptr<void>& nativeShader) {
+    const auto context = std::static_pointer_cast<Context>(nativeContext);
+    const auto shader = std::static_pointer_cast<ShaderResource>(nativeShader);
+    if (!context || !shader || shader->desc.stage != ShaderStage::compute) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "EGL/GL compute shader is invalid");
+    }
+    std::lock_guard lock{context->mutex};
+    if (auto status = make_current(*context); !status.ok()) {
+        return status;
+    }
+    const std::array shaders{shader};
+    auto linked = link_program(context, shaders);
+    if (!linked.ok()) {
+        return linked.status();
+    }
+    auto pipeline = std::make_shared<PipelineResource>();
+    pipeline->context = context;
+    pipeline->program = linked.value();
+    pipeline->compute = desc;
+    pipeline->compute.computeShader = nullptr;
+    pipeline->compute.layout = nullptr;
+    pipeline->compute.cache = nullptr;
+    pipeline->isCompute = true;
+    return std::static_pointer_cast<void>(std::move(pipeline));
+}
 
 [[nodiscard]] inline GLenum sampler_filter(Filter filter) noexcept {
     return filter == Filter::linear ? GL_LINEAR : GL_NEAREST;
@@ -1377,20 +1592,164 @@ struct Probe {
     if (auto status = make_current(*context); !status.ok()) {
         return status;
     }
+    std::vector<GLuint> transients;
+    GLuint renderFramebuffer = 0;
+    GLuint vertexArray = 0;
+    bool renderActive = false;
+    std::shared_ptr<PipelineResource> graphicsPipeline;
+    const auto cleanup = [&] {
+        glUseProgram(0);
+        if (renderFramebuffer != 0) {
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glDeleteFramebuffers(1, &renderFramebuffer);
+            renderFramebuffer = 0;
+        }
+        if (vertexArray != 0) {
+            glBindVertexArray(0);
+            glDeleteVertexArrays(1, &vertexArray);
+            vertexArray = 0;
+        }
+        if (!transients.empty()) {
+            glDeleteBuffers(static_cast<GLsizei>(transients.size()),
+                            transients.data());
+        }
+    };
+    const auto fail = [&](Status status) {
+        cleanup();
+        return status;
+    };
     for (const auto& command : commands) {
         if (command.kind == NativeCommandKind::barrier) {
+            continue;
+        }
+        if (command.kind == NativeCommandKind::begin_render) {
+            if (renderActive || command.colorAttachments.empty() ||
+                command.depthStencilAttachment.texture) {
+                return fail(Status::failure(
+                    StatusCode::unsupported,
+                    "EGL/GL baseline rendering requires color-only attachments"));
+            }
+            glGenFramebuffers(1, &renderFramebuffer);
+            glBindFramebuffer(GL_FRAMEBUFFER, renderFramebuffer);
+            std::vector<GLenum> drawBuffers;
+            drawBuffers.reserve(command.colorAttachments.size());
+            for (std::size_t index = 0;
+                 index < command.colorAttachments.size(); ++index) {
+                const auto texture = std::static_pointer_cast<TextureResource>(
+                    command.colorAttachments[index].texture);
+                if (!texture || texture->desc.dimension != TextureDimension::d2 ||
+                    texture->desc.arrayLayers != 1) {
+                    return fail(Status::failure(
+                        StatusCode::unsupported,
+                        "EGL/GL baseline render attachments must be 2D"));
+                }
+                const auto attachment =
+                    GL_COLOR_ATTACHMENT0 + static_cast<GLenum>(index);
+                glFramebufferTexture2D(GL_FRAMEBUFFER, attachment,
+                                       texture->target, texture->name, 0);
+                drawBuffers.push_back(attachment);
+            }
+            glDrawBuffers(static_cast<GLsizei>(drawBuffers.size()),
+                          drawBuffers.data());
+            if (glCheckFramebufferStatus(GL_FRAMEBUFFER) !=
+                GL_FRAMEBUFFER_COMPLETE) {
+                return fail(Status::failure(
+                    StatusCode::backend_validation_failed,
+                    "EGL/GL render framebuffer is incomplete"));
+            }
+            glViewport(0, 0, static_cast<GLsizei>(command.extent.width),
+                       static_cast<GLsizei>(command.extent.height));
+            glDisable(GL_SCISSOR_TEST);
+            for (std::size_t index = 0;
+                 index < command.colorAttachments.size(); ++index) {
+                const auto& attachment = command.colorAttachments[index];
+                if (attachment.loadOp == LoadOp::clear) {
+                    const std::array clear{attachment.clear.r,
+                                           attachment.clear.g,
+                                           attachment.clear.b,
+                                           attachment.clear.a};
+                    glClearBufferfv(GL_COLOR, static_cast<GLint>(index),
+                                    clear.data());
+                }
+            }
+            glGenVertexArrays(1, &vertexArray);
+            glBindVertexArray(vertexArray);
+            renderActive = true;
+            graphicsPipeline.reset();
+            continue;
+        }
+        if (command.kind == NativeCommandKind::end_render) {
+            if (!renderActive) {
+                return fail(Status::failure(
+                    StatusCode::invalid_state,
+                    "EGL/GL render encoder is not active"));
+            }
+            glUseProgram(0);
+            glBindVertexArray(0);
+            glDeleteVertexArrays(1, &vertexArray);
+            vertexArray = 0;
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            glDeleteFramebuffers(1, &renderFramebuffer);
+            renderFramebuffer = 0;
+            renderActive = false;
+            graphicsPipeline.reset();
+            continue;
+        }
+        if (command.kind == NativeCommandKind::bind_graphics_pipeline) {
+            graphicsPipeline =
+                std::static_pointer_cast<PipelineResource>(command.object);
+            if (!renderActive || !graphicsPipeline ||
+                graphicsPipeline->isCompute || graphicsPipeline->program == 0) {
+                return fail(Status::failure(
+                    StatusCode::invalid_argument,
+                    "EGL/GL graphics pipeline binding is invalid"));
+            }
+            glUseProgram(graphicsPipeline->program);
+            continue;
+        }
+        if (command.kind == NativeCommandKind::draw) {
+            if (!renderActive || !graphicsPipeline) {
+                return fail(Status::failure(
+                    StatusCode::invalid_state,
+                    "EGL/GL draw requires an active graphics pipeline"));
+            }
+            if (command.arguments[1] != 1 || command.arguments[3] != 0) {
+                return fail(Status::failure(
+                    StatusCode::unsupported,
+                    "EGL/GL baseline draw supports one instance at base zero"));
+            }
+            GLenum topology = GL_TRIANGLES;
+            switch (graphicsPipeline->graphics.topology) {
+            case PrimitiveTopology::triangle_list:
+                topology = GL_TRIANGLES;
+                break;
+            case PrimitiveTopology::triangle_strip:
+                topology = GL_TRIANGLE_STRIP;
+                break;
+            case PrimitiveTopology::line_list:
+                topology = GL_LINES;
+                break;
+            case PrimitiveTopology::point_list:
+                topology = GL_POINTS;
+                break;
+            case PrimitiveTopology::patch_list:
+                return fail(Status::failure(
+                    StatusCode::unsupported,
+                    "EGL/GL tessellation is not exposed"));
+            }
+            glDrawArrays(topology, static_cast<GLint>(command.arguments[2]),
+                         static_cast<GLsizei>(command.arguments[0]));
             continue;
         }
         if (command.kind != NativeCommandKind::transfer) {
-            return Status::failure(
+            return fail(Status::failure(
                 StatusCode::unsupported,
-                "the EGL/GL resource slice supports transfer commands only");
+                "this EGL/GL pipeline command is not implemented"));
         }
-    }
-    std::vector<GLuint> transients;
-    for (const auto& command : commands) {
-        if (command.kind == NativeCommandKind::barrier) {
-            continue;
+        if (renderActive) {
+            return fail(Status::failure(
+                StatusCode::invalid_state,
+                "EGL/GL transfers cannot overlap a render encoder"));
         }
         const auto& transfer = command.transfer;
         if (transfer.kind == NativeTransferKind::copy_buffer) {
@@ -1414,11 +1773,7 @@ struct Probe {
         if (transfer.kind != NativeTransferKind::fill_buffer) {
             if (auto status = execute_texture_transfer(transfer);
                 !status.ok()) {
-                if (!transients.empty()) {
-                    glDeleteBuffers(static_cast<GLsizei>(transients.size()),
-                                    transients.data());
-                }
-                return status;
+                return fail(status);
             }
             continue;
         }
@@ -1443,12 +1798,13 @@ struct Probe {
             static_cast<GLsizeiptr>(transfer.buffer.size));
         transients.push_back(staging);
     }
+    if (renderActive) {
+        return fail(Status::failure(StatusCode::invalid_state,
+                                    "EGL/GL render encoder was not ended"));
+    }
     glFinish();
     const auto error = glGetError();
-    if (!transients.empty()) {
-        glDeleteBuffers(static_cast<GLsizei>(transients.size()),
-                        transients.data());
-    }
+    cleanup();
     return error == GL_NO_ERROR
                ? Status::success()
                : Status::failure(StatusCode::backend_validation_failed,

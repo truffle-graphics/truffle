@@ -16,6 +16,13 @@ int main() {
         }),
         truffle::rhi::BackendKind::opengles,
         truffle::rhi::PlatformKind::linux_host, &diagnostics);
+    truffle::tests::verify_native_gl_graphics(
+        truffle::rhi::create_opengles_instance({
+            .debugCallback = &truffle::tests::count_native_diagnostic,
+            .debugUserData = &diagnostics,
+        }),
+        truffle::rhi::BackendKind::opengles,
+        truffle::rhi::ShaderTarget::glsl_es, &diagnostics);
 #else
     const auto result = truffle::rhi::create_opengles_instance();
     truffle::tests::verify_unavailable_backend(result);

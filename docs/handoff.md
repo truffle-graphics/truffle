@@ -9,11 +9,36 @@ rather than growing a historical transcript here.
 
 ## Current Focus
 
-Close #60 through shared, capability-accurate OpenGL and OpenGL ES textures,
-views, samplers, transfers, state isolation, and exact native output evidence.
+Close #62 through shared, capability-accurate OpenGL and OpenGL ES native GLSL
+shaders, binding layouts, graphics/compute pipelines, and exact output evidence.
 
 ## Latest Handoff
 
+- `feat/rhi1-gl-pipelines` starts #62 with the native-source and direct-graphics
+  checkpoint for both Linux EGL profiles. Native GLSL/GLSL ES ShaderPackage
+  variants compile to owned shader objects with bounded source, `main` entry,
+  stage, compile-log, and link-log validation. Linked program objects retain
+  shader lifetime through the common RHI payloads. The shared queue path now
+  owns framebuffer and vertex-array state across a dynamic-rendering scope,
+  performs attachment clears, binds a program, and executes direct non-
+  instanced draws before returning to the existing exact transfer/readback
+  path. Both profiles conservatively advertise one color attachment, no vertex
+  streams, one viewport, and no compute/depth/MRT/MSAA/indirect/tessellation
+  capability yet. Shared tests build contributor-neutral native-source fixture
+  packages with explicit assembler provenance, compile/link a vertex-ID
+  triangle, render an exact red center pixel, and require zero KHR_debug
+  callbacks independently for desktop GL and GLES. Ownership remains in the
+  shared GL-family backend, system EGL/GL are the only native dependencies, and
+  the public contract is unchanged. Local cross-platform compilation passes.
+  Initial Build `33965142135` reached Linux and caught that the configured GLES
+  3.0 headers omit the compute-stage token. Because compute remains deliberately
+  unadvertised in this checkpoint, the GLES stage mapper now rejects it without
+  referencing a later-profile declaration. Replacement Build `33965233739`
+  passes package, macOS, Ubuntu, and Windows. The Ubuntu lane proves exact red
+  triangle pixels and zero KHR_debug callbacks independently on desktop GL and
+  GLES. The support matrix, pipeline table, README, architecture, overview, and
+  project context record this deliberately narrow checkpoint; #62 remains open
+  for the advanced binding and pipeline acceptance surface.
 - `feat/rhi1-gl-extended-resources` continues #60 from the merged 2D transfer
   checkpoint. The shared EGL implementation now selects immutable targets for
   2D arrays, mip chains, 3D textures, cube/cube-array textures, and desktop GL

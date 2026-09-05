@@ -66,7 +66,9 @@ the cutover decision durable.
   timeline fences, timestamp/occlusion queries, and host-owned Win32/DXGI
   presentation; the EGL profiles own buffers/views, samplers, uncompressed
   color/depth/stencil texture shapes, and native transfers, with core texture
-  views and multisample resolve limited to desktop GL. These remain narrow
+  views and multisample resolve limited to desktop GL. They also own bounded
+  native GLSL shader compilation, linked programs, and a one-target direct-draw
+  baseline. These remain narrow
   matrix foundations: unadvertised resource operations and
   backend/platform presentation paths are unsupported.
 - WebGPU and WebGL2 have explicit source targets. WebGPU remains unavailable;
