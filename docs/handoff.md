@@ -47,8 +47,11 @@ readback/present, resize recreation, and validation-layer CI evidence.
   and each image receives a one-time undefined-to-present transition after its
   first native acquire. The same log also exposed combined depth/stencil layout
   transitions using only one aspect without the separate-layout feature; such
-  barriers now cover both aspects. These corrections await replacement CI.
-  The support matrix and roadmap claim only the evidenced native XCB path.
+  barriers now cover both aspects. Replacement Build `33961381232` passes
+  package, macOS, Ubuntu, and Windows. The Ubuntu log contains no Vulkan
+  validation errors; its native and Xvfb presentation suites pass, including
+  all typed recovery cases. The support matrix and roadmap claim only the
+  evidenced native XCB path.
 - `fix/rhi1-vulkan-device-loss` closes the final #54 acceptance gap found after
   PR #150 merged. A private, non-installed Vulkan test hook injects submission
   device loss; the native suite proves the submitting device becomes lost,
