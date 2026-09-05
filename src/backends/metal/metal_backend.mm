@@ -723,7 +723,7 @@ struct MetalFormat {
 }
 
 [[nodiscard]] Result<std::shared_ptr<void>> create_metal_surface(
-    const SurfaceDesc& desc) {
+    const std::shared_ptr<void>&, const SurfaceDesc& desc) {
     @autoreleasepool {
         if (desc.native.kind != NativeSurfaceKind::cocoa_layer ||
             desc.native.handle == nullptr) {

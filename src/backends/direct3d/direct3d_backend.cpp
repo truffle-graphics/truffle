@@ -3206,7 +3206,7 @@ direct3d_client_extent(const Direct3DSurfaceResource &surface) {
 }
 
 [[nodiscard]] Result<std::shared_ptr<void>>
-create_direct3d_surface(const SurfaceDesc &desc) {
+create_direct3d_surface(const std::shared_ptr<void> &, const SurfaceDesc &desc) {
   if (desc.native.kind != NativeSurfaceKind::win32 || desc.native.handle == nullptr) {
     return Status::failure(StatusCode::unsupported,
                            "D3D12 surfaces require a Win32 HWND handle");

@@ -2763,7 +2763,8 @@ struct Factory {
         if (runtime.config.createSurface == nullptr) {
             return unsupported(runtime, "surface creation");
         }
-        auto result = runtime.config.createSurface(desc);
+        auto result = runtime.config.createSurface(runtime.config.nativeContext,
+                                                   desc);
         if (!result.ok()) {
             return result.status();
         }
