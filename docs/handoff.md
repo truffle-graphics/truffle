@@ -32,7 +32,14 @@ storage-buffer execution before promoting the separately gated graphics path.
   the already-supported native views, and an old test assertion still expected
   bind groups to be disabled. The compiler now targets Vulkan 1.1/SPIR-V 1.3,
   view-created images carry an explicitly validated compatible usage, and the
-  capability assertions match the promoted compute slice.
+  capability assertions match the promoted compute slice. Replacement Build
+  `33939221825` proves the corrected compute path and exact readback in the
+  Ubuntu validation lane; package and Windows lanes also pass. Its first macOS
+  attempt encountered transient package-consumer output corruption (every
+  installed archive and the generated package-version file), despite the same
+  commit passing that test locally. The isolated macOS rerun passed without a
+  source change, so final Build `33939221825` is green across package, macOS,
+  Ubuntu, and Windows.
 - `feat/rhi1-vulkan-shader-modules` begins #53 with Vulkan-owned SPIR-V shader
   modules. The backend rejects non-SPIR-V, partial-word, and invalid-magic
   inputs before native creation, copies package bytes into aligned words, and

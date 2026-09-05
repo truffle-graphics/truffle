@@ -49,8 +49,9 @@ for each backend/platform pair:
   1D, 2D, 3D, cube, array, mipmapped, compressed, and multisampled
   textures/views, and accepts ShaderPackage-selected SPIR-V as native shader
   modules. Native evidence covers padded-row and subresource copies, clear,
-  resolve, and nearest/linear blit paths; binding and pipeline execution remain
-  separately gated.
+  resolve, nearest/linear blit paths, immutable descriptor-backed bindings,
+  push constants, and direct compute dispatch with exact storage-buffer
+  readback. Graphics pipelines and render execution remain separately gated.
 - `truffle_backend_direct3d` initializes the Windows SDK D3D12 WARP device,
   owns upload/readback and default-heap buffers plus device-local textures and
   descriptor views, consumes packaged native HLSL or offline DXIL, maps logical
