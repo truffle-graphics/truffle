@@ -441,6 +441,35 @@ inline void verify_native_texture_backend(rhi::Result<rhi::Instance> result,
         return value >= 32767u && value <= 32768u;
     }));
 
+    auto depthStencilTexture = device.create_texture({
+        .extent = {4, 4, 1},
+        .format = rhi::TextureFormat::depth24_unorm_stencil8,
+        .usage = rhi::TextureUsage::depth_stencil_attachment |
+                 rhi::TextureUsage::copy_source,
+        .memory = rhi::MemoryDomain::readback,
+    });
+    assert(depthStencilTexture.ok());
+    const rhi::TextureRegion depthStencilRegion{
+        .subresource = {
+            .aspect = rhi::TextureAspect::depth | rhi::TextureAspect::stencil},
+        .extent = {4, 4, 1},
+    };
+    submit_copy([&](rhi::CopyEncoder& copy) {
+        assert(copy.clear_texture(depthStencilTexture.value(),
+                                  depthStencilRegion,
+                                  {.depth = 0.25F, .stencil = 37})
+                   .ok());
+    });
+    const rhi::TextureRegion stencilRegion{
+        .subresource = {.aspect = rhi::TextureAspect::stencil},
+        .extent = {4, 4, 1},
+    };
+    std::array<std::byte, 16> stencilValues{};
+    assert(depthStencilTexture.value().read(stencilRegion, stencilValues).ok());
+    assert(std::ranges::all_of(stencilValues, [](std::byte value) {
+        return std::to_integer<unsigned char>(value) == 37u;
+    }));
+
     auto multisample = device.create_texture({
         .extent = {4, 4, 1},
         .usage = rhi::TextureUsage::color_attachment |

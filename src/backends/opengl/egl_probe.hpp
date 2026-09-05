@@ -182,6 +182,24 @@ struct TextureFormatInfo {
     }
 }
 
+[[nodiscard]] inline TextureFormatInfo transfer_format(
+    const TextureFormatInfo& format, TextureAspect aspect) noexcept {
+    auto result = format;
+    if (has_aspect(format.aspects, TextureAspect::depth) &&
+        has_aspect(format.aspects, TextureAspect::stencil)) {
+        if (aspect == TextureAspect::depth) {
+            result.format = GL_DEPTH_COMPONENT;
+            result.type = GL_FLOAT;
+            result.bytesPerPixel = sizeof(float);
+        } else if (aspect == TextureAspect::stencil) {
+            result.format = GL_STENCIL_INDEX;
+            result.type = GL_UNSIGNED_BYTE;
+            result.bytesPerPixel = 1;
+        }
+    }
+    return result;
+}
+
 struct TextureResource {
     ~TextureResource() {
         if (!context || name == 0) {
@@ -690,12 +708,14 @@ struct SamplerResource {
         texture.format.bytesPerPixel == 0) {
         return false;
     }
+    const auto transfer = transfer_format(texture.format,
+                                          region.subresource.aspect);
     const auto tightRow = static_cast<std::size_t>(region.extent.width) *
-                          texture.format.bytesPerPixel;
+                          transfer.bytesPerPixel;
     const auto rowBytes = layout.bytesPerRow == 0 ? tightRow
                                                    : layout.bytesPerRow;
     if (rowBytes < tightRow ||
-        rowBytes % texture.format.bytesPerPixel != 0 ||
+        rowBytes % transfer.bytesPerPixel != 0 ||
         layout.offset > dataSize) {
         return false;
     }
@@ -803,8 +823,13 @@ inline void reset_pixel_store(GLenum alignmentName, GLenum rowLengthName,
     }
     const auto rowBytes = layout.bytesPerRow == 0
                               ? static_cast<std::size_t>(region.extent.width) *
-                                    texture->format.bytesPerPixel
+                                    transfer_format(
+                                        texture->format,
+                                        region.subresource.aspect)
+                                        .bytesPerPixel
                               : layout.bytesPerRow;
+    const auto format = transfer_format(texture->format,
+                                        region.subresource.aspect);
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
     glBindTexture(texture->target, texture->name);
     const auto rowsPerImage = layout.rowsPerImage == 0
@@ -812,7 +837,7 @@ inline void reset_pixel_store(GLenum alignmentName, GLenum rowLengthName,
                                   : layout.rowsPerImage;
     configure_pixel_store(GL_UNPACK_ALIGNMENT, GL_UNPACK_ROW_LENGTH,
                           GL_UNPACK_IMAGE_HEIGHT, rowBytes, rowsPerImage,
-                          texture->format.bytesPerPixel);
+                          format.bytesPerPixel);
     const auto* source = data.data() + layout.offset;
     if (texture->desc.dimension == TextureDimension::cube &&
         texture->desc.arrayLayers == 6) {
@@ -822,8 +847,8 @@ inline void reset_pixel_store(GLenum alignmentName, GLenum rowLengthName,
             static_cast<GLint>(region.origin.x),
             static_cast<GLint>(region.origin.y),
             static_cast<GLsizei>(region.extent.width),
-            static_cast<GLsizei>(region.extent.height), texture->format.format,
-            texture->format.type, source);
+            static_cast<GLsizei>(region.extent.height), format.format,
+            format.type, source);
     } else if (texture->desc.dimension == TextureDimension::d3 ||
                texture->desc.arrayLayers > 1) {
         const auto z = texture->desc.dimension == TextureDimension::d3
@@ -838,8 +863,7 @@ inline void reset_pixel_store(GLenum alignmentName, GLenum rowLengthName,
             static_cast<GLint>(region.origin.y), static_cast<GLint>(z),
             static_cast<GLsizei>(region.extent.width),
             static_cast<GLsizei>(region.extent.height),
-            static_cast<GLsizei>(depth), texture->format.format,
-            texture->format.type, source);
+            static_cast<GLsizei>(depth), format.format, format.type, source);
     } else {
         glTexSubImage2D(texture->target,
                         static_cast<GLint>(region.subresource.mipLevel),
@@ -847,7 +871,7 @@ inline void reset_pixel_store(GLenum alignmentName, GLenum rowLengthName,
                         static_cast<GLint>(region.origin.y),
                         static_cast<GLsizei>(region.extent.width),
                         static_cast<GLsizei>(region.extent.height),
-                        texture->format.format, texture->format.type, source);
+                        format.format, format.type, source);
     }
     reset_pixel_store(GL_UNPACK_ALIGNMENT, GL_UNPACK_ROW_LENGTH,
                       GL_UNPACK_IMAGE_HEIGHT);
@@ -887,20 +911,25 @@ inline void reset_pixel_store(GLenum alignmentName, GLenum rowLengthName,
     }
     const auto rowBytes = layout.bytesPerRow == 0
                               ? static_cast<std::size_t>(region.extent.width) *
-                                    texture->format.bytesPerPixel
+                                    transfer_format(
+                                        texture->format,
+                                        region.subresource.aspect)
+                                        .bytesPerPixel
                               : layout.bytesPerRow;
+    const auto format = transfer_format(texture->format,
+                                        region.subresource.aspect);
     glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
     const auto rowsPerImage = layout.rowsPerImage == 0
                                   ? region.extent.height
                                   : layout.rowsPerImage;
     configure_pixel_store(GL_PACK_ALIGNMENT, GL_PACK_ROW_LENGTH,
                           packImageHeight, rowBytes, rowsPerImage,
-                          texture->format.bytesPerPixel);
+                          format.bytesPerPixel);
     glReadPixels(static_cast<GLint>(region.origin.x),
                  static_cast<GLint>(region.origin.y),
                  static_cast<GLsizei>(region.extent.width),
                  static_cast<GLsizei>(region.extent.height),
-                 texture->format.format, texture->format.type,
+                 format.format, format.type,
                  data.data() + layout.offset);
     reset_pixel_store(GL_PACK_ALIGNMENT, GL_PACK_ROW_LENGTH,
                       packImageHeight);
@@ -1093,11 +1122,18 @@ struct Probe {
             return Status::failure(StatusCode::invalid_argument,
                                    "EGL/GL buffer-to-texture resources are invalid");
         }
+        if (destinationTexture->desc.sampleCount != 1) {
+            return Status::failure(
+                StatusCode::unsupported,
+                "EGL/GL multisample textures cannot be uploaded directly");
+        }
         const auto& region = transfer.bufferTexture.texture;
         const auto& layout = transfer.bufferTexture.layout;
+        const auto format = transfer_format(
+            destinationTexture->format, region.subresource.aspect);
         const auto rowBytes = layout.bytesPerRow == 0
                                   ? static_cast<std::size_t>(region.extent.width) *
-                                        destinationTexture->format.bytesPerPixel
+                                        format.bytesPerPixel
                                   : layout.bytesPerRow;
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, sourceBuffer->name);
         glBindTexture(destinationTexture->target, destinationTexture->name);
@@ -1106,7 +1142,7 @@ struct Probe {
                                       : layout.rowsPerImage;
         configure_pixel_store(GL_UNPACK_ALIGNMENT, GL_UNPACK_ROW_LENGTH,
                               GL_UNPACK_IMAGE_HEIGHT, rowBytes, rowsPerImage,
-                              destinationTexture->format.bytesPerPixel);
+                              format.bytesPerPixel);
         const auto offset = transfer.bufferTexture.bufferOffset + layout.offset;
         const auto* source = reinterpret_cast<const void*>(offset);
         if (destinationTexture->desc.dimension == TextureDimension::cube &&
@@ -1119,8 +1155,7 @@ struct Probe {
                 static_cast<GLint>(region.origin.y),
                 static_cast<GLsizei>(region.extent.width),
                 static_cast<GLsizei>(region.extent.height),
-                destinationTexture->format.format,
-                destinationTexture->format.type, source);
+                format.format, format.type, source);
         } else if (destinationTexture->desc.dimension == TextureDimension::d3 ||
                    destinationTexture->desc.arrayLayers > 1) {
             const auto z = destinationTexture->desc.dimension ==
@@ -1139,8 +1174,7 @@ struct Probe {
                 static_cast<GLsizei>(region.extent.width),
                 static_cast<GLsizei>(region.extent.height),
                 static_cast<GLsizei>(depth),
-                destinationTexture->format.format,
-                destinationTexture->format.type, source);
+                format.format, format.type, source);
         } else {
             glTexSubImage2D(
                 destinationTexture->target,
@@ -1149,8 +1183,7 @@ struct Probe {
                 static_cast<GLint>(region.origin.y),
                 static_cast<GLsizei>(region.extent.width),
                 static_cast<GLsizei>(region.extent.height),
-                destinationTexture->format.format,
-                destinationTexture->format.type, source);
+                format.format, format.type, source);
         }
         reset_pixel_store(GL_UNPACK_ALIGNMENT, GL_UNPACK_ROW_LENGTH,
                           GL_UNPACK_IMAGE_HEIGHT);
@@ -1162,6 +1195,11 @@ struct Probe {
             transfer.bufferTexture.texture.extent.depth != 1) {
             return Status::failure(StatusCode::invalid_argument,
                                    "EGL/GL texture-to-buffer resources are invalid");
+        }
+        if (sourceTexture->desc.sampleCount != 1) {
+            return Status::failure(
+                StatusCode::unsupported,
+                "EGL/GL multisample textures require resolve before readback");
         }
         GLuint framebuffer = 0;
         glGenFramebuffers(1, &framebuffer);
@@ -1175,9 +1213,11 @@ struct Probe {
         }
         const auto& region = transfer.bufferTexture.texture;
         const auto& layout = transfer.bufferTexture.layout;
+        const auto format = transfer_format(sourceTexture->format,
+                                            region.subresource.aspect);
         const auto rowBytes = layout.bytesPerRow == 0
                                   ? static_cast<std::size_t>(region.extent.width) *
-                                        sourceTexture->format.bytesPerPixel
+                                        format.bytesPerPixel
                                   : layout.bytesPerRow;
         glBindBuffer(GL_PIXEL_PACK_BUFFER, destinationBuffer->name);
         const auto rowsPerImage = layout.rowsPerImage == 0
@@ -1185,13 +1225,13 @@ struct Probe {
                                       : layout.rowsPerImage;
         configure_pixel_store(GL_PACK_ALIGNMENT, GL_PACK_ROW_LENGTH,
                               packImageHeight, rowBytes, rowsPerImage,
-                              sourceTexture->format.bytesPerPixel);
+                              format.bytesPerPixel);
         const auto offset = transfer.bufferTexture.bufferOffset + layout.offset;
         glReadPixels(static_cast<GLint>(region.origin.x),
                      static_cast<GLint>(region.origin.y),
                      static_cast<GLsizei>(region.extent.width),
                      static_cast<GLsizei>(region.extent.height),
-                     sourceTexture->format.format, sourceTexture->format.type,
+                     format.format, format.type,
                      reinterpret_cast<void*>(offset));
         reset_pixel_store(GL_PACK_ALIGNMENT, GL_PACK_ROW_LENGTH,
                           packImageHeight);
