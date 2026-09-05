@@ -77,6 +77,7 @@ if(TRUFFLE_BUILD_BACKEND_VULKAN)
         target_compile_definitions(truffle_vulkan_tests PRIVATE
             "TRUFFLE_VULKAN_SHADER_PACKAGE_PATH=\"${PROJECT_BINARY_DIR}/shaderc-glslang-smoke/triangle-a.truffle-shader\""
             "TRUFFLE_VULKAN_FRAGMENT_PACKAGE_PATH=\"${PROJECT_BINARY_DIR}/shaderc-glslang-smoke/triangle-fragment.truffle-shader\""
+            "TRUFFLE_VULKAN_MRT_FRAGMENT_PACKAGE_PATH=\"${PROJECT_BINARY_DIR}/shaderc-glslang-smoke/mrt-fragment.truffle-shader\""
             "TRUFFLE_VULKAN_TEXTURED_FRAGMENT_PACKAGE_PATH=\"${PROJECT_BINARY_DIR}/shaderc-glslang-smoke/textured-fragment.truffle-shader\""
             "TRUFFLE_VULKAN_COMPUTE_PACKAGE_PATH=\"${PROJECT_BINARY_DIR}/shaderc-glslang-smoke/work-es.truffle-shader\"")
     endif()
