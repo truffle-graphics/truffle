@@ -219,7 +219,10 @@ void verify_vulkan_buffers() {
                .write(0, std::as_bytes(std::span{indirectCommand}))
                .ok());
     assert(render_and_read(trianglePipeline, [&](rhi::RenderEncoder& render) {
-               assert(render.draw_indirect(indirectBuffer).ok());
+               assert(render
+                          .draw_indirect(indirectBuffer, 0, false, 1,
+                                         4 * sizeof(std::uint32_t))
+                          .ok());
            }) == expectedTrianglePixel);
 
 #if defined(TRUFFLE_VULKAN_TEXTURED_FRAGMENT_PACKAGE_PATH)
@@ -474,7 +477,7 @@ void verify_vulkan_buffers() {
     auto indirectCompute = std::move(indirectComputeResult).value();
     assert(indirectCompute.bind_pipeline(computePipeline).ok());
     assert(indirectCompute.bind_group(0, group).ok());
-    assert(indirectCompute.dispatch_indirect(dispatchIndirect).ok());
+    assert(indirectCompute.dispatch_indirect(dispatchIndirect, 0).ok());
     assert(indirectCompute.end().ok());
     assert(computeList.end().ok());
     std::array<rhi::CommandList*, 1> indirectComputeLists{&computeList};

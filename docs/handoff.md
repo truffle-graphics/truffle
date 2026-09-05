@@ -23,8 +23,11 @@ output while keeping depth/MRT/MSAA separately gated.
   indirect dimensions. Vulkan advertises indirect commands only after this
   native gate; indirect-count remains unsupported. Ownership and dependencies
   remain backend-local with no public API effect. The local warnings-as-errors
-  build and all 36 configured host tests pass; Ubuntu Vulkan validation is the
-  required native evidence before merge.
+  build and all 36 configured host tests pass. Initial Build `33940792618`
+  reached Ubuntu compilation and exposed test calls that omitted required
+  public indirect-command arguments; the tests now state the exact offset,
+  indexed mode, draw count, stride, and dispatch offset. Ubuntu Vulkan
+  validation remains the required native evidence before merge.
 - `feat/rhi1-vulkan-graphics` implements the first bounded Vulkan graphics
   checkpoint for #53. Generated vertex and fragment SPIR-V packages create an
   owned native graphics pipeline and compatible render pass. Submission creates
