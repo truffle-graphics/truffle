@@ -24,7 +24,10 @@ barrier, timeline-semaphore, fence, and query evidence.
   one nanosecond per deterministic tick. Timestamp-capable adapter tests require
   a positive period. The public addition is backend-neutral and belongs to the
   RHI adapter contract; the fault hook remains Vulkan-private. The local build
-  and all 37 tests pass; CI evidence is pending.
+  and all 37 tests pass. Build `33945096780` passes package, macOS, Ubuntu, and
+  Windows; Ubuntu proves Vulkan loss/recovery under validation and Windows
+  proves D3D12 timestamp-frequency compilation and runtime calibration. The
+  separate companion-routing failure remains tracked by #131.
 - `feat/rhi1-vulkan-sync-foundation` implements #54's native Vulkan baseline.
   Queue kind is now carried through the internal submission boundary; Vulkan
   discovers graphics, compute, and transfer families, creates one queue for
