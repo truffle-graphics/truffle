@@ -50,7 +50,9 @@ Current evidence is narrower than the old roadmap claimed:
   OpenGL/OpenGL ES own native EGL buffers, samplers, uncompressed
   color/depth/stencil textures, mip/array/3D/cube transfers and clears after
   surfaceless initialization; desktop GL additionally owns core texture views
-  and multisample resolve. These adapters report only the capabilities
+  and multisample resolve. Both profiles compile native-source ShaderPackage
+  variants and execute an exact one-target direct-graphics baseline. These
+  adapters report only the capabilities
   they implement. Remaining backend/platform WSI and presentation paths, and
   unadvertised resource gaps stay unsupported rather than simulated.
 - ShaderPackage 1.0 is a deterministic compiler-free runtime contract with a

@@ -19,7 +19,8 @@ Current baseline:
 - Native-smoke Vulkan, OpenGL, OpenGL ES, and Direct3D 12 target slices that
   expose adapters only after native initialization. Their implemented buffer
   and texture-transfer capabilities are reported explicitly, including
-  profile-specific GL-family view and multisample boundaries; missing
+  profile-specific GL-family view/multisample boundaries and a native GLSL
+  direct-graphics baseline on both EGL profiles; missing
   capabilities remain unsupported rather than simulated.
 - Deterministic ShaderPackage 1.0 creation/loading with normalized cross-target
   reflection, capability gates, native-variant precedence, and an optional

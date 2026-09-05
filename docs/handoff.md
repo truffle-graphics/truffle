@@ -33,8 +33,12 @@ shaders, binding layouts, graphics/compute pipelines, and exact output evidence.
   Initial Build `33965142135` reached Linux and caught that the configured GLES
   3.0 headers omit the compute-stage token. Because compute remains deliberately
   unadvertised in this checkpoint, the GLES stage mapper now rejects it without
-  referencing a later-profile declaration. Replacement Linux compilation and
-  exact native output remain pending CI.
+  referencing a later-profile declaration. Replacement Build `33965233739`
+  passes package, macOS, Ubuntu, and Windows. The Ubuntu lane proves exact red
+  triangle pixels and zero KHR_debug callbacks independently on desktop GL and
+  GLES. The support matrix, pipeline table, README, architecture, overview, and
+  project context record this deliberately narrow checkpoint; #62 remains open
+  for the advanced binding and pipeline acceptance surface.
 - `feat/rhi1-gl-extended-resources` continues #60 from the merged 2D transfer
   checkpoint. The shared EGL implementation now selects immutable targets for
   2D arrays, mip chains, 3D textures, cube/cube-array textures, and desktop GL
