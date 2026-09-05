@@ -14,6 +14,23 @@ views, samplers, transfers, state isolation, and exact native output evidence.
 
 ## Latest Handoff
 
+- `feat/rhi1-gl-extended-resources` continues #60 from the merged 2D transfer
+  checkpoint. The shared EGL implementation now selects immutable targets for
+  2D arrays, mip chains, 3D textures, cube/cube-array textures, and desktop GL
+  multisample textures; both profiles own core depth16 and depth24/stencil8,
+  while desktop GL additionally owns its core 32-bit depth variants. Uploads
+  honor row and image pitch, and framebuffer attachment selects the requested
+  array layer, volume slice, cube face, and color/depth/stencil aspect. Desktop
+  GL exposes runtime-gated core texture views and multisample resolves; GLES
+  continues to report both explicitly unsupported. Validation-enabled contexts
+  install KHR_debug when the driver exposes it and route API errors through the
+  existing instance callback. Shared native tests exercise separate profile
+  capability snapshots, exact mip/array/3D/cube/depth paths, desktop resolve,
+  GLES negative MSAA/view behavior, external boundaries, memory budgets, and a
+  zero-error debug receipt. Ownership remains in the shared GL-family backend,
+  dependencies remain system EGL/GL only, and the public RHI contract is
+  unchanged. Local cross-platform compilation and the existing 37-test suite
+  pass; Linux GL/GLES compilation and native evidence remain pending CI.
 - `feat/rhi1-gl-resources` starts #60 with a shared 2D texture checkpoint for
   both Linux EGL profiles. The backend now owns immutable uncompressed color
   textures and sampler objects, rejects external and unsupported shapes

@@ -11,7 +11,7 @@ namespace truffle::rhi {
 
 Result<Instance> create_opengl_instance(const InstanceDesc& desc) {
 #ifdef TRUFFLE_HAS_EGL_OPENGL
-    auto probe = detail::egl_probe::initialize();
+    auto probe = detail::egl_probe::initialize(desc);
     if (!probe.ok()) {
         return probe.status();
     }
@@ -25,13 +25,14 @@ Result<Instance> create_opengl_instance(const InstanceDesc& desc) {
     config.supportedFeatures = {Feature::transfer};
     config.resourceCapabilities = {
         .bufferViews = true,
-        .textureViews = false,
+        .textureViews = native.textureViews,
         .hostCoherent = true,
         .bufferCopy = true,
         .bufferFill = true,
         .bufferTextureCopy = true,
         .textureCopy = true,
         .textureClear = true,
+        .textureResolve = true,
         .textureBlitNearest = true,
         .textureBlitLinear = true,
     };
@@ -51,6 +52,7 @@ Result<Instance> create_opengl_instance(const InstanceDesc& desc) {
     config.writeBuffer = &detail::egl_probe::write_buffer;
     config.readBuffer = &detail::egl_probe::read_buffer;
     config.createTexture = &detail::egl_probe::create_texture;
+    config.createTextureView = &detail::egl_probe::create_texture_view;
     config.writeTexture = &detail::egl_probe::write_texture;
     config.readTexture = &detail::egl_probe::read_texture;
     config.createSampler = &detail::egl_probe::create_sampler;

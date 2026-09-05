@@ -11,12 +11,14 @@
 #include <GL/gl.h>
 #elif defined(TRUFFLE_EGL_API_OPENGLES)
 #include <GLES3/gl3.h>
+#include <GLES3/gl3ext.h>
 #else
 #error "an EGL API profile must be selected"
 #endif
 
 #include <array>
 #include <algorithm>
+#include <atomic>
 #include <cstring>
 #include <memory>
 #include <mutex>
@@ -58,6 +60,10 @@ struct Context {
     EGLDisplay display = EGL_NO_DISPLAY;
     EGLSurface surface = EGL_NO_SURFACE;
     EGLContext context = EGL_NO_CONTEXT;
+    void (*debugCallback)(const BackendDiagnostic&, void*) = nullptr;
+    void* debugUserData = nullptr;
+    std::atomic_uint validationErrors{0};
+    bool debugOutput = false;
     std::mutex mutex;
 };
 
@@ -67,6 +73,42 @@ struct Context {
                ? Status::success()
                : egl_failure(StatusCode::surface_lost,
                              "EGL could not restore the native context");
+}
+
+#if defined(TRUFFLE_EGL_API_OPENGL)
+using DebugMessageCallbackProc = PFNGLDEBUGMESSAGECALLBACKPROC;
+inline constexpr GLenum debugOutput = GL_DEBUG_OUTPUT;
+inline constexpr GLenum debugOutputSynchronous = GL_DEBUG_OUTPUT_SYNCHRONOUS;
+inline constexpr GLenum debugTypeError = GL_DEBUG_TYPE_ERROR;
+#else
+using DebugMessageCallbackProc = PFNGLDEBUGMESSAGECALLBACKKHRPROC;
+inline constexpr GLenum debugOutput = GL_DEBUG_OUTPUT_KHR;
+inline constexpr GLenum debugOutputSynchronous = GL_DEBUG_OUTPUT_SYNCHRONOUS_KHR;
+inline constexpr GLenum debugTypeError = GL_DEBUG_TYPE_ERROR_KHR;
+#endif
+
+inline void debug_message(GLenum source, GLenum type, GLuint id,
+                          GLenum severity, GLsizei length,
+                          const GLchar* message, const void* userData) {
+    auto* context = static_cast<Context*>(const_cast<void*>(userData));
+    if (context == nullptr || type != debugTypeError) {
+        return;
+    }
+    ++context->validationErrors;
+    if (context->debugCallback == nullptr) {
+        return;
+    }
+    const auto messageSize = length > 0 ? static_cast<std::size_t>(length)
+                                        : std::strlen(message);
+    BackendDiagnostic diagnostic{
+        .domain = "opengl",
+        .nativeCode = static_cast<std::int64_t>(id),
+        .objectLabel = {},
+        .message = std::string{message, messageSize},
+    };
+    (void)source;
+    (void)severity;
+    context->debugCallback(diagnostic, context->debugUserData);
 }
 
 struct BufferResource {
@@ -98,22 +140,39 @@ struct TextureFormatInfo {
     GLenum format = 0;
     GLenum type = 0;
     std::uint32_t bytesPerPixel = 0;
+    TextureAspect aspects = TextureAspect::none;
 };
 
 [[nodiscard]] inline TextureFormatInfo texture_format(TextureFormat format) {
     switch (format) {
     case TextureFormat::r8_unorm:
-        return {GL_R8, GL_RED, GL_UNSIGNED_BYTE, 1};
+        return {GL_R8, GL_RED, GL_UNSIGNED_BYTE, 1, TextureAspect::color};
     case TextureFormat::rg8_unorm:
-        return {GL_RG8, GL_RG, GL_UNSIGNED_BYTE, 2};
+        return {GL_RG8, GL_RG, GL_UNSIGNED_BYTE, 2, TextureAspect::color};
     case TextureFormat::rgba8_unorm:
-        return {GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, 4};
+        return {GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, 4, TextureAspect::color};
     case TextureFormat::rgba8_srgb:
-        return {GL_SRGB8_ALPHA8, GL_RGBA, GL_UNSIGNED_BYTE, 4};
+        return {GL_SRGB8_ALPHA8, GL_RGBA, GL_UNSIGNED_BYTE, 4,
+                TextureAspect::color};
     case TextureFormat::rgba16_float:
-        return {GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, 8};
+        return {GL_RGBA16F, GL_RGBA, GL_HALF_FLOAT, 8, TextureAspect::color};
     case TextureFormat::rgba32_float:
-        return {GL_RGBA32F, GL_RGBA, GL_FLOAT, 16};
+        return {GL_RGBA32F, GL_RGBA, GL_FLOAT, 16, TextureAspect::color};
+    case TextureFormat::depth16_unorm:
+        return {GL_DEPTH_COMPONENT16, GL_DEPTH_COMPONENT, GL_UNSIGNED_SHORT, 2,
+                TextureAspect::depth};
+    case TextureFormat::depth24_unorm_stencil8:
+        return {GL_DEPTH24_STENCIL8, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, 4,
+                TextureAspect::depth | TextureAspect::stencil};
+#if defined(TRUFFLE_EGL_API_OPENGL)
+    case TextureFormat::depth32_float:
+        return {GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT, 4,
+                TextureAspect::depth};
+    case TextureFormat::depth32_float_stencil8:
+        return {GL_DEPTH32F_STENCIL8, GL_DEPTH_STENCIL,
+                GL_FLOAT_32_UNSIGNED_INT_24_8_REV, 8,
+                TextureAspect::depth | TextureAspect::stencil};
+#endif
     default:
         return {};
     }
@@ -135,7 +194,33 @@ struct TextureResource {
     GLenum target = GL_TEXTURE_2D;
     TextureDesc desc;
     TextureFormatInfo format;
+    std::shared_ptr<void> parent;
 };
+
+[[nodiscard]] inline GLenum texture_target(const TextureDesc& desc) noexcept {
+    switch (desc.dimension) {
+    case TextureDimension::d2:
+#if defined(TRUFFLE_EGL_API_OPENGL)
+        if (desc.sampleCount > 1) {
+            return desc.arrayLayers == 1 ? GL_TEXTURE_2D_MULTISAMPLE
+                                         : GL_TEXTURE_2D_MULTISAMPLE_ARRAY;
+        }
+#endif
+        return desc.arrayLayers == 1 ? GL_TEXTURE_2D : GL_TEXTURE_2D_ARRAY;
+    case TextureDimension::d3:
+        return GL_TEXTURE_3D;
+    case TextureDimension::cube:
+#if defined(TRUFFLE_EGL_API_OPENGL)
+        return desc.arrayLayers == 6 ? GL_TEXTURE_CUBE_MAP
+                                     : GL_TEXTURE_CUBE_MAP_ARRAY;
+#else
+        return desc.arrayLayers == 6 ? GL_TEXTURE_CUBE_MAP : 0;
+#endif
+    case TextureDimension::d1:
+        return 0;
+    }
+    return 0;
+}
 
 struct SamplerResource {
     ~SamplerResource() {
@@ -180,8 +265,12 @@ struct SamplerResource {
         return Status::failure(StatusCode::unsupported,
                                "EGL/GL external textures are not implemented");
     }
-    if (desc.dimension != TextureDimension::d2 || desc.arrayLayers != 1 ||
-        desc.sampleCount != 1 || format.internalFormat == 0) {
+    const auto target = texture_target(desc);
+    if (target == 0 || format.internalFormat == 0
+#if defined(TRUFFLE_EGL_API_OPENGLES)
+        || desc.sampleCount != 1
+#endif
+    ) {
         return Status::failure(
             StatusCode::unsupported,
             "this EGL/GL texture shape or format is not implemented");
@@ -190,18 +279,52 @@ struct SamplerResource {
     resource->context = context;
     resource->desc = desc;
     resource->format = format;
+    resource->target = target;
     std::lock_guard lock{context->mutex};
     if (auto status = make_current(*context); !status.ok()) {
         return status;
     }
     glGenTextures(1, &resource->name);
     glBindTexture(resource->target, resource->name);
-    glTexStorage2D(resource->target, static_cast<GLsizei>(desc.mipLevels),
-                   format.internalFormat, static_cast<GLsizei>(desc.extent.width),
-                   static_cast<GLsizei>(desc.extent.height));
-    glTexParameteri(resource->target, GL_TEXTURE_BASE_LEVEL, 0);
-    glTexParameteri(resource->target, GL_TEXTURE_MAX_LEVEL,
-                    static_cast<GLint>(desc.mipLevels - 1));
+    if (desc.sampleCount > 1) {
+#if defined(TRUFFLE_EGL_API_OPENGL)
+        if (desc.arrayLayers == 1) {
+            glTexStorage2DMultisample(
+                resource->target, static_cast<GLsizei>(desc.sampleCount),
+                format.internalFormat, static_cast<GLsizei>(desc.extent.width),
+                static_cast<GLsizei>(desc.extent.height), GL_TRUE);
+        } else {
+            glTexStorage3DMultisample(
+                resource->target, static_cast<GLsizei>(desc.sampleCount),
+                format.internalFormat, static_cast<GLsizei>(desc.extent.width),
+                static_cast<GLsizei>(desc.extent.height),
+                static_cast<GLsizei>(desc.arrayLayers), GL_TRUE);
+        }
+#endif
+    } else if (desc.dimension == TextureDimension::d3 ||
+               (desc.dimension == TextureDimension::d2 &&
+                desc.arrayLayers != 1) ||
+               (desc.dimension == TextureDimension::cube &&
+                desc.arrayLayers != 6)) {
+        const auto depth = desc.dimension == TextureDimension::d3
+                               ? desc.extent.depth
+                               : desc.arrayLayers;
+        glTexStorage3D(resource->target, static_cast<GLsizei>(desc.mipLevels),
+                       format.internalFormat,
+                       static_cast<GLsizei>(desc.extent.width),
+                       static_cast<GLsizei>(desc.extent.height),
+                       static_cast<GLsizei>(depth));
+    } else {
+        glTexStorage2D(resource->target, static_cast<GLsizei>(desc.mipLevels),
+                       format.internalFormat,
+                       static_cast<GLsizei>(desc.extent.width),
+                       static_cast<GLsizei>(desc.extent.height));
+    }
+    if (desc.sampleCount == 1) {
+        glTexParameteri(resource->target, GL_TEXTURE_BASE_LEVEL, 0);
+        glTexParameteri(resource->target, GL_TEXTURE_MAX_LEVEL,
+                        static_cast<GLint>(desc.mipLevels - 1));
+    }
     if (glGetError() != GL_NO_ERROR || resource->name == 0) {
         if (resource->name != 0) {
             glDeleteTextures(1, &resource->name);
@@ -212,6 +335,52 @@ struct SamplerResource {
     }
     return std::static_pointer_cast<void>(std::move(resource));
 }
+
+#if defined(TRUFFLE_EGL_API_OPENGL)
+[[nodiscard]] inline Result<std::shared_ptr<void>> create_texture_view(
+    const std::shared_ptr<void>& nativeTexture, const TextureViewDesc& desc) {
+    const auto parent = std::static_pointer_cast<TextureResource>(nativeTexture);
+    if (!parent || parent->name == 0) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "EGL/GL texture view source is invalid");
+    }
+    if (parent->desc.sampleCount != 1) {
+        return Status::failure(StatusCode::unsupported,
+                               "EGL/GL multisample texture views are disabled");
+    }
+    const auto format = texture_format(desc.format);
+    if (format.internalFormat == 0) {
+        return Status::failure(StatusCode::unsupported,
+                               "EGL/GL texture view format is unsupported");
+    }
+    auto view = std::make_shared<TextureResource>();
+    view->context = parent->context;
+    view->target = parent->target;
+    view->format = format;
+    view->desc = parent->desc;
+    view->desc.format = desc.format;
+    view->desc.mipLevels = desc.range.mipLevelCount;
+    view->desc.arrayLayers = desc.range.arrayLayerCount;
+    view->parent = parent;
+    std::lock_guard lock{parent->context->mutex};
+    if (auto status = make_current(*parent->context); !status.ok()) {
+        return status;
+    }
+    glGenTextures(1, &view->name);
+    glTextureView(view->name, view->target, parent->name, format.internalFormat,
+                  desc.range.baseMipLevel, desc.range.mipLevelCount,
+                  desc.range.baseArrayLayer, desc.range.arrayLayerCount);
+    if (glGetError() != GL_NO_ERROR || view->name == 0) {
+        if (view->name != 0) {
+            glDeleteTextures(1, &view->name);
+            view->name = 0;
+        }
+        return Status::failure(StatusCode::backend_error,
+                               "EGL/GL texture view creation failed");
+    }
+    return std::static_pointer_cast<void>(std::move(view));
+}
+#endif
 
 [[nodiscard]] inline Result<std::shared_ptr<void>> create_sampler(
     const std::shared_ptr<void>& nativeContext, const SamplerDesc& desc) {
@@ -484,11 +653,16 @@ struct SamplerResource {
 
 [[nodiscard]] inline bool texture_region_supported(
     const TextureResource& texture, const TextureRegion& region) noexcept {
-    return region.subresource.aspect == TextureAspect::color &&
+    const auto mipDepth = texture.desc.dimension == TextureDimension::d3
+                              ? mip_size(texture.desc.extent.depth,
+                                         region.subresource.mipLevel)
+                              : 1u;
+    return region.subresource.aspect != TextureAspect::none &&
+           has_aspect(texture.format.aspects, region.subresource.aspect) &&
            region.subresource.mipLevel < texture.desc.mipLevels &&
-           region.subresource.arrayLayer == 0 && region.origin.z == 0 &&
-           region.extent.depth == 1 && region.extent.width != 0 &&
-           region.extent.height != 0 &&
+           region.subresource.arrayLayer < texture.desc.arrayLayers &&
+           region.extent.width != 0 && region.extent.height != 0 &&
+           region.extent.depth != 0 &&
            region.origin.x <= mip_size(texture.desc.extent.width,
                                        region.subresource.mipLevel) &&
            region.extent.width <=
@@ -498,7 +672,11 @@ struct SamplerResource {
                                        region.subresource.mipLevel) &&
            region.extent.height <=
                mip_size(texture.desc.extent.height,
-                        region.subresource.mipLevel) - region.origin.y;
+                        region.subresource.mipLevel) - region.origin.y &&
+           region.origin.z <= mipDepth &&
+           region.extent.depth <= mipDepth - region.origin.z &&
+           (texture.desc.dimension == TextureDimension::d3 ||
+            (region.origin.z == 0 && region.extent.depth == 1));
 }
 
 [[nodiscard]] inline bool texture_data_supported(
@@ -517,23 +695,36 @@ struct SamplerResource {
         layout.offset > dataSize) {
         return false;
     }
-    const auto required = static_cast<std::size_t>(region.extent.height - 1u) *
-                              rowBytes +
-                          tightRow;
+    const auto rowsPerImage = layout.rowsPerImage == 0
+                                  ? region.extent.height
+                                  : layout.rowsPerImage;
+    if (rowsPerImage < region.extent.height) {
+        return false;
+    }
+    const auto imageBytes = rowsPerImage * rowBytes;
+    const auto required = static_cast<std::size_t>(region.extent.depth - 1u) *
+                              imageBytes +
+                          static_cast<std::size_t>(region.extent.height - 1u) *
+                              rowBytes + tightRow;
     return required <= dataSize - layout.offset;
 }
 
 inline void configure_pixel_store(GLenum alignmentName, GLenum rowLengthName,
+                                  GLenum imageHeightName,
                                   std::size_t bytesPerRow,
+                                  std::size_t rowsPerImage,
                                   std::uint32_t bytesPerPixel) {
     glPixelStorei(alignmentName, 1);
     glPixelStorei(rowLengthName,
                   bytesPerRow == 0
                       ? 0
                       : static_cast<GLint>(bytesPerRow / bytesPerPixel));
+    glPixelStorei(imageHeightName, static_cast<GLint>(rowsPerImage));
 }
 
-inline void reset_pixel_store(GLenum alignmentName, GLenum rowLengthName) {
+inline void reset_pixel_store(GLenum alignmentName, GLenum rowLengthName,
+                              GLenum imageHeightName) {
+    glPixelStorei(imageHeightName, 0);
     glPixelStorei(rowLengthName, 0);
     glPixelStorei(alignmentName, 4);
 }
@@ -541,9 +732,41 @@ inline void reset_pixel_store(GLenum alignmentName, GLenum rowLengthName) {
 [[nodiscard]] inline Status attach_color_texture(
     GLenum framebufferTarget, const TextureResource& texture,
     const TextureRegion& region) {
-    glFramebufferTexture2D(framebufferTarget, GL_COLOR_ATTACHMENT0,
-                           texture.target, texture.name,
-                           static_cast<GLint>(region.subresource.mipLevel));
+    GLenum attachment = GL_COLOR_ATTACHMENT0;
+    if (region.subresource.aspect == TextureAspect::depth) {
+        attachment = GL_DEPTH_ATTACHMENT;
+    } else if (region.subresource.aspect == TextureAspect::stencil) {
+        attachment = GL_STENCIL_ATTACHMENT;
+    } else if (region.subresource.aspect ==
+               (TextureAspect::depth | TextureAspect::stencil)) {
+        attachment = GL_DEPTH_STENCIL_ATTACHMENT;
+    }
+    const auto mip = static_cast<GLint>(region.subresource.mipLevel);
+    if (texture.desc.dimension == TextureDimension::cube &&
+        texture.desc.arrayLayers == 6) {
+        glFramebufferTexture2D(
+            framebufferTarget, attachment,
+            GL_TEXTURE_CUBE_MAP_POSITIVE_X + region.subresource.arrayLayer,
+            texture.name, mip);
+    } else if (texture.desc.dimension == TextureDimension::d3 ||
+               texture.desc.arrayLayers > 1) {
+        const auto layer = texture.desc.dimension == TextureDimension::d3
+                               ? region.origin.z
+                               : region.subresource.arrayLayer;
+        glFramebufferTextureLayer(framebufferTarget, attachment, texture.name,
+                                  mip, static_cast<GLint>(layer));
+    } else {
+        glFramebufferTexture2D(framebufferTarget, attachment, texture.target,
+                               texture.name, mip);
+    }
+    if (attachment != GL_COLOR_ATTACHMENT0) {
+        constexpr GLenum none = GL_NONE;
+        if (framebufferTarget == GL_READ_FRAMEBUFFER) {
+            glReadBuffer(GL_NONE);
+        } else {
+            glDrawBuffers(1, &none);
+        }
+    }
     return glCheckFramebufferStatus(framebufferTarget) ==
                    GL_FRAMEBUFFER_COMPLETE
                ? Status::success()
@@ -561,6 +784,11 @@ inline void reset_pixel_store(GLenum alignmentName, GLenum rowLengthName) {
         return Status::failure(StatusCode::invalid_argument,
                                "EGL/GL texture write region is invalid");
     }
+    if (texture->desc.sampleCount != 1) {
+        return Status::failure(
+            StatusCode::unsupported,
+            "EGL/GL multisample textures cannot be written directly");
+    }
     std::lock_guard lock{texture->context->mutex};
     if (auto status = make_current(*texture->context); !status.ok()) {
         return status;
@@ -571,17 +799,50 @@ inline void reset_pixel_store(GLenum alignmentName, GLenum rowLengthName) {
                               : layout.bytesPerRow;
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
     glBindTexture(texture->target, texture->name);
-    configure_pixel_store(GL_UNPACK_ALIGNMENT, GL_UNPACK_ROW_LENGTH, rowBytes,
+    const auto rowsPerImage = layout.rowsPerImage == 0
+                                  ? region.extent.height
+                                  : layout.rowsPerImage;
+    configure_pixel_store(GL_UNPACK_ALIGNMENT, GL_UNPACK_ROW_LENGTH,
+                          GL_UNPACK_IMAGE_HEIGHT, rowBytes, rowsPerImage,
                           texture->format.bytesPerPixel);
-    glTexSubImage2D(texture->target,
-                    static_cast<GLint>(region.subresource.mipLevel),
-                    static_cast<GLint>(region.origin.x),
-                    static_cast<GLint>(region.origin.y),
-                    static_cast<GLsizei>(region.extent.width),
-                    static_cast<GLsizei>(region.extent.height),
-                    texture->format.format, texture->format.type,
-                    data.data() + layout.offset);
-    reset_pixel_store(GL_UNPACK_ALIGNMENT, GL_UNPACK_ROW_LENGTH);
+    const auto* source = data.data() + layout.offset;
+    if (texture->desc.dimension == TextureDimension::cube &&
+        texture->desc.arrayLayers == 6) {
+        glTexSubImage2D(
+            GL_TEXTURE_CUBE_MAP_POSITIVE_X + region.subresource.arrayLayer,
+            static_cast<GLint>(region.subresource.mipLevel),
+            static_cast<GLint>(region.origin.x),
+            static_cast<GLint>(region.origin.y),
+            static_cast<GLsizei>(region.extent.width),
+            static_cast<GLsizei>(region.extent.height), texture->format.format,
+            texture->format.type, source);
+    } else if (texture->desc.dimension == TextureDimension::d3 ||
+               texture->desc.arrayLayers > 1) {
+        const auto z = texture->desc.dimension == TextureDimension::d3
+                           ? region.origin.z
+                           : region.subresource.arrayLayer;
+        const auto depth = texture->desc.dimension == TextureDimension::d3
+                               ? region.extent.depth
+                               : 1u;
+        glTexSubImage3D(
+            texture->target, static_cast<GLint>(region.subresource.mipLevel),
+            static_cast<GLint>(region.origin.x),
+            static_cast<GLint>(region.origin.y), static_cast<GLint>(z),
+            static_cast<GLsizei>(region.extent.width),
+            static_cast<GLsizei>(region.extent.height),
+            static_cast<GLsizei>(depth), texture->format.format,
+            texture->format.type, source);
+    } else {
+        glTexSubImage2D(texture->target,
+                        static_cast<GLint>(region.subresource.mipLevel),
+                        static_cast<GLint>(region.origin.x),
+                        static_cast<GLint>(region.origin.y),
+                        static_cast<GLsizei>(region.extent.width),
+                        static_cast<GLsizei>(region.extent.height),
+                        texture->format.format, texture->format.type, source);
+    }
+    reset_pixel_store(GL_UNPACK_ALIGNMENT, GL_UNPACK_ROW_LENGTH,
+                      GL_UNPACK_IMAGE_HEIGHT);
     glFinish();
     return glGetError() == GL_NO_ERROR
                ? Status::success()
@@ -598,6 +859,11 @@ inline void reset_pixel_store(GLenum alignmentName, GLenum rowLengthName) {
         !texture_data_supported(*texture, region, layout, data.size())) {
         return Status::failure(StatusCode::invalid_argument,
                                "EGL/GL texture read region is invalid");
+    }
+    if (region.extent.depth != 1 || texture->desc.sampleCount != 1) {
+        return Status::failure(
+            StatusCode::unsupported,
+            "EGL/GL host readback supports one single-sample slice at a time");
     }
     std::lock_guard lock{texture->context->mutex};
     if (auto status = make_current(*texture->context); !status.ok()) {
@@ -616,7 +882,11 @@ inline void reset_pixel_store(GLenum alignmentName, GLenum rowLengthName) {
                                     texture->format.bytesPerPixel
                               : layout.bytesPerRow;
     glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
-    configure_pixel_store(GL_PACK_ALIGNMENT, GL_PACK_ROW_LENGTH, rowBytes,
+    const auto rowsPerImage = layout.rowsPerImage == 0
+                                  ? region.extent.height
+                                  : layout.rowsPerImage;
+    configure_pixel_store(GL_PACK_ALIGNMENT, GL_PACK_ROW_LENGTH,
+                          GL_PACK_IMAGE_HEIGHT, rowBytes, rowsPerImage,
                           texture->format.bytesPerPixel);
     glReadPixels(static_cast<GLint>(region.origin.x),
                  static_cast<GLint>(region.origin.y),
@@ -624,7 +894,8 @@ inline void reset_pixel_store(GLenum alignmentName, GLenum rowLengthName) {
                  static_cast<GLsizei>(region.extent.height),
                  texture->format.format, texture->format.type,
                  data.data() + layout.offset);
-    reset_pixel_store(GL_PACK_ALIGNMENT, GL_PACK_ROW_LENGTH);
+    reset_pixel_store(GL_PACK_ALIGNMENT, GL_PACK_ROW_LENGTH,
+                      GL_PACK_IMAGE_HEIGHT);
     glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
     glDeleteFramebuffers(1, &framebuffer);
     glFinish();
@@ -637,6 +908,8 @@ inline void reset_pixel_store(GLenum alignmentName, GLenum rowLengthName) {
 struct Probe {
     std::shared_ptr<Context> context;
     std::string adapterName;
+    bool debugOutput = false;
+    bool textureViews = false;
 };
 
 [[nodiscard]] inline EGLDisplay surfaceless_display() {
@@ -653,7 +926,7 @@ struct Probe {
     return eglGetDisplay(EGL_DEFAULT_DISPLAY);
 }
 
-[[nodiscard]] inline Result<Probe> initialize() {
+[[nodiscard]] inline Result<Probe> initialize(const InstanceDesc& desc) {
     auto native = std::make_shared<Context>();
     native->display = surfaceless_display();
     if (native->display == EGL_NO_DISPLAY) {
@@ -734,6 +1007,24 @@ struct Probe {
                            "EGL could not make the native context current");
     }
 
+    native->debugCallback = desc.debugCallback;
+    native->debugUserData = desc.debugUserData;
+    if (desc.enableValidation) {
+#if defined(TRUFFLE_EGL_API_OPENGL)
+        constexpr auto callbackName = "glDebugMessageCallback";
+#else
+        constexpr auto callbackName = "glDebugMessageCallbackKHR";
+#endif
+        const auto debugCallback = reinterpret_cast<DebugMessageCallbackProc>(
+            eglGetProcAddress(callbackName));
+        if (debugCallback != nullptr) {
+            glEnable(debugOutput);
+            glEnable(debugOutputSynchronous);
+            debugCallback(&debug_message, native.get());
+            native->debugOutput = glGetError() == GL_NO_ERROR;
+        }
+    }
+
     glViewport(0, 0, 1, 1);
     glClearColor(0.25F, 0.5F, 0.75F, 1.0F);
     glClear(GL_COLOR_BUFFER_BIT);
@@ -755,7 +1046,25 @@ struct Probe {
         name += version;
         name += ')';
     }
-    return Probe{.context = std::move(native), .adapterName = std::move(name)};
+    if (native->debugOutput) {
+        name += " [KHR_debug]";
+    }
+#if defined(TRUFFLE_EGL_API_OPENGL)
+    GLint majorVersion = 0;
+    GLint minorVersion = 0;
+    glGetIntegerv(GL_MAJOR_VERSION, &majorVersion);
+    glGetIntegerv(GL_MINOR_VERSION, &minorVersion);
+    const bool textureViews = majorVersion > 4 ||
+                              (majorVersion == 4 && minorVersion >= 3);
+#else
+    constexpr bool textureViews = false;
+#endif
+    const bool validationDebugOutput =
+        desc.enableValidation && native->debugOutput;
+    return Probe{.context = std::move(native),
+                 .adapterName = std::move(name),
+                 .debugOutput = validationDebugOutput,
+                 .textureViews = textureViews};
 }
 
 [[nodiscard]] inline Status execute_texture_transfer(
@@ -784,25 +1093,65 @@ struct Probe {
                                   : layout.bytesPerRow;
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, sourceBuffer->name);
         glBindTexture(destinationTexture->target, destinationTexture->name);
+        const auto rowsPerImage = layout.rowsPerImage == 0
+                                      ? region.extent.height
+                                      : layout.rowsPerImage;
         configure_pixel_store(GL_UNPACK_ALIGNMENT, GL_UNPACK_ROW_LENGTH,
-                              rowBytes,
+                              GL_UNPACK_IMAGE_HEIGHT, rowBytes, rowsPerImage,
                               destinationTexture->format.bytesPerPixel);
         const auto offset = transfer.bufferTexture.bufferOffset + layout.offset;
-        glTexSubImage2D(
-            destinationTexture->target,
-            static_cast<GLint>(region.subresource.mipLevel),
-            static_cast<GLint>(region.origin.x),
-            static_cast<GLint>(region.origin.y),
-            static_cast<GLsizei>(region.extent.width),
-            static_cast<GLsizei>(region.extent.height),
-            destinationTexture->format.format, destinationTexture->format.type,
-            reinterpret_cast<const void*>(offset));
-        reset_pixel_store(GL_UNPACK_ALIGNMENT, GL_UNPACK_ROW_LENGTH);
+        const auto* source = reinterpret_cast<const void*>(offset);
+        if (destinationTexture->desc.dimension == TextureDimension::cube &&
+            destinationTexture->desc.arrayLayers == 6) {
+            glTexSubImage2D(
+                GL_TEXTURE_CUBE_MAP_POSITIVE_X +
+                    region.subresource.arrayLayer,
+                static_cast<GLint>(region.subresource.mipLevel),
+                static_cast<GLint>(region.origin.x),
+                static_cast<GLint>(region.origin.y),
+                static_cast<GLsizei>(region.extent.width),
+                static_cast<GLsizei>(region.extent.height),
+                destinationTexture->format.format,
+                destinationTexture->format.type, source);
+        } else if (destinationTexture->desc.dimension == TextureDimension::d3 ||
+                   destinationTexture->desc.arrayLayers > 1) {
+            const auto z = destinationTexture->desc.dimension ==
+                                   TextureDimension::d3
+                               ? region.origin.z
+                               : region.subresource.arrayLayer;
+            const auto depth = destinationTexture->desc.dimension ==
+                                       TextureDimension::d3
+                                   ? region.extent.depth
+                                   : 1u;
+            glTexSubImage3D(
+                destinationTexture->target,
+                static_cast<GLint>(region.subresource.mipLevel),
+                static_cast<GLint>(region.origin.x),
+                static_cast<GLint>(region.origin.y), static_cast<GLint>(z),
+                static_cast<GLsizei>(region.extent.width),
+                static_cast<GLsizei>(region.extent.height),
+                static_cast<GLsizei>(depth),
+                destinationTexture->format.format,
+                destinationTexture->format.type, source);
+        } else {
+            glTexSubImage2D(
+                destinationTexture->target,
+                static_cast<GLint>(region.subresource.mipLevel),
+                static_cast<GLint>(region.origin.x),
+                static_cast<GLint>(region.origin.y),
+                static_cast<GLsizei>(region.extent.width),
+                static_cast<GLsizei>(region.extent.height),
+                destinationTexture->format.format,
+                destinationTexture->format.type, source);
+        }
+        reset_pixel_store(GL_UNPACK_ALIGNMENT, GL_UNPACK_ROW_LENGTH,
+                          GL_UNPACK_IMAGE_HEIGHT);
         glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
     } else if (transfer.kind == NativeTransferKind::copy_texture_to_buffer) {
         if (!sourceTexture || !destinationBuffer ||
             !texture_region_supported(*sourceTexture,
-                                      transfer.bufferTexture.texture)) {
+                                      transfer.bufferTexture.texture) ||
+            transfer.bufferTexture.texture.extent.depth != 1) {
             return Status::failure(StatusCode::invalid_argument,
                                    "EGL/GL texture-to-buffer resources are invalid");
         }
@@ -823,7 +1172,11 @@ struct Probe {
                                         sourceTexture->format.bytesPerPixel
                                   : layout.bytesPerRow;
         glBindBuffer(GL_PIXEL_PACK_BUFFER, destinationBuffer->name);
-        configure_pixel_store(GL_PACK_ALIGNMENT, GL_PACK_ROW_LENGTH, rowBytes,
+        const auto rowsPerImage = layout.rowsPerImage == 0
+                                      ? region.extent.height
+                                      : layout.rowsPerImage;
+        configure_pixel_store(GL_PACK_ALIGNMENT, GL_PACK_ROW_LENGTH,
+                              GL_PACK_IMAGE_HEIGHT, rowBytes, rowsPerImage,
                               sourceTexture->format.bytesPerPixel);
         const auto offset = transfer.bufferTexture.bufferOffset + layout.offset;
         glReadPixels(static_cast<GLint>(region.origin.x),
@@ -832,14 +1185,16 @@ struct Probe {
                      static_cast<GLsizei>(region.extent.height),
                      sourceTexture->format.format, sourceTexture->format.type,
                      reinterpret_cast<void*>(offset));
-        reset_pixel_store(GL_PACK_ALIGNMENT, GL_PACK_ROW_LENGTH);
+        reset_pixel_store(GL_PACK_ALIGNMENT, GL_PACK_ROW_LENGTH,
+                          GL_PACK_IMAGE_HEIGHT);
         glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
         glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
         glDeleteFramebuffers(1, &framebuffer);
     } else if (transfer.kind == NativeTransferKind::clear_texture) {
         if (!destinationTexture ||
             !texture_region_supported(*destinationTexture,
-                                      transfer.texture.destination)) {
+                                      transfer.texture.destination) ||
+            transfer.texture.destination.extent.depth != 1) {
             return Status::failure(StatusCode::invalid_argument,
                                    "EGL/GL texture clear resource is invalid");
         }
@@ -859,10 +1214,22 @@ struct Probe {
                   static_cast<GLint>(region.origin.y),
                   static_cast<GLsizei>(region.extent.width),
                   static_cast<GLsizei>(region.extent.height));
-        const std::array value{transfer.clear.color.r, transfer.clear.color.g,
-                               transfer.clear.color.b,
-                               transfer.clear.color.a};
-        glClearBufferfv(GL_COLOR, 0, value.data());
+        if (region.subresource.aspect == TextureAspect::color) {
+            const std::array value{transfer.clear.color.r,
+                                   transfer.clear.color.g,
+                                   transfer.clear.color.b,
+                                   transfer.clear.color.a};
+            glClearBufferfv(GL_COLOR, 0, value.data());
+        } else {
+            if (has_aspect(region.subresource.aspect, TextureAspect::depth)) {
+                glClearBufferfv(GL_DEPTH, 0, &transfer.clear.depth);
+            }
+            if (has_aspect(region.subresource.aspect, TextureAspect::stencil)) {
+                const auto stencil =
+                    static_cast<GLint>(transfer.clear.stencil);
+                glClearBufferiv(GL_STENCIL, 0, &stencil);
+            }
+        }
         glDisable(GL_SCISSOR_TEST);
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
         glDeleteFramebuffers(1, &framebuffer);
@@ -881,7 +1248,9 @@ struct Probe {
                 ? transfer.blit.destination
                 : transfer.texture.destination;
         if (!texture_region_supported(*sourceTexture, source) ||
-            !texture_region_supported(*destinationTexture, destination)) {
+            !texture_region_supported(*destinationTexture, destination) ||
+            source.extent.depth != 1 || destination.extent.depth != 1 ||
+            source.subresource.aspect != destination.subresource.aspect) {
             return Status::failure(StatusCode::invalid_argument,
                                    "EGL/GL texture copy regions are invalid");
         }
@@ -906,6 +1275,13 @@ struct Probe {
                     transfer.blit.filter == Filter::linear
                 ? GL_LINEAR
                 : GL_NEAREST;
+        GLbitfield mask = GL_COLOR_BUFFER_BIT;
+        if (has_aspect(source.subresource.aspect, TextureAspect::depth)) {
+            mask = GL_DEPTH_BUFFER_BIT;
+        }
+        if (has_aspect(source.subresource.aspect, TextureAspect::stencil)) {
+            mask |= GL_STENCIL_BUFFER_BIT;
+        }
         glBlitFramebuffer(
             static_cast<GLint>(source.origin.x),
             static_cast<GLint>(source.origin.y),
@@ -915,7 +1291,7 @@ struct Probe {
             static_cast<GLint>(destination.origin.y),
             static_cast<GLint>(destination.origin.x + destination.extent.width),
             static_cast<GLint>(destination.origin.y + destination.extent.height),
-            GL_COLOR_BUFFER_BIT, filter);
+            mask, filter);
         glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
         glDeleteFramebuffers(static_cast<GLsizei>(framebuffers.size()),
