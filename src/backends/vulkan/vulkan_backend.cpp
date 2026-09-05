@@ -21,9 +21,21 @@ namespace truffle::rhi {
 namespace detail {
 
 std::atomic<bool> gVulkanDeviceLossForTesting{false};
+std::atomic<VulkanAcquireFault> gVulkanAcquireFaultForTesting{
+    VulkanAcquireFault::none};
+std::atomic<VulkanPresentFault> gVulkanPresentFaultForTesting{
+    VulkanPresentFault::none};
 
 void set_vulkan_device_loss_for_testing(bool enabled) noexcept {
     gVulkanDeviceLossForTesting.store(enabled);
+}
+
+void set_vulkan_acquire_fault_for_testing(VulkanAcquireFault fault) noexcept {
+    gVulkanAcquireFaultForTesting.store(fault);
+}
+
+void set_vulkan_present_fault_for_testing(VulkanPresentFault fault) noexcept {
+    gVulkanPresentFaultForTesting.store(fault);
 }
 
 } // namespace detail
@@ -4673,6 +4685,58 @@ void prepare_vulkan_binding_images(VulkanContext& context,
     return vulkan_failure(code, std::move(message), result);
 }
 
+[[nodiscard]] Status vulkan_acquire_fault_status(
+    detail::VulkanAcquireFault fault) {
+    switch (fault) {
+    case detail::VulkanAcquireFault::timeout:
+        return Status::failure(StatusCode::timeout,
+                               "injected Vulkan acquisition timeout");
+    case detail::VulkanAcquireFault::out_of_date:
+        return Status::failure(StatusCode::out_of_date,
+                               "injected Vulkan out-of-date swapchain");
+    case detail::VulkanAcquireFault::surface_lost:
+        return Status::failure(StatusCode::surface_lost,
+                               "injected Vulkan surface loss");
+    case detail::VulkanAcquireFault::device_lost:
+        return Status::failure(StatusCode::device_lost,
+                               "injected Vulkan device loss");
+    case detail::VulkanAcquireFault::out_of_memory:
+        return Status::failure(StatusCode::out_of_memory,
+                               "injected Vulkan acquisition allocation failure");
+    case detail::VulkanAcquireFault::none:
+    case detail::VulkanAcquireFault::suboptimal:
+        return Status::success();
+    }
+    return Status::success();
+}
+
+[[nodiscard]] Status vulkan_present_fault_status(
+    detail::VulkanPresentFault fault) {
+    switch (fault) {
+    case detail::VulkanPresentFault::timeout:
+        return Status::failure(StatusCode::timeout,
+                               "injected Vulkan presentation timeout");
+    case detail::VulkanPresentFault::out_of_date:
+        return Status::failure(StatusCode::out_of_date,
+                               "injected Vulkan out-of-date presentation");
+    case detail::VulkanPresentFault::surface_lost:
+        return Status::failure(StatusCode::surface_lost,
+                               "injected Vulkan presentation surface loss");
+    case detail::VulkanPresentFault::device_lost:
+        return Status::failure(StatusCode::device_lost,
+                               "injected Vulkan presentation device loss");
+    case detail::VulkanPresentFault::out_of_memory:
+        return Status::failure(StatusCode::out_of_memory,
+                               "injected Vulkan presentation allocation failure");
+    case detail::VulkanPresentFault::suboptimal:
+        return Status::failure(StatusCode::suboptimal,
+                               "injected Vulkan suboptimal presentation");
+    case detail::VulkanPresentFault::none:
+        return Status::success();
+    }
+    return Status::success();
+}
+
 [[nodiscard]] VkPresentModeKHR vulkan_present_mode(PresentMode mode) noexcept {
     switch (mode) {
     case PresentMode::fifo:
@@ -4926,6 +4990,11 @@ void prepare_vulkan_binding_images(VulkanContext& context,
         return Status::failure(StatusCode::surface_lost,
                                "the Vulkan swapchain is unavailable");
     }
+    const auto fault = detail::gVulkanAcquireFaultForTesting.load();
+    if (fault != detail::VulkanAcquireFault::none &&
+        fault != detail::VulkanAcquireFault::suboptimal) {
+        return vulkan_acquire_fault_status(fault);
+    }
     auto& context = *swapchain->context;
     std::scoped_lock lock{context.mutex, swapchain->mutex};
     if (swapchain->acquired) {
@@ -4977,11 +5046,13 @@ void prepare_vulkan_binding_images(VulkanContext& context,
     acquired.texture = std::static_pointer_cast<void>(std::move(texture));
     acquired.imageIndex = imageIndex;
     acquired.extent = {swapchain->extent.width, swapchain->extent.height};
-    acquired.status = acquireResult == VK_SUBOPTIMAL_KHR
-                          ? vulkan_wsi_failure(
-                                "the Vulkan swapchain is suboptimal",
-                                acquireResult)
-                          : Status::success();
+    if (acquireResult == VK_SUBOPTIMAL_KHR) {
+        acquired.status = vulkan_wsi_failure(
+            "the Vulkan swapchain is suboptimal", acquireResult);
+    } else if (fault == detail::VulkanAcquireFault::suboptimal) {
+        acquired.status = Status::failure(
+            StatusCode::suboptimal, "injected Vulkan suboptimal acquisition");
+    }
     return acquired;
 }
 
@@ -5022,6 +5093,15 @@ void prepare_vulkan_binding_images(VulkanContext& context,
     if (!swapchain->acquired || imageIndex != swapchain->acquiredImage) {
         return Status::failure(StatusCode::invalid_state,
                                "the Vulkan presentation image is not acquired");
+    }
+    const auto fault = detail::gVulkanPresentFaultForTesting.load();
+    if (fault != detail::VulkanPresentFault::none) {
+        const auto status = vulkan_present_fault_status(fault);
+        if (status.code == StatusCode::suboptimal ||
+            status.code == StatusCode::out_of_date) {
+            swapchain->acquired = false;
+        }
+        return status;
     }
     if (!waits.empty() && !context.timelineSemaphores) {
         return Status::failure(

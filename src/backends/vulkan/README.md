@@ -45,10 +45,14 @@ queries. Validation proves cross-queue timeline ordering, multi-list execution,
 timeout retry, exact copied output, explicit transitions, timestamp ordering,
 timestamp-period calibration, bounded nonzero occlusion, and deterministic
 device-loss propagation plus fresh-device recovery. WSI and presentation
-remain unsupported. RHI 1
-exposes no buffer-device-address
-contract. External sharing remains unadvertised until platform handle types and
-ownership are defined.
+use host-owned XCB connection/window handles on Linux. The backend selects
+surface capabilities, exact BGRA format, FIFO mode, image count, extent, and
+usage; acquires with a native fence; bridges RHI timeline waits to a WSI binary
+semaphore; and recreates the native swapchain after host resize. Validation
+under Xvfb proves exact padded BGRA8 readback before present and repeats the
+proof after resize. Wayland and other platform WSI paths remain unsupported.
+RHI 1 exposes no buffer-device-address contract. External sharing remains
+unadvertised until platform handle types and ownership are defined.
 Other platforms remain `source_only`, including Apple until a pinned MoltenVK
 group and execution lane exist. Shared logical validation belongs to Null and
 is never used to simulate Vulkan behavior.

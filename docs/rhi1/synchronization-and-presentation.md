@@ -54,6 +54,18 @@ nanoseconds and is positive whenever `timestamp_queries` is advertised.
   results are never exposed as completed data. Pipeline statistics remain
   unsupported. The adapter publishes Vulkan's native `timestampPeriod` for
   calibration.
+- Linux `xcb` surfaces borrow the host's `xcb_connection_t` and window ID; the
+  host continues to own window creation, events, resizing, and destruction.
+  The backend enables surface and XCB instance extensions plus the swapchain
+  device extension only when available, verifies graphics-family presentation,
+  and requires renderable, transfer-source swapchain images for the native
+  readback contract.
+- Swapchain acquisition waits on a native fence before returning the completed
+  RHI acquire timeline point. Presentation submits RHI timeline waits and
+  signals a binary semaphore required by `vkQueuePresentKHR`. FIFO is the
+  guaranteed tested mode; unavailable requested modes and non-XCB surface kinds
+  return `unsupported`. Resize waits for idle work and replaces the native
+  swapchain using the previous swapchain handle.
 
 ## Direct3D 12 mapping
 
@@ -134,3 +146,13 @@ exact BGRA8 clear/readback before native presentation, semaphore-connected
 acquire/render/present, client-size drift, `ResizeBuffers` recovery, destroyed
 window detection, and typed status/device recovery. An occluded CI desktop is
 reported as usable `suboptimal` presentation rather than false success.
+
+The validation-enabled Linux suite owns only its tiny XCB test window and runs
+under Xvfb. It proves native acquire, a BGRA8 clear, exact padded-row readback,
+timeline-to-binary present synchronization, FIFO presentation, host-window
+resize, and native swapchain recreation. It then repeats the same exact output
+and presentation proof at the resized extent. Wayland and non-Linux Vulkan WSI
+remain separate platform work. Private, non-installed fault hooks cover
+`timeout`, `suboptimal`, `out_of_date`, `surface_lost`, `out_of_memory`, and
+`device_lost` propagation at acquisition/presentation boundaries without
+standing in for the native success, readback, resize, or presentation proof.

@@ -2060,6 +2060,80 @@ void render_readback_and_present(VulkanPresentationContext& context,
     assert(presented.ok() || presented.code == rhi::StatusCode::suboptimal);
 }
 
+void verify_vulkan_presentation_statuses(VulkanPresentationContext& context,
+                                         truffle::rhi::Swapchain& swapchain) {
+    namespace rhi = truffle::rhi;
+    using rhi::detail::VulkanAcquireFault;
+    using rhi::detail::VulkanPresentFault;
+
+    for (const auto [fault, code] : std::array{
+             std::pair{VulkanAcquireFault::timeout, rhi::StatusCode::timeout},
+             std::pair{VulkanAcquireFault::out_of_date,
+                       rhi::StatusCode::out_of_date},
+             std::pair{VulkanAcquireFault::surface_lost,
+                       rhi::StatusCode::surface_lost},
+             std::pair{VulkanAcquireFault::out_of_memory,
+                       rhi::StatusCode::out_of_memory}}) {
+        rhi::detail::set_vulkan_acquire_fault_for_testing(fault);
+        assert(swapchain.acquire_next_image().status.code == code);
+    }
+    rhi::detail::set_vulkan_acquire_fault_for_testing(
+        VulkanAcquireFault::suboptimal);
+    auto suboptimalAcquire = swapchain.acquire_next_image();
+    assert(suboptimalAcquire.ok());
+    assert(suboptimalAcquire.status.code == rhi::StatusCode::suboptimal);
+    rhi::detail::set_vulkan_acquire_fault_for_testing(
+        VulkanAcquireFault::none);
+    assert(context.queue
+               .present(swapchain, suboptimalAcquire.imageIndex)
+               .ok());
+
+    for (const auto [fault, code] : std::array{
+             std::pair{VulkanPresentFault::timeout, rhi::StatusCode::timeout},
+             std::pair{VulkanPresentFault::surface_lost,
+                       rhi::StatusCode::surface_lost},
+             std::pair{VulkanPresentFault::out_of_memory,
+                       rhi::StatusCode::out_of_memory}}) {
+        auto acquired = swapchain.acquire_next_image();
+        assert(acquired.ok());
+        rhi::detail::set_vulkan_present_fault_for_testing(fault);
+        assert(context.queue.present(swapchain, acquired.imageIndex).code ==
+               code);
+        rhi::detail::set_vulkan_present_fault_for_testing(
+            VulkanPresentFault::none);
+        assert(context.queue.present(swapchain, acquired.imageIndex).ok());
+    }
+
+    for (const auto [fault, code] : std::array{
+             std::pair{VulkanPresentFault::out_of_date,
+                       rhi::StatusCode::out_of_date},
+             std::pair{VulkanPresentFault::suboptimal,
+                       rhi::StatusCode::suboptimal}}) {
+        auto acquired = swapchain.acquire_next_image();
+        assert(acquired.ok());
+        rhi::detail::set_vulkan_present_fault_for_testing(fault);
+        assert(context.queue.present(swapchain, acquired.imageIndex).code ==
+               code);
+        rhi::detail::set_vulkan_present_fault_for_testing(
+            VulkanPresentFault::none);
+    }
+
+    auto lostImage = swapchain.acquire_next_image();
+    assert(lostImage.ok());
+    rhi::detail::set_vulkan_present_fault_for_testing(
+        VulkanPresentFault::device_lost);
+    assert(context.queue.present(swapchain, lostImage.imageIndex).code ==
+           rhi::StatusCode::device_lost);
+    assert(context.device.lost());
+    rhi::detail::set_vulkan_present_fault_for_testing(
+        VulkanPresentFault::none);
+    auto recovered = context.adapter.request_device({
+        .requiredFeatures = {rhi::Feature::presentation},
+    });
+    assert(recovered.ok());
+    assert(!recovered.value().lost());
+}
+
 void verify_vulkan_presentation() {
     namespace rhi = truffle::rhi;
     auto context = create_vulkan_presentation_context();
@@ -2093,6 +2167,7 @@ void verify_vulkan_presentation() {
     window.resize(80, 60);
     assert(swapchain.value().resize({80, 60}).ok());
     render_readback_and_present(context, swapchain.value(), {80, 60});
+    verify_vulkan_presentation_statuses(context, swapchain.value());
 }
 #endif
 

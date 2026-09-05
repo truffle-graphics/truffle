@@ -40,6 +40,8 @@ Current evidence is narrower than the old roadmap claimed:
   path, native buffers, host-visible linear images, capability-checked texture
   shapes/views,
   padded-row and subresource transfers, clear, resolve, and blit commands;
+  host-owned XCB surface/swapchain presentation with exact readback and resize
+  recreation;
   Windows D3D12 owns native upload/readback/default-heap buffers,
   device-local textures/views, buffer/texture transfers, ShaderPackage-backed
   root signatures, graphics/compute pipelines, explicit barriers, native
@@ -47,7 +49,7 @@ Current evidence is narrower than the old roadmap claimed:
   presentation on WARP; and Linux
   OpenGL/OpenGL ES own native EGL buffers and transfers after surfaceless
   clear/readback initialization. These adapters report only the capabilities
-  they implement. Remaining backend/platform WSI, presentation, and
+  they implement. Remaining backend/platform WSI and presentation paths, and
   unadvertised resource gaps stay unsupported rather than simulated.
 - ShaderPackage 1.0 is a deterministic compiler-free runtime contract with a
   canonical manifest/blob container, cross-target reflection validation,

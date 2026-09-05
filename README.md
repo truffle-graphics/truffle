@@ -60,7 +60,9 @@ for each backend/platform pair:
   ordering produces an exact storage-driven fragment result. Discovered
   graphics/compute/transfer queues execute timeline-semaphore-connected work;
   explicit buffer, texture, and aliasing barriers plus native timestamp and
-  occlusion query resolves are validation-tested.
+  occlusion query resolves are validation-tested. Linux additionally consumes
+  host-owned XCB handles for native acquire/render/present, exact swapchain
+  readback, and resize recreation under a validation-enabled Xvfb lane.
 - `truffle_backend_direct3d` initializes the Windows SDK D3D12 WARP device,
   owns upload/readback and default-heap buffers plus device-local textures and
   descriptor views, consumes packaged native HLSL or offline DXIL, maps logical
