@@ -37,8 +37,14 @@ Compute-to-render ordering inserts explicit shader visibility and produces an
 exact storage-driven fragment result. Arena-reset lifetime behavior and
 reflection/layout plus optional-feature failures are covered without native
 simulation. Non-identity binding remaps, bindless/update-after-bind,
-indirect-count, pipeline caches, synchronization primitives, WSI, and
-presentation remain unsupported. RHI 1 exposes no buffer-device-address
+indirect-count and pipeline caches remain unsupported. The backend discovers
+graphics, compute, and transfer queue families, uses concurrent resource
+sharing across distinct families, maps explicit buffer/texture/aliasing
+barriers, owns timeline semaphores, and resolves native timestamp and occlusion
+queries. Validation proves cross-queue timeline ordering, multi-list execution,
+timeout retry, exact copied output, explicit transitions, timestamp ordering,
+and bounded nonzero occlusion. WSI and presentation remain unsupported. RHI 1
+exposes no buffer-device-address
 contract. External sharing remains unadvertised until platform handle types and
 ownership are defined.
 Other platforms remain `source_only`, including Apple until a pinned MoltenVK

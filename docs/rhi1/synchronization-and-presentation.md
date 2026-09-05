@@ -31,6 +31,27 @@ with `copy_destination` usage. Query type/index, nesting, resolution range,
 buffer usage, alignment, and availability are validated. Pipeline-statistics
 queries remain optional and fail when a backend does not implement them.
 
+## Vulkan mapping
+
+- Queue discovery prefers dedicated compute and transfer families and falls
+  back to a compatible family only when the adapter exposes no dedicated one.
+  Only discovered queue kinds are advertised. Buffers and images use concurrent
+  sharing when more than one family is selected, while RHI queue ownership
+  remains explicitly validated at the portable boundary.
+- Portable buffer ranges, texture subresources, layouts, stages, access masks,
+  and aliasing boundaries map to `vkCmdPipelineBarrier`. Automatic attachment,
+  descriptor, transfer, and host transitions use the same tracked native image
+  layouts.
+- Timeline semaphores use Vulkan 1.2 or
+  `VK_KHR_timeline_semaphore`. Submission carries the selected queue kind to the
+  backend, submits native wait/signal values and stage masks, and waits for that
+  queue to complete before publishing the foundation fence value.
+- Timestamp support is advertised only when the graphics family reports valid
+  timestamp bits. Timestamp and occlusion pools are reset before use and
+  resolve packed 64-bit values with `VK_QUERY_RESULT_WAIT_BIT`, so unavailable
+  results are never exposed as completed data. Pipeline statistics remain
+  unsupported.
+
 ## Direct3D 12 mapping
 
 - Timeline semaphores own `ID3D12Fence` values. Submissions encode queue waits

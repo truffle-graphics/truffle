@@ -35,7 +35,10 @@ barrier, timeline-semaphore, fence, and query evidence.
   Build `33944445340` reached GCC and MinGW compilation and identified two
   warnings-as-errors: an enum/flag conditional needed an explicit Vulkan flag
   cast, and the Vulkan features wrapper needed an explicit zero initializer.
-  Both portability fixes are applied; replacement CI evidence is pending.
+  Both portability fixes are applied. Replacement Build `33944555436` passes
+  package, macOS, Ubuntu, and Windows; the Ubuntu validation lane proves the
+  native cross-queue, barrier, timeline, fence, and query paths. The separate
+  companion-routing failure remains the non-gating defect tracked by #131.
 - `feat/rhi1-vulkan-graphics-closeout` completes #53's remaining acceptance
   surface. A generated fragment package reads the storage buffer written by a
   preceding compute dispatch in the same command list and produces an exact
