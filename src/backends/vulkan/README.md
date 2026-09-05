@@ -33,9 +33,14 @@ direct/indexed/instanced/indirect triangle output with exact readback. Native
 depth/stencil state and attachments, multiple render targets, and multisample
 resolve are mapped through compatible transient render passes; Linux validation
 proves exact depth pass/fail, red/green MRT, and four-sample resolved output.
-Indirect-count, synchronization primitives, WSI, and presentation remain
-unsupported. RHI 1 exposes no buffer-device-address contract. External sharing
-remains unadvertised until platform handle types and ownership are defined.
+Compute-to-render ordering inserts explicit shader visibility and produces an
+exact storage-driven fragment result. Arena-reset lifetime behavior and
+reflection/layout plus optional-feature failures are covered without native
+simulation. Non-identity binding remaps, bindless/update-after-bind,
+indirect-count, pipeline caches, synchronization primitives, WSI, and
+presentation remain unsupported. RHI 1 exposes no buffer-device-address
+contract. External sharing remains unadvertised until platform handle types and
+ownership are defined.
 Other platforms remain `source_only`, including Apple until a pinned MoltenVK
 group and execution lane exist. Shared logical validation belongs to Null and
 is never used to simulate Vulkan behavior.

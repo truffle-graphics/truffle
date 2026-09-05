@@ -27,8 +27,11 @@ binding/pipeline mismatch, optional-feature, and descriptor-lifetime evidence.
   bindless execution remain untested because they remain unadvertised, as #53
   requires. Ownership stays in `src/backends/vulkan`, dependencies remain RHI
   contracts plus pinned Vulkan/glslang inputs, and there is no public API
-  change. The local pinned-glslang build and all 37 tests pass; Ubuntu Vulkan
-  validation is required before updating the final evidence and closing #53.
+  change. The local pinned-glslang build and all 37 tests pass. Replacement
+  Build `33943018863` passes package, macOS, Ubuntu, and Windows; Ubuntu Vulkan
+  validation proves exact compute-to-render output, arena lifetime behavior,
+  and every selected negative gate. This satisfies #53's acceptance and the PR
+  closes it on merge.
   Initial Build `33942881518` reached the native lifetime case and confirmed
   the retired group is rejected by the public encoder's stale-object guard as
   `invalid_argument`, before the lower-level arena epoch check; the assertion
