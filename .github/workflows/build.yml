@@ -1,11 +1,7 @@
 name: Build
 
 on:
-  pull_request:
-  push:
-    branches:
-      - develop
-      - master
+  workflow_dispatch:
 
 jobs:
   architecture:
@@ -17,9 +13,6 @@ jobs:
 
       - name: Check target and public-header boundaries
         run: python3 tools/check_architecture.py --report
-
-      - name: Check companion routing and credential diagnostics
-        run: python3 -m unittest discover -s .github/scripts -p 'test_companion_router.py'
 
   build:
     name: ${{ matrix.os }}

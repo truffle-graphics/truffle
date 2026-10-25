@@ -9,8 +9,9 @@ rather than growing a historical transcript here.
 
 ## Current Focus
 
-Close #62 through shared, capability-accurate OpenGL and OpenGL ES native GLSL
-shaders, binding layouts, graphics/compute pipelines, and exact output evidence.
+Adopt the local-first workflow decision in #131 without automatic hosted builds
+or cloud-agent companions. #62 is complete and integrated through PR #156;
+further engine work follows the next dependency-ready focused issue under #33.
 
 ## Delivery Workflow Update
 
@@ -24,12 +25,18 @@ shaders, binding layouts, graphics/compute pipelines, and exact output evidence.
 - Protected branches remain pull-request-only. The repository-local agent and
   contributor guidance record the workflow; no RHI contract or backend
   capability changed in this update.
+- Git Flow retains `master`, `develop`, feature/fix, release, and hotfix
+  branches. Normal merge commits preserve history; squash/rebase requires an
+  explicit, justified exception.
+- Focused local checks are the default. Build and Release are explicit manual
+  opt-ins, not PR/push/tag gates. Automatic companions and their credentials
+  are not part of the contribution workflow.
 
 ## Architecture Guardrail Update
 
-- `tools/check_architecture.py` now checks production CMake target dependencies
-  and public-header imports against Truffle's documented layer direction. CI
-  runs it on pull requests before platform build jobs.
+- `tools/check_architecture.py` checks production CMake target dependencies
+  and public-header imports against Truffle's documented layer direction.
+  Run it locally for relevant changes; the optional manual Build includes it.
 - The guard reports files at or above the 1,000-line review threshold without
   failing or calling them God files. Every changed production file still gets a
   cohesion review based on owner, lifecycle, and reason to change; small,
@@ -40,6 +47,26 @@ shaders, binding layouts, graphics/compute pipelines, and exact output evidence.
 
 ## Latest Handoff
 
+- #131 is implemented as an intentional replacement of cloud-companion repair:
+  the companion/setup workflows, router, and now-unused routing tests are
+  removed. Build and Release have only manual dispatch triggers; Release
+  explicitly rejects branch refs and non-`v*` tags before packaging.
+  Contributor, agent, distribution, and project-context guidance now describe
+  local-first validation, Git Flow release/hotfix propagation, and merge commits.
+  There is no architectural boundary or public-contract change.
+- All four repository-defined workflows were administratively disabled before
+  publishing the policy branch, covering legacy automatic triggers on `master`
+  without promoting engine changes there. The companion secret remains absent.
+  GitHub's built-in Copilot reviewer registration cannot be disabled through the
+  Actions workflow API; there is no repository automatic-review ruleset.
+  Signed commits, PR-only protection, admin enforcement, and no-force-push/
+  no-deletion protections remain; no required hosted checks were introduced.
+- Lightweight local verification confirms both workflows are manual-only and
+  preserves the native/platform/package job bodies. Release-ref checks accept a
+  `v1.2.3` tag and explicitly reject a normal branch, a `v1.2.3` branch, and a
+  non-release tag. The architecture guard passes for 16 production targets,
+  18 dependency declarations, and 76 public-header imports; `git diff --check`
+  passes. No C++ rebuild or hosted workflow was requested for this policy change.
 - #62's full GL-family checkpoint passes Build `40230852839` at `d8c885d`:
   Ubuntu native EGL, macOS, Windows, architecture and package jobs are green.
   Both profiles prove exact indexed/instanced, depth/stencil, MRT, dynamic-state
@@ -64,18 +91,9 @@ shaders, binding layouts, graphics/compute pipelines, and exact output evidence.
   only reviewed integrated/superseded branch refs plus one stale registration.
 - PR #139 merged at `6b663bf` after Build `40229333169` passed its architecture
   guard, all platform jobs and package isolation. PR #157 merged at `07b19da`
-  after all Build lanes and nine automation regressions passed. #131 keeps
-  companion dispatch
-  enabled while its owner replaces the rejected Actions credential. The router
-  now checks token identity and repository write access before dispatch, emits
-  distinct actionable 401/403 errors, and supports a no-task `--verify-auth`
-  check. A protected-branch manual workflow runs only that content-free check.
-  Nine offline tests cover classification, authorization failures, non-dispatch
-  and dry-run behavior; CI runs them alongside the architecture guard.
-  Live auth-only run `40230757739` fails HTTP 401 before any task is created;
-  secure secret replacement and actual dispatch evidence remain pending.
-  Ownership stays in repository automation using Python's standard
-  library; no architectural boundary or public RHI contract changes.
+  after all Build lanes and nine automation regressions passed. Its diagnostic
+  implementation remains recoverable in history; the later #131 decision
+  deliberately retires that integration instead of pursuing cloud dispatch.
 - `feat/rhi1-gl-pipelines` starts #62 with the native-source and direct-graphics
   checkpoint for both Linux EGL profiles. Native GLSL/GLSL ES ShaderPackage
   variants compile to owned shader objects with bounded source, `main` entry,
@@ -686,16 +704,16 @@ because CMake does not discover `clang-format` on this host's `PATH`;
 
 ## Next Resume Steps
 
-1. Run final documentation receipt CI, merge PR #152, close #57 with Build
-   `33945857429` as its native evidence, and move its Project item to Done.
-2. Continue #33 through its next dependency-ready focused Project sub-issue;
+1. Continue #33 through its next dependency-ready focused Project sub-issue;
    update issue and
    Project state whenever scope, evidence, or disposition changes.
-3. Keep WebGPU/WebGL2 and every unexecuted mobile/Apple/Vulkan platform at
+2. Keep WebGPU/WebGL2 and every unexecuted mobile/Apple/Vulkan platform at
    `source_only`; keep native slices at `native_smoke` until shared native
    contracts and presentation evidence exist.
-4. Resolve #131 and #132 independently of engine maturity claims; neither
-   follow-up blocks the already-green cross-platform Build workflow.
+3. Keep hosted validation/publication disabled unless explicitly requested.
+   Use focused local checks; do not resume cloud-companion credential setup.
+4. #132 remains a separate runtime-modernization follow-up for retained hosted
+   actions, not a reason to restore automatic CI or change engine maturity.
 
 ## Open Risks
 
@@ -722,7 +740,8 @@ because CMake does not discover `clang-format` on this host's `PATH`;
   deliberate context-ownership model.
 - MoltenVK, Emdawnwebgpu, VMA, D3D12MA, and GL loader/state-tracker groups are
   absent until the code that consumes them is implemented and validated.
-- The companion-task GitHub credential still fails before dispatch with `401
-  Bad credentials`; issue #131 tracks this external repository automation, not
-  engine validation. Issue #132 separately tracks migration away from
-  deprecated Node.js 20 action runtimes.
+- Hosted workflows remain disabled while `master` retains legacy definitions.
+  Explicit manual runs must use refs containing the manual-only policy; do not
+  re-enable retired companion/setup workflows or restore their secret.
+  Issue #132 separately tracks migration away from deprecated Node.js 20 action
+  runtimes.

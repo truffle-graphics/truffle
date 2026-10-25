@@ -93,6 +93,11 @@ consumer selects concrete loading, upload, and backend behavior.
 
 ## Constraints And Durable Decisions
 
+- Development is local-first under the decision in #131. Git Flow retains
+  `master`, `develop`, feature/fix, release, and hotfix branches with normal
+  merge commits. Hosted builds/releases are explicit manual opt-ins, not
+  per-PR/push gates; automatic cloud companions are retired. See
+  `CONTRIBUTING.md` for validation and delivery policy.
 - RHI 1 is an immediate breaking replacement with no compatibility shim or
   parallel public API.
 - Required and optional features are negotiated explicitly; unsupported work

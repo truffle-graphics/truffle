@@ -1,9 +1,7 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
 
 jobs:
   release:
@@ -14,6 +12,13 @@ jobs:
       contents: write
 
     steps:
+      - name: Require a release tag
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" != "tag" || "${GITHUB_REF_NAME}" != v* ]]; then
+            echo "::error::Dispatch Release against an existing signed v* tag, not a branch."
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
 
       - name: Configure package build

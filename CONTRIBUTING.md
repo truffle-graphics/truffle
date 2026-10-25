@@ -1,26 +1,80 @@
 # Contributing
 
-Truffle follows the local doctrine snapshot for branch workflow, commit
-messages, and signed repository history.
+Truffle uses Git Flow with local-first validation, merge-commit history, and
+signed commits. The local doctrine snapshot supplies defaults where the
+repository-specific policy below does not override them.
 
 ## Branching Strategy
 
 - `master` is the stable branch for established Truffle baselines.
 - `develop` is the active integration branch.
-- Use `feat/<topic>` for new work.
-- Use `fix/<topic>` for corrections.
+- Create `feat/<topic>` for new work and `fix/<topic>` for corrections from
+  `develop`.
 - Open normal feature and fix pull requests into `develop`.
-- Merge `develop` into `master` only when the integrated code is stable enough
-  to become the next established baseline.
-- Do not use direct pushes for normal work on protected branches.
+- Cut `release/<version>` from `develop` when preparing a stable release.
+  Stabilize there, merge its PR into `master`, then merge the same release
+  branch into `develop` before deleting it.
+- Cut emergency `hotfix/<topic>` branches from `master`. Merge into `master`
+  first, then back into `develop`; include the fix in any active release branch.
+- Create signed `v*` release tags on the resulting stable `master` commit.
+- Use normal merge commits to preserve feature and release history. Squash or
+  rebase merges are exceptional choices requiring explicit justification and
+  maintainer agreement, not the default. Do not rewrite old squash history.
+- Do not push directly to protected branches, force-push them, or bypass their
+  PR and signed-commit protections.
 
 ## Pull Requests
 
 - Keep changes focused and prefer small reviewable pull requests.
-- Target `develop` unless the pull request is a stable promotion into `master`.
+- Target `develop` except for release/hotfix promotion into `master`.
 - Update docs when public contracts, architecture, or workflow behavior changes.
-- Run the relevant build and test checks before requesting merge.
+- Record the relevant focused local checks before requesting merge. Do not
+  require a full build or hosted matrix for unrelated or documentation changes.
 - Merge only signed commits into protected branches.
+- Use merge commits, not routine squash/rebase merges.
+
+## Local-First Validation And Optional Hosted Work
+
+Ordinary development runs locally: inspect the change, run the smallest relevant
+checks, then commit and push. Use affected build targets and filtered tests for
+behavior changes; do not rerun a complete build/test/package matrix merely
+because a commit, push, or PR is being made. Documentation-only work needs no
+C++ build. Backend support claims still require objective native evidence;
+local-first is not permission to label untested platforms supported.
+
+There are no automatic cloud companions or AI review requests. Do not install
+cloud-agent credentials or setup workflows as part of normal contribution.
+Issue [#131](https://github.com/truffle-graphics/truffle/issues/131) records the
+deliberate retirement of that integration, not a pending credential repair.
+
+Hosted GitHub Actions builds are separate from AI-agent usage, but are still
+optional resource-consuming work. Build and Release use only
+`workflow_dispatch`; PRs, integration pushes, and tag pushes do not request
+them. Existing repository-defined workflows are administratively disabled to
+also stop legacy triggers still present on `master`. No hosted status check is
+required by branch protection.
+
+When a maintainer explicitly requests cross-platform/native evidence, enable
+only Build and dispatch it against the desired ref, normally `develop`:
+
+```bash
+gh workflow enable build.yml
+gh workflow run build.yml --ref develop
+```
+
+Disable it again after the requested run completes:
+
+```bash
+gh workflow disable build.yml
+```
+
+Do not enable the retired companion/setup workflows. Do not dispatch against
+old refs containing automatic triggers. For deliberately hosted release
+publication, see [`docs/distribution.md`](docs/distribution.md).
+
+This repository-local policy overrides the Doctrine snapshot's generic
+required-CI and optional linear-history guidance. Signed commits, PR-only
+protected branches, and protection against force pushes/deletion remain.
 
 ## Durable Planning And Traceability
 
@@ -78,9 +132,9 @@ the approved non-protected implementation branch.
 
 ## Architecture And Cohesion Review
 
-Truffle protects its layered CMake target graph in CI. The guard rejects an
-undeclared production-target dependency or a reverse-layer public-header import;
-run it locally with:
+Truffle checks its layered CMake target graph with a lightweight local guard,
+also available in the optional manual Build workflow. It rejects an undeclared
+production-target dependency or a reverse-layer public-header import:
 
 ```bash
 python3 tools/check_architecture.py --report
@@ -99,36 +153,14 @@ mixes unrelated policy, orchestration, and implementation that should have
 separate owners. Resolve a candidate by recording why its responsibilities
 belong together or by creating a focused refactor issue.
 
-## Companion Credential Recovery
-
-Companion dispatch stays enabled. Its `COPILOT_AGENT_TOKEN` Actions secret must
-be a valid user token whose owner can write to the repository and use the
-Copilot coding-agent task service. HTTP 401 means GitHub rejected the token;
-HTTP 403 indicates access, permissions or entitlement must be checked. Do not
-paste credentials into issues or workflow logs.
-
-After replacing the secret in GitHub, manually run **Companion Automation** on
-`develop` or `master` to verify identity and repository write access without
-creating tasks. Other manual refs are rejected; pull-request routing continues
-to execute only trusted base-branch code. A successful credential check does
-not prove task-service entitlement: confirm a real routed task before closing
-#131. Offline diagnostic tests run with:
-
-```bash
-python3 -m unittest discover -s .github/scripts -p 'test_companion_router.py'
-```
-
-The router also supports `--verify-auth --repo owner/repo` using an already
-securely supplied `COPILOT_AGENT_TOKEN` environment variable. It makes only
-identity/repository GET requests and never submits prompts or creates tasks.
-
 ## Stop And Resume
 
 Before switching machines or stopping active work:
 
 - Update `docs/handoff.md` with the current status, verification, and next steps.
 - Promote durable decisions from the handoff into project docs or ADRs.
-- Run the relevant build and test checks.
+- Record focused local checks and any genuine evidence gaps; do not repeat a
+  full build solely to stop, resume, or push.
 - For commit-and-push delivery, commit and push the branch together with the
   handoff update, following the authorization and retry rules above.
 
@@ -177,8 +209,10 @@ Examples:
 ## Code Quality
 
 - Follow `.editorconfig`.
-- Use `cmake --preset dev`, `cmake --build --preset dev`, and
-  `ctest --preset dev` for the default local foundation check path.
+- The local foundation path uses `cmake --preset dev`,
+  `cmake --build --preset dev`, and `ctest --preset dev`. Configure only when
+  needed and prefer `--target <affected-target>` and `-R <test-pattern>` over
+  rebuilding or retesting unrelated areas.
 - Run `cmake --build --preset dev --target truffle_format_check` when
   `clang-format` is available; use `truffle_format` to apply the repository
   formatting baseline.
