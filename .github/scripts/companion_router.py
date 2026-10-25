@@ -202,10 +202,33 @@ def github_request(token: str, method: str, path: str, payload: dict | None = No
             body = response.read().decode("utf-8")
     except urllib.error.HTTPError as error:
         details = error.read().decode("utf-8", errors="replace")
+        if error.code == 401:
+            raise RuntimeError(
+                "GitHub rejected COPILOT_AGENT_TOKEN (HTTP 401). Replace the "
+                "repository Actions secret with a valid user token, then use "
+                "--verify-auth to check credentials without creating tasks."
+            ) from error
+        if error.code == 403:
+            raise RuntimeError(
+                f"GitHub denied {method} {path} (HTTP 403). Verify the token "
+                "owner's repository access, token permissions and Copilot "
+                f"coding-agent entitlement. API response: {details}"
+            ) from error
         raise RuntimeError(f"GitHub API {method} {path} failed: {error.code} {details}") from error
     if not body:
         return {}
     return json.loads(body)
+
+
+def verify_credentials(token: str, repo: str) -> None:
+    """Check identity and repository access without starting any agent tasks."""
+    github_request(token, "GET", "/user")
+    repository = github_request(token, "GET", f"/repos/{repo}")
+    if not repository.get("permissions", {}).get("push", False):
+        raise RuntimeError(
+            "COPILOT_AGENT_TOKEN is authenticated but lacks repository write "
+            "access. Use a token owned by an authorized Truffle contributor."
+        )
 
 
 def create_agent_task(
@@ -266,6 +289,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--source-url", default="", help="workflow, PR, or commit URL")
     parser.add_argument("--dry-run", action="store_true", help="print planned tasks without API calls")
     parser.add_argument("--self-test", action="store_true", help="run router classification checks")
+    parser.add_argument(
+        "--verify-auth", action="store_true",
+        help="verify token identity and repository write access; never create tasks",
+    )
     return parser.parse_args()
 
 
@@ -274,6 +301,16 @@ def main() -> int:
     if args.self_test:
         self_test()
         print("companion_router self-test passed")
+        return 0
+
+    if args.verify_auth:
+        if not args.repo:
+            raise SystemExit("missing required argument: --repo")
+        token = os.environ.get("COPILOT_AGENT_TOKEN", "").strip()
+        if not token:
+            raise RuntimeError("COPILOT_AGENT_TOKEN is not configured.")
+        verify_credentials(token, args.repo)
+        print("Token identity and repository write access verified; no tasks created.")
         return 0
 
     missing = [
@@ -312,6 +349,7 @@ def main() -> int:
         )
         return 0
 
+    verify_credentials(token, args.repo)
     for lane_key in lanes:
         task_url = create_agent_task(
             token=token,
@@ -328,4 +366,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except RuntimeError as error:
+        print(f"::error::{error}", file=sys.stderr)
+        sys.exit(1)
