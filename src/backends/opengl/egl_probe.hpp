@@ -252,18 +252,18 @@ struct TextureResource {
 
 struct SamplerResource {
     ~SamplerResource() {
-        if (!context || name == 0) {
+        if (!context || (names[0] == 0 && names[1] == 0)) {
             return;
         }
         std::lock_guard lock{context->mutex};
         if (make_current(*context).ok()) {
-            glDeleteSamplers(1, &name);
+            glDeleteSamplers(static_cast<GLsizei>(names.size()), names.data());
         }
     }
 
     std::shared_ptr<Context> context;
-    GLuint name = 0;
-    SamplerDesc desc;
+    // A single RHI sampler may serve ordinary and comparison uniforms together.
+    std::array<GLuint, 2> names{};
 };
 
 struct ShaderResource {
@@ -569,11 +569,7 @@ struct PipelineResource {
             const bool shadow = binding.uniformType == GL_SAMPLER_2D_SHADOW ||
                                 binding.uniformType == GL_SAMPLER_CUBE_SHADOW ||
                                 binding.uniformType == GL_SAMPLER_2D_ARRAY_SHADOW;
-            glSamplerParameteri(sampler->name, GL_TEXTURE_COMPARE_MODE,
-                                 shadow ? GL_COMPARE_REF_TO_TEXTURE : GL_NONE);
-            glSamplerParameteri(sampler->name, GL_TEXTURE_COMPARE_FUNC,
-                                 static_cast<GLint>(graphics::compare(sampler->desc.compare)));
-            glBindSampler(binding.slot, sampler->name);
+            glBindSampler(binding.slot, sampler->names[shadow ? 1 : 0]);
         }
     }
     return Status::success();
@@ -743,34 +739,39 @@ struct PipelineResource {
     }
     auto resource = std::make_shared<SamplerResource>();
     resource->context = context;
-    resource->desc = desc;
     std::lock_guard lock{context->mutex};
     if (auto status = make_current(*context); !status.ok()) {
         return status;
     }
-    glGenSamplers(1, &resource->name);
-    glSamplerParameteri(resource->name, GL_TEXTURE_MIN_FILTER,
-                        static_cast<GLint>(
-                            desc.minFilter == Filter::linear
-                                ? (desc.mipFilter == Filter::linear
-                                       ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR_MIPMAP_NEAREST)
-                                : (desc.mipFilter == Filter::linear
-                                       ? GL_NEAREST_MIPMAP_LINEAR : GL_NEAREST_MIPMAP_NEAREST)));
-    glSamplerParameteri(resource->name, GL_TEXTURE_MAG_FILTER,
-                        static_cast<GLint>(sampler_filter(desc.magFilter)));
-    glSamplerParameteri(resource->name, GL_TEXTURE_WRAP_S,
-                        static_cast<GLint>(sampler_address(desc.addressU)));
-    glSamplerParameteri(resource->name, GL_TEXTURE_WRAP_T,
-                        static_cast<GLint>(sampler_address(desc.addressV)));
-    glSamplerParameteri(resource->name, GL_TEXTURE_WRAP_R,
-                        static_cast<GLint>(sampler_address(desc.addressW)));
-    glSamplerParameterf(resource->name, GL_TEXTURE_MIN_LOD, desc.lodMin);
-    glSamplerParameterf(resource->name, GL_TEXTURE_MAX_LOD, desc.lodMax);
-    if (glGetError() != GL_NO_ERROR || resource->name == 0) {
-        if (resource->name != 0) {
-            glDeleteSamplers(1, &resource->name);
-            resource->name = 0;
-        }
+    glGenSamplers(static_cast<GLsizei>(resource->names.size()), resource->names.data());
+    for (std::size_t index = 0; index < resource->names.size(); ++index) {
+        const auto name = resource->names[index];
+        glSamplerParameteri(name, GL_TEXTURE_MIN_FILTER,
+                             static_cast<GLint>(
+                                 desc.minFilter == Filter::linear
+                                     ? (desc.mipFilter == Filter::linear
+                                            ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR_MIPMAP_NEAREST)
+                                     : (desc.mipFilter == Filter::linear
+                                            ? GL_NEAREST_MIPMAP_LINEAR : GL_NEAREST_MIPMAP_NEAREST)));
+        glSamplerParameteri(name, GL_TEXTURE_MAG_FILTER,
+                             static_cast<GLint>(sampler_filter(desc.magFilter)));
+        glSamplerParameteri(name, GL_TEXTURE_WRAP_S,
+                             static_cast<GLint>(sampler_address(desc.addressU)));
+        glSamplerParameteri(name, GL_TEXTURE_WRAP_T,
+                             static_cast<GLint>(sampler_address(desc.addressV)));
+        glSamplerParameteri(name, GL_TEXTURE_WRAP_R,
+                             static_cast<GLint>(sampler_address(desc.addressW)));
+        glSamplerParameterf(name, GL_TEXTURE_MIN_LOD, desc.lodMin);
+        glSamplerParameterf(name, GL_TEXTURE_MAX_LOD, desc.lodMax);
+        glSamplerParameteri(name, GL_TEXTURE_COMPARE_MODE,
+                             index == 1 ? GL_COMPARE_REF_TO_TEXTURE : GL_NONE);
+        glSamplerParameteri(name, GL_TEXTURE_COMPARE_FUNC,
+                             static_cast<GLint>(graphics::compare(desc.compare)));
+    }
+    if (glGetError() != GL_NO_ERROR ||
+        resource->names[0] == 0 || resource->names[1] == 0) {
+        glDeleteSamplers(static_cast<GLsizei>(resource->names.size()), resource->names.data());
+        resource->names = {};
         return Status::failure(StatusCode::backend_error,
                                "EGL/GL sampler allocation failed");
     }

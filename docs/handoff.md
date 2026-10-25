@@ -14,6 +14,14 @@ shaders, binding layouts, graphics/compute pipelines, and exact output evidence.
 
 ## Latest Handoff
 
+- Binding review adds rejection coverage for native scalar-type, buffer-size,
+  unreflected-resource and remap collisions, plus simultaneous ordinary/shadow
+  sampling through one immutable RHI sampler. Native samplers now own separate
+  comparison and non-comparison objects so binding one unit cannot mutate the
+  other's state. The public capability descriptions and GLSL conventions are
+  synchronized without changing maturity; #62 stays open until native CI proves
+  the full checkpoint. Local focused compilation and three contract/profile
+  tests pass; Linux Build `40230039929` is still installing system prerequisites.
 - The graphics phase of #62 passes Build `40229260348` on Ubuntu, macOS,
   Windows and packaging, including exact EGL output and zero KHR_debug errors.
   The next checkpoint adds named native-program reflection validation, logical

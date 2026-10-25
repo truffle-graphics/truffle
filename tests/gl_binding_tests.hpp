@@ -25,11 +25,12 @@ void main() { gl_Position = vec4(positions[gl_VertexID],0.0,1.0); }
 layout(std140) uniform Params { vec4 color; };
 layout(std140) uniform TruffleFragmentPushConstants { vec4 tint; };
 uniform sampler2D images[2];
+uniform highp sampler2DShadow depthImage;
 uniform float gain;
 layout(location=0) out vec4 outputColor;
 void main() {
     outputColor = mix(texture(images[0],vec2(0.5)),texture(images[1],vec2(0.5)),tint.x)
-                  * color * gain;
+                  * color * gain * texture(depthImage,vec3(0.5,0.5,0.25));
 }
 )";
     rhi::ShaderReflection reflection{
@@ -40,10 +41,14 @@ void main() {
             {.name = "images", .stage = rhi::ShaderStage::fragment,
              .type = rhi::ResourceBindingType::texture, .group = 2, .binding = 5,
              .arrayCount = 2},
+            {.name = "depthImage", .stage = rhi::ShaderStage::fragment,
+             .type = rhi::ResourceBindingType::texture, .group = 2, .binding = 6},
             {.name = "images[0]", .stage = rhi::ShaderStage::fragment,
              .type = rhi::ResourceBindingType::sampler, .group = 2, .binding = 8},
             {.name = "images[1]", .stage = rhi::ShaderStage::fragment,
-             .type = rhi::ResourceBindingType::sampler, .group = 2, .binding = 9}},
+             .type = rhi::ResourceBindingType::sampler, .group = 2, .binding = 9},
+            {.name = "depthImage", .stage = rhi::ShaderStage::fragment,
+             .type = rhi::ResourceBindingType::sampler, .group = 2, .binding = 10}},
         .pushConstants = {{.stage = rhi::ShaderStage::fragment, .size = 16}},
         .specializationConstants = {{.id = 7, .name = "gain",
                                      .type = rhi::ShaderValueType::float32,
@@ -58,10 +63,14 @@ void main() {
         {.target = target, .stage = rhi::ShaderStage::fragment,
          .group = 2, .binding = 8, .nativeBinding = 3},
         {.target = target, .stage = rhi::ShaderStage::fragment,
-         .group = 2, .binding = 9, .nativeBinding = 4}};
+         .group = 2, .binding = 9, .nativeBinding = 4},
+        {.target = target, .stage = rhi::ShaderStage::fragment,
+         .group = 2, .binding = 6, .nativeBinding = 5},
+        {.target = target, .stage = rhi::ShaderStage::fragment,
+         .group = 2, .binding = 10, .nativeBinding = 5}};
     auto fragment = gl_fixture_shader(device, desktop, rhi::ShaderStage::fragment,
                                        fragmentSource, reflection, remaps);
-    auto samplerResult = device.create_sampler();
+    auto samplerResult = device.create_sampler({.compare = rhi::CompareOp::less_equal});
     assert(samplerResult.ok());
     auto sampler = std::move(samplerResult).value();
     auto groupLayoutResult = device.create_bind_group_layout({
@@ -72,9 +81,13 @@ void main() {
              .minimumBufferSize = 16},
             {.binding = 5, .type = rhi::BindingType::sampled_texture, .arrayCount = 2,
              .visibility = rhi::ShaderStageMask::fragment},
+            {.binding = 6, .type = rhi::BindingType::sampled_texture,
+             .visibility = rhi::ShaderStageMask::fragment},
             {.binding = 8, .type = rhi::BindingType::sampler,
              .visibility = rhi::ShaderStageMask::fragment, .immutableSampler = &sampler},
             {.binding = 9, .type = rhi::BindingType::sampler,
+             .visibility = rhi::ShaderStageMask::fragment},
+            {.binding = 10, .type = rhi::BindingType::sampler,
              .visibility = rhi::ShaderStageMask::fragment}}});
     assert(groupLayoutResult.ok());
     auto groupLayout = std::move(groupLayoutResult).value();
@@ -103,11 +116,24 @@ void main() {
     };
     auto redTexture = sampled(red);
     auto greenTexture = sampled(green);
+    auto depthResult = device.create_texture({
+        .format = rhi::TextureFormat::depth16_unorm, .usage = rhi::TextureUsage::sampled,
+        .memory = rhi::MemoryDomain::upload});
+    assert(depthResult.ok());
+    auto depthTexture = std::move(depthResult).value();
+    const std::array<std::uint16_t, 1> depthValue{32768};
+    assert(depthTexture.write(
+        {.subresource = {.aspect = rhi::TextureAspect::depth}, .extent = {1, 1, 1}},
+        std::as_bytes(std::span{depthValue})).ok());
     auto redViewResult = device.create_texture_view(redTexture);
     auto greenViewResult = device.create_texture_view(greenTexture);
     assert(redViewResult.ok() && greenViewResult.ok());
     auto redView = std::move(redViewResult).value();
     auto greenView = std::move(greenViewResult).value();
+    auto depthViewResult = device.create_texture_view(
+        depthTexture, {.range = {.aspects = rhi::TextureAspect::depth}});
+    assert(depthViewResult.ok());
+    auto depthView = std::move(depthViewResult).value();
     auto arenaResult = device.create_descriptor_arena();
     assert(arenaResult.ok());
     auto arena = std::move(arenaResult).value();
@@ -116,7 +142,9 @@ void main() {
         .entries = {{.binding = 1, .buffer = &buffer, .size = 16},
                     {.binding = 5, .textureView = &redView},
                     {.binding = 5, .arrayElement = 1, .textureView = &greenView},
-                    {.binding = 9, .sampler = &sampler}}};
+                    {.binding = 6, .textureView = &depthView},
+                    {.binding = 9, .sampler = &sampler},
+                    {.binding = 10, .sampler = &sampler}}};
     auto groupResult = device.create_bind_group(groupDesc);
     assert(groupResult.ok());
     auto group = std::move(groupResult).value();
@@ -192,6 +220,34 @@ void main() {
     pipelineDesc.fragmentShader = &mismatch;
     assert(device.create_pipeline(pipelineDesc).status().code ==
            rhi::StatusCode::invalid_argument);
+    pipelineDesc.specializationConstants.clear();
+    reflection.bindings.front().name = "Params";
+    const auto rejected = [&](const rhi::ShaderReflection& candidate,
+                              const std::vector<rhi::ShaderBindingRemap>& mappings) {
+        auto shader = gl_fixture_shader(device, desktop, rhi::ShaderStage::fragment,
+                                         fragmentSource, candidate, mappings);
+        pipelineDesc.fragmentShader = &shader;
+        assert(device.create_pipeline(pipelineDesc).status().code ==
+               rhi::StatusCode::invalid_argument);
+    };
+    auto invalidReflection = reflection;
+    invalidReflection.specializationConstants.front().type = rhi::ShaderValueType::uint32;
+    invalidReflection.specializationConstants.front().defaultValueBits = 0;
+    rejected(invalidReflection, remaps);
+    invalidReflection = reflection;
+    invalidReflection.bindings.front().minimumSize = 8;
+    rejected(invalidReflection, remaps);
+    invalidReflection = reflection;
+    invalidReflection.bindings.erase(invalidReflection.bindings.begin());
+    auto missingRemaps = remaps;
+    missingRemaps.erase(missingRemaps.begin());
+    rejected(invalidReflection, missingRemaps);
+    auto invalidRemaps = remaps;
+    invalidRemaps[2].nativeBinding = 3;
+    rejected(reflection, invalidRemaps);
+    invalidRemaps = remaps;
+    invalidRemaps[3].nativeBinding = 2;
+    rejected(reflection, invalidRemaps);
     if (diagnostics) assert(*diagnostics == 0);
 }
 

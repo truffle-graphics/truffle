@@ -19,8 +19,12 @@ Current baseline:
 - Native-smoke Vulkan, OpenGL, OpenGL ES, and Direct3D 12 target slices that
   expose adapters only after native initialization. Their implemented buffer
   and texture-transfer capabilities are reported explicitly, including
-  profile-specific GL-family view/multisample boundaries and a native GLSL
-  direct-graphics baseline on both EGL profiles; missing
+  profile-specific GL-family view/multisample boundaries. Both EGL profiles
+  consume reflected native GLSL bindings, arrays, dynamic offsets, immutable
+  samplers, push blocks and scalar specialization equivalents, with indexed/
+  instanced depth/stencil and MRT graphics. Desktop GL additionally owns
+  indirect drawing and compute-to-render; GLES 3.0 gates those paths and permits
+  identity texture views only. Maturity remains `native_smoke`; missing
   capabilities remain unsupported rather than simulated.
 - Deterministic ShaderPackage 1.0 creation/loading with normalized cross-target
   reflection, capability gates, native-variant precedence, and an optional
