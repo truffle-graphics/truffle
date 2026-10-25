@@ -40,12 +40,17 @@ shaders, binding layouts, graphics/compute pipelines, and exact output evidence.
 
 ## Latest Handoff
 
-- PR #139 has been refreshed against the current `develop` baseline
-  (`97cbc54`) without changing engine code beyond that integration. The
-  dependency guard passes against the expanded Vulkan, D3D12 and GL resource
-  baseline. Delivery policy and architecture-review guidance remain the only
-  PR-owned changes. Fresh CI is required before merge; the separately tracked
-  companion credential recovery remains #131.
+- PR #139 merged at `6b663bf` after Build `40229333169` passed its architecture
+  guard, all platform jobs and package isolation. #131 keeps companion dispatch
+  enabled while its owner replaces the rejected Actions credential. The router
+  now checks token identity and repository write access before dispatch, emits
+  distinct actionable 401/403 errors, and supports a no-task `--verify-auth`
+  check. A protected-branch manual workflow runs only that content-free check.
+  Nine offline tests cover classification, authorization failures, non-dispatch
+  and dry-run behavior; CI runs them alongside the architecture guard.
+  Live credential recovery is still pending and cannot be claimed from offline
+  tests. Ownership stays in repository automation using Python's standard
+  library; no architectural boundary or public RHI contract changes.
 - `feat/rhi1-gl-pipelines` starts #62 with the native-source and direct-graphics
   checkpoint for both Linux EGL profiles. Native GLSL/GLSL ES ShaderPackage
   variants compile to owned shader objects with bounded source, `main` entry,

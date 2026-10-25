@@ -99,6 +99,29 @@ mixes unrelated policy, orchestration, and implementation that should have
 separate owners. Resolve a candidate by recording why its responsibilities
 belong together or by creating a focused refactor issue.
 
+## Companion Credential Recovery
+
+Companion dispatch stays enabled. Its `COPILOT_AGENT_TOKEN` Actions secret must
+be a valid user token whose owner can write to the repository and use the
+Copilot coding-agent task service. HTTP 401 means GitHub rejected the token;
+HTTP 403 indicates access, permissions or entitlement must be checked. Do not
+paste credentials into issues or workflow logs.
+
+After replacing the secret in GitHub, manually run **Companion Automation** on
+`develop` or `master` to verify identity and repository write access without
+creating tasks. Other manual refs are rejected; pull-request routing continues
+to execute only trusted base-branch code. A successful credential check does
+not prove task-service entitlement: confirm a real routed task before closing
+#131. Offline diagnostic tests run with:
+
+```bash
+python3 -m unittest discover -s .github/scripts -p 'test_companion_router.py'
+```
+
+The router also supports `--verify-auth --repo owner/repo` using an already
+securely supplied `COPILOT_AGENT_TOKEN` environment variable. It makes only
+identity/repository GET requests and never submits prompts or creates tasks.
+
 ## Stop And Resume
 
 Before switching machines or stopping active work:
