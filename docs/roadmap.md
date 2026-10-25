@@ -122,6 +122,9 @@ Tracked by #33.
   desktop/Android presentation through #60-#64.
   - [x] Complete shared GL-family resources and transfers with separate desktop
     GL/GLES capability and KHR_debug evidence through #60.
+  - [x] Complete reflected native GLSL bindings and expanded graphics, with
+    desktop GL compute/indirect/MSAA and explicit GLES 3.0 gates through #62;
+    Build `40230852839` proves exact native output without changing maturity.
 - [ ] Complete WebGPU and WebGL2 runtime, rendering, browser presentation, and
   recovery through #65-#68 and #70.
 - [ ] Complete Metal macOS conformance plus Apple cross-build and runtime

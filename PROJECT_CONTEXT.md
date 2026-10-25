@@ -50,9 +50,13 @@ Current evidence is narrower than the old roadmap claimed:
   OpenGL/OpenGL ES own native EGL buffers, samplers, uncompressed
   color/depth/stencil textures, mip/array/3D/cube transfers and clears after
   surfaceless initialization; desktop GL additionally owns core texture views
-  and multisample resolve. Both profiles compile native-source ShaderPackage
-  variants and execute an exact one-target direct-graphics baseline. These
-  adapters report only the capabilities
+  and multisample resolve. Both profiles consume reflected native-source
+  ShaderPackage variants with logical remaps, sampled arrays, dynamic buffer
+  offsets, immutable samplers, push blocks and scalar specialization
+  equivalents; they own vertex/index input, instancing, depth/stencil, MRT and
+  dynamic graphics state. Desktop GL additionally implements indirect drawing
+  and compute-to-render; GLES 3.0 gates those paths and permits only identity
+  texture views. Native-smoke maturity is unchanged. These adapters report only the capabilities
   they implement. Remaining backend/platform WSI and presentation paths, and
   unadvertised resource gaps stay unsupported rather than simulated.
 - ShaderPackage 1.0 is a deterministic compiler-free runtime contract with a

@@ -151,7 +151,7 @@ inline void verify_native_texture_backend(rhi::Result<rhi::Instance> result,
            info.resources.textureBlitLinear);
     assert(info.bindings.ordinaryBindGroups);
     const bool desktopGl = backend == rhi::BackendKind::opengl;
-    assert(info.resources.textureViews == desktopGl);
+    assert(info.resources.textureViews);
     assert(info.resources.textureResolve == desktopGl);
     assert(info.name.find("KHR_debug") != std::string::npos);
     assert(!info.resources.externalImport &&
@@ -203,12 +203,7 @@ inline void verify_native_texture_backend(rhi::Result<rhi::Instance> result,
     auto upload = std::move(uploadResult).value();
     auto readback = std::move(readbackResult).value();
     auto unsupportedView = device.create_texture_view(source);
-    if (desktopGl) {
-        assert(unsupportedView.ok());
-    } else {
-        assert(!unsupportedView.ok());
-        assert(unsupportedView.status().code == rhi::StatusCode::unsupported);
-    }
+    assert(unsupportedView.ok());
 
     std::array<std::byte, byteCount> expected{};
     for (std::size_t row = 0; row < height; ++row) {
@@ -551,18 +546,18 @@ inline void verify_native_gl_graphics(rhi::Result<rhi::Instance> result,
     auto adapter = std::move(adapterResult).value();
     const auto info = adapter.info();
     assert(info.backend == backend && info.pipelines.graphics);
-    assert(!info.pipelines.compute && !info.pipelines.depthStencil &&
-           !info.pipelines.multipleRenderTargets &&
-           !info.pipelines.multisample && !info.pipelines.indirect &&
-           !info.pipelines.tessellation);
-    assert(info.pipelines.maxColorAttachments == 1 &&
-           info.pipelines.maxVertexBuffers == 0 &&
+    const bool desktop = backend == rhi::BackendKind::opengl;
+    assert(info.pipelines.compute == desktop && info.pipelines.depthStencil &&
+           info.pipelines.multipleRenderTargets &&
+           info.pipelines.multisample == desktop &&
+           info.pipelines.indirect == desktop && !info.pipelines.tessellation);
+    assert(info.pipelines.maxColorAttachments == 4 &&
+           info.pipelines.maxVertexBuffers == 8 &&
            info.pipelines.maxViewports == 1);
     auto deviceResult = adapter.request_device();
     assert(deviceResult.ok());
     auto device = std::move(deviceResult).value();
 
-    const bool desktop = backend == rhi::BackendKind::opengl;
     const std::string_view vertexSource = desktop ? R"GLSL(#version 450 core
 const vec2 positions[3] = vec2[3](vec2(-0.75, -0.75), vec2(0.75, -0.75), vec2(0.0, 0.75));
 void main() { gl_Position = vec4(positions[gl_VertexID], 0.0, 1.0); }

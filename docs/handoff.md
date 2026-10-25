@@ -40,16 +40,41 @@ shaders, binding layouts, graphics/compute pipelines, and exact output evidence.
 
 ## Latest Handoff
 
+- #62's full GL-family checkpoint passes Build `40230852839` at `d8c885d`:
+  Ubuntu native EGL, macOS, Windows, architecture and package jobs are green.
+  Both profiles prove exact indexed/instanced, depth/stencil, MRT, dynamic-state
+  and textured output, including logical remaps, sampled arrays, dynamic
+  offsets, immutable samplers, stage push blocks, scalar specialization and
+  arena retention/reset. Desktop GL additionally proves indirect drawing,
+  MSAA resolve and direct/indirect compute-to-render. Tests reject reflected
+  name/type/size, missing-resource and remap mismatches, and require zero
+  KHR_debug diagnostics. Simultaneous ordinary/shadow sampling through one RHI
+  sampler uses separate native comparison objects, not mutable shared state.
+  Native-source ShaderPackage fixtures retain explicit assembler provenance.
+  GLES 3.0 keeps storage blocks/images, compute, indirect/base-vertex/base-
+  instance drawing, MSAA and subresource views unsupported; identity sampling
+  views are supported. Both profiles remain `native_smoke`, not conformant.
+- `egl_program.hpp` owns program interface policy and `egl_graphics.hpp` owns
+  graphics state/input details. The GL command interpreter remains cohesive
+  around submission lifecycle and native-state ownership; dependencies and
+  public RHI contracts are unchanged. The support matrix, shader conventions,
+  resource boundaries and roadmap are synchronized for PR #156 closeout.
+  The approved branch cleanup retains `develop`/`master`, preserves all three
+  working folders/build assets, saves a verified Git bundle first, and removes
+  only reviewed integrated/superseded branch refs plus one stale registration.
 - PR #139 merged at `6b663bf` after Build `40229333169` passed its architecture
-  guard, all platform jobs and package isolation. #131 keeps companion dispatch
+  guard, all platform jobs and package isolation. PR #157 merged at `07b19da`
+  after all Build lanes and nine automation regressions passed. #131 keeps
+  companion dispatch
   enabled while its owner replaces the rejected Actions credential. The router
   now checks token identity and repository write access before dispatch, emits
   distinct actionable 401/403 errors, and supports a no-task `--verify-auth`
   check. A protected-branch manual workflow runs only that content-free check.
   Nine offline tests cover classification, authorization failures, non-dispatch
   and dry-run behavior; CI runs them alongside the architecture guard.
-  Live credential recovery is still pending and cannot be claimed from offline
-  tests. Ownership stays in repository automation using Python's standard
+  Live auth-only run `40230757739` fails HTTP 401 before any task is created;
+  secure secret replacement and actual dispatch evidence remain pending.
+  Ownership stays in repository automation using Python's standard
   library; no architectural boundary or public RHI contract changes.
 - `feat/rhi1-gl-pipelines` starts #62 with the native-source and direct-graphics
   checkpoint for both Linux EGL profiles. Native GLSL/GLSL ES ShaderPackage

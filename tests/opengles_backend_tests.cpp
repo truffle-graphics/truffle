@@ -1,6 +1,8 @@
 #include "truffle/rhi/opengles_backend.hpp"
 
 #include "native_backend_smoke.hpp"
+#include "gl_graphics_tests.hpp"
+#include "gl_binding_tests.hpp"
 
 int main() {
 #ifdef TRUFFLE_EXPECT_EGL_OPENGLES
@@ -23,6 +25,18 @@ int main() {
         }),
         truffle::rhi::BackendKind::opengles,
         truffle::rhi::ShaderTarget::glsl_es, &diagnostics);
+    truffle::tests::verify_expanded_gl_graphics(
+        truffle::rhi::create_opengles_instance({
+            .debugCallback = &truffle::tests::count_native_diagnostic,
+            .debugUserData = &diagnostics}), false, &diagnostics);
+    truffle::tests::verify_gl_bindings(
+        truffle::rhi::create_opengles_instance({
+            .debugCallback = &truffle::tests::count_native_diagnostic,
+            .debugUserData = &diagnostics}), false, &diagnostics);
+    truffle::tests::verify_gl_compute(
+        truffle::rhi::create_opengles_instance({
+            .debugCallback = &truffle::tests::count_native_diagnostic,
+            .debugUserData = &diagnostics}), false, &diagnostics);
 #else
     const auto result = truffle::rhi::create_opengles_instance();
     truffle::tests::verify_unavailable_backend(result);

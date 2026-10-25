@@ -76,11 +76,14 @@ for each backend/platform pair:
   EGL contexts and deterministic clear/readback smoke proofs. Both own mapped
   and device-local buffers/views, samplers, uncompressed color/depth/stencil
   textures, mip/array/3D/cube transfers, exact clears, copies, and blits.
-  Desktop GL additionally owns core texture views and multisample resolve;
-  GLES reports those profile boundaries unsupported. Both compile native GLSL
-  ShaderPackage variants and execute an exact one-target direct-graphics
-  baseline. Advanced bindings/pipelines, synchronization, and presentation
-  remain unsupported.
+  Both consume reflected native GLSL ShaderPackage variants with logical
+  remaps, sampled arrays, dynamic offsets, immutable samplers, push blocks and
+  scalar specialization equivalents. Graphics includes vertex/index input,
+  instancing, depth/stencil, MRT and dynamic state. Desktop GL additionally
+  owns core texture views, MSAA resolve, indirect drawing and compute-to-render;
+  GLES 3.0 gates those paths and supports identity texture views for sampling.
+  Storage images, tessellation, bindless, indirect-count, asynchronous
+  synchronization and presentation remain unsupported. Both stay `native_smoke`.
 - WebGPU remains an explicit `source_only` factory. WebGL2 has a browser-native
   context path when built with Emscripten but remains `source_only` until its
   browser CI evidence exists. Neither exposes a simulated adapter.
