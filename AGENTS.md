@@ -93,23 +93,24 @@ contributor-neutral defaults.
    - Keep commits small and issue-scoped; default to one issue -> one small commit set
    - Exceptions are allowed for non-diff tasks, discovery-first work, or unavoidable architecture-level changes; document rationale in the issue or PR
    - Do not push directly to protected branches (`master`, `develop`); use PR flow even when operating with admin credentials or AI automation
-   - Ensure lint/tests/build pass for touched areas
-9. Use detached implementation companion automation by default:
-   - Feature, fix, refactor, and public contract work may be followed by
-     background companion work instead of blocking the implementation session.
-   - `.github/workflows/companion-automation.yml` classifies same-repository PR
-     diffs targeting protected integration branches, then starts lane-specific
-     Copilot cloud-agent tasks when configured with a `COPILOT_AGENT_TOKEN` user
-     token.
-   - Companion tasks must target the source branch as their base branch and open
-     separate pull requests; they must not push directly to `develop` or `master`.
-   - Keep lane instructions in `.github/scripts/companion_router.py` so detached
-     Copilot tasks have one authoritative prompt source.
+   - Use merge commits for normal Git Flow delivery; squash/rebase requires an
+     explicit, justified exception. Do not rewrite existing history.
+   - Use focused local validation proportionate to the touched areas.
+9. Keep development local-first and hosted work explicitly opt-in:
+   - Do not automatically launch cloud coding agents, AI reviews, or detached
+     AI follow-up tasks. Do not add cloud-agent setup or credentials for normal
+     contribution workflows.
+   - Hosted Build and Release are manual-only. Obtain an explicit request
+     before enabling or running them; neither PRs, pushes, nor tags are
+     automatic validation/publication gates.
+   - Run affected local targets and filtered tests for behavior changes, not a
+     full platform/package matrix for every edit, checkpoint, or push.
+     Documentation-only changes do not require a C++ rebuild.
    - Tests are expected for behavior or API contract changes.
    - Examples are expected only when public or consumer-facing usage changes; do
      not churn examples for internal-only edits.
    - Docs/handoff updates are expected when architecture, workflow, public
      contracts, release/distribution behavior, or commit-ready AI handoff state
      changes.
-   - GitHub Actions remains the detached validation gate.
+   - Follow `CONTRIBUTING.md` for Git Flow and optional hosted evidence.
 10. If local repo policy conflicts with doctrine snapshot, follow local repo files and call out the conflict explicitly.

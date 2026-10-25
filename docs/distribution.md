@@ -34,9 +34,13 @@ This verifies:
 - target linkability for exported Truffle targets
 - end-to-end consumer configure/build success
 
-## CI Packaging
+## Optional Hosted Packaging
 
-`build.yml` includes package and parity-report automation that:
+Local package generation is the default. Hosted workflows are manual-only and
+administratively disabled; pushing a PR, branch, or tag does not request a
+build. See `CONTRIBUTING.md` before explicitly enabling and running Build.
+
+The optional `build.yml` run includes package and parity-report automation that:
 
 - configures install-enabled builds
 - builds and installs Truffle
@@ -46,9 +50,29 @@ This verifies:
   (`parity-matrix.md`,
   `parity-matrix.json`, and `rhi-parity-report.json`)
 
-## Tagged Release Flow
+## Manual Tagged Release Flow
 
-`release.yml` handles tag-driven release publication:
+Prepare a release through the Git Flow release/hotfix PRs described in
+`CONTRIBUTING.md`, then create and push a signed `v*` tag on stable `master`.
+The tag push does not build packages or publish a GitHub Release.
+
+For explicitly requested hosted publication, temporarily enable Release and
+dispatch against that existing signed tag, not a branch:
+
+```sh
+gh workflow enable release.yml
+gh workflow run release.yml --ref vX.Y.Z
+```
+
+The tag must contain the manual-only workflow definition; older tags are not
+supported by this dispatch path. The workflow rejects branch refs before
+building. Disable Release again after the requested run completes:
+
+```sh
+gh workflow disable release.yml
+```
+
+An explicitly dispatched `release.yml` run:
 
 - builds release package artifacts and parity-report test targets
 - runs package generation

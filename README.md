@@ -198,4 +198,6 @@ boundary.
 
 See `CONTRIBUTING.md` for the branch workflow, commit format, signing
 expectations, pull request path into protected `develop`, and stable promotion
-path into `master`.
+path into `master`. Development is local-first with focused checks and normal
+Git Flow merge commits. Hosted builds/releases are manual opt-ins; ordinary
+PRs and pushes do not launch full CI or cloud-agent companions.

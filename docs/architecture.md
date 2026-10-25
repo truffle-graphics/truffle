@@ -170,8 +170,9 @@ The complete policy and dependency groups are in
 
 The CMake target graph is an enforceable part of the architecture, not merely a
 diagram. `tools/check_architecture.py` rejects production-target dependencies
-and public-header imports that violate the documented layer direction. CI runs
-the same guard on every pull request. The tool also has a non-blocking source
+and public-header imports that violate the documented layer direction. Run it
+locally for relevant changes; the optional manual Build workflow includes the
+same guard. The tool also has a non-blocking source
 length report: crossing its threshold means "review cohesion", not "this is a
 God file".
 
