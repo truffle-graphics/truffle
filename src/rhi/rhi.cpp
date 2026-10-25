@@ -1392,6 +1392,8 @@ struct Factory {
     info.presentation = runtime.config.presentation;
     info.queueKinds = runtime.config.queueKinds;
     info.supportedFeatures = runtime.config.supportedFeatures;
+    info.timestampPeriodNanoseconds =
+        runtime.config.timestampPeriodNanoseconds;
     info.resources = runtime.config.resourceCapabilities;
     info.bindings = runtime.config.bindingCapabilities;
     info.pipelines = runtime.config.pipelineCapabilities;
@@ -2761,7 +2763,8 @@ struct Factory {
         if (runtime.config.createSurface == nullptr) {
             return unsupported(runtime, "surface creation");
         }
-        auto result = runtime.config.createSurface(desc);
+        auto result = runtime.config.createSurface(runtime.config.nativeContext,
+                                                   desc);
         if (!result.ok()) {
             return result.status();
         }
@@ -2799,7 +2802,8 @@ struct Factory {
         if (runtime.config.createSwapchain == nullptr) {
             return unsupported(runtime, "swapchain creation");
         }
-        auto result = runtime.config.createSwapchain(surface->native, desc);
+        auto result = runtime.config.createSwapchain(
+            runtime.config.nativeContext, surface->native, desc);
         if (!result.ok()) {
             if (result.status().code == StatusCode::device_lost) {
                 device->lost.store(true);
@@ -2814,7 +2818,8 @@ struct Factory {
     const TextureDesc imageDesc{
         .extent = {desc.extent.width, desc.extent.height, 1},
         .format = desc.format,
-        .usage = TextureUsage::color_attachment | TextureUsage::present,
+        .usage = TextureUsage::color_attachment | TextureUsage::copy_source |
+                 TextureUsage::present,
         .debugName = desc.debugName + " image",
     };
     const auto requirements = texture_requirements(imageDesc);
@@ -3154,9 +3159,9 @@ struct Factory {
                 ++transferCount;
             }
         }
-        if (auto status = runtime.config.nativeSubmit(runtime.config.nativeContext,
-                                                      nativeCommands, nativeWaits,
-                                                      nativeSignals);
+        if (auto status = runtime.config.nativeSubmit(
+                runtime.config.nativeContext, queue->kind, nativeCommands,
+                nativeWaits, nativeSignals);
             !status.ok()) {
             if (status.code == StatusCode::device_lost) {
                 queue->device->lost.store(true);
@@ -3232,7 +3237,9 @@ struct Factory {
         nativeWaits.push_back({semaphore->native, wait.value, wait.stages});
     }
     std::lock_guard lock{swapchain->mutex};
-    if (!swapchain->acquired || imageIndex >= swapchain->desc.imageCount) {
+    if (!swapchain->acquired ||
+        (runtime.config.logicalResources &&
+         imageIndex >= swapchain->desc.imageCount)) {
         return Status::failure(StatusCode::invalid_state,
                                "present requires an acquired swapchain image");
     }
@@ -6336,9 +6343,15 @@ Status Queue::present(const QueuePresentDesc& desc) {
         waits.push_back(
             {wait.semaphore->state_->handle, wait.value, wait.stages});
     }
-    return state_->runtime->dispatch->present(
+    auto status = state_->runtime->dispatch->present(
         *state_->runtime, state_->handle,
         desc.swapchain->state_->object->handle, desc.imageIndex, waits);
+    if (status.ok() || status.code == StatusCode::suboptimal ||
+        status.code == StatusCode::out_of_date) {
+        desc.swapchain->state_->image.reset();
+        desc.swapchain->state_->available.reset();
+    }
+    return status;
 }
 
 Status Queue::present(Swapchain& swapchain, std::uint32_t imageIndex) {
@@ -6477,7 +6490,8 @@ AcquireResult Swapchain::acquire_next_image() {
                            : value->desc.extent.height,
                        1},
             .format = value->desc.format,
-            .usage = TextureUsage::color_attachment | TextureUsage::present,
+            .usage = TextureUsage::color_attachment |
+                     TextureUsage::copy_source | TextureUsage::present,
             .debugName = value->desc.debugName + " image",
         };
         value->image = std::make_shared<detail::TexturePayload>(
@@ -6550,6 +6564,9 @@ Status Swapchain::resize(Extent2D extent) {
             return detail::unsupported(*state_->object->runtime,
                                        "swapchain resize");
         }
+        value->image.reset();
+        state_->image.reset();
+        state_->available.reset();
         if (auto status = state_->object->runtime->config.resizeSwapchain(
                 value->native, extent);
             !status.ok()) {
@@ -6559,15 +6576,13 @@ Status Swapchain::resize(Extent2D extent) {
             return status;
         }
         value->desc.extent = extent;
-        value->image.reset();
-        state_->image.reset();
-        state_->available.reset();
         return Status::success();
     }
     const TextureDesc imageDesc{
         .extent = {extent.width, extent.height, 1},
         .format = value->desc.format,
-        .usage = TextureUsage::color_attachment | TextureUsage::present,
+        .usage = TextureUsage::color_attachment | TextureUsage::copy_source |
+                 TextureUsage::present,
         .debugName = value->desc.debugName + " image",
     };
     const auto requirements = detail::texture_requirements(imageDesc);

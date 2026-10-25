@@ -39,10 +39,20 @@ ordering, wait and fence timeout/retry, stale-layout and aliasing failures,
 timestamp ordering, and an exact full-screen occlusion count. Validation also
 enables GPU-based validation when the installed debug interface supports it.
 
+Presentation borrows a host-owned live `HWND` and creates a DXGI flip-discard
+swapchain without owning the message loop. FIFO mode is always available;
+immediate mode requires DXGI tearing support, and mailbox mode is explicitly
+unsupported. Acquired back buffers participate in normal RHI barriers and
+timeline waits/signals, remain copy-source capable for deterministic evidence,
+and are released after presentation so resize can call `ResizeBuffers`. The
+Windows presentation suite proves exact BGRA8 readback, presentation, extent
+drift, resize/recreation, occlusion, destroyed-window handling, and typed
+timeout/out-of-date/surface-loss/device-loss/out-of-memory recovery paths.
+
 Compressed, host-visible, and external texture paths remain unsupported, as do
 explicit copy-encoder texture clear/resolve/blit. Bindless tables, tessellation,
 indirect-count execution, pipeline caches, dynamic depth bias,
 pipeline-statistics queries, native multi-queue ownership transfer, DXGI
-surface/swapchain, and presentation are also unsupported.
+mailbox mode, and non-Win32 presentation are also unsupported.
 Non-Windows builds keep the explicit unavailable factory so no simulated D3D12
 adapter can appear.

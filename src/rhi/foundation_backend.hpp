@@ -170,6 +170,7 @@ struct FoundationBackendConfig {
     std::string adapterName;
     std::vector<QueueKind> queueKinds;
     std::vector<Feature> supportedFeatures;
+    double timestampPeriodNanoseconds = 0.0;
     AdapterInfo::ResourceCapabilities resourceCapabilities;
     AdapterInfo::BindingCapabilities bindingCapabilities;
     AdapterInfo::PipelineCapabilities pipelineCapabilities;
@@ -219,15 +220,17 @@ struct FoundationBackendConfig {
         const std::shared_ptr<void>&, const SemaphoreDesc&) = nullptr;
     Result<std::shared_ptr<void>> (*createQueryPool)(
         const std::shared_ptr<void>&, const QueryPoolDesc&) = nullptr;
-    Result<std::shared_ptr<void>> (*createSurface)(const SurfaceDesc&) = nullptr;
+    Result<std::shared_ptr<void>> (*createSurface)(
+        const std::shared_ptr<void>&, const SurfaceDesc&) = nullptr;
     Result<std::shared_ptr<void>> (*createSwapchain)(
-        const std::shared_ptr<void>&, const SwapchainDesc&) = nullptr;
+        const std::shared_ptr<void>&, const std::shared_ptr<void>&,
+        const SwapchainDesc&) = nullptr;
     Result<NativeSwapchainImage> (*acquireSwapchain)(
         const std::shared_ptr<void>&) = nullptr;
     Status (*resizeSwapchain)(const std::shared_ptr<void>&, Extent2D) = nullptr;
     Status (*presentSwapchain)(const std::shared_ptr<void>&, std::uint32_t,
                                std::span<const NativeSemaphorePoint>) = nullptr;
-    Status (*nativeSubmit)(const std::shared_ptr<void>&,
+    Status (*nativeSubmit)(const std::shared_ptr<void>&, QueueKind,
                            std::span<const NativeCommand>,
                            std::span<const NativeSemaphorePoint>,
                            std::span<const NativeSemaphorePoint>) = nullptr;

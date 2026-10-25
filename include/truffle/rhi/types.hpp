@@ -566,6 +566,7 @@ struct AdapterInfo {
     bool presentation = false;
     std::vector<QueueKind> queueKinds;
     std::vector<Feature> supportedFeatures;
+    double timestampPeriodNanoseconds = 0.0;
     struct ResourceCapabilities {
         bool bufferViews = false;
         bool textureViews = false;

@@ -90,10 +90,16 @@ the validated required size rather than from a hard-coded default.
 |---|---|---|
 | Null validation | Ordinary immutable groups, descriptor arrays, dynamic offsets, immutable samplers, arena epochs, pipeline layouts, push/specialization constants, complete graphics state, graphics/compute commands, indirect-count validation, and deterministic opaque cache round trips. | Bindless tables and update-after-bind return `unsupported`; Null remains a validation interpreter, not a GPU. |
 | Metal on macOS | Native samplers, MSL-source and metallib shaders, function constants, logical binding remaps, immutable groups and arrays, dynamic offsets, push constants, native graphics/compute pipeline state, direct/indexed/instanced/indirect draws, dispatch and dispatch-indirect, MRT, depth/stencil state, and MSAA resolves. | Bindless/update-after-bind, indirect-count, serialized pipeline caches, and tessellation are not advertised. |
-| Vulkan, D3D12, OpenGL | No adapter is exposed. | Their factories return `unsupported`; no Null pipeline is reported as native. |
+| Vulkan on Linux | Native samplers, immutable ordinary bind groups, descriptor arrays, dynamic offsets, immutable samplers, push constants, descriptor-set/pipeline layouts, specialization values, direct/indirect compute, direct/indexed/instanced/indirect draws, depth/stencil, MRT, MSAA resolve, and compute-to-render ordering. | Non-identity SPIR-V binding remaps, bindless/update-after-bind, indirect-count, serialized pipeline caches, depth clamp, non-fill rasterization, and tessellation are not advertised. |
+| D3D12 on Windows | Native samplers, root signatures, immutable groups and arrays, dynamic offsets, push constants, graphics/compute pipeline state, direct/indexed/instanced/indirect draws, dispatch, MRT, depth/stencil state, and MSAA resolves. | Bindless/update-after-bind, indirect-count, serialized pipeline caches, tessellation, and non-HLSL/DXIL shader routes are not advertised. |
+| OpenGL and OpenGL ES | Native-source GLSL/GLSL ES shader compilation, linked program ownership, one color attachment, and direct non-instanced vertex-ID drawing. | Binding resources, vertex/index streams, depth/MRT/MSAA pipeline state, indirect drawing, compute, specialization, push constants, caches, and tessellation remain unadvertised. |
 
 The validation-enabled macOS suite compares exact pixels or buffer values for a
 native triangle, descriptor-array texturing, depth-tested MRT with 4x MSAA,
-indexed/instanced/indirect drawing, and compute-to-render storage flow. These
-proofs expand Metal's native slice but do not establish full backend
+indexed/instanced/indirect drawing, and compute-to-render storage flow. The
+validation-enabled Linux suite separately proves exact Vulkan storage-buffer
+compute, textured and indirect drawing, depth-tested MRT/MSAA rendering, and a
+compute-written buffer consumed by a later fragment stage. It also exercises
+arena reset/retirement and deterministic mismatch/unsupported paths. These
+proofs expand native backend slices but do not establish full backend
 conformance.

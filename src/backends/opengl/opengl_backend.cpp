@@ -11,7 +11,7 @@ namespace truffle::rhi {
 
 Result<Instance> create_opengl_instance(const InstanceDesc& desc) {
 #ifdef TRUFFLE_HAS_EGL_OPENGL
-    auto probe = detail::egl_probe::initialize();
+    auto probe = detail::egl_probe::initialize(desc);
     if (!probe.ok()) {
         return probe.status();
     }
@@ -25,10 +25,28 @@ Result<Instance> create_opengl_instance(const InstanceDesc& desc) {
     config.supportedFeatures = {Feature::transfer};
     config.resourceCapabilities = {
         .bufferViews = true,
-        .textureViews = false,
+        .textureViews = native.textureViews,
         .hostCoherent = true,
         .bufferCopy = true,
         .bufferFill = true,
+        .bufferTextureCopy = true,
+        .textureCopy = true,
+        .textureClear = true,
+        .textureResolve = true,
+        .textureBlitNearest = true,
+        .textureBlitLinear = true,
+    };
+    config.bindingCapabilities = {
+        .ordinaryBindGroups = true,
+        .maxBindGroups = 4,
+        .maxBindingsPerGroup = 32,
+        .maxDescriptorsPerGroup = 32,
+    };
+    config.pipelineCapabilities = {
+        .graphics = true,
+        .maxColorAttachments = 1,
+        .maxVertexBuffers = 0,
+        .maxViewports = 1,
     };
     config.native = true;
     config.nativeContext = std::move(native.context);
@@ -39,6 +57,14 @@ Result<Instance> create_opengl_instance(const InstanceDesc& desc) {
     config.invalidateBuffer = &detail::egl_probe::buffer_range;
     config.writeBuffer = &detail::egl_probe::write_buffer;
     config.readBuffer = &detail::egl_probe::read_buffer;
+    config.createTexture = &detail::egl_probe::create_texture;
+    config.createTextureView = &detail::egl_probe::create_texture_view;
+    config.writeTexture = &detail::egl_probe::write_texture;
+    config.readTexture = &detail::egl_probe::read_texture;
+    config.createSampler = &detail::egl_probe::create_sampler;
+    config.createShader = &detail::egl_probe::create_shader;
+    config.createPipeline = &detail::egl_probe::create_pipeline;
+    config.createComputePipeline = &detail::egl_probe::create_compute_pipeline;
     config.nativeSubmit = &detail::egl_probe::submit;
     return detail::create_foundation_instance(desc, std::move(config));
 #else

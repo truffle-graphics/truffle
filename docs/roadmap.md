@@ -109,11 +109,19 @@ Tracked by #33.
 - [x] Complete D3D12 baseline resources and ShaderPackage-backed graphics and
   compute pipelines through #49-#50.
 - [x] Complete D3D12 synchronization, barrier, and query paths through #51.
-- [ ] Complete D3D12 DXGI presentation through #52.
+- [x] Complete D3D12 DXGI presentation through #52.
 - [ ] Complete Vulkan baseline capability and Linux, Windows, Android, and
   MoltenVK platform lanes through #53-#59.
+  - [x] Complete Linux Vulkan ShaderPackage bindings and graphics/compute
+    pipelines with deterministic native output through #53.
+  - [x] Complete Vulkan queue discovery, synchronization, barriers, and query
+    pools with validation-enabled Linux evidence through #54.
+  - [x] Complete host-owned Linux XCB surfaces, native acquire/present, exact
+    swapchain readback, and resize recreation through #57.
 - [ ] Complete OpenGL/OpenGL ES resources, pipelines, synchronization, and
   desktop/Android presentation through #60-#64.
+  - [x] Complete shared GL-family resources and transfers with separate desktop
+    GL/GLES capability and KHR_debug evidence through #60.
 - [ ] Complete WebGPU and WebGL2 runtime, rendering, browser presentation, and
   recovery through #65-#68 and #70.
 - [ ] Complete Metal macOS conformance plus Apple cross-build and runtime

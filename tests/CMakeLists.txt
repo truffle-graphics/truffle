@@ -73,10 +73,24 @@ endif()
 if(TRUFFLE_BUILD_BACKEND_VULKAN)
     add_executable(truffle_vulkan_tests vulkan_backend_tests.cpp)
     target_link_libraries(truffle_vulkan_tests PRIVATE truffle_backend_vulkan)
+    target_include_directories(truffle_vulkan_tests
+                               PRIVATE "${PROJECT_SOURCE_DIR}/src/backends/vulkan")
+    if(TRUFFLE_BUILD_SHADERC AND TRUFFLE_SHADERC_ENABLE_GLSLANG)
+        target_compile_definitions(truffle_vulkan_tests PRIVATE
+            "TRUFFLE_VULKAN_SHADER_PACKAGE_PATH=\"${PROJECT_BINARY_DIR}/shaderc-glslang-smoke/triangle-a.truffle-shader\""
+            "TRUFFLE_VULKAN_FRAGMENT_PACKAGE_PATH=\"${PROJECT_BINARY_DIR}/shaderc-glslang-smoke/triangle-fragment.truffle-shader\""
+            "TRUFFLE_VULKAN_MRT_FRAGMENT_PACKAGE_PATH=\"${PROJECT_BINARY_DIR}/shaderc-glslang-smoke/mrt-fragment.truffle-shader\""
+            "TRUFFLE_VULKAN_COMPUTE_COLOR_FRAGMENT_PACKAGE_PATH=\"${PROJECT_BINARY_DIR}/shaderc-glslang-smoke/compute-color-fragment.truffle-shader\""
+            "TRUFFLE_VULKAN_TEXTURED_FRAGMENT_PACKAGE_PATH=\"${PROJECT_BINARY_DIR}/shaderc-glslang-smoke/textured-fragment.truffle-shader\""
+            "TRUFFLE_VULKAN_COMPUTE_PACKAGE_PATH=\"${PROJECT_BINARY_DIR}/shaderc-glslang-smoke/work-es.truffle-shader\"")
+    endif()
     add_test(NAME truffle_vulkan_tests COMMAND truffle_vulkan_tests)
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID)
+        find_library(TRUFFLE_XCB_LIBRARY xcb REQUIRED)
+        target_link_libraries(truffle_vulkan_tests
+                              PRIVATE "${TRUFFLE_XCB_LIBRARY}")
         set_tests_properties(truffle_vulkan_tests PROPERTIES
-                             LABELS "native-smoke;validation")
+                             LABELS "native-smoke;presentation;validation")
     endif()
 endif()
 
@@ -119,6 +133,16 @@ if(TRUFFLE_BUILD_BACKEND_DIRECT3D)
     if(WIN32)
         set_tests_properties(truffle_direct3d_tests PROPERTIES
                              LABELS "native-smoke;validation")
+        add_executable(truffle_direct3d_presentation_tests
+                       direct3d_presentation_tests.cpp)
+        target_link_libraries(truffle_direct3d_presentation_tests
+                              PRIVATE truffle_backend_direct3d)
+        target_include_directories(truffle_direct3d_presentation_tests
+                                   PRIVATE "${PROJECT_SOURCE_DIR}/src/backends/direct3d")
+        add_test(NAME truffle_direct3d_presentation_tests
+                 COMMAND truffle_direct3d_presentation_tests)
+        set_tests_properties(truffle_direct3d_presentation_tests PROPERTIES
+                             LABELS "presentation;validation")
     endif()
 endif()
 
@@ -226,6 +250,20 @@ if(TRUFFLE_BUILD_SHADERC)
             "-DTRUFFLE_SHADERC=$<TARGET_FILE:truffle-shaderc>"
             "-DTRUFFLE_SHADERC_TEST_DIR=${PROJECT_BINARY_DIR}/shaderc-smoke"
             -P "${PROJECT_SOURCE_DIR}/cmake/ShadercSmoke.cmake")
+    if(TRUFFLE_SHADERC_ENABLE_GLSLANG)
+        add_test(
+            NAME truffle_shaderc_glslang_smoke
+            COMMAND ${CMAKE_COMMAND}
+                "-DTRUFFLE_SHADERC=$<TARGET_FILE:truffle-shaderc>"
+                "-DTRUFFLE_SHADERC_TEST_DIR=${PROJECT_BINARY_DIR}/shaderc-glslang-smoke"
+                -P "${PROJECT_SOURCE_DIR}/cmake/ShadercGlslangSmoke.cmake")
+        set_tests_properties(truffle_shaderc_glslang_smoke PROPERTIES
+                             FIXTURES_SETUP vulkan_spirv_package)
+        if(TRUFFLE_BUILD_BACKEND_VULKAN)
+            set_tests_properties(truffle_vulkan_tests PROPERTIES
+                                 FIXTURES_REQUIRED vulkan_spirv_package)
+        endif()
+    endif()
 endif()
 
 add_executable(truffle_performance_sanity_tests performance_sanity_tests.cpp)

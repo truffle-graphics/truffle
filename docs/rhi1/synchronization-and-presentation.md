@@ -30,6 +30,42 @@ and `CommandList::resolve_queries()` writes packed 64-bit results into a buffer
 with `copy_destination` usage. Query type/index, nesting, resolution range,
 buffer usage, alignment, and availability are validated. Pipeline-statistics
 queries remain optional and fail when a backend does not implement them.
+`AdapterInfo::timestampPeriodNanoseconds` converts one raw timestamp tick to
+nanoseconds and is positive whenever `timestamp_queries` is advertised.
+
+## Vulkan mapping
+
+- Queue discovery prefers dedicated compute and transfer families and falls
+  back to a compatible family only when the adapter exposes no dedicated one.
+  Only discovered queue kinds are advertised. Buffers and images use concurrent
+  sharing when more than one family is selected, while RHI queue ownership
+  remains explicitly validated at the portable boundary.
+- Portable buffer ranges, texture subresources, layouts, stages, access masks,
+  and aliasing boundaries map to `vkCmdPipelineBarrier`. Automatic attachment,
+  descriptor, transfer, and host transitions use the same tracked native image
+  layouts.
+- Timeline semaphores use Vulkan 1.2 or
+  `VK_KHR_timeline_semaphore`. Submission carries the selected queue kind to the
+  backend, submits native wait/signal values and stage masks, and waits for that
+  queue to complete before publishing the foundation fence value.
+- Timestamp support is advertised only when the graphics family reports valid
+  timestamp bits. Timestamp and occlusion pools are reset before use and
+  resolve packed 64-bit values with `VK_QUERY_RESULT_WAIT_BIT`, so unavailable
+  results are never exposed as completed data. Pipeline statistics remain
+  unsupported. The adapter publishes Vulkan's native `timestampPeriod` for
+  calibration.
+- Linux `xcb` surfaces borrow the host's `xcb_connection_t` and window ID; the
+  host continues to own window creation, events, resizing, and destruction.
+  The backend enables surface and XCB instance extensions plus the swapchain
+  device extension only when available, verifies graphics-family presentation,
+  and requires renderable, transfer-source swapchain images for the native
+  readback contract.
+- Swapchain acquisition waits on a native fence before returning the completed
+  RHI acquire timeline point. Presentation submits RHI timeline waits and
+  signals a binary semaphore required by `vkQueuePresentKHR`. FIFO is the
+  guaranteed tested mode; unavailable requested modes and non-XCB surface kinds
+  return `unsupported`. Resize waits for idle work and replaces the native
+  swapchain using the previous swapchain handle.
 
 ## Direct3D 12 mapping
 
@@ -46,9 +82,24 @@ queries remain optional and fail when a backend does not implement them.
   fallback.
 - Timestamp and occlusion pools map to D3D12 query heaps and resolve through
   `ResolveQueryData`. Timestamp stage hints identify command-stream placement;
-  D3D12 supplies no finer portable per-stage timestamp point.
+  D3D12 supplies no finer portable per-stage timestamp point. The adapter
+  publishes the inverse queue timestamp frequency as nanoseconds per tick.
 - Validation-enabled instances turn on both the D3D12 debug layer and
   GPU-based validation when the installed debug interface exposes it.
+- A `win32` surface borrows a live host-provided `HWND`; Truffle does not create
+  the window, pump its messages, or control application lifetime. Swapchains
+  use `CreateSwapChainForHwnd` with flip-discard buffers, and acquired images
+  are borrowed D3D12 back buffers released after presentation so
+  `ResizeBuffers` can proceed safely.
+- `fifo` uses a synchronized present interval. `immediate` is available only
+  when `DXGI_FEATURE_PRESENT_ALLOW_TEARING` succeeds and sets both swapchain
+  and present tearing flags. DXGI exposes no portable mailbox mode, so
+  `mailbox` returns `unsupported`.
+- Supported swapchain formats are RGBA8/BGRA8 UNORM or sRGB views and
+  RGBA16-float. Flip-model image counts must be between 2 and 16. Client-area
+  drift is `suboptimal`; zero extent is `out_of_date`; destroyed windows,
+  allocation failure, busy presentation, and device removal map to
+  `surface_lost`, `out_of_memory`, `timeout`, and `device_lost` respectively.
 
 ## Presentation
 
@@ -88,3 +139,20 @@ application window or event loop. A private, non-installed fault hook validates
 the nondeterministic out-of-date acquisition and device-loss propagation paths,
 then exercises real resize and fresh-device recovery without pretending that CI
 physically resized the layer to zero or removed the GPU.
+
+The validation-enabled Windows suite owns only its test window and message
+pump. It proves Win32 surface creation, a WARP-backed flip-model swapchain,
+exact BGRA8 clear/readback before native presentation, semaphore-connected
+acquire/render/present, client-size drift, `ResizeBuffers` recovery, destroyed
+window detection, and typed status/device recovery. An occluded CI desktop is
+reported as usable `suboptimal` presentation rather than false success.
+
+The validation-enabled Linux suite owns only its tiny XCB test window and runs
+under Xvfb. It proves native acquire, a BGRA8 clear, exact padded-row readback,
+timeline-to-binary present synchronization, FIFO presentation, host-window
+resize, and native swapchain recreation. It then repeats the same exact output
+and presentation proof at the resized extent. Wayland and non-Linux Vulkan WSI
+remain separate platform work. Private, non-installed fault hooks cover
+`timeout`, `suboptimal`, `out_of_date`, `surface_lost`, `out_of_memory`, and
+`device_lost` propagation at acquisition/presentation boundaries without
+standing in for the native success, readback, resize, or presentation proof.

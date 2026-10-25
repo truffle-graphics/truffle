@@ -971,6 +971,7 @@ MrtOutput mrt_ps() {
   assert(info.pipelines.multisample && info.pipelines.indirect);
   assert(std::find(info.supportedFeatures.begin(), info.supportedFeatures.end(),
                    rhi::Feature::timestamp_queries) != info.supportedFeatures.end());
+  assert(info.timestampPeriodNanoseconds > 0.0);
   assert(!info.pipelines.tessellation && !info.pipelines.indirectCount &&
          !info.pipelines.pipelineCache);
 

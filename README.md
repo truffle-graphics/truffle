@@ -45,20 +45,42 @@ for each backend/platform pair:
   acquire/present proofs reach `native_smoke` on macOS.
 - `truffle_backend_vulkan` uses pinned private Vulkan headers and volk. Linux
   initializes a real loader/device/graphics queue, owns upload/readback and
-  device-local buffers plus selected device-local 2D textures/views, and proves
-  buffer and padded-row texture transfers before exposing an adapter.
+  device-local buffers plus host-visible linear images and capability-checked
+  1D, 2D, 3D, cube, array, mipmapped, compressed, and multisampled
+  textures/views, and accepts ShaderPackage-selected SPIR-V as native shader
+  modules. Native evidence covers padded-row and subresource copies, clear,
+  resolve, nearest/linear blit paths, immutable descriptor-backed bindings,
+  push constants, and direct compute dispatch with exact storage-buffer
+  readback. Generated vertex/fragment SPIR-V also drives a native single-color
+  graphics pipeline with exact direct, indexed, and indirect render-target
+  output. Reflected sampled-texture/sampler bindings produce exact texel output,
+  indirect compute reproduces the direct storage-buffer result, depth testing
+  proves exact pass/fail output, two render targets produce independent exact
+  colors, four-sample rendering resolves to exact output, and compute-to-render
+  ordering produces an exact storage-driven fragment result. Discovered
+  graphics/compute/transfer queues execute timeline-semaphore-connected work;
+  explicit buffer, texture, and aliasing barriers plus native timestamp and
+  occlusion query resolves are validation-tested. Linux additionally consumes
+  host-owned XCB handles for native acquire/render/present, exact swapchain
+  readback, and resize recreation under a validation-enabled Xvfb lane.
 - `truffle_backend_direct3d` initializes the Windows SDK D3D12 WARP device,
   owns upload/readback and default-heap buffers plus device-local textures and
   descriptor views, consumes packaged native HLSL or offline DXIL, maps logical
   layouts to root signatures, and owns graphics/compute pipelines, barriers,
-  timeline synchronization, and timestamp/occlusion queries. GPU-validation
-  WARP tests prove ordered native work and query readback plus exact triangle,
-  textured binding, depth/MRT/MSAA, indexed/instanced/indirect, and
-  compute-to-render output.
+  timeline synchronization, timestamp/occlusion queries, and host-owned Win32
+  DXGI presentation. GPU-validation WARP tests prove ordered native work,
+  query and swapchain readback, resize/recovery, exact triangle, textured
+  binding, depth/MRT/MSAA, indexed/instanced/indirect, and compute-to-render
+  output.
 - `truffle_backend_opengl` and `truffle_backend_opengles` use Linux surfaceless
   EGL contexts and deterministic clear/readback smoke proofs. Both own mapped
-  and device-local buffers/views and prove native copy and byte-fill transfers;
-  texture, shader, pipeline, and presentation capabilities remain unsupported.
+  and device-local buffers/views, samplers, uncompressed color/depth/stencil
+  textures, mip/array/3D/cube transfers, exact clears, copies, and blits.
+  Desktop GL additionally owns core texture views and multisample resolve;
+  GLES reports those profile boundaries unsupported. Both compile native GLSL
+  ShaderPackage variants and execute an exact one-target direct-graphics
+  baseline. Advanced bindings/pipelines, synchronization, and presentation
+  remain unsupported.
 - WebGPU remains an explicit `source_only` factory. WebGL2 has a browser-native
   context path when built with Emscripten but remains `source_only` until its
   browser CI evidence exists. Neither exposes a simulated adapter.
@@ -97,8 +119,10 @@ cmake --build --preset dev
 ctest --preset dev
 ```
 
-The checked-in presets build the optional `truffle-shaderc` package assembler.
-Other consumers can opt in with `-DTRUFFLE_BUILD_SHADERC=ON`; the runtime RHI
+The checked-in presets build the optional `truffle-shaderc` package assembler
+and its pinned offline GLSL/GLSL ES to SPIR-V route. Other consumers can opt in
+to the dependency-free assembler with `-DTRUFFLE_BUILD_SHADERC=ON`, then enable
+glslang explicitly with `-DTRUFFLE_SHADERC_ENABLE_GLSLANG=ON`; the runtime RHI
 never gains a compiler dependency.
 
 `truffle-rhi-doctor --strict --json <path>` records the declared matrix and the

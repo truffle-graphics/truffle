@@ -9,8 +9,8 @@ rather than growing a historical transcript here.
 
 ## Current Focus
 
-Complete #51's native D3D12 synchronization, barrier, and query work through
-Windows debug-layer WARP evidence.
+Close #62 through shared, capability-accurate OpenGL and OpenGL ES native GLSL
+shaders, binding layouts, graphics/compute pipelines, and exact output evidence.
 
 ## Delivery Workflow Update
 
@@ -40,11 +40,320 @@ Windows debug-layer WARP evidence.
 
 ## Latest Handoff
 
+- PR #139 has been refreshed against the current `develop` baseline
+  (`97cbc54`) without changing engine code beyond that integration. The
+  dependency guard passes against the expanded Vulkan, D3D12 and GL resource
+  baseline. Delivery policy and architecture-review guidance remain the only
+  PR-owned changes. Fresh CI is required before merge; the separately tracked
+  companion credential recovery remains #131.
+- `feat/rhi1-gl-pipelines` starts #62 with the native-source and direct-graphics
+  checkpoint for both Linux EGL profiles. Native GLSL/GLSL ES ShaderPackage
+  variants compile to owned shader objects with bounded source, `main` entry,
+  stage, compile-log, and link-log validation. Linked program objects retain
+  shader lifetime through the common RHI payloads. The shared queue path now
+  owns framebuffer and vertex-array state across a dynamic-rendering scope,
+  performs attachment clears, binds a program, and executes direct non-
+  instanced draws before returning to the existing exact transfer/readback
+  path. Both profiles conservatively advertise one color attachment, no vertex
+  streams, one viewport, and no compute/depth/MRT/MSAA/indirect/tessellation
+  capability yet. Shared tests build contributor-neutral native-source fixture
+  packages with explicit assembler provenance, compile/link a vertex-ID
+  triangle, render an exact red center pixel, and require zero KHR_debug
+  callbacks independently for desktop GL and GLES. Ownership remains in the
+  shared GL-family backend, system EGL/GL are the only native dependencies, and
+  the public contract is unchanged. Local cross-platform compilation passes.
+  Initial Build `33965142135` reached Linux and caught that the configured GLES
+  3.0 headers omit the compute-stage token. Because compute remains deliberately
+  unadvertised in this checkpoint, the GLES stage mapper now rejects it without
+  referencing a later-profile declaration. Replacement Build `33965233739`
+  passes package, macOS, Ubuntu, and Windows. The Ubuntu lane proves exact red
+  triangle pixels and zero KHR_debug callbacks independently on desktop GL and
+  GLES. The support matrix, pipeline table, README, architecture, overview, and
+  project context record this deliberately narrow checkpoint; #62 remains open
+  for the advanced binding and pipeline acceptance surface.
+- `feat/rhi1-gl-extended-resources` continues #60 from the merged 2D transfer
+  checkpoint. The shared EGL implementation now selects immutable targets for
+  2D arrays, mip chains, 3D textures, cube/cube-array textures, and desktop GL
+  multisample textures; both profiles own core depth16 and depth24/stencil8,
+  while desktop GL additionally owns its core 32-bit depth variants. Uploads
+  honor row and image pitch, and framebuffer attachment selects the requested
+  array layer, volume slice, cube face, and color/depth/stencil aspect. Desktop
+  GL exposes runtime-gated core texture views and multisample resolves; GLES
+  continues to report both explicitly unsupported. Validation-enabled contexts
+  install KHR_debug when the driver exposes it and route API errors through the
+  existing instance callback. Shared native tests exercise separate profile
+  capability snapshots, exact mip/array/3D/cube/depth paths, desktop resolve,
+  GLES negative MSAA/view behavior, external boundaries, memory budgets, and a
+  zero-error debug receipt. Ownership remains in the shared GL-family backend,
+  dependencies remain system EGL/GL only, and the public RHI contract is
+  unchanged. Local cross-platform compilation and the existing 37-test suite
+  pass. Initial Build `33963590121` reached the Linux GLES translation unit and
+  caught two profile-header assumptions: Ubuntu's GLES 3 headers omit KHR_debug
+  typedefs/constants and `GL_PACK_IMAGE_HEIGHT`. The shared code now uses the
+  specification values with a local callback signature, and skips the pack-
+  image state that GLES does not expose because readback is deliberately one
+  slice at a time. Replacement Build `33963718837` passes all four lanes; its
+  Ubuntu lane compiles both profiles and passes the extended exact native suite
+  with KHR_debug enabled. A final packed depth/stencil assertion now clears both
+  aspects and reads stencil independently, while direct multisample transfer
+  attempts return unsupported and require the advertised resolve path. Build
+  `33964084454` caught that Ubuntu's GLES headers also omit the core numeric
+  `GL_STENCIL_INDEX` token even though the transfer path can name it. The shared
+  profile constants now supply that specification value locally. Final Build
+  `33964186004` passes package, macOS, Ubuntu, and Windows. The Ubuntu log proves
+  both GL-family native suites, including independent packed-stencil readback,
+  desktop multisample resolve, profile-specific negatives, and zero KHR_debug
+  error callbacks. Support matrix, resources, roadmap, README, and project
+  context now carry the same capability boundary. #60 is ready to close when
+  this PR merges; #61 is the next P0 GL-family slice.
+- `feat/rhi1-gl-resources` starts #60 with a shared 2D texture checkpoint for
+  both Linux EGL profiles. The backend now owns immutable uncompressed color
+  textures and sampler objects, rejects external and unsupported shapes
+  explicitly, and implements host texture read/write plus buffer-to-texture,
+  texture-to-buffer, texture copy, partial clear, and nearest/linear framebuffer
+  blit through profile-common APIs. Every operation binds its own buffer,
+  texture, framebuffer, and pixel-store state and restores transient pixel-
+  store/framebuffer bindings before completion. The shared native test checks
+  exact padded-row upload/copy/readback, exact clear pixels, linear-blit output,
+  host upload/readback, sampler creation, state rebinding across resources, and
+  negative view/3D/external paths independently on desktop GL and GLES. The
+  public contract is unchanged; ownership remains in the shared EGL backend
+  with only system EGL/GL dependencies. Initial Build `33962059122` compiled
+  both profiles but exposed a capability wiring defect: the common sampler
+  factory correctly existed, but the foundation rejected sampler creation
+  before reaching it because ordinary binding objects were not advertised.
+  Both profiles now expose the conservative logical bind-group baseline and
+  bounded limits required to create sampler objects; the shared test asserts
+  that prerequisite explicitly. Replacement Build `33962339263` then passed
+  the sampler and every native texture operation but caught an incorrect test
+  expectation at the final external-memory boundary: ordinary creation with
+  the external memory domain is contractually invalid because imports must use
+  `import_texture`, whereas a shareable ordinary allocation is the operation
+  that reports unsupported on these profiles. The test now covers both results
+  separately. Final Build `33962754752` passes package, macOS, Ubuntu, and
+  Windows. Its Ubuntu native-smoke lane proves both desktop GL and GLES exact
+  transfer/clear/blit/readback results and the explicit unsupported boundaries.
+  Texture views, extended shapes/formats,
+  depth/stencil, and multisample resolve remain inside open issue #60 for the
+  next checkpoint.
+- `feat/rhi1-vulkan-linux-wsi` implements the Linux Vulkan presentation path
+  for #57 without adding a window framework. Hosts pass an owned XCB connection
+  and window through the existing `NativeSurface`; the backend enables
+  `VK_KHR_surface`, `VK_KHR_xcb_surface`, and `VK_KHR_swapchain` only when the
+  loader and adapter expose them. Surface capability, exact format, FIFO mode,
+  image-count, extent, usage, queue presentation support, acquire, present,
+  and resize/recreation are native and fail explicitly when unsupported.
+  Acquisition waits on a native fence before returning the already-complete
+  RHI acquire timeline point. Presentation bridges RHI timeline waits into a
+  WSI-required binary semaphore. Borrowed swapchain images retain native
+  present layout tracking but never destroy swapchain-owned `VkImage` handles.
+  A Linux-only XCB test creates its own tiny host window under `xvfb-run`,
+  clears a BGRA swapchain image, copies it into padded-row readback, checks every
+  pixel, presents it, resizes the host window, recreates the swapchain, and
+  repeats the exact proof. Unsupported surface kinds are also checked. The
+  internal surface callback now receives the already-existing native context;
+  Metal and D3D12 are threaded through with no public API change. The local
+  macOS build and all 37 configured tests pass. Build `33945857429` passes
+  package, macOS, Ubuntu, and Windows. Its Ubuntu lane compiles the Linux-only
+  path, runs the full native suite with Khronos validation, and then runs the
+  presentation-labeled Vulkan test through `xvfb-run`; both presentation tests
+  pass. Private, non-installed acquire/present fault hooks additionally verify
+  that timeout, suboptimal, out-of-date, surface-loss, allocation, and device-
+  loss outcomes cross the public boundary correctly; retryable presentation
+  failures preserve the acquired image, while replacement statuses release it.
+  Initial receipt Build `33946162926` exposed three real portability defects:
+  native swapchain image counts can exceed the requested minimum, Vulkan 1.1
+  instances must enable the promoted timeline extension, and never-presented
+  swapchain images begin undefined. The foundation now accepts backend-native
+  image indices, extension selection follows the requested instance version,
+  and each image receives a one-time undefined-to-present transition after its
+  first native acquire. The same log also exposed combined depth/stencil layout
+  transitions using only one aspect without the separate-layout feature; such
+  barriers now cover both aspects. Replacement Build `33961381232` passes
+  package, macOS, Ubuntu, and Windows. The Ubuntu log contains no Vulkan
+  validation errors; its native and Xvfb presentation suites pass, including
+  all typed recovery cases. The support matrix and roadmap claim only the
+  evidenced native XCB path.
+- `fix/rhi1-vulkan-device-loss` closes the final #54 acceptance gap found after
+  PR #150 merged. A private, non-installed Vulkan test hook injects submission
+  device loss; the native suite proves the submitting device becomes lost,
+  further work remains rejected after the hook is cleared, and a freshly
+  requested device recovers. `AdapterInfo::timestampPeriodNanoseconds` now
+  makes raw query ticks calibratable: Vulkan publishes native
+  `timestampPeriod`, D3D12 publishes the inverse queue frequency, and Null uses
+  one nanosecond per deterministic tick. Timestamp-capable adapter tests require
+  a positive period. The public addition is backend-neutral and belongs to the
+  RHI adapter contract; the fault hook remains Vulkan-private. The local build
+  and all 37 tests pass. Build `33945096780` passes package, macOS, Ubuntu, and
+  Windows; Ubuntu proves Vulkan loss/recovery under validation and Windows
+  proves D3D12 timestamp-frequency compilation and runtime calibration. The
+  separate companion-routing failure remains tracked by #131.
+- `feat/rhi1-vulkan-sync-foundation` implements #54's native Vulkan baseline.
+  Queue kind is now carried through the internal submission boundary; Vulkan
+  discovers graphics, compute, and transfer families, creates one queue for
+  each distinct family, and uses concurrent sharing for resources visible to
+  multiple families. Explicit buffer, per-subresource texture, and aliasing
+  barriers map portable stages, access masks, and layouts to Vulkan. Native
+  timeline semaphores use Vulkan 1.2 or `VK_KHR_timeline_semaphore`; timestamp
+  and occlusion pools reset, record, availability-wait, and resolve 64-bit
+  results. The public fence remains the foundation's conservative completed-
+  submission timeline because Vulkan submission waits for queue idle before
+  returning. The validation-enabled native test proves transfer-to-graphics
+  semaphore ordering, multi-list submission, logical ownership, exact buffer
+  output, fence timeout/retry, explicit barrier classes, timestamp ordering,
+  nonzero bounded occlusion, and deterministic unsupported pipeline statistics.
+  The internal queue-kind parameter is threaded through the other native
+  backends without changing the public API. Ownership stays in RHI foundation
+  and `src/backends/vulkan`; dependencies remain the existing RHI contract and
+  pinned Vulkan headers/volk. The local build and all 37 tests pass. Initial
+  Build `33944445340` reached GCC and MinGW compilation and identified two
+  warnings-as-errors: an enum/flag conditional needed an explicit Vulkan flag
+  cast, and the Vulkan features wrapper needed an explicit zero initializer.
+  Both portability fixes are applied. Replacement Build `33944555436` passes
+  package, macOS, Ubuntu, and Windows; the Ubuntu validation lane proves the
+  native cross-queue, barrier, timeline, fence, and query paths. The separate
+  companion-routing failure remains the non-gating defect tracked by #131.
+- `feat/rhi1-vulkan-graphics-closeout` completes #53's remaining acceptance
+  surface. A generated fragment package reads the storage buffer written by a
+  preceding compute dispatch in the same command list and produces an exact
+  blue triangle; submission inserts compute-write to fragment-read visibility
+  before beginning the render pass. Native tests also prove that recorded bind
+  groups retain their resources across an arena reset, retired groups fail
+  deterministically, and replacement groups submit exact output. Missing and
+  wrong-type reflection layouts, non-identity SPIR-V remaps, update-after-bind,
+  bindless tables, pipeline caches, and indirect-count all return their
+  documented invalid/unsupported status without simulation. Pipeline-cache and
+  bindless execution remain untested because they remain unadvertised, as #53
+  requires. Ownership stays in `src/backends/vulkan`, dependencies remain RHI
+  contracts plus pinned Vulkan/glslang inputs, and there is no public API
+  change. The local pinned-glslang build and all 37 tests pass. Replacement
+  Build `33943018863` passes package, macOS, Ubuntu, and Windows; Ubuntu Vulkan
+  validation proves exact compute-to-render output, arena lifetime behavior,
+  and every selected negative gate. This satisfies #53's acceptance and the PR
+  closes it on merge.
+  Initial Build `33942881518` reached the native lifetime case and confirmed
+  the retired group is rejected by the public encoder's stale-object guard as
+  `invalid_argument`, before the lower-level arena epoch check; the assertion
+  now matches that documented API boundary.
+- `feat/rhi1-vulkan-depth-mrt-msaa` generalizes Vulkan graphics-pipeline and
+  submission render-pass compatibility from one single-sample color target to
+  multiple color targets, an optional depth/stencil attachment, and explicit
+  multisample resolves. Native pipeline state now maps depth comparison/write
+  and stencil faces, while unsupported depth clamp, non-fill rasterization,
+  tessellation, and indirect-count remain deterministic failures. A generated
+  two-output fragment package drives exact red/green MRT readback; depth-clear
+  cases prove pass/fail output, and a four-sample target resolves to an exact
+  red pixel. Capabilities are promoted from hardware limits only with these
+  paths present. Ownership remains in `src/backends/vulkan`, dependencies stay
+  limited to RHI contracts and pinned Vulkan/glslang inputs, and the public API
+  is unchanged. Both local warning-enabled builds pass; all 36 normal tests and
+  all 37 pinned-glslang tests pass. Initial Build `33942096908` reached the
+  native suite and exposed a stale single-target assertion plus a sampled-image
+  layout barrier recorded inside an active render pass. Capability assertions
+  now match the promoted limits, and descriptor images are transitioned at the
+  render/compute encoder boundary before native pass execution. Ubuntu Vulkan
+  validation in replacement Build `33942299645` proves exact depth pass/fail,
+  two-target red/green output, and four-sample resolve with clean validation;
+  package, macOS, Ubuntu, and Windows lanes all pass. The separate
+  companion-routing failure is the known non-gating automation defect tracked
+  by #131.
+- `feat/rhi1-vulkan-graphics-expanded` extends #53's proven ordinary graphics
+  slice with a generated sampled-texture fragment package, reflected texture
+  and sampler descriptors, graphics bind-group encoding, direct indexed and
+  indirect draw commands, and dispatch-indirect. The Linux-native suite uploads
+  an exact green texel, samples it into the triangle target, verifies indexed
+  and indirect red triangles, and reruns the storage-buffer compute fixture via
+  indirect dimensions. Vulkan advertises indirect commands only after this
+  native gate; indirect-count remains unsupported. Ownership and dependencies
+  remain backend-local with no public API effect. The local warnings-as-errors
+  build and all 36 configured host tests pass. Initial Build `33940792618`
+  reached Ubuntu compilation and exposed test calls that omitted required
+  public indirect-command arguments; the tests now state the exact offset,
+  indexed mode, draw count, stride, and dispatch offset. Ubuntu Vulkan
+  validation in replacement Build `33941005375` proves the exact texture,
+  indexed/instanced/indirect draw, and indirect-compute results; package,
+  macOS, Ubuntu, and Windows lanes all pass. The separate companion-routing
+  failure is the known non-gating automation defect tracked by #131.
+- `feat/rhi1-vulkan-graphics` implements the first bounded Vulkan graphics
+  checkpoint for #53. Generated vertex and fragment SPIR-V packages create an
+  owned native graphics pipeline and compatible render pass. Submission creates
+  transient attachment views/framebuffers, records clear and direct draw
+  commands, transitions the render target for copy, and reads back the center
+  pixel exactly. The backend advertises one single-sample color target and
+  direct graphics only; depth/stencil, MRT, MSAA, indirect commands, pipeline
+  caches, and non-identity remaps remain false or unsupported. Ownership stays
+  in `src/backends/vulkan`; it consumes only RHI contracts and the existing
+  pinned Vulkan/glslang dependencies, with no public API change. The local
+  warnings-as-errors build and all 36 host tests pass; Linux Vulkan validation
+  is the native evidence gate before documentation or capability claims merge.
+  Initial Build `33940133323` reached GCC and found enum-versus-flags
+  conditional expressions rejected by `-Werror`; stage/access mask assembly
+  now uses explicitly typed Vulkan flag variables. Replacement Build
+  `33940219142` passes package, macOS, Ubuntu, and Windows; Ubuntu proves the
+  exact red center pixel under Vulkan validation.
+- `feat/rhi1-vulkan-bindings` adds the next bounded #53 checkpoint. Vulkan now
+  creates native samplers, descriptor-set/pipeline layouts, compute pipelines,
+  per-submission descriptor pools/sets, push constants, and direct dispatch on
+  its shared graphics/compute queue. The generated GLSL ES fixture writes four
+  deterministic words through a reflected storage-buffer bind group; the Linux
+  lane must prove exact host readback under validation. Adapter limits drive
+  the reported binding/push-constant/workgroup limits. Non-identity SPIR-V
+  binding remaps, graphics pipelines, render passes, and indirect dispatch stay
+  explicitly unsupported. The backend owns all native objects and consumes
+  only existing RHI contracts plus pinned Vulkan dependencies; no public API
+  changes. Local warning-as-error compilation and all 37 tests pass, while this
+  host cannot execute the Linux-native dispatch path. Initial Build
+  `33939023870` passed package, macOS, and Windows; Ubuntu reached native
+  validation and exposed three integration gaps: glslang emitted SPIR-V 1.6
+  for a Vulkan 1.1 device, transfer-only images lacked usage compatible with
+  the already-supported native views, and an old test assertion still expected
+  bind groups to be disabled. The compiler now targets Vulkan 1.1/SPIR-V 1.3,
+  view-created images carry an explicitly validated compatible usage, and the
+  capability assertions match the promoted compute slice. Replacement Build
+  `33939221825` proves the corrected compute path and exact readback in the
+  Ubuntu validation lane; package and Windows lanes also pass. Its first macOS
+  attempt encountered transient package-consumer output corruption (every
+  installed archive and the generated package-version file), despite the same
+  commit passing that test locally. The isolated macOS rerun passed without a
+  source change, so final Build `33939221825` is green across package, macOS,
+  Ubuntu, and Windows.
+- `feat/rhi1-vulkan-shader-modules` begins #53 with Vulkan-owned SPIR-V shader
+  modules. The backend rejects non-SPIR-V, partial-word, and invalid-magic
+  inputs before native creation, copies package bytes into aligned words, and
+  destroys modules through the device dispatch under the context lock. The
+  Linux native test consumes the deterministic vertex package produced by the
+  pinned glslang fixture; the fixture is an explicit CTest dependency. Build
+  `33823883160` passes package, macOS, Ubuntu, and Windows; Ubuntu creates the
+  native module under Vulkan validation. Local warning-as-error compilation and
+  all 37 tests also pass. This checkpoint does not advertise binding, graphics,
+  or compute capability and does not close #53.
+  The Vulkan backend owns the native module and depends only on RHI's existing
+  ShaderPackage-selected `ShaderDesc`; no public contract changes.
+- #73's first compiler route is merged by PR #143 at `0e25fd0e`. Final PR-head
+  Build `33820207969` passes package, macOS, Ubuntu, and Windows. Issue #73
+  remains open for its other accepted compiler routes and backend-consumer
+  conformance.
+- Issue #55 is closed by PR #142 and merge commit `c249c164`. Its native Build
+  `33818770807` and final PR-head Build `33818960477` pass package, macOS,
+  Ubuntu, and Windows, including Vulkan validation-layer negative paths.
+- `feat/rhi1-shaderc-spirv-route` starts #73 with glslang `16.5.0` pinned at
+  `a8d28bd082bff18ffbe80996e922b012f915cf07`. The compiler remains private to
+  an explicit optional tool flag; offline and package builds perform no fetch.
+  The CLI compiles GLSL/GLSL ES to generated SPIR-V variants, records the exact
+  compiler version/revision and bounded diagnostics, rejects invalid source,
+  and checks byte-for-byte package determinism. Initial Build `33819736596`
+  passed package, macOS, and Ubuntu; Windows exposed glslang's child-scope debug
+  postfix mismatch under single-config MinGW. The integration now normalizes
+  only the three linked glslang artifact postfixes. Replacement Build
+  `33819959268` passes package, macOS, Ubuntu, and Windows, including generated
+  GLSL/GLSL ES packages, deterministic repetition, invalid-source diagnostics,
+  and the existing native backend lanes. Issue #73 remains open for additional
+  compiler routes and consuming-backend conformance.
 - Issue #129 completed the contributor-neutral planning workflow and the full
   RHI 1 backlog conversion without changing production code.
 - The public Truffle Project #5 contains 95 issues with Status, Phase,
   Workstream, Priority, Effort, and Target evidence fields. Completed #26-#32,
-  #48, #49, and #129 are `Done`; #50 is `In Progress`; the remaining 84
+  #48-#51, and #129 are `Done`; #52 is `In Progress`; the remaining 82
   accepted items are visible as `Todo`, with later Phase 6/7 work also labeled
   `deferred`.
 - Issue #25 structurally owns #26-#35 and #129. Phase epics #33, #34, and #35
@@ -83,7 +392,7 @@ Windows debug-layer WARP evidence.
   companion-routing failure remains tracked by #131 and is not an engine gate.
 - Issue #50 is closed by PR #136 and merge commit `ba3d8a40`; its final receipt
   Build `33763990063` passes package, macOS, Ubuntu, and Windows.
-- Issue #51 is in progress. It maps RHI buffer/texture and aliasing barriers to
+- Issue #51 is complete. It maps RHI buffer/texture and aliasing barriers to
   native D3D12 legacy barriers, gives each timeline semaphore a native fence,
   and encodes queue waits/signals. The public query contract now records
   timestamps, scoped occlusion queries, and explicit query resolution; Null
@@ -96,6 +405,46 @@ Windows debug-layer WARP evidence.
   fence timeout/retry coverage and GPU-based validation pass in final Build
   `33766961283` along with package, macOS, and Ubuntu. The full local build and
   36/36 tests also pass.
+- Issue #52 implements host-owned Win32 surfaces and DXGI flip-model
+  swapchains, borrowed D3D12 back buffers, timeline-connected presentation,
+  aligned resize/recreation, tearing capability checks, and typed recovery
+  statuses. PR #138 Build `33815232612` passes package, macOS, Ubuntu, and
+  Windows; its WARP presentation lane proves exact BGRA8 swapchain readback,
+  acquire/render/present, client-size drift, occluded-desktop handling,
+  `ResizeBuffers`, destroyed-window detection, and device-loss propagation.
+- Issue #52 is closed by PR #138 and merge commit `66db0030`; final PR-head
+  Build `33815897273` passes package, macOS, Ubuntu, and Windows.
+- `feat/rhi1-vulkan-resources` begins #55 by expanding Vulkan images from the
+  narrow 2D slice to capability-checked 1D, 2D, 3D, cube, array, mipmapped,
+  compressed, and multisampled device-local shapes with compatible views.
+  Native transfer recording now covers mip/layer/volume/compressed copies,
+  color/depth/stencil whole-subresource clear and readback, color resolve, and
+  nearest/linear color blit. The strict local build and all 36 tests pass.
+  PR #140 Build `33817112365` passes package, macOS, Ubuntu, and Windows; its
+  Ubuntu validation lane requires BC1, depth/stencil, four-sample resolve, and
+  linear-blit exact output rather than silently skipping them. Host-visible
+  textures, external-memory decisions, and allocation accounting remain in
+  #55.
+- `feat/rhi1-vulkan-host-memory` continues #55 with runtime-queried linear
+  images for upload/readback memory. Direct texture access follows native
+  subresource row/depth pitches, preserves caller padding, flushes/invalidates
+  non-coherent memory, and transitions queue work to host access. The Linux
+  test requires an exact padded host-upload -> native image copy ->
+  host-readback round trip and verifies logical budget release. PR #141 Build
+  `33817918711` passes package, macOS, Ubuntu, and Windows, including the Linux
+  validation-layer proof. External
+  sharing remains deliberately unsupported because no Linux handle ownership
+  contract is yet exposed by the backend.
+- `feat/rhi1-vulkan-resource-audit` closes the remaining #55 acceptance gaps:
+  overflow-safe host layout bounds, deterministic invalid cube-view and
+  host-multisample rejection, native partial-clear rejection, budget exhaustion,
+  and explicit sampler/external capability gates. Samplers remain sequenced with
+  #53 because the public contract exposes them through ordinary bindings; device
+  addresses are not exposed by RHI 1; external handles remain unadvertised until
+  a platform ownership contract exists. Commit `0c8ec99` passes the strict local
+  build and all 36 tests. PR #142 Build `33818770807` passes package, macOS,
+  Ubuntu, and Windows; the Ubuntu validation lane exercises the native negative
+  paths. This completes #55 without promoting Vulkan beyond `native_smoke`.
 
 - PR #46 is merged without closing issue #33. Vulkan buffer/texture and D3D12
   buffer transfers are on `develop`; post-merge build run `33261566114` is green
@@ -307,9 +656,10 @@ because CMake does not discover `clang-format` on this host's `PATH`;
 
 ## Next Resume Steps
 
-1. Run the final documentation receipt CI, merge PR #137, and close #51 with
-   Build `33766961283` as its native evidence; then begin #52.
-2. Continue #33 only through its focused Project sub-issues; update issue and
+1. Run final documentation receipt CI, merge PR #152, close #57 with Build
+   `33945857429` as its native evidence, and move its Project item to Done.
+2. Continue #33 through its next dependency-ready focused Project sub-issue;
+   update issue and
    Project state whenever scope, evidence, or disposition changes.
 3. Keep WebGPU/WebGL2 and every unexecuted mobile/Apple/Vulkan platform at
    `source_only`; keep native slices at `native_smoke` until shared native
@@ -325,12 +675,11 @@ because CMake does not discover `clang-format` on this host's `PATH`;
   tracking; aliased heap allocations are not implemented.
 - Physical Metal device-removal evidence is not available in macOS CI; the
   private fault hook validates public loss-state behavior only.
-- Vulkan buffer copies/fills and buffer-image offsets currently follow Vulkan's
-  four-byte transfer alignment. The texture slice is limited to device-local,
-  single-sample 2D images and color transfers; host-visible images, compressed
-  copies, clears, resolves, blits, shaders, WSI, and presentation remain false
-  or explicitly unsupported. EGL still proves initialization and a narrow smoke
-  workload only.
+- Vulkan submission and presentation are synchronous correctness paths; async
+  throughput and deferred destruction remain later performance work. Linux WSI
+  currently supports XCB only. Wayland, Windows, Android, and MoltenVK surface
+  adapters remain open platform-specific work. EGL still proves only its
+  currently documented resource slice and surfaceless presentation baseline.
 - D3D12 submission remains synchronous and fill commands allocate transient
   upload resources per operation. Compressed, host-visible, external, and
   copy-encoder clear/resolve/blit texture paths remain unsupported; multisampled

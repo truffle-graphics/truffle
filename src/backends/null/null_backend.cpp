@@ -22,6 +22,7 @@ Result<Instance> create_null_instance(const InstanceDesc& desc) {
                                       Feature::push_constants,
                                       Feature::indirect_count,
                                       Feature::pipeline_cache},
+                .timestampPeriodNanoseconds = 1.0,
                 .resourceCapabilities = {
                     .bufferViews = true,
                     .textureViews = true,

@@ -723,7 +723,7 @@ struct MetalFormat {
 }
 
 [[nodiscard]] Result<std::shared_ptr<void>> create_metal_surface(
-    const SurfaceDesc& desc) {
+    const std::shared_ptr<void>&, const SurfaceDesc& desc) {
     @autoreleasepool {
         if (desc.native.kind != NativeSurfaceKind::cocoa_layer ||
             desc.native.handle == nullptr) {
@@ -742,7 +742,8 @@ struct MetalFormat {
 }
 
 [[nodiscard]] Result<std::shared_ptr<void>> create_metal_swapchain(
-    const std::shared_ptr<void>& nativeSurface, const SwapchainDesc& desc) {
+    const std::shared_ptr<void>&, const std::shared_ptr<void>& nativeSurface,
+    const SwapchainDesc& desc) {
     @autoreleasepool {
         const auto surface =
             std::static_pointer_cast<MetalSurfaceResource>(nativeSurface);
@@ -1657,6 +1658,7 @@ struct MetalFormat {
 
 [[nodiscard]] Status submit_metal_commands(
     const std::shared_ptr<void>&,
+    QueueKind,
     std::span<const detail::NativeCommand> commands,
     std::span<const detail::NativeSemaphorePoint> waits,
     std::span<const detail::NativeSemaphorePoint> signals) {

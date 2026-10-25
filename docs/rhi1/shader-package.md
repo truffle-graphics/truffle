@@ -4,11 +4,14 @@
 canonical manifest plus target blobs and can be created, serialized, loaded,
 capability-checked, and selected without a compiler dependency.
 
-`truffle-shaderc` is an optional host tool. Its current dependency-free path
-assembles precompiled or backend-native variants and records authoring-language
-provenance, source SHA-256 values, and compiler identity. It never fetches or
-discovers a compiler implicitly. Future source-to-target compiler adapters must
-arrive with their pinned submodules and explicit enable flags.
+`truffle-shaderc` is an optional host tool. Its dependency-free path assembles
+precompiled or backend-native variants. Its separately enabled pinned glslang
+route compiles GLSL and GLSL ES to SPIR-V. Both paths record authoring-language
+provenance, source SHA-256 values, and compiler identity. Generated modules
+target Vulkan 1.1 and SPIR-V 1.3, matching the minimum runtime contract of the
+current native Vulkan lane. The tool never fetches or discovers a compiler
+implicitly. Additional source-to-target compiler adapters must arrive with
+their pinned submodules and explicit enable flags.
 
 ## Inputs And Variants
 
@@ -54,8 +57,9 @@ Offline binaries are the production default. Runtime compilation is optional,
 capability-reported, and backend-local.
 
 Compilation routes may use pinned Slang, DXC, glslang, SPIR-V Tools,
-SPIRV-Cross, and Tint components. None is currently linked by the runtime or the
-dependency-free assembly tool. Slang is one authoring route, not Truffle's
+SPIRV-Cross, and Tint components. Glslang is linked only by the explicitly
+enabled offline GLSL route and never by the runtime or dependency-free assembly
+configuration. Slang is one authoring route, not Truffle's
 mandatory shader language. Generated Metal and WGSL variants are rejected by
 default and require an explicit experimental package option; the CLI does not
 expose that opt-in.
@@ -73,8 +77,15 @@ expose that opt-in.
   selected package variant. The native Metal proof creates MSL shaders and
   pipeline state from that path. The D3D12 proof retains offline DXIL or uses
   the Windows SDK D3DCompiler for explicitly selected HLSL native overrides.
+  The Vulkan proof creates an owned `VkShaderModule` from the generated SPIR-V
+  package and consumes a reflected compute variant through descriptor-backed
+  dispatch with exact storage-buffer readback. Graphics pipeline capability
+  remains separately gated.
 - `truffle-shaderc` self-test and file-based assemble/inspect smoke tests run in
   CI when `TRUFFLE_BUILD_SHADERC=ON`.
+- With `TRUFFLE_SHADERC_ENABLE_GLSLANG=ON`, CI compiles a representative shader
+  twice to prove deterministic SPIR-V packages and requires invalid GLSL to
+  return bounded compiler diagnostics.
 
 Native execution on each additional backend remains its own evidence gate.
 Recording a target blob does not by itself advance a backend maturity level.

@@ -25,6 +25,7 @@
         "TRUFFLE_BUILD_EXAMPLES": "ON",
         "TRUFFLE_BUILD_TESTS": "ON",
         "TRUFFLE_BUILD_SHADERC": "ON",
+        "TRUFFLE_SHADERC_ENABLE_GLSLANG": "ON",
         "TRUFFLE_INSTALL": "ON"
       }
     },

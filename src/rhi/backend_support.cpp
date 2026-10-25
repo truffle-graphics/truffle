@@ -21,6 +21,12 @@ constexpr BackendEvidence metal_smoke{
     .validation = true,
     .presentation = true,
 };
+constexpr BackendEvidence d3d12_smoke{
+    .compiles = true,
+    .nativeSmoke = true,
+    .validation = true,
+    .presentation = true,
+};
 constexpr BackendEvidence validation_only{
     .compiles = true,
     .conformance = true,
@@ -66,10 +72,10 @@ constexpr std::array support{
                            BackendMaturity::source_only, true, source_only,
                            "MoltenVK dependency and execution lane not present"},
     BackendPlatformSupport{BackendKind::direct3d12, PlatformKind::windows,
-                           BackendMaturity::native_smoke, true,
-                           validated_native_smoke,
+                           BackendMaturity::native_smoke, true, d3d12_smoke,
                            "Windows SDK WARP resources, pipelines, barriers, "
-                           "timeline fences, queries, and exact output"},
+                           "fences, queries, Win32/DXGI presentation, and "
+                           "exact output"},
     BackendPlatformSupport{BackendKind::opengl, PlatformKind::linux_host,
                            BackendMaturity::native_smoke, true,
                            validated_native_smoke,

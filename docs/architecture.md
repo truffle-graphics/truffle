@@ -57,13 +57,20 @@ the cutover decision durable.
   logical substitutes.
 - Linux Vulkan, Windows D3D12 WARP, and Linux EGL OpenGL/OpenGL ES expose an
   adapter only after real native initialization and command or clear/readback
-  smoke succeeds. Vulkan owns buffers, selected device-local 2D textures/views,
-  and native transfers. D3D12 owns buffers, device-local textures, native
+  smoke succeeds. Vulkan owns buffers, host-visible linear images,
+  capability-checked image shapes/views, subresource copies, clear, resolve,
+  and blit transfers. D3D12
+  owns buffers, device-local textures, native
   descriptor views and transfers, packaged shaders, reflected root signatures,
   graphics/compute pipelines, native draw/dispatch commands, explicit barriers,
-  timeline fences, and timestamp/occlusion queries; the EGL profiles own
-  buffers/views and native transfers. These remain narrow matrix foundations:
-  WSI, presentation, and unadvertised resource operations are unsupported.
+  timeline fences, timestamp/occlusion queries, and host-owned Win32/DXGI
+  presentation; the EGL profiles own buffers/views, samplers, uncompressed
+  color/depth/stencil texture shapes, and native transfers, with core texture
+  views and multisample resolve limited to desktop GL. They also own bounded
+  native GLSL shader compilation, linked programs, and a one-target direct-draw
+  baseline. These remain narrow
+  matrix foundations: unadvertised resource operations and
+  backend/platform presentation paths are unsupported.
 - WebGPU and WebGL2 have explicit source targets. WebGPU remains unavailable;
   WebGL2 has an Emscripten context path but no browser evidence, so both remain
   `source_only` in repository maturity.
@@ -177,8 +184,10 @@ owning implementation.
 RHI consumes a format-neutral `ShaderPackage`. The optional host-side
 `truffle-shaderc` tool assembles and appends precompiled or backend-native
 variants into deterministic multi-target packages while recording authoring
-language and compiler provenance. Runtime compilation is optional, and target
-variants must agree on normalized reflection.
+language and compiler provenance. A separately enabled, target-private glslang
+dependency adds offline GLSL/GLSL ES to SPIR-V compilation without changing the
+runtime or exported package dependencies. Runtime compilation is optional, and
+target variants must agree on normalized reflection.
 
 See [the shader package contract](rhi1/shader-package.md).
 

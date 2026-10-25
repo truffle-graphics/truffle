@@ -37,15 +37,24 @@ Current evidence is narrower than the old roadmap claimed:
   physical device-removal evidence, broader Apple-platform execution, and full
   native conformance remain.
 - The #33 matrix work gives Linux Vulkan a pinned private headers/volk loader
-  path, native buffers, selected device-local 2D textures/views, and padded-row
-  transfers; Windows D3D12 owns native upload/readback/default-heap buffers,
+  path, native buffers, host-visible linear images, capability-checked texture
+  shapes/views,
+  padded-row and subresource transfers, clear, resolve, and blit commands;
+  host-owned XCB surface/swapchain presentation with exact readback and resize
+  recreation;
+  Windows D3D12 owns native upload/readback/default-heap buffers,
   device-local textures/views, buffer/texture transfers, ShaderPackage-backed
   root signatures, graphics/compute pipelines, explicit barriers, native
-  timeline fences, and timestamp/occlusion queries on WARP; and Linux
-  OpenGL/OpenGL ES own native EGL buffers and transfers after surfaceless
-  clear/readback initialization. These adapters report only the capabilities
-  they implement. Remaining WSI, presentation, and unadvertised resource gaps
-  stay unsupported rather than simulated.
+  timeline fences, timestamp/occlusion queries, and host-owned Win32/DXGI
+  presentation on WARP; and Linux
+  OpenGL/OpenGL ES own native EGL buffers, samplers, uncompressed
+  color/depth/stencil textures, mip/array/3D/cube transfers and clears after
+  surfaceless initialization; desktop GL additionally owns core texture views
+  and multisample resolve. Both profiles compile native-source ShaderPackage
+  variants and execute an exact one-target direct-graphics baseline. These
+  adapters report only the capabilities
+  they implement. Remaining backend/platform WSI and presentation paths, and
+  unadvertised resource gaps stay unsupported rather than simulated.
 - ShaderPackage 1.0 is a deterministic compiler-free runtime contract with a
   canonical manifest/blob container, cross-target reflection validation,
   capability gates, and native-override selection. Optional

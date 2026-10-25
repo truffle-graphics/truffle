@@ -10,6 +10,10 @@ endif()
 add_library(truffle_backend_vulkan STATIC vulkan_backend.cpp)
 target_sources(truffle_backend_vulkan PRIVATE "${_truffle_volk_dir}/volk.c")
 set_source_files_properties("${_truffle_volk_dir}/volk.c" PROPERTIES LANGUAGE CXX)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID)
+    target_compile_definitions(truffle_backend_vulkan
+                               PRIVATE VK_USE_PLATFORM_XCB_KHR=1)
+endif()
 target_include_directories(truffle_backend_vulkan PRIVATE
     "${PROJECT_SOURCE_DIR}/src/rhi"
     "${_truffle_vulkan_headers_dir}/include"
