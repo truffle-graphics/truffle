@@ -92,7 +92,18 @@ the validated required size rather than from a hard-coded default.
 | Metal on macOS | Native samplers, MSL-source and metallib shaders, function constants, logical binding remaps, immutable groups and arrays, dynamic offsets, push constants, native graphics/compute pipeline state, direct/indexed/instanced/indirect draws, dispatch and dispatch-indirect, MRT, depth/stencil state, and MSAA resolves. | Bindless/update-after-bind, indirect-count, serialized pipeline caches, and tessellation are not advertised. |
 | Vulkan on Linux | Native samplers, immutable ordinary bind groups, descriptor arrays, dynamic offsets, immutable samplers, push constants, descriptor-set/pipeline layouts, specialization values, direct/indirect compute, direct/indexed/instanced/indirect draws, depth/stencil, MRT, MSAA resolve, and compute-to-render ordering. | Non-identity SPIR-V binding remaps, bindless/update-after-bind, indirect-count, serialized pipeline caches, depth clamp, non-fill rasterization, and tessellation are not advertised. |
 | D3D12 on Windows | Native samplers, root signatures, immutable groups and arrays, dynamic offsets, push constants, graphics/compute pipeline state, direct/indexed/instanced/indirect draws, dispatch, MRT, depth/stencil state, and MSAA resolves. | Bindless/update-after-bind, indirect-count, serialized pipeline caches, tessellation, and non-HLSL/DXIL shader routes are not advertised. |
-| OpenGL and OpenGL ES | Native-source shaders, vertex/index input, instancing, depth/stencil, MRT and dynamic state. Build `40229260348` proves exact output independently on both profiles, plus desktop GL indirect drawing and MSAA resolves. | GLES 3.0 does not expose compute, indirect drawing, native subresource views or multisample textures. Binding/compute expansion is awaiting its own native receipt. Caches, tessellation and indirect-count remain unsupported. |
+| OpenGL and OpenGL ES | Reflected native-source programs, logical remaps, sampled arrays, dynamic offsets, immutable samplers, push blocks and scalar specialization equivalents; vertex/index input, instancing, depth/stencil, MRT and dynamic state. Build `40230852839` proves exact output independently on both profiles, plus desktop GL indirect drawing, MSAA resolve and direct/indirect compute-to-render. | GLES 3.0 does not expose storage blocks, compute, indirect drawing, native subresource views or multisample textures. Storage images, caches, tessellation, bindless and indirect-count remain unsupported on both. |
+
+The validation-enabled macOS suite compares exact pixels or buffer values for a
+native triangle, descriptor-array texturing, depth-tested MRT with 4x MSAA,
+indexed/instanced/indirect drawing, and compute-to-render storage flow. The
+validation-enabled Linux suite separately proves exact Vulkan storage-buffer
+compute, textured and indirect drawing, depth-tested MRT/MSAA rendering, and a
+compute-written buffer consumed by a later fragment stage. The Linux EGL suites
+prove the GL-family paths in the table, including logical/native slot
+independence, simultaneous comparison/non-comparison sampling, arena retention,
+pipeline rebinding and deterministic reflection/remap rejection. These proofs
+expand native backend slices but do not establish full backend conformance.
 
 ## Native GLSL Binding Convention
 
@@ -131,13 +142,3 @@ not subresource or format-reinterpreting views. Storage images remain
 unsupported on both profiles. Both profiles own all touched draw/binding state;
 GLES requires common per-target blend/write-mask state and rejects base-vertex,
 base-instance, non-fill rasterization and depth clamp explicitly.
-
-The validation-enabled macOS suite compares exact pixels or buffer values for a
-native triangle, descriptor-array texturing, depth-tested MRT with 4x MSAA,
-indexed/instanced/indirect drawing, and compute-to-render storage flow. The
-validation-enabled Linux suite separately proves exact Vulkan storage-buffer
-compute, textured and indirect drawing, depth-tested MRT/MSAA rendering, and a
-compute-written buffer consumed by a later fragment stage. It also exercises
-arena reset/retirement and deterministic mismatch/unsupported paths. These
-proofs expand native backend slices but do not establish full backend
-conformance.

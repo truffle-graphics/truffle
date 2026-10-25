@@ -40,32 +40,32 @@ shaders, binding layouts, graphics/compute pipelines, and exact output evidence.
 
 ## Latest Handoff
 
-- Binding review adds rejection coverage for native scalar-type, buffer-size,
-  unreflected-resource and remap collisions, plus simultaneous ordinary/shadow
-  sampling through one immutable RHI sampler. Native samplers now own separate
-  comparison and non-comparison objects so binding one unit cannot mutate the
-  other's state. The public capability descriptions and GLSL conventions are
-  synchronized without changing maturity; #62 stays open until native CI proves
-  the full checkpoint. Local focused compilation and three contract/profile
-  tests pass. Superseded Build `40230039929` was cancelled while still
-  installing Linux prerequisites; the final native run must cover the merged
-  guardrail/automation baseline as well as the sampler regressions.
-- The graphics phase of #62 passes Build `40229260348` on Ubuntu, macOS,
-  Windows and packaging, including exact EGL output and zero KHR_debug errors.
-  The next checkpoint adds named native-program reflection validation, logical
-  remaps, sampled arrays, dynamic buffer offsets, immutable samplers, stage
-  push blocks, scalar specialization equivalents and desktop compute/indirect
-  dispatch. GLES supports identity views for sampling but keeps storage
-  blocks, compute, indirect draws and native subresource views gated.
-  Tests cover exact remapped texture output, arena retention/reset, pipeline
-  rebinding, specialization overrides, mismatch rejection and compute-to-render
-  buffer output. Native binding/compute CI is pending. `egl_program.hpp` owns
-  program interface policy; the GL command interpreter remains cohesive around
-  submission lifecycle and native state, with no reverse-layer dependency or
-  public contract change.
+- #62's full GL-family checkpoint passes Build `40230852839` at `d8c885d`:
+  Ubuntu native EGL, macOS, Windows, architecture and package jobs are green.
+  Both profiles prove exact indexed/instanced, depth/stencil, MRT, dynamic-state
+  and textured output, including logical remaps, sampled arrays, dynamic
+  offsets, immutable samplers, stage push blocks, scalar specialization and
+  arena retention/reset. Desktop GL additionally proves indirect drawing,
+  MSAA resolve and direct/indirect compute-to-render. Tests reject reflected
+  name/type/size, missing-resource and remap mismatches, and require zero
+  KHR_debug diagnostics. Simultaneous ordinary/shadow sampling through one RHI
+  sampler uses separate native comparison objects, not mutable shared state.
+  Native-source ShaderPackage fixtures retain explicit assembler provenance.
+  GLES 3.0 keeps storage blocks/images, compute, indirect/base-vertex/base-
+  instance drawing, MSAA and subresource views unsupported; identity sampling
+  views are supported. Both profiles remain `native_smoke`, not conformant.
+- `egl_program.hpp` owns program interface policy and `egl_graphics.hpp` owns
+  graphics state/input details. The GL command interpreter remains cohesive
+  around submission lifecycle and native-state ownership; dependencies and
+  public RHI contracts are unchanged. The support matrix, shader conventions,
+  resource boundaries and roadmap are synchronized for PR #156 closeout.
+  The approved branch cleanup retains `develop`/`master`, preserves all three
+  working folders/build assets, saves a verified Git bundle first, and removes
+  only reviewed integrated/superseded branch refs plus one stale registration.
 - PR #139 merged at `6b663bf` after Build `40229333169` passed its architecture
   guard, all platform jobs and package isolation. PR #157 merged at `07b19da`
-  after all Build lanes and nine automation regressions passed. #131 keeps companion dispatch
+  after all Build lanes and nine automation regressions passed. #131 keeps
+  companion dispatch
   enabled while its owner replaces the rejected Actions credential. The router
   now checks token identity and repository write access before dispatch, emits
   distinct actionable 401/403 errors, and supports a no-task `--verify-auth`
