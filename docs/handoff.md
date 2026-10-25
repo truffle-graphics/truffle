@@ -12,8 +12,40 @@ rather than growing a historical transcript here.
 Close #62 through shared, capability-accurate OpenGL and OpenGL ES native GLSL
 shaders, binding layouts, graphics/compute pipelines, and exact output evidence.
 
+## Delivery Workflow Update
+
+- AI-assisted implementation defaults to review-first delivery. Before an AI
+  implements a plan, the user selects review-first or commit-and-push delivery
+  and agrees the proposed cohesive or staged commit structure.
+- Every AI-authored commit is pushed to the same branch's configured upstream
+  immediately. A failed push leaves delivery incomplete; no later commit or
+  branch switch occurs before the push is recovered through an approved access
+  path.
+- Protected branches remain pull-request-only. The repository-local agent and
+  contributor guidance record the workflow; no RHI contract or backend
+  capability changed in this update.
+
+## Architecture Guardrail Update
+
+- `tools/check_architecture.py` now checks production CMake target dependencies
+  and public-header imports against Truffle's documented layer direction. CI
+  runs it on pull requests before platform build jobs.
+- The guard reports files at or above the 1,000-line review threshold without
+  failing or calling them God files. Every changed production file still gets a
+  cohesion review based on owner, lifecycle, and reason to change; small,
+  mixed-responsibility files are candidates too.
+- `docs/architecture-review.md` defines the required plan/review note and the
+  orchestrator boundary. The guard passed locally for 16 production targets,
+  18 direct target dependency declarations, and 76 public-header imports.
+
 ## Latest Handoff
 
+- PR #139 has been refreshed against the current `develop` baseline
+  (`97cbc54`) without changing engine code beyond that integration. The
+  dependency guard passes against the expanded Vulkan, D3D12 and GL resource
+  baseline. Delivery policy and architecture-review guidance remain the only
+  PR-owned changes. Fresh CI is required before merge; the separately tracked
+  companion credential recovery remains #131.
 - `feat/rhi1-gl-pipelines` starts #62 with the native-source and direct-graphics
   checkpoint for both Linux EGL profiles. Native GLSL/GLSL ES ShaderPackage
   variants compile to owned shader objects with bounded source, `main` entry,

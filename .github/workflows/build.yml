@@ -8,6 +8,16 @@ on:
       - master
 
 jobs:
+  architecture:
+    name: architecture-guard
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check target and public-header boundaries
+        run: python3 tools/check_architecture.py --report
+
   build:
     name: ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
