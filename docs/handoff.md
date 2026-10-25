@@ -12,6 +12,32 @@ rather than growing a historical transcript here.
 Close #62 through shared, capability-accurate OpenGL and OpenGL ES native GLSL
 shaders, binding layouts, graphics/compute pipelines, and exact output evidence.
 
+## Delivery Workflow Update
+
+- AI-assisted implementation defaults to review-first delivery. Before an AI
+  implements a plan, the user selects review-first or commit-and-push delivery
+  and agrees the proposed cohesive or staged commit structure.
+- Every AI-authored commit is pushed to the same branch's configured upstream
+  immediately. A failed push leaves delivery incomplete; no later commit or
+  branch switch occurs before the push is recovered through an approved access
+  path.
+- Protected branches remain pull-request-only. The repository-local agent and
+  contributor guidance record the workflow; no RHI contract or backend
+  capability changed in this update.
+
+## Architecture Guardrail Update
+
+- `tools/check_architecture.py` now checks production CMake target dependencies
+  and public-header imports against Truffle's documented layer direction. CI
+  runs it on pull requests before platform build jobs.
+- The guard reports files at or above the 1,000-line review threshold without
+  failing or calling them God files. Every changed production file still gets a
+  cohesion review based on owner, lifecycle, and reason to change; small,
+  mixed-responsibility files are candidates too.
+- `docs/architecture-review.md` defines the required plan/review note and the
+  orchestrator boundary. The guard passed locally for 16 production targets,
+  18 direct target dependency declarations, and 76 public-header imports.
+
 ## Latest Handoff
 
 - Binding review adds rejection coverage for native scalar-type, buffer-size,
@@ -21,7 +47,9 @@ shaders, binding layouts, graphics/compute pipelines, and exact output evidence.
   other's state. The public capability descriptions and GLSL conventions are
   synchronized without changing maturity; #62 stays open until native CI proves
   the full checkpoint. Local focused compilation and three contract/profile
-  tests pass; Linux Build `40230039929` is still installing system prerequisites.
+  tests pass. Superseded Build `40230039929` was cancelled while still
+  installing Linux prerequisites; the final native run must cover the merged
+  guardrail/automation baseline as well as the sampler regressions.
 - The graphics phase of #62 passes Build `40229260348` on Ubuntu, macOS,
   Windows and packaging, including exact EGL output and zero KHR_debug errors.
   The next checkpoint adds named native-program reflection validation, logical
@@ -35,21 +63,19 @@ shaders, binding layouts, graphics/compute pipelines, and exact output evidence.
   program interface policy; the GL command interpreter remains cohesive around
   submission lifecycle and native state, with no reverse-layer dependency or
   public contract change.
-- `feat/rhi1-gl-expanded-graphics` continues #62 with graphics-state and draw
-  execution: shared vertex/index input, instancing, depth/stencil, MRT, static
-  and dynamic state, and desktop-only indirect drawing and attachment resolve.
-  Detailed state mapping lives in `egl_graphics.hpp`; queue submission retains
-  lifecycle orchestration. Dependencies and public RHI contracts are unchanged.
-  New tests require exact indexed/instanced, depth/stencil pass/fail, MRT,
-  scissor reset, and desktop MSAA/indirect output with zero KHR_debug errors.
-  Compute remains deliberately gated until the following binding/compute
-  phase. Native Linux validation is pending; this checkpoint does not promote
-  backend maturity or replace the support matrix's last proven receipt.
-  The local build cache referenced a removed macOS SDK; reconfiguring with
-  the installed SDK restored compilation.   Build `40227877633` compiled both native EGL backends but GCC/MinGW rejected
-  a local constant in a test lambda's default argument; the fixed default is
-  portable. The next step is replacement native CI evidence followed by the
-  remaining reflection-aware binding and compute surface.
+- PR #139 merged at `6b663bf` after Build `40229333169` passed its architecture
+  guard, all platform jobs and package isolation. PR #157 merged at `07b19da`
+  after all Build lanes and nine automation regressions passed. #131 keeps companion dispatch
+  enabled while its owner replaces the rejected Actions credential. The router
+  now checks token identity and repository write access before dispatch, emits
+  distinct actionable 401/403 errors, and supports a no-task `--verify-auth`
+  check. A protected-branch manual workflow runs only that content-free check.
+  Nine offline tests cover classification, authorization failures, non-dispatch
+  and dry-run behavior; CI runs them alongside the architecture guard.
+  Live auth-only run `40230757739` fails HTTP 401 before any task is created;
+  secure secret replacement and actual dispatch evidence remain pending.
+  Ownership stays in repository automation using Python's standard
+  library; no architectural boundary or public RHI contract changes.
 - `feat/rhi1-gl-pipelines` starts #62 with the native-source and direct-graphics
   checkpoint for both Linux EGL profiles. Native GLSL/GLSL ES ShaderPackage
   variants compile to owned shader objects with bounded source, `main` entry,
