@@ -27,6 +27,7 @@
 #include <vector>
 
 #include "egl_graphics.hpp"
+#include "egl_program.hpp"
 
 namespace truffle::rhi::detail::egl_probe {
 
@@ -262,6 +263,7 @@ struct SamplerResource {
 
     std::shared_ptr<Context> context;
     GLuint name = 0;
+    SamplerDesc desc;
 };
 
 struct ShaderResource {
@@ -296,6 +298,7 @@ struct PipelineResource {
     PipelineDesc graphics;
     ComputePipelineDesc compute;
     bool isCompute = false;
+    program::Layout bindings;
 };
 
 [[nodiscard]] inline GLenum shader_stage(ShaderStage stage) noexcept {
@@ -412,7 +415,7 @@ struct PipelineResource {
 
 [[nodiscard]] inline Result<std::shared_ptr<void>> create_pipeline(
     const std::shared_ptr<void>& nativeContext, const PipelineDesc& desc,
-    const NativePipelineLayout&, const std::shared_ptr<void>& nativeVertex,
+    const NativePipelineLayout& layout, const std::shared_ptr<void>& nativeVertex,
     const std::shared_ptr<void>& nativeFragment) {
     const auto context = std::static_pointer_cast<Context>(nativeContext);
     const auto vertex = std::static_pointer_cast<ShaderResource>(nativeVertex);
@@ -438,6 +441,16 @@ struct PipelineResource {
     auto pipeline = std::make_shared<PipelineResource>();
     pipeline->context = context;
     pipeline->program = linked.value();
+    const std::array<const ShaderDesc*, 2> descriptions{&vertex->desc, &fragment->desc};
+    auto bindings = program::configure(pipeline->program, descriptions, layout,
+                                        desc.specializationConstants);
+    if (!bindings.ok()) {
+        glUseProgram(0);
+        glDeleteProgram(pipeline->program);
+        pipeline->program = 0;
+        return bindings.status();
+    }
+    pipeline->bindings = std::move(bindings).value();
     pipeline->graphics = desc;
     pipeline->graphics.vertexShader = nullptr;
     pipeline->graphics.fragmentShader = nullptr;
@@ -448,7 +461,7 @@ struct PipelineResource {
 
 [[nodiscard]] inline Result<std::shared_ptr<void>> create_compute_pipeline(
     const std::shared_ptr<void>& nativeContext, const ComputePipelineDesc& desc,
-    const NativePipelineLayout&, const std::shared_ptr<void>& nativeShader) {
+    const NativePipelineLayout& layout, const std::shared_ptr<void>& nativeShader) {
     const auto context = std::static_pointer_cast<Context>(nativeContext);
     const auto shader = std::static_pointer_cast<ShaderResource>(nativeShader);
     if (!context || !shader || shader->desc.stage != ShaderStage::compute) {
@@ -467,6 +480,27 @@ struct PipelineResource {
     auto pipeline = std::make_shared<PipelineResource>();
     pipeline->context = context;
     pipeline->program = linked.value();
+    const std::array<const ShaderDesc*, 1> descriptions{&shader->desc};
+    auto bindings = program::configure(pipeline->program, descriptions, layout,
+                                        desc.specializationConstants);
+    if (!bindings.ok()) {
+        glUseProgram(0);
+        glDeleteProgram(pipeline->program);
+        pipeline->program = 0;
+        return bindings.status();
+    }
+    pipeline->bindings = std::move(bindings).value();
+#if defined(TRUFFLE_EGL_API_OPENGL)
+    std::array<GLint, 3> workgroup{};
+    glGetProgramiv(pipeline->program, GL_COMPUTE_WORK_GROUP_SIZE, workgroup.data());
+    if (workgroup[0] != static_cast<GLint>(shader->desc.requiredWorkgroupSize.width) ||
+        workgroup[1] != static_cast<GLint>(shader->desc.requiredWorkgroupSize.height) ||
+        workgroup[2] != static_cast<GLint>(shader->desc.requiredWorkgroupSize.depth)) {
+        glDeleteProgram(pipeline->program);
+        pipeline->program = 0;
+        return program::mismatch("GL compute local size disagrees with reflection");
+    }
+#endif
     pipeline->compute = desc;
     pipeline->compute.computeShader = nullptr;
     pipeline->compute.layout = nullptr;
@@ -477,6 +511,72 @@ struct PipelineResource {
 
 [[nodiscard]] inline GLenum sampler_filter(Filter filter) noexcept {
     return filter == Filter::linear ? GL_LINEAR : GL_NEAREST;
+}
+
+[[nodiscard]] inline Status bind_resources(
+    const program::Layout& layout, std::span<const NativeBindingResource> resources) {
+    for (const auto& binding : layout.bindings) {
+        const auto found = std::find_if(resources.begin(), resources.end(),
+            [&](const NativeBindingResource& resource) {
+                return resource.group == binding.group &&
+                       resource.binding == binding.binding &&
+                       resource.arrayElement == binding.element &&
+                       resource.type == binding.type;
+            });
+        if (found == resources.end() || !found->resource) {
+            return Status::failure(StatusCode::invalid_state,
+                                   "GL draw or dispatch is missing a reflected binding");
+        }
+        if (binding.type == BindingType::uniform_buffer ||
+            binding.type == BindingType::storage_buffer) {
+            const auto buffer = std::static_pointer_cast<BufferResource>(found->resource);
+            if (found->offset >= buffer->size) {
+                return Status::failure(StatusCode::invalid_argument,
+                                       "GL buffer binding offset is out of range");
+            }
+            const auto size = found->size == whole_size
+                                  ? buffer->size - found->offset : found->size;
+            if (size < binding.minimumSize || size > buffer->size - found->offset) {
+                return Status::failure(StatusCode::invalid_argument,
+                                       "GL buffer binding size disagrees with reflection");
+            }
+            GLenum target = GL_UNIFORM_BUFFER;
+#if defined(TRUFFLE_EGL_API_OPENGL)
+            if (binding.type == BindingType::storage_buffer) target = GL_SHADER_STORAGE_BUFFER;
+#endif
+            glBindBufferRange(target, binding.slot, buffer->name,
+                               static_cast<GLintptr>(found->offset),
+                               static_cast<GLsizeiptr>(size));
+        } else if (binding.type == BindingType::sampled_texture) {
+            const auto texture = std::static_pointer_cast<TextureResource>(found->resource);
+            GLenum expected = GL_TEXTURE_2D;
+            switch (binding.uniformType) {
+            case GL_SAMPLER_3D: expected = GL_TEXTURE_3D; break;
+            case GL_SAMPLER_CUBE:
+            case GL_SAMPLER_CUBE_SHADOW: expected = GL_TEXTURE_CUBE_MAP; break;
+            case GL_SAMPLER_2D_ARRAY:
+            case GL_SAMPLER_2D_ARRAY_SHADOW: expected = GL_TEXTURE_2D_ARRAY; break;
+            default: break;
+            }
+            if (texture->target != expected) {
+                return Status::failure(StatusCode::invalid_argument,
+                                       "GL texture shape disagrees with its sampler uniform");
+            }
+            glActiveTexture(GL_TEXTURE0 + binding.slot);
+            glBindTexture(texture->target, texture->name);
+        } else if (binding.type == BindingType::sampler) {
+            const auto sampler = std::static_pointer_cast<SamplerResource>(found->resource);
+            const bool shadow = binding.uniformType == GL_SAMPLER_2D_SHADOW ||
+                                binding.uniformType == GL_SAMPLER_CUBE_SHADOW ||
+                                binding.uniformType == GL_SAMPLER_2D_ARRAY_SHADOW;
+            glSamplerParameteri(sampler->name, GL_TEXTURE_COMPARE_MODE,
+                                 shadow ? GL_COMPARE_REF_TO_TEXTURE : GL_NONE);
+            glSamplerParameteri(sampler->name, GL_TEXTURE_COMPARE_FUNC,
+                                 static_cast<GLint>(graphics::compare(sampler->desc.compare)));
+            glBindSampler(binding.slot, sampler->name);
+        }
+    }
+    return Status::success();
 }
 
 [[nodiscard]] inline GLenum sampler_address(SamplerAddressMode mode) noexcept {
@@ -574,7 +674,6 @@ struct PipelineResource {
     return std::static_pointer_cast<void>(std::move(resource));
 }
 
-#if defined(TRUFFLE_EGL_API_OPENGL)
 [[nodiscard]] inline Result<std::shared_ptr<void>> create_texture_view(
     const std::shared_ptr<void>& nativeTexture, const TextureViewDesc& desc) {
     const auto parent = std::static_pointer_cast<TextureResource>(nativeTexture);
@@ -586,6 +685,17 @@ struct PipelineResource {
         return Status::failure(StatusCode::unsupported,
                                "EGL/GL multisample texture views are disabled");
     }
+#if defined(TRUFFLE_EGL_API_OPENGLES)
+    if (desc.dimension != parent->desc.dimension || desc.format != parent->desc.format ||
+        desc.range.baseMipLevel != 0 || desc.range.mipLevelCount != parent->desc.mipLevels ||
+        desc.range.baseArrayLayer != 0 ||
+        desc.range.arrayLayerCount != parent->desc.arrayLayers ||
+        desc.range.aspects != parent->format.aspects) {
+        return Status::failure(StatusCode::unsupported,
+                               "GLES supports full identity texture views only");
+    }
+    return nativeTexture;
+#else
     const auto format = texture_format(desc.format);
     if (format.internalFormat == 0) {
         return Status::failure(StatusCode::unsupported,
@@ -617,8 +727,8 @@ struct PipelineResource {
                                "EGL/GL texture view creation failed");
     }
     return std::static_pointer_cast<void>(std::move(view));
-}
 #endif
+}
 
 [[nodiscard]] inline Result<std::shared_ptr<void>> create_sampler(
     const std::shared_ptr<void>& nativeContext, const SamplerDesc& desc) {
@@ -633,13 +743,19 @@ struct PipelineResource {
     }
     auto resource = std::make_shared<SamplerResource>();
     resource->context = context;
+    resource->desc = desc;
     std::lock_guard lock{context->mutex};
     if (auto status = make_current(*context); !status.ok()) {
         return status;
     }
     glGenSamplers(1, &resource->name);
     glSamplerParameteri(resource->name, GL_TEXTURE_MIN_FILTER,
-                        static_cast<GLint>(sampler_filter(desc.minFilter)));
+                        static_cast<GLint>(
+                            desc.minFilter == Filter::linear
+                                ? (desc.mipFilter == Filter::linear
+                                       ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR_MIPMAP_NEAREST)
+                                : (desc.mipFilter == Filter::linear
+                                       ? GL_NEAREST_MIPMAP_LINEAR : GL_NEAREST_MIPMAP_NEAREST)));
     glSamplerParameteri(resource->name, GL_TEXTURE_MAG_FILTER,
                         static_cast<GLint>(sampler_filter(desc.magFilter)));
     glSamplerParameteri(resource->name, GL_TEXTURE_WRAP_S,
@@ -1163,6 +1279,10 @@ struct Probe {
     std::string adapterName;
     bool debugOutput = false;
     bool textureViews = false;
+    std::uint32_t uniformAlignment = 1;
+    std::uint32_t storageAlignment = 1;
+    Extent3D workgroupSize{0, 0, 0};
+    std::uint32_t workgroupInvocations = 0;
 };
 
 [[nodiscard]] inline EGLDisplay surfaceless_display() {
@@ -1310,14 +1430,32 @@ struct Probe {
     const bool textureViews = majorVersion > 4 ||
                               (majorVersion == 4 && minorVersion >= 3);
 #else
-    constexpr bool textureViews = false;
+    constexpr bool textureViews = true;
+#endif
+    GLint uniformAlignment = 1;
+    GLint storageAlignment = 1;
+    GLint invocations = 0;
+    std::array<GLint, 3> workgroup{};
+    glGetIntegerv(GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT, &uniformAlignment);
+#if defined(TRUFFLE_EGL_API_OPENGL)
+    glGetIntegerv(GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT, &storageAlignment);
+    glGetIntegerv(GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS, &invocations);
+    for (GLuint index = 0; index < 3; ++index) {
+        glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_SIZE, index, &workgroup[index]);
+    }
 #endif
     const bool validationDebugOutput =
         desc.enableValidation && native->debugOutput;
     return Probe{.context = std::move(native),
                  .adapterName = std::move(name),
                  .debugOutput = validationDebugOutput,
-                 .textureViews = textureViews};
+                 .textureViews = textureViews,
+                 .uniformAlignment = static_cast<std::uint32_t>(uniformAlignment),
+                 .storageAlignment = static_cast<std::uint32_t>(storageAlignment),
+                 .workgroupSize = {static_cast<std::uint32_t>(workgroup[0]),
+                                    static_cast<std::uint32_t>(workgroup[1]),
+                                    static_cast<std::uint32_t>(workgroup[2])},
+                 .workgroupInvocations = static_cast<std::uint32_t>(invocations)};
 }
 
 [[nodiscard]] inline Status execute_texture_transfer(
@@ -1596,6 +1734,10 @@ struct Probe {
     GLuint vertexArray = 0;
     bool renderActive = false;
     std::shared_ptr<PipelineResource> graphicsPipeline;
+    std::shared_ptr<PipelineResource> computePipeline;
+    bool computeActive = false;
+    std::vector<NativeBindingResource> boundResources;
+    std::array<GLuint, 3> pushBuffers{};
     graphics::InputState input;
     Extent2D renderExtent;
     std::vector<NativeRenderAttachment> renderAttachments;
@@ -1620,12 +1762,139 @@ struct Probe {
         cleanup();
         return status;
     };
+    const auto bind_pushes = [&](const program::Layout& layout) {
+        for (const auto& push : layout.pushes) {
+            auto& buffer = pushBuffers[static_cast<std::size_t>(push.stage)];
+            if (buffer == 0) {
+                glGenBuffers(1, &buffer);
+                transients.push_back(buffer);
+                glBindBuffer(GL_UNIFORM_BUFFER, buffer);
+                const std::array<std::byte, 128> zero{};
+                glBufferData(GL_UNIFORM_BUFFER, 128, zero.data(), GL_STREAM_DRAW);
+            }
+            glBindBufferBase(GL_UNIFORM_BUFFER, push.slot, buffer);
+        }
+    };
     for (const auto& command : commands) {
         if (command.kind == NativeCommandKind::barrier) {
+#if defined(TRUFFLE_EGL_API_OPENGL)
+            glMemoryBarrier(GL_ALL_BARRIER_BITS);
+#endif
             continue;
         }
+        if (command.kind == NativeCommandKind::begin_compute) {
+#if defined(TRUFFLE_EGL_API_OPENGL)
+            if (renderActive || computeActive) {
+                return fail(Status::failure(StatusCode::invalid_state,
+                                             "GL compute scope overlaps another encoder"));
+            }
+            computeActive = true;
+            computePipeline.reset();
+            boundResources.clear();
+            continue;
+#else
+            return fail(Status::failure(StatusCode::unsupported,
+                                         "GLES 3.0 compute is unsupported"));
+#endif
+        }
+        if (command.kind == NativeCommandKind::end_compute) {
+            if (!computeActive) {
+                return fail(Status::failure(StatusCode::invalid_state,
+                                             "GL compute scope is not active"));
+            }
+            computeActive = false;
+            computePipeline.reset();
+            glUseProgram(0);
+            continue;
+        }
+        if (command.kind == NativeCommandKind::bind_compute_pipeline) {
+            computePipeline = std::static_pointer_cast<PipelineResource>(command.object);
+            if (!computeActive || !computePipeline || !computePipeline->isCompute) {
+                return fail(Status::failure(StatusCode::invalid_state,
+                                             "GL compute pipeline is invalid"));
+            }
+            glUseProgram(computePipeline->program);
+            bind_pushes(computePipeline->bindings);
+            continue;
+        }
+        if (command.kind == NativeCommandKind::bind_group) {
+            const auto group = command.arguments[0];
+            std::erase_if(boundResources, [&](const NativeBindingResource& resource) {
+                return resource.group == group;
+            });
+            boundResources.insert(boundResources.end(), command.bindings.begin(),
+                                   command.bindings.end());
+            continue;
+        }
+        if (command.kind == NativeCommandKind::push_constants) {
+            const auto pipeline = renderActive ? graphicsPipeline : computePipeline;
+            if (!pipeline) {
+                return fail(Status::failure(StatusCode::invalid_state,
+                                             "GL push constants require a pipeline"));
+            }
+            bind_pushes(pipeline->bindings);
+            for (const auto& push : pipeline->bindings.pushes) {
+                const auto mask = push.stage == ShaderStage::vertex ? ShaderStageMask::vertex :
+                                  push.stage == ShaderStage::fragment ? ShaderStageMask::fragment :
+                                                                         ShaderStageMask::compute;
+                if (!has_stage(static_cast<ShaderStageMask>(command.arguments[0]), mask)) continue;
+                glBindBuffer(GL_UNIFORM_BUFFER,
+                              pushBuffers[static_cast<std::size_t>(push.stage)]);
+                glBufferSubData(GL_UNIFORM_BUFFER,
+                                 static_cast<GLintptr>(command.arguments[1]),
+                                 static_cast<GLsizeiptr>(command.bytes.size()),
+                                 command.bytes.data());
+            }
+            continue;
+        }
+        if (command.kind == NativeCommandKind::bind_uniform_buffer ||
+            command.kind == NativeCommandKind::bind_storage_buffer) {
+            const auto type = command.kind == NativeCommandKind::bind_uniform_buffer
+                                  ? BindingType::uniform_buffer : BindingType::storage_buffer;
+            std::erase_if(boundResources, [&](const NativeBindingResource& resource) {
+                return resource.group == 0 && resource.binding == command.arguments[0];
+            });
+            boundResources.push_back({
+                .binding = static_cast<std::uint32_t>(command.arguments[0]), .type = type,
+                .resource = command.object,
+                .offset = static_cast<std::size_t>(command.arguments[1]), .size = whole_size});
+            continue;
+        }
+        if (command.kind == NativeCommandKind::dispatch ||
+            command.kind == NativeCommandKind::dispatch_indirect) {
+#if defined(TRUFFLE_EGL_API_OPENGL)
+            if (!computeActive || !computePipeline) {
+                return fail(Status::failure(StatusCode::invalid_state,
+                                             "GL dispatch requires a compute pipeline"));
+            }
+            if (auto status = bind_resources(computePipeline->bindings, boundResources);
+                !status.ok()) return fail(status);
+            if (command.kind == NativeCommandKind::dispatch_indirect) {
+                const auto buffer = std::static_pointer_cast<BufferResource>(command.object);
+                glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, buffer->name);
+                glDispatchComputeIndirect(static_cast<GLintptr>(command.arguments[0]));
+                glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, 0);
+            } else {
+                for (GLuint index = 0; index < 3; ++index) {
+                    GLint limit = 0;
+                    glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT, index, &limit);
+                    if (command.arguments[index] > static_cast<std::uint64_t>(limit)) {
+                        return fail(Status::failure(StatusCode::invalid_argument,
+                                                     "GL dispatch exceeds native group limits"));
+                    }
+                }
+                glDispatchCompute(static_cast<GLuint>(command.arguments[0]),
+                                   static_cast<GLuint>(command.arguments[1]),
+                                   static_cast<GLuint>(command.arguments[2]));
+            }
+            continue;
+#else
+            return fail(Status::failure(StatusCode::unsupported,
+                                         "GLES 3.0 compute is unsupported"));
+#endif
+        }
         if (command.kind == NativeCommandKind::begin_render) {
-            if (renderActive) {
+            if (renderActive || computeActive) {
                 return fail(Status::failure(
                     StatusCode::invalid_state, "EGL/GL rendering is already active"));
             }
@@ -1703,6 +1972,7 @@ struct Probe {
             glBindVertexArray(vertexArray);
             renderActive = true;
             graphicsPipeline.reset();
+            boundResources.clear();
             input = {};
             renderExtent = command.extent;
             renderAttachments = command.colorAttachments;
@@ -1764,6 +2034,7 @@ struct Probe {
             }
             glUseProgram(graphicsPipeline->program);
             graphics::apply(graphicsPipeline->graphics, renderExtent);
+            bind_pushes(graphicsPipeline->bindings);
             continue;
         }
         if (command.kind == NativeCommandKind::bind_vertex_buffer) {
@@ -1830,6 +2101,8 @@ struct Probe {
             if (auto status = input.apply(graphicsPipeline->graphics); !status.ok()) {
                 return fail(status);
             }
+            if (auto status = bind_resources(graphicsPipeline->bindings, boundResources);
+                !status.ok()) return fail(status);
             const auto mode = graphics::topology(graphicsPipeline->graphics.topology);
             const auto indexType = input.indexFormat == IndexFormat::uint16
                                        ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT;

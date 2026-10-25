@@ -2,6 +2,7 @@
 
 #include "native_backend_smoke.hpp"
 #include "gl_graphics_tests.hpp"
+#include "gl_binding_tests.hpp"
 
 int main() {
 #ifdef TRUFFLE_EXPECT_EGL_OPENGL
@@ -25,6 +26,14 @@ int main() {
         truffle::rhi::BackendKind::opengl,
         truffle::rhi::ShaderTarget::glsl, &diagnostics);
     truffle::tests::verify_expanded_gl_graphics(
+        truffle::rhi::create_opengl_instance({
+            .debugCallback = &truffle::tests::count_native_diagnostic,
+            .debugUserData = &diagnostics}), true, &diagnostics);
+    truffle::tests::verify_gl_bindings(
+        truffle::rhi::create_opengl_instance({
+            .debugCallback = &truffle::tests::count_native_diagnostic,
+            .debugUserData = &diagnostics}), true, &diagnostics);
+    truffle::tests::verify_gl_compute(
         truffle::rhi::create_opengl_instance({
             .debugCallback = &truffle::tests::count_native_diagnostic,
             .debugUserData = &diagnostics}), true, &diagnostics);

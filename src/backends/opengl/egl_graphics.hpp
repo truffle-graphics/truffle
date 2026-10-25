@@ -52,10 +52,6 @@ inline Status validate(const PipelineDesc& desc) {
         return Status::failure(StatusCode::unsupported,
                                "EGL/GL clamped depth bias and patches are unsupported");
     }
-    if (!desc.specializationConstants.empty()) {
-        return Status::failure(StatusCode::unsupported,
-                               "native GLSL specialization requires a compiled variant");
-    }
 #if defined(TRUFFLE_EGL_API_OPENGLES)
     if (desc.rasterization.polygonMode != PolygonMode::fill ||
         desc.rasterization.depthClampEnabled ||

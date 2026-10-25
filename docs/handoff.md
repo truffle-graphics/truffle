@@ -14,6 +14,19 @@ shaders, binding layouts, graphics/compute pipelines, and exact output evidence.
 
 ## Latest Handoff
 
+- The graphics phase of #62 passes Build `40229260348` on Ubuntu, macOS,
+  Windows and packaging, including exact EGL output and zero KHR_debug errors.
+  The next checkpoint adds named native-program reflection validation, logical
+  remaps, sampled arrays, dynamic buffer offsets, immutable samplers, stage
+  push blocks, scalar specialization equivalents and desktop compute/indirect
+  dispatch. GLES supports identity views for sampling but keeps storage
+  blocks, compute, indirect draws and native subresource views gated.
+  Tests cover exact remapped texture output, arena retention/reset, pipeline
+  rebinding, specialization overrides, mismatch rejection and compute-to-render
+  buffer output. Native binding/compute CI is pending. `egl_program.hpp` owns
+  program interface policy; the GL command interpreter remains cohesive around
+  submission lifecycle and native state, with no reverse-layer dependency or
+  public contract change.
 - `feat/rhi1-gl-expanded-graphics` continues #62 with graphics-state and draw
   execution: shared vertex/index input, instancing, depth/stencil, MRT, static
   and dynamic state, and desktop-only indirect drawing and attachment resolve.

@@ -5,7 +5,9 @@
 namespace truffle::tests {
 
 inline rhi::Shader gl_fixture_shader(rhi::Device& device, bool desktop,
-                                     rhi::ShaderStage stage, std::string source) {
+                                     rhi::ShaderStage stage, std::string source,
+                                     rhi::ShaderReflection reflection = {},
+                                     std::vector<rhi::ShaderBindingRemap> remaps = {}) {
     rhi::ShaderPackageDesc desc;
     desc.name = "GL-family expanded native fixture";
     desc.sources = {{.path = "fixture.glsl",
@@ -13,12 +15,14 @@ inline rhi::Shader gl_fixture_shader(rhi::Device& device, bool desktop,
                                          : rhi::ShaderSourceLanguage::glsl_es,
                      .sha256 = std::string(64, '0')}};
     desc.compilers = {{.name = "repository native-source fixture", .version = "1"}};
+    desc.remaps = std::move(remaps);
     desc.variants = {{.target = desktop ? rhi::ShaderTarget::glsl
                                         : rhi::ShaderTarget::glsl_es,
                       .format = rhi::ShaderByteFormat::native_source,
                       .kind = rhi::ShaderVariantKind::native_override,
                       .stage = stage,
                       .entryPoint = "main",
+                      .reflection = std::move(reflection),
                       .code = native_shader_bytes(
                           (desktop ? "#version 450 core\n" :
                                      "#version 300 es\nprecision highp float;\n") +

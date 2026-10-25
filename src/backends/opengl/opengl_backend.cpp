@@ -22,7 +22,9 @@ Result<Instance> create_opengl_instance(const InstanceDesc& desc) {
     config.maturity = BackendMaturity::native_smoke;
     config.adapterName = std::move(native.adapterName);
     config.queueKinds = {QueueKind::graphics};
-    config.supportedFeatures = {Feature::transfer};
+    config.supportedFeatures = {Feature::transfer, Feature::compute,
+                                Feature::descriptor_arrays, Feature::dynamic_offsets,
+                                Feature::push_constants};
     config.resourceCapabilities = {
         .bufferViews = true,
         .textureViews = native.textureViews,
@@ -38,12 +40,20 @@ Result<Instance> create_opengl_instance(const InstanceDesc& desc) {
     };
     config.bindingCapabilities = {
         .ordinaryBindGroups = true,
+        .descriptorArrays = true,
+        .dynamicOffsets = true,
+        .immutableSamplers = true,
+        .pushConstants = true,
         .maxBindGroups = 4,
         .maxBindingsPerGroup = 32,
         .maxDescriptorsPerGroup = 32,
+        .maxPushConstantBytes = 128,
+        .minUniformBufferOffsetAlignment = native.uniformAlignment,
+        .minStorageBufferOffsetAlignment = native.storageAlignment,
     };
     config.pipelineCapabilities = {
         .graphics = true,
+        .compute = true,
         .multipleRenderTargets = true,
         .depthStencil = true,
         .multisample = true,
@@ -51,6 +61,8 @@ Result<Instance> create_opengl_instance(const InstanceDesc& desc) {
         .maxColorAttachments = 4,
         .maxVertexBuffers = 8,
         .maxViewports = 1,
+        .maxComputeWorkgroupSize = native.workgroupSize,
+        .maxComputeInvocations = native.workgroupInvocations,
     };
     config.native = true;
     config.nativeContext = std::move(native.context);

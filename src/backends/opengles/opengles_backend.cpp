@@ -22,10 +22,11 @@ Result<Instance> create_opengles_instance(const InstanceDesc& desc) {
     config.maturity = BackendMaturity::native_smoke;
     config.adapterName = std::move(native.adapterName);
     config.queueKinds = {QueueKind::graphics};
-    config.supportedFeatures = {Feature::transfer};
+    config.supportedFeatures = {Feature::transfer, Feature::descriptor_arrays,
+                                Feature::dynamic_offsets, Feature::push_constants};
     config.resourceCapabilities = {
         .bufferViews = true,
-        .textureViews = false,
+        .textureViews = true,
         .hostCoherent = true,
         .bufferCopy = true,
         .bufferFill = true,
@@ -37,9 +38,15 @@ Result<Instance> create_opengles_instance(const InstanceDesc& desc) {
     };
     config.bindingCapabilities = {
         .ordinaryBindGroups = true,
+        .descriptorArrays = true,
+        .dynamicOffsets = true,
+        .immutableSamplers = true,
+        .pushConstants = true,
         .maxBindGroups = 4,
         .maxBindingsPerGroup = 32,
         .maxDescriptorsPerGroup = 32,
+        .maxPushConstantBytes = 128,
+        .minUniformBufferOffsetAlignment = native.uniformAlignment,
     };
     config.pipelineCapabilities = {
         .graphics = true,
@@ -59,6 +66,7 @@ Result<Instance> create_opengles_instance(const InstanceDesc& desc) {
     config.writeBuffer = &detail::egl_probe::write_buffer;
     config.readBuffer = &detail::egl_probe::read_buffer;
     config.createTexture = &detail::egl_probe::create_texture;
+    config.createTextureView = &detail::egl_probe::create_texture_view;
     config.writeTexture = &detail::egl_probe::write_texture;
     config.readTexture = &detail::egl_probe::read_texture;
     config.createSampler = &detail::egl_probe::create_sampler;
