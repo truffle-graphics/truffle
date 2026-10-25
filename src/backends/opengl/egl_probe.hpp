@@ -26,6 +26,8 @@
 #include <string>
 #include <vector>
 
+#include "egl_graphics.hpp"
+
 namespace truffle::rhi::detail::egl_probe {
 
 #ifndef EGL_PLATFORM_SURFACELESS_MESA
@@ -421,12 +423,9 @@ struct PipelineResource {
         return Status::failure(StatusCode::invalid_argument,
                                "EGL/GL graphics shaders are invalid");
     }
-#if defined(TRUFFLE_EGL_API_OPENGLES)
-    if (desc.rasterization.polygonMode != PolygonMode::fill) {
-        return Status::failure(StatusCode::unsupported,
-                               "GLES exposes filled polygon mode only");
+    if (auto status = graphics::validate(desc); !status.ok()) {
+        return status;
     }
-#endif
     std::lock_guard lock{context->mutex};
     if (auto status = make_current(*context); !status.ok()) {
         return status;
@@ -1597,6 +1596,9 @@ struct Probe {
     GLuint vertexArray = 0;
     bool renderActive = false;
     std::shared_ptr<PipelineResource> graphicsPipeline;
+    graphics::InputState input;
+    Extent2D renderExtent;
+    std::vector<NativeRenderAttachment> renderAttachments;
     const auto cleanup = [&] {
         glUseProgram(0);
         if (renderFramebuffer != 0) {
@@ -1623,11 +1625,9 @@ struct Probe {
             continue;
         }
         if (command.kind == NativeCommandKind::begin_render) {
-            if (renderActive || command.colorAttachments.empty() ||
-                command.depthStencilAttachment.texture) {
+            if (renderActive) {
                 return fail(Status::failure(
-                    StatusCode::unsupported,
-                    "EGL/GL baseline rendering requires color-only attachments"));
+                    StatusCode::invalid_state, "EGL/GL rendering is already active"));
             }
             glGenFramebuffers(1, &renderFramebuffer);
             glBindFramebuffer(GL_FRAMEBUFFER, renderFramebuffer);
@@ -1651,6 +1651,15 @@ struct Probe {
             }
             glDrawBuffers(static_cast<GLsizei>(drawBuffers.size()),
                           drawBuffers.data());
+            const auto depth = std::static_pointer_cast<TextureResource>(
+                command.depthStencilAttachment.texture);
+            if (depth) {
+                const auto attachment =
+                    has_aspect(depth->format.aspects, TextureAspect::stencil)
+                        ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT;
+                glFramebufferTexture2D(GL_FRAMEBUFFER, attachment, depth->target,
+                                       depth->name, 0);
+            }
             if (glCheckFramebufferStatus(GL_FRAMEBUFFER) !=
                 GL_FRAMEBUFFER_COMPLETE) {
                 return fail(Status::failure(
@@ -1660,8 +1669,15 @@ struct Probe {
             glViewport(0, 0, static_cast<GLsizei>(command.extent.width),
                        static_cast<GLsizei>(command.extent.height));
             glDisable(GL_SCISSOR_TEST);
+            glDepthMask(GL_TRUE);
+            glStencilMask(0xffffffffu);
+            glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
             for (std::size_t index = 0;
                  index < command.colorAttachments.size(); ++index) {
+#if defined(TRUFFLE_EGL_API_OPENGL)
+                glColorMaski(static_cast<GLuint>(index), GL_TRUE, GL_TRUE,
+                             GL_TRUE, GL_TRUE);
+#endif
                 const auto& attachment = command.colorAttachments[index];
                 if (attachment.loadOp == LoadOp::clear) {
                     const std::array clear{attachment.clear.r,
@@ -1672,10 +1688,24 @@ struct Probe {
                                     clear.data());
                 }
             }
+            if (depth) {
+                const auto& attachment = command.depthStencilAttachment;
+                if (attachment.depthLoadOp == LoadOp::clear) {
+                    glClearBufferfv(GL_DEPTH, 0, &attachment.clearDepth);
+                }
+                if (has_aspect(depth->format.aspects, TextureAspect::stencil) &&
+                    attachment.stencilLoadOp == LoadOp::clear) {
+                    const auto stencil = static_cast<GLint>(attachment.clearStencil);
+                    glClearBufferiv(GL_STENCIL, 0, &stencil);
+                }
+            }
             glGenVertexArrays(1, &vertexArray);
             glBindVertexArray(vertexArray);
             renderActive = true;
             graphicsPipeline.reset();
+            input = {};
+            renderExtent = command.extent;
+            renderAttachments = command.colorAttachments;
             continue;
         }
         if (command.kind == NativeCommandKind::end_render) {
@@ -1683,6 +1713,34 @@ struct Probe {
                 return fail(Status::failure(
                     StatusCode::invalid_state,
                     "EGL/GL render encoder is not active"));
+            }
+            for (std::size_t index = 0; index < renderAttachments.size(); ++index) {
+                const auto resolve = std::static_pointer_cast<TextureResource>(
+                    renderAttachments[index].resolveTexture);
+                if (!resolve) continue;
+                GLuint framebuffer = 0;
+                glGenFramebuffers(1, &framebuffer);
+                glBindFramebuffer(GL_DRAW_FRAMEBUFFER, framebuffer);
+                glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                                       resolve->target, resolve->name, 0);
+                constexpr GLenum color = GL_COLOR_ATTACHMENT0;
+                glDrawBuffers(1, &color);
+                if (glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) !=
+                    GL_FRAMEBUFFER_COMPLETE) {
+                    glDeleteFramebuffers(1, &framebuffer);
+                    return fail(Status::failure(
+                        StatusCode::backend_validation_failed,
+                        "EGL/GL resolve framebuffer is incomplete"));
+                }
+                glBindFramebuffer(GL_READ_FRAMEBUFFER, renderFramebuffer);
+                glReadBuffer(GL_COLOR_ATTACHMENT0 + static_cast<GLenum>(index));
+                glDisable(GL_SCISSOR_TEST);
+                glBlitFramebuffer(0, 0, static_cast<GLint>(renderExtent.width),
+                                  static_cast<GLint>(renderExtent.height), 0, 0,
+                                  static_cast<GLint>(renderExtent.width),
+                                  static_cast<GLint>(renderExtent.height),
+                                  GL_COLOR_BUFFER_BIT, GL_NEAREST);
+                glDeleteFramebuffers(1, &framebuffer);
             }
             glUseProgram(0);
             glBindVertexArray(0);
@@ -1705,40 +1763,142 @@ struct Probe {
                     "EGL/GL graphics pipeline binding is invalid"));
             }
             glUseProgram(graphicsPipeline->program);
+            graphics::apply(graphicsPipeline->graphics, renderExtent);
             continue;
         }
-        if (command.kind == NativeCommandKind::draw) {
+        if (command.kind == NativeCommandKind::bind_vertex_buffer) {
+            const auto buffer = std::static_pointer_cast<BufferResource>(command.object);
+            const auto slot = command.arguments[0];
+            if (!renderActive || !buffer || slot >= input.vertices.size()) {
+                return fail(Status::failure(StatusCode::invalid_argument,
+                                             "EGL/GL vertex binding is invalid"));
+            }
+            input.vertices[slot] = {buffer->name,
+                                    static_cast<std::size_t>(command.arguments[1]),
+                                    buffer->size};
+            continue;
+        }
+        if (command.kind == NativeCommandKind::bind_index_buffer) {
+            const auto buffer = std::static_pointer_cast<BufferResource>(command.object);
+            if (!renderActive || !buffer) {
+                return fail(Status::failure(StatusCode::invalid_argument,
+                                             "EGL/GL index binding is invalid"));
+            }
+            input.indexBuffer = buffer->name;
+            input.indexOffset = static_cast<std::size_t>(command.arguments[0]);
+            input.indexSize = buffer->size;
+            input.indexFormat = static_cast<IndexFormat>(command.arguments[1]);
+            continue;
+        }
+        if (command.kind == NativeCommandKind::set_viewports) {
+            graphics::viewport(command.viewports.front());
+            continue;
+        }
+        if (command.kind == NativeCommandKind::set_scissors) {
+            graphics::scissor(command.scissors.front());
+            continue;
+        }
+        if (command.kind == NativeCommandKind::set_blend_constant) {
+            std::array<float, 4> color{};
+            std::memcpy(color.data(), command.bytes.data(), sizeof(color));
+            glBlendColor(color[0], color[1], color[2], color[3]);
+            continue;
+        }
+        if (command.kind == NativeCommandKind::set_stencil_reference) {
+            graphics::stencil_reference(graphicsPipeline->graphics.depthStencil,
+                                         static_cast<std::uint32_t>(command.arguments[0]));
+            continue;
+        }
+        if (command.kind == NativeCommandKind::set_depth_bias) {
+            std::array<float, 3> bias{};
+            std::memcpy(bias.data(), command.bytes.data(), sizeof(bias));
+            if (bias[2] != 0.0F) {
+                return fail(Status::failure(StatusCode::unsupported,
+                                             "EGL/GL clamped depth bias is unsupported"));
+            }
+            graphics::depth_bias(bias[0], bias[1]);
+            continue;
+        }
+        if (command.kind == NativeCommandKind::draw ||
+            command.kind == NativeCommandKind::draw_indexed ||
+            command.kind == NativeCommandKind::draw_indirect) {
             if (!renderActive || !graphicsPipeline) {
                 return fail(Status::failure(
                     StatusCode::invalid_state,
                     "EGL/GL draw requires an active graphics pipeline"));
             }
-            if (command.arguments[1] != 1 || command.arguments[3] != 0) {
-                return fail(Status::failure(
-                    StatusCode::unsupported,
-                    "EGL/GL baseline draw supports one instance at base zero"));
+            if (auto status = input.apply(graphicsPipeline->graphics); !status.ok()) {
+                return fail(status);
             }
-            GLenum topology = GL_TRIANGLES;
-            switch (graphicsPipeline->graphics.topology) {
-            case PrimitiveTopology::triangle_list:
-                topology = GL_TRIANGLES;
-                break;
-            case PrimitiveTopology::triangle_strip:
-                topology = GL_TRIANGLE_STRIP;
-                break;
-            case PrimitiveTopology::line_list:
-                topology = GL_LINES;
-                break;
-            case PrimitiveTopology::point_list:
-                topology = GL_POINTS;
-                break;
-            case PrimitiveTopology::patch_list:
-                return fail(Status::failure(
-                    StatusCode::unsupported,
-                    "EGL/GL tessellation is not exposed"));
+            const auto mode = graphics::topology(graphicsPipeline->graphics.topology);
+            const auto indexType = input.indexFormat == IndexFormat::uint16
+                                       ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT;
+            if (command.kind == NativeCommandKind::draw_indirect) {
+#if defined(TRUFFLE_EGL_API_OPENGL)
+                const auto buffer = std::static_pointer_cast<BufferResource>(command.object);
+                glBindBuffer(GL_DRAW_INDIRECT_BUFFER, buffer->name);
+                for (std::uint64_t index = 0; index < command.arguments[2]; ++index) {
+                    const auto offset = command.arguments[0] + index * command.arguments[3];
+                    if (command.arguments[1] != 0) {
+                        if (input.indexOffset != 0) {
+                            return fail(Status::failure(
+                                StatusCode::unsupported,
+                                "GL indexed indirect draws require a zero index-buffer offset"));
+                        }
+                        glDrawElementsIndirect(mode, indexType,
+                                                reinterpret_cast<const void*>(offset));
+                    } else {
+                        glDrawArraysIndirect(mode, reinterpret_cast<const void*>(offset));
+                    }
+                }
+                glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
+#else
+                return fail(Status::failure(StatusCode::unsupported,
+                                             "GLES indirect drawing is unsupported"));
+#endif
+                continue;
             }
-            glDrawArrays(topology, static_cast<GLint>(command.arguments[2]),
-                         static_cast<GLsizei>(command.arguments[0]));
+            const auto count = static_cast<GLsizei>(command.arguments[0]);
+            const auto instances = static_cast<GLsizei>(command.arguments[1]);
+            if (command.kind == NativeCommandKind::draw_indexed) {
+                const auto indexBytes = input.indexFormat == IndexFormat::uint16 ? 2u : 4u;
+                const auto first = command.arguments[2];
+                if (input.indexOffset > input.indexSize ||
+                    first > (input.indexSize - input.indexOffset) / indexBytes ||
+                    command.arguments[0] >
+                        (input.indexSize - input.indexOffset) / indexBytes - first) {
+                    return fail(Status::failure(StatusCode::invalid_argument,
+                                                 "EGL/GL indexed draw exceeds its buffer"));
+                }
+                const auto* offset = reinterpret_cast<const void*>(
+                    input.indexOffset + first * indexBytes);
+                const auto baseVertex = static_cast<std::int32_t>(command.arguments[3]);
+#if defined(TRUFFLE_EGL_API_OPENGL)
+                glDrawElementsInstancedBaseVertexBaseInstance(
+                    mode, count, indexType, offset, instances, baseVertex,
+                    static_cast<GLuint>(command.arguments[4]));
+#else
+                if (baseVertex != 0 || command.arguments[4] != 0) {
+                    return fail(Status::failure(
+                        StatusCode::unsupported,
+                        "GLES base vertex and base instance are unsupported"));
+                }
+                glDrawElementsInstanced(mode, count, indexType, offset, instances);
+#endif
+            } else {
+#if defined(TRUFFLE_EGL_API_OPENGL)
+                glDrawArraysInstancedBaseInstance(
+                    mode, static_cast<GLint>(command.arguments[2]), count, instances,
+                    static_cast<GLuint>(command.arguments[3]));
+#else
+                if (command.arguments[3] != 0) {
+                    return fail(Status::failure(StatusCode::unsupported,
+                                                 "GLES base instance is unsupported"));
+                }
+                glDrawArraysInstanced(mode, static_cast<GLint>(command.arguments[2]),
+                                      count, instances);
+#endif
+            }
             continue;
         }
         if (command.kind != NativeCommandKind::transfer) {

@@ -551,18 +551,18 @@ inline void verify_native_gl_graphics(rhi::Result<rhi::Instance> result,
     auto adapter = std::move(adapterResult).value();
     const auto info = adapter.info();
     assert(info.backend == backend && info.pipelines.graphics);
-    assert(!info.pipelines.compute && !info.pipelines.depthStencil &&
-           !info.pipelines.multipleRenderTargets &&
-           !info.pipelines.multisample && !info.pipelines.indirect &&
-           !info.pipelines.tessellation);
-    assert(info.pipelines.maxColorAttachments == 1 &&
-           info.pipelines.maxVertexBuffers == 0 &&
+    const bool desktop = backend == rhi::BackendKind::opengl;
+    assert(!info.pipelines.compute && info.pipelines.depthStencil &&
+           info.pipelines.multipleRenderTargets &&
+           info.pipelines.multisample == desktop &&
+           info.pipelines.indirect == desktop && !info.pipelines.tessellation);
+    assert(info.pipelines.maxColorAttachments == 4 &&
+           info.pipelines.maxVertexBuffers == 8 &&
            info.pipelines.maxViewports == 1);
     auto deviceResult = adapter.request_device();
     assert(deviceResult.ok());
     auto device = std::move(deviceResult).value();
 
-    const bool desktop = backend == rhi::BackendKind::opengl;
     const std::string_view vertexSource = desktop ? R"GLSL(#version 450 core
 const vec2 positions[3] = vec2[3](vec2(-0.75, -0.75), vec2(0.75, -0.75), vec2(0.0, 0.75));
 void main() { gl_Position = vec4(positions[gl_VertexID], 0.0, 1.0); }

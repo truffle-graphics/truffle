@@ -43,8 +43,10 @@ Result<Instance> create_opengles_instance(const InstanceDesc& desc) {
     };
     config.pipelineCapabilities = {
         .graphics = true,
-        .maxColorAttachments = 1,
-        .maxVertexBuffers = 0,
+        .multipleRenderTargets = true,
+        .depthStencil = true,
+        .maxColorAttachments = 4,
+        .maxVertexBuffers = 8,
         .maxViewports = 1,
     };
     config.native = true;

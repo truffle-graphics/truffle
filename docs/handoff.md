@@ -14,6 +14,19 @@ shaders, binding layouts, graphics/compute pipelines, and exact output evidence.
 
 ## Latest Handoff
 
+- `feat/rhi1-gl-expanded-graphics` continues #62 with graphics-state and draw
+  execution: shared vertex/index input, instancing, depth/stencil, MRT, static
+  and dynamic state, and desktop-only indirect drawing and attachment resolve.
+  Detailed state mapping lives in `egl_graphics.hpp`; queue submission retains
+  lifecycle orchestration. Dependencies and public RHI contracts are unchanged.
+  New tests require exact indexed/instanced, depth/stencil pass/fail, MRT,
+  scissor reset, and desktop MSAA/indirect output with zero KHR_debug errors.
+  Compute remains deliberately gated until the following binding/compute
+  phase. Native Linux validation is pending; this checkpoint does not promote
+  backend maturity or replace the support matrix's last proven receipt.
+  The local build cache referenced a removed macOS SDK; reconfiguring with
+  the installed SDK restored compilation. The next step is native CI evidence
+  followed by the remaining reflection-aware binding and compute surface.
 - `feat/rhi1-gl-pipelines` starts #62 with the native-source and direct-graphics
   checkpoint for both Linux EGL profiles. Native GLSL/GLSL ES ShaderPackage
   variants compile to owned shader objects with bounded source, `main` entry,

@@ -44,8 +44,12 @@ Result<Instance> create_opengl_instance(const InstanceDesc& desc) {
     };
     config.pipelineCapabilities = {
         .graphics = true,
-        .maxColorAttachments = 1,
-        .maxVertexBuffers = 0,
+        .multipleRenderTargets = true,
+        .depthStencil = true,
+        .multisample = true,
+        .indirect = true,
+        .maxColorAttachments = 4,
+        .maxVertexBuffers = 8,
         .maxViewports = 1,
     };
     config.native = true;
