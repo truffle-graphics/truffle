@@ -95,7 +95,7 @@ void main() { outputColor = color; secondColor = vec4(0.0, 0.0, 1.0, 1.0); }
         .memory = rhi::MemoryDomain::readback});
     assert(readbackResult.ok());
     auto readback = std::move(readbackResult).value();
-    const auto pixel = [&](rhi::Texture& target, std::uint32_t x = extent / 2) {
+    const auto pixel = [&](rhi::Texture& target, std::uint32_t x = 8) {
         auto listResult = pool.allocate();
         assert(listResult.ok());
         auto list = std::move(listResult).value();

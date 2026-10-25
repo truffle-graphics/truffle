@@ -25,8 +25,10 @@ shaders, binding layouts, graphics/compute pipelines, and exact output evidence.
   phase. Native Linux validation is pending; this checkpoint does not promote
   backend maturity or replace the support matrix's last proven receipt.
   The local build cache referenced a removed macOS SDK; reconfiguring with
-  the installed SDK restored compilation. The next step is native CI evidence
-  followed by the remaining reflection-aware binding and compute surface.
+  the installed SDK restored compilation.   Build `40227877633` compiled both native EGL backends but GCC/MinGW rejected
+  a local constant in a test lambda's default argument; the fixed default is
+  portable. The next step is replacement native CI evidence followed by the
+  remaining reflection-aware binding and compute surface.
 - `feat/rhi1-gl-pipelines` starts #62 with the native-source and direct-graphics
   checkpoint for both Linux EGL profiles. Native GLSL/GLSL ES ShaderPackage
   variants compile to owned shader objects with bounded source, `main` entry,
