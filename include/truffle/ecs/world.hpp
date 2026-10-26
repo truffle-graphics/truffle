@@ -1,6 +1,6 @@
 #pragma once
 
-#include "truffle/core/status.hpp"
+#include "truffle/base/status.hpp"
 #include "truffle/ecs/entity.hpp"
 
 #include <algorithm>
@@ -21,7 +21,7 @@ public:
 
     [[nodiscard]] Entity create();
     [[nodiscard]] bool alive(Entity entity) const noexcept;
-    [[nodiscard]] core::Status destroy(Entity entity);
+    [[nodiscard]] base::Status destroy(Entity entity);
 
     template <typename T, typename... Args>
     T& emplace(Entity entity, Args&&... args) {
@@ -65,17 +65,17 @@ public:
     }
 
     template <typename T>
-    [[nodiscard]] core::Status remove(Entity entity) {
+    [[nodiscard]] base::Status remove(Entity entity) {
         auto* storage = find_storage<T>();
         if (!alive(entity)) {
-            return core::Status::failure(core::StatusCode::invalid_argument,
+            return base::Status::failure(base::StatusCode::invalid_argument,
                                          "entity is not alive");
         }
         if (storage == nullptr || storage->values.erase(entity.index) == 0) {
-            return core::Status::failure(core::StatusCode::unavailable,
+            return base::Status::failure(base::StatusCode::unavailable,
                                          "component is not present");
         }
-        return core::Status::success();
+        return base::Status::success();
     }
 
     template <typename First, typename... Rest, typename Fn>

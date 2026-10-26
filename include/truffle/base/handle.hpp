@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <limits>
 
-namespace truffle::core {
+namespace truffle::base {
 
 template <typename Tag>
 class Handle {
@@ -28,5 +28,5 @@ private:
     std::uint64_t value_ = invalid_value;
 };
 
-} // namespace truffle::core
+} // namespace truffle::base
 

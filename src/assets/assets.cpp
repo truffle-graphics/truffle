@@ -32,20 +32,20 @@ bool contains_tag(const std::vector<std::string>& tags,
 }
 
 template <typename T>
-core::Status add_asset(std::unordered_map<AssetId, T, AssetIdHash>& assets,
+base::Status add_asset(std::unordered_map<AssetId, T, AssetIdHash>& assets,
                        T asset) {
     if (!asset.id.valid()) {
-        return core::Status::failure(
-            core::StatusCode::invalid_argument,
+        return base::Status::failure(
+            base::StatusCode::invalid_argument,
             "Assets: asset id must be valid");
     }
     const auto [_, inserted] = assets.try_emplace(asset.id, std::move(asset));
     if (!inserted) {
-        return core::Status::failure(
-            core::StatusCode::invalid_state,
+        return base::Status::failure(
+            base::StatusCode::invalid_state,
             "Assets: asset id is already registered");
     }
-    return core::Status::success();
+    return base::Status::success();
 }
 
 template <typename T>
@@ -93,23 +93,23 @@ void add_stream_stats(AssetCatalogStats& stats,
 
 } // namespace
 
-core::Status AssetCatalog::add_geometry_stream(GeometryStreamDesc stream) {
+base::Status AssetCatalog::add_geometry_stream(GeometryStreamDesc stream) {
     return add_asset(geometryStreams_, std::move(stream));
 }
 
-core::Status AssetCatalog::add_texture(TextureAssetDesc texture) {
+base::Status AssetCatalog::add_texture(TextureAssetDesc texture) {
     return add_asset(textures_, std::move(texture));
 }
 
-core::Status AssetCatalog::add_material(MaterialAssetDesc material) {
+base::Status AssetCatalog::add_material(MaterialAssetDesc material) {
     return add_asset(materials_, std::move(material));
 }
 
-core::Status AssetCatalog::add_mesh(MeshAssetDesc mesh) {
+base::Status AssetCatalog::add_mesh(MeshAssetDesc mesh) {
     return add_asset(meshes_, std::move(mesh));
 }
 
-core::Status AssetCatalog::add_group(AssetGroupDesc group) {
+base::Status AssetCatalog::add_group(AssetGroupDesc group) {
     return add_asset(groups_, std::move(group));
 }
 
@@ -325,12 +325,12 @@ AssetCatalogStats AssetCatalog::stats() const noexcept {
     return result;
 }
 
-core::Result<AssetGroupStats> AssetCatalog::group_stats(
+base::Result<AssetGroupStats> AssetCatalog::group_stats(
     AssetId groupId) const {
     const auto* foundGroup = group(groupId);
     if (foundGroup == nullptr) {
-        return core::Status::failure(
-            core::StatusCode::unavailable,
+        return base::Status::failure(
+            base::StatusCode::unavailable,
             "Assets: asset group is not registered");
     }
 
@@ -364,23 +364,23 @@ core::Result<AssetGroupStats> AssetCatalog::group_stats(
     return result;
 }
 
-core::Status AssetCatalog::validate_mesh_material(AssetId meshId) const {
+base::Status AssetCatalog::validate_mesh_material(AssetId meshId) const {
     const auto* foundMesh = mesh(meshId);
     if (foundMesh == nullptr) {
-        return core::Status::failure(
-            core::StatusCode::unavailable,
+        return base::Status::failure(
+            base::StatusCode::unavailable,
             "Assets: mesh asset is not registered");
     }
     if (!foundMesh->material.valid()) {
-        return core::Status::failure(
-            core::StatusCode::invalid_argument,
+        return base::Status::failure(
+            base::StatusCode::invalid_argument,
             "Assets: mesh does not reference a valid material");
     }
 
     const auto* foundMaterial = material(foundMesh->material);
     if (foundMaterial == nullptr) {
-        return core::Status::failure(
-            core::StatusCode::unavailable,
+        return base::Status::failure(
+            base::StatusCode::unavailable,
             "Assets: material asset is not registered");
     }
 
@@ -490,18 +490,18 @@ bool provides_attribute(const MeshAssetDesc& mesh,
         });
 }
 
-core::Status validate_material_requirements(
+base::Status validate_material_requirements(
     const MaterialAssetDesc& material,
     const MeshAssetDesc& mesh) {
     for (const auto semantic : collect_required_attributes(material)) {
         if (!provides_attribute(mesh, semantic)) {
-            return core::Status::failure(
-                core::StatusCode::invalid_argument,
+            return base::Status::failure(
+                base::StatusCode::invalid_argument,
                 "Assets: mesh is missing an attribute required by material");
         }
     }
 
-    return core::Status::success();
+    return base::Status::success();
 }
 
 } // namespace truffle::assets

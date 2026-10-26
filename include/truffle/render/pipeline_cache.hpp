@@ -33,7 +33,7 @@ public:
 
     // Select the attachment state that pipelines returned for the next pass
     // must match.
-    [[nodiscard]] virtual core::Status prepare_render_pass(
+    [[nodiscard]] virtual base::Status prepare_render_pass(
         const rhi::RenderPassDesc& pass) = 0;
 
     // Returns a matching pipeline or creates one.
@@ -59,7 +59,7 @@ public:
     void register_shaders(MaterialId /*material*/,
                           const ShaderBinding& /*shaders*/) override {}
 
-    [[nodiscard]] core::Status prepare_render_pass(
+    [[nodiscard]] base::Status prepare_render_pass(
         const rhi::RenderPassDesc& pass) override;
 
     [[nodiscard]] rhi::Pipeline* get_or_create(
@@ -91,7 +91,7 @@ public:
     void register_shaders(MaterialId material,
                           const ShaderBinding& shaders) override;
 
-    [[nodiscard]] core::Status prepare_render_pass(
+    [[nodiscard]] base::Status prepare_render_pass(
         const rhi::RenderPassDesc& pass) override;
 
     [[nodiscard]] rhi::Pipeline* get_or_create(

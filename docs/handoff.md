@@ -9,9 +9,10 @@ rather than growing a historical transcript here.
 
 ## Current Focus
 
-Adopt the local-first workflow decision in #131 without automatic hosted builds
-or cloud-agent companions. #62 is complete and integrated through PR #156;
-further engine work follows the next dependency-ready focused issue under #33.
+Use Truffle Base for shared contracts under the naming decision in #159.
+The local-first workflow in #131 remains in effect without automatic hosted
+builds or cloud-agent companions. #62 is complete through PR #156; further
+engine work follows the next dependency-ready focused issue under #33.
 
 ## Delivery Workflow Update
 
@@ -47,6 +48,27 @@ further engine work follows the next dependency-ready focused issue under #33.
 
 ## Latest Handoff
 
+- #159 renames the shared Core module to Truffle Base consistently:
+  `truffle_base`, `Truffle::Base`, `truffle::base`, and `truffle/base/` headers.
+  Source/header paths, consumers, contract-test naming, installed exports,
+  architecture ownership rules, and current docs use Base. The README records
+  old-to-new spellings and advises a fresh install prefix. There are no legacy
+  aliases, forwarding headers, or root-namespace flattening.
+- Base retains the existing status/result, typed-handle, configuration, and
+  version contracts as a dependency-free leaf. All 78 production files match
+  the exact naming-only transformation from the starting revision. Dependency
+  direction and behavior are unchanged; package and API versions remain
+  `0.1.0` because this is unreleased implementation work, not a release boundary.
+  No architectural boundary or backend capability/maturity changes.
+- Focused local Debug builds with warnings-as-errors pass Base, API-version,
+  ECS, Null RHI, diagnostics, and scene-adapter contracts plus the installed
+  package consumer: seven selected tests pass. The installed consumer also
+  executes successfully using all four Base headers and the exported
+  `Truffle::Base` target. The fresh install contains the Base library/headers
+  and no former Core library/header directory. The architecture guard preserves
+  16 production targets, 18 dependency declarations, and 76 public-header
+  imports; diff checks pass. No full platform matrix or hosted workflow is
+  needed for this naming-only change.
 - #131 is implemented as an intentional replacement of cloud-companion repair:
   the companion/setup workflows, router, and now-unused routing tests are
   removed. Build and Release have only manual dispatch triggers; Release

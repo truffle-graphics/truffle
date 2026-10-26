@@ -1,6 +1,6 @@
 #pragma once
 
-#include "truffle/core/status.hpp"
+#include "truffle/base/status.hpp"
 #include "truffle/rhi/rhi.hpp"
 
 #include <string_view>
@@ -17,7 +17,7 @@ public:
     HostWindow(const HostWindow&) = delete;
     HostWindow& operator=(const HostWindow&) = delete;
 
-    [[nodiscard]] core::Status open(std::string_view title, rhi::Extent2D extent);
+    [[nodiscard]] base::Status open(std::string_view title, rhi::Extent2D extent);
     [[nodiscard]] bool should_close() const noexcept;
     [[nodiscard]] rhi::Extent2D framebuffer_extent() const noexcept;
     [[nodiscard]] void* native_handle() const noexcept;

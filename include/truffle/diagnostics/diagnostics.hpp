@@ -2,7 +2,7 @@
 
 #include "truffle/asset_render/asset_render.hpp"
 #include "truffle/assets/assets.hpp"
-#include "truffle/core/status.hpp"
+#include "truffle/base/status.hpp"
 #include "truffle/render/frame_graph.hpp"
 #include "truffle/render/render_batch.hpp"
 #include "truffle/render/renderer.hpp"
@@ -337,9 +337,9 @@ struct DiagnosticsBundle {
     const asset_render::RenderBatchPlan& plan);
 [[nodiscard]] AssetRenderGroupPlanSummary summarize_asset_render_group_plan(
     const asset_render::AssetGroupRenderPlan& plan);
-[[nodiscard]] core::Result<FrameGraphSummary> summarize_frame_graph(
+[[nodiscard]] base::Result<FrameGraphSummary> summarize_frame_graph(
     const render::FrameGraph& graph);
-[[nodiscard]] core::Result<FrameGraphSummary> summarize_frame_graph(
+[[nodiscard]] base::Result<FrameGraphSummary> summarize_frame_graph(
     const render::FrameGraph& graph,
     const FrameGraphInspectionOptions& options);
 [[nodiscard]] RendererStatsSummary summarize_renderer_stats(
@@ -355,7 +355,7 @@ struct DiagnosticsBundle {
 [[nodiscard]] std::vector<DiagnosticFinding> evaluate_frame_graph_budget(
     const FrameGraphSummary& summary,
     const FrameGraphBudget& budget);
-[[nodiscard]] core::Result<DiagnosticsBundle> collect_diagnostics_bundle(
+[[nodiscard]] base::Result<DiagnosticsBundle> collect_diagnostics_bundle(
     const DiagnosticsBundleOptions& options);
 
 [[nodiscard]] std::string format_asset_catalog_summary(

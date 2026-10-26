@@ -451,12 +451,12 @@ AssetRenderGroupPlanSummary summarize_asset_render_group_plan(
     return summary;
 }
 
-core::Result<FrameGraphSummary> summarize_frame_graph(
+base::Result<FrameGraphSummary> summarize_frame_graph(
     const render::FrameGraph& graph) {
     return summarize_frame_graph(graph, {});
 }
 
-core::Result<FrameGraphSummary> summarize_frame_graph(
+base::Result<FrameGraphSummary> summarize_frame_graph(
     const render::FrameGraph& graph,
     const FrameGraphInspectionOptions& options) {
     auto executionOrder = graph.resolve_execution_order();
@@ -495,8 +495,8 @@ core::Result<FrameGraphSummary> summarize_frame_graph(
     for (render::FrameGraph::NodeId nodeId = 0; nodeId < nodes.size(); ++nodeId) {
         const auto* node = graph.node(nodeId);
         if (node == nullptr) {
-            return core::Status::failure(
-                core::StatusCode::invalid_argument,
+            return base::Status::failure(
+                base::StatusCode::invalid_argument,
                 "Diagnostics: frame graph referenced an unknown node id");
         }
 
@@ -662,7 +662,7 @@ std::vector<DiagnosticFinding> evaluate_frame_graph_budget(
     return findings;
 }
 
-core::Result<DiagnosticsBundle> collect_diagnostics_bundle(
+base::Result<DiagnosticsBundle> collect_diagnostics_bundle(
     const DiagnosticsBundleOptions& options) {
     DiagnosticsBundle bundle;
 
@@ -675,8 +675,8 @@ core::Result<DiagnosticsBundle> collect_diagnostics_bundle(
     bundle.renderBatches.reserve(options.renderBatches.size());
     for (const auto& target : options.renderBatches) {
         if (target.batch == nullptr) {
-            return core::Status::failure(
-                core::StatusCode::invalid_argument,
+            return base::Status::failure(
+                base::StatusCode::invalid_argument,
                 "Diagnostics: render batch inspection target is null");
         }
         auto summary = summarize_render_batch(*target.batch, target.options);

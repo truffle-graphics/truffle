@@ -5,7 +5,7 @@
 #include <string>
 #include <utility>
 
-namespace truffle::core {
+namespace truffle::base {
 
 enum class StatusCode {
     ok,
@@ -84,4 +84,4 @@ private:
     std::optional<T> value_;
 };
 
-} // namespace truffle::core
+} // namespace truffle::base

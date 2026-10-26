@@ -437,7 +437,7 @@ int main() {
         diagnostics::collect_diagnostics_bundle(invalidBundleOptions);
     TRUFFLE_CHECK(!invalidBundleResult.ok());
     TRUFFLE_CHECK(invalidBundleResult.status().code ==
-                  core::StatusCode::invalid_argument);
+                  base::StatusCode::invalid_argument);
 
     return 0;
 }

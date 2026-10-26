@@ -7,10 +7,10 @@
 namespace truffle::render {
 namespace {
 
-core::Status validate_render_batch_bindings(const RenderBatch& batch,
+base::Status validate_render_batch_bindings(const RenderBatch& batch,
                                             const rhi::Pipeline& pipeline) {
     if (pipeline.reflection().bindings().empty()) {
-        return core::Status::success();
+        return base::Status::success();
     }
     constexpr std::size_t kBindingSlots = RenderBatch::kMaxBindings + 1;
     std::array<bool, kBindingSlots> expected{};
@@ -21,8 +21,8 @@ core::Status validate_render_batch_bindings(const RenderBatch& batch,
             continue;
         }
         if (binding.group != 0 || binding.binding >= kBindingSlots) {
-            return core::Status::failure(
-                core::StatusCode::invalid_argument,
+            return base::Status::failure(
+                base::StatusCode::invalid_argument,
                 "Renderer: reflected buffer binding exceeds the direct binding lane");
         }
         expected[binding.binding] = true;
@@ -36,21 +36,21 @@ core::Status validate_render_batch_bindings(const RenderBatch& batch,
 
     for (std::size_t index = 0; index < kBindingSlots; ++index) {
         if (expected[index] != provided[index]) {
-            return core::Status::failure(
-                core::StatusCode::invalid_argument,
+            return base::Status::failure(
+                base::StatusCode::invalid_argument,
                 expected[index]
                     ? "Renderer: missing reflected buffer binding"
                     : "Renderer: unexpected buffer binding");
         }
     }
-    return core::Status::success();
+    return base::Status::success();
 }
 
 } // namespace
 
 NullPipelineCache::NullPipelineCache(rhi::Device& device) : device_(&device) {}
 
-core::Status NullPipelineCache::prepare_render_pass(
+base::Status NullPipelineCache::prepare_render_pass(
     const rhi::RenderPassDesc& pass) {
     std::vector<rhi::TextureFormat> colorFormats;
     colorFormats.reserve(pass.colorAttachments.size());
@@ -58,13 +58,13 @@ core::Status NullPipelineCache::prepare_render_pass(
     bool sampleCountSet = false;
     for (const auto& attachment : pass.colorAttachments) {
         if (attachment.texture == nullptr) {
-            return core::Status::failure(core::StatusCode::invalid_argument,
+            return base::Status::failure(base::StatusCode::invalid_argument,
                                          "Renderer: null color attachment");
         }
         const auto desc = attachment.texture->desc();
         if (sampleCountSet && sampleCount != desc.sampleCount) {
-            return core::Status::failure(
-                core::StatusCode::invalid_argument,
+            return base::Status::failure(
+                base::StatusCode::invalid_argument,
                 "Renderer: attachment sample counts do not match");
         }
         colorFormats.push_back(desc.format);
@@ -76,8 +76,8 @@ core::Status NullPipelineCache::prepare_render_pass(
         const auto desc = pass.depthStencilAttachment.texture->desc();
         depthFormat = desc.format;
         if (sampleCountSet && sampleCount != desc.sampleCount) {
-            return core::Status::failure(
-                core::StatusCode::invalid_argument,
+            return base::Status::failure(
+                base::StatusCode::invalid_argument,
                 "Renderer: attachment sample counts do not match");
         }
         sampleCount = desc.sampleCount;
@@ -89,7 +89,7 @@ core::Status NullPipelineCache::prepare_render_pass(
         sampleCount_ = sampleCount;
         pipeline_ = {};
     }
-    return core::Status::success();
+    return base::Status::success();
 }
 
 rhi::Pipeline* NullPipelineCache::get_or_create(const InstanceLayout&,
@@ -122,18 +122,18 @@ void PipelineCache::register_shaders(MaterialId material,
     shaders_[material] = shaders;
 }
 
-core::Status PipelineCache::prepare_render_pass(
+base::Status PipelineCache::prepare_render_pass(
     const rhi::RenderPassDesc& pass) {
     if (pass.colorAttachments.size() != 1 ||
         pass.colorAttachments.front().texture == nullptr ||
         pass.colorAttachments.front().texture->desc().format != colorFormat_ ||
         pass.colorAttachments.front().texture->desc().sampleCount != 1 ||
         pass.depthStencilAttachment.texture != nullptr) {
-        return core::Status::failure(
-            core::StatusCode::invalid_argument,
+        return base::Status::failure(
+            base::StatusCode::invalid_argument,
             "Renderer: pipeline cache does not match render-pass attachments");
     }
-    return core::Status::success();
+    return base::Status::success();
 }
 
 rhi::Pipeline* PipelineCache::get_or_create(const InstanceLayout& layout,
@@ -184,7 +184,7 @@ Renderer::Renderer(rhi::Device& device, IPipelineCache* cache)
     }
 }
 
-core::Status Renderer::render(const FrameGraph& graph, rhi::Swapchain* swapchain) {
+base::Status Renderer::render(const FrameGraph& graph, rhi::Swapchain* swapchain) {
     lastFrameStats_ = {};
     const auto order = graph.resolve_execution_order();
     if (!order.ok()) {
@@ -211,8 +211,8 @@ core::Status Renderer::render(const FrameGraph& graph, rhi::Swapchain* swapchain
     for (const auto nodeId : order.value()) {
         const auto* node = graph.node(nodeId);
         if (node == nullptr) {
-            return core::Status::failure(
-                core::StatusCode::invalid_argument,
+            return base::Status::failure(
+                base::StatusCode::invalid_argument,
                 "Renderer: execution order referenced an unknown node");
         }
         if (node->kind() == FrameGraphNodeKind::Compute) {
@@ -274,8 +274,8 @@ core::Status Renderer::render(const FrameGraph& graph, rhi::Swapchain* swapchain
             auto* pipeline = cache_->get_or_create(
                 batch.layout, batch.material, batch.variantHash);
             if (pipeline == nullptr) {
-                return core::Status::failure(
-                    core::StatusCode::invalid_state,
+                return base::Status::failure(
+                    base::StatusCode::invalid_state,
                     "Renderer: no graphics pipeline is available");
             }
             if (auto status = encoder.bind_pipeline(*pipeline); !status.ok()) {
@@ -305,7 +305,7 @@ core::Status Renderer::render(const FrameGraph& graph, rhi::Swapchain* swapchain
                 }
             }
 
-            core::Status status;
+            base::Status status;
             if ((batch.kind == DrawKind::Indirect ||
                  batch.kind == DrawKind::IndirectIndexed) &&
                 batch.indirectBuffer.buffer != nullptr) {
@@ -399,7 +399,7 @@ core::Status Renderer::render(const FrameGraph& graph, rhi::Swapchain* swapchain
         }
         lastFrameStats_.presented = true;
     }
-    return core::Status::success();
+    return base::Status::success();
 }
 
 } // namespace truffle::render

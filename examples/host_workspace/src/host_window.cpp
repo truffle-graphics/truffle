@@ -9,7 +9,7 @@
 namespace truffle::examples::host_workspace {
 namespace {
 
-[[nodiscard]] core::Status glfw_failure(std::string_view context) {
+[[nodiscard]] base::Status glfw_failure(std::string_view context) {
     const char* description = nullptr;
     glfwGetError(&description);
 
@@ -18,7 +18,7 @@ namespace {
         message += ": ";
         message += description;
     }
-    return core::Status::failure(core::StatusCode::backend_error,
+    return base::Status::failure(base::StatusCode::backend_error,
                                  std::move(message));
 }
 
@@ -33,13 +33,13 @@ HostWindow::~HostWindow() {
     }
 }
 
-core::Status HostWindow::open(std::string_view title, rhi::Extent2D extent) {
+base::Status HostWindow::open(std::string_view title, rhi::Extent2D extent) {
     if (window_ != nullptr || glfwInitialized_) {
-        return core::Status::failure(core::StatusCode::invalid_state,
+        return base::Status::failure(base::StatusCode::invalid_state,
                                      "host window is already open");
     }
     if (extent.width == 0 || extent.height == 0) {
-        return core::Status::failure(core::StatusCode::invalid_argument,
+        return base::Status::failure(base::StatusCode::invalid_argument,
                                      "host window extent must be non-zero");
     }
     if (glfwInit() != GLFW_TRUE) {
@@ -59,7 +59,7 @@ core::Status HostWindow::open(std::string_view title, rhi::Extent2D extent) {
         return status;
     }
 
-    return core::Status::success();
+    return base::Status::success();
 }
 
 bool HostWindow::should_close() const noexcept {

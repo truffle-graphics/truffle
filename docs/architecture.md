@@ -6,7 +6,7 @@ Truffle is a modular graphics library, not an application framework. A consumer
 chooses a low-level graphics API, rendering helpers, asset metadata, scene
 extraction, or diagnostics without inheriting unrelated layers.
 
-1. `truffle_core` provides shared status, version, configuration, and identity
+1. `truffle_base` provides shared status, version, configuration, and identity
    primitives.
 2. `truffle_rhi` defines the canonical backend-neutral graphics contract.
 3. `truffle_backend_*` modules implement that contract behind backend ownership.
@@ -92,7 +92,7 @@ are separate dimensions.
 
 ### Level 1 — Graphics API
 
-Link `truffle_core`, `truffle_rhi`, and one enabled backend. The application
+Link `truffle_base`, `truffle_rhi`, and one enabled backend. The application
 manages GPU resources, synchronization, and presentation directly.
 
 ### Level 2 — Rendering
@@ -151,8 +151,8 @@ queue presentation. It does not introduce a window module as part of RHI 1.
 
 ## Dependency Boundary
 
-Core runtime code depends only on C++20 and the standard library. Optional
-backends and shader tools acquire only their own pinned dependencies. Checked-
+Backend-neutral runtime code depends only on C++20 and the standard library.
+Optional backends and shader tools acquire only their own pinned dependencies. Checked-
 out bundled source is the default; configure never downloads source. Platform
 SDKs are explicit prerequisites, and expert system-package mode is deliberate
 rather than an implicit fallback.

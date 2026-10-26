@@ -230,12 +230,12 @@ add_test(
             "${PROJECT_BINARY_DIR}/rhi-parity-report.json")
 
 add_executable(truffle_api_version_tests api_version_tests.cpp)
-target_link_libraries(truffle_api_version_tests PRIVATE truffle_core)
+target_link_libraries(truffle_api_version_tests PRIVATE truffle_base)
 add_test(NAME truffle_api_version_tests COMMAND truffle_api_version_tests)
 
-add_executable(truffle_core_contract_tests core_contract_tests.cpp)
-target_link_libraries(truffle_core_contract_tests PRIVATE truffle_rhi)
-add_test(NAME truffle_core_contract_tests COMMAND truffle_core_contract_tests)
+add_executable(truffle_base_contract_tests base_contract_tests.cpp)
+target_link_libraries(truffle_base_contract_tests PRIVATE truffle_rhi)
+add_test(NAME truffle_base_contract_tests COMMAND truffle_base_contract_tests)
 
 add_executable(truffle_shader_package_tests shader_package_tests.cpp)
 target_link_libraries(truffle_shader_package_tests PRIVATE truffle_backend_null)

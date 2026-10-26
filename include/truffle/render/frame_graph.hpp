@@ -1,6 +1,6 @@
 #pragma once
 
-#include "truffle/core/status.hpp"
+#include "truffle/base/status.hpp"
 #include "truffle/render/render_batch.hpp"
 #include "truffle/render/transform_compute_pass.hpp"
 #include "truffle/rhi/rhi.hpp"
@@ -86,33 +86,33 @@ public:
         return static_cast<NodeId>(nodes_.size() - 1);
     }
 
-    [[nodiscard]] core::Status add_dependency(NodeId before, NodeId after) {
+    [[nodiscard]] base::Status add_dependency(NodeId before, NodeId after) {
         if (before >= nodes_.size() || after >= nodes_.size()) {
-            return core::Status::failure(
-                core::StatusCode::invalid_argument,
+            return base::Status::failure(
+                base::StatusCode::invalid_argument,
                 "FrameGraph: dependency references unknown node id");
         }
         if (before == after) {
-            return core::Status::failure(
-                core::StatusCode::invalid_argument,
+            return base::Status::failure(
+                base::StatusCode::invalid_argument,
                 "FrameGraph: self dependency is not allowed");
         }
         dependencies_.emplace_back(before, after);
-        return core::Status::success();
+        return base::Status::success();
     }
 
-    [[nodiscard]] core::Status add_resource_usage(NodeId nodeId,
+    [[nodiscard]] base::Status add_resource_usage(NodeId nodeId,
                                                   NodeResourceUsage usage) {
         if (nodeId >= nodes_.size()) {
-            return core::Status::failure(
-                core::StatusCode::invalid_argument,
+            return base::Status::failure(
+                base::StatusCode::invalid_argument,
                 "FrameGraph: resource usage references unknown node id");
         }
         resourceUsages_[nodeId].push_back(usage);
-        return core::Status::success();
+        return base::Status::success();
     }
 
-    [[nodiscard]] core::Result<std::vector<NodeId>> resolve_execution_order() const {
+    [[nodiscard]] base::Result<std::vector<NodeId>> resolve_execution_order() const {
         std::vector<NodeId> order;
         order.reserve(nodes_.size());
 
@@ -173,8 +173,8 @@ public:
             const auto before = edge.first;
             const auto after = edge.second;
             if (before >= nodes_.size() || after >= nodes_.size()) {
-                return core::Status::failure(
-                    core::StatusCode::invalid_argument,
+                return base::Status::failure(
+                    base::StatusCode::invalid_argument,
                     "FrameGraph: dependency graph contains invalid node id");
             }
             const std::uint64_t key =
@@ -208,8 +208,8 @@ public:
         }
 
         if (order.size() != nodes_.size()) {
-            return core::Status::failure(
-                core::StatusCode::invalid_argument,
+            return base::Status::failure(
+                base::StatusCode::invalid_argument,
                 "FrameGraph: dependency cycle detected");
         }
 

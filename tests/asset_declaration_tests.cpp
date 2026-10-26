@@ -130,7 +130,7 @@ int main() {
         validate_material_requirements(velocityMaterial, mesh);
     TRUFFLE_CHECK(!missingAttributeStatus.ok());
     TRUFFLE_CHECK(missingAttributeStatus.code ==
-                  truffle::core::StatusCode::invalid_argument);
+                  truffle::base::StatusCode::invalid_argument);
 
     TextureAssetDesc texture;
     texture.id = AssetId{13};
@@ -214,19 +214,19 @@ int main() {
     const auto invalidGroupStatus = catalog.add_group(invalidGroup);
     TRUFFLE_CHECK(!invalidGroupStatus.ok());
     TRUFFLE_CHECK(invalidGroupStatus.code ==
-                  truffle::core::StatusCode::invalid_argument);
+                  truffle::base::StatusCode::invalid_argument);
 
     const auto duplicateStatus = catalog.add_mesh(mesh);
     TRUFFLE_CHECK(!duplicateStatus.ok());
     TRUFFLE_CHECK(duplicateStatus.code ==
-                  truffle::core::StatusCode::invalid_state);
+                  truffle::base::StatusCode::invalid_state);
 
     MeshAssetDesc invalidMesh;
     invalidMesh.name = "invalid";
     const auto invalidMeshStatus = catalog.add_mesh(invalidMesh);
     TRUFFLE_CHECK(!invalidMeshStatus.ok());
     TRUFFLE_CHECK(invalidMeshStatus.code ==
-                  truffle::core::StatusCode::invalid_argument);
+                  truffle::base::StatusCode::invalid_argument);
 
     auto missingMaterialMesh = mesh;
     missingMaterialMesh.id = AssetId{17};
@@ -236,7 +236,7 @@ int main() {
         catalog.validate_mesh_material(missingMaterialMesh.id);
     TRUFFLE_CHECK(!missingMaterialStatus.ok());
     TRUFFLE_CHECK(missingMaterialStatus.code ==
-                  truffle::core::StatusCode::unavailable);
+                  truffle::base::StatusCode::unavailable);
     const auto missingMaterialReport =
         catalog.validate_mesh_material_report(missingMaterialMesh.id);
     TRUFFLE_CHECK(!missingMaterialReport.ok());
@@ -255,7 +255,7 @@ int main() {
         catalog.validate_mesh_material(missingAttributeMesh.id);
     TRUFFLE_CHECK(!missingCatalogAttributeStatus.ok());
     TRUFFLE_CHECK(missingCatalogAttributeStatus.code ==
-                  truffle::core::StatusCode::invalid_argument);
+                  truffle::base::StatusCode::invalid_argument);
     const auto missingAttributeReport =
         catalog.validate_mesh_material_report(missingAttributeMesh.id);
     TRUFFLE_CHECK(!missingAttributeReport.ok());
@@ -352,7 +352,7 @@ int main() {
     const auto missingGroupStats = catalog.group_stats(AssetId{199});
     TRUFFLE_CHECK(!missingGroupStats.ok());
     TRUFFLE_CHECK(missingGroupStats.status().code ==
-                  truffle::core::StatusCode::unavailable);
+                  truffle::base::StatusCode::unavailable);
 
     AssetCatalog cleanCatalog;
     TRUFFLE_CHECK(cleanCatalog.add_material(material).ok());

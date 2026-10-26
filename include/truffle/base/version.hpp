@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace truffle::core {
+namespace truffle::base {
 
 struct ApiVersion {
     std::uint16_t major = 0;
@@ -60,4 +60,4 @@ inline constexpr std::uint32_t kApiVersionPacked = pack_api_version(kApiVersion)
     return consumer.minor >= window.deprecatedMinor;
 }
 
-} // namespace truffle::core
+} // namespace truffle::base

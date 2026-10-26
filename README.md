@@ -26,7 +26,7 @@ The preliminary RHI has been replaced without a compatibility shim. Shared
 contract tests remain useful, while native maturity is reported independently
 for each backend/platform pair:
 
-- `truffle_core` owns shared status, configuration, and handle primitives.
+- `truffle_base` owns shared status, configuration, and handle primitives.
 - `truffle_assets` defines declarative asset, material-operation, texture,
   geometry stream, and group/tag metadata without owning file loading or GPU
   upload.
@@ -152,7 +152,7 @@ find_package(Truffle CONFIG REQUIRED)
 target_link_libraries(my_tool PRIVATE Truffle::RHI Truffle::Render)
 ```
 
-The current package exports `Truffle::Core`, `Truffle::Assets`,
+The current package exports `Truffle::Base`, `Truffle::Assets`,
 `Truffle::AssetRender`, `Truffle::ECS`, `Truffle::RHI`,
 `Truffle::BackendNull`, `Truffle::Render`, `Truffle::Scene`, and
 `Truffle::Diagnostics`. Additional backend exports
@@ -165,6 +165,24 @@ the public backend/platform matrix and the RHI doctor evidence.
 
 See `docs/distribution.md` for package generation, install verification, and
 release workflow guidance.
+
+### Base Module Naming Migration
+
+The shared module is now **Truffle Base**, formerly Core, under
+[#159](https://github.com/truffle-graphics/truffle/issues/159).
+
+| Surface | Previous spelling | Current spelling |
+|---|---|---|
+| CMake build target | `truffle_core` | `truffle_base` |
+| Exported CMake target | `Truffle::Core` | `Truffle::Base` |
+| C++ namespace | `truffle::core` | `truffle::base` |
+| Public headers | `truffle/core/*.hpp` | `truffle/base/*.hpp` |
+
+Update consumer references consistently. The former names are not retained as
+aliases or forwarding headers. Behavior, dependency direction, and version
+numbers are unchanged; this migration is part of the current unreleased work.
+Use a fresh install prefix when migrating an existing installation so obsolete
+headers and libraries from the former module are not retained.
 
 ## Continuity And AI Guidance
 

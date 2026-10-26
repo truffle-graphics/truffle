@@ -13,7 +13,7 @@ loop, input policy, native windowing, and simulation model.
 
 ## Decision
 
-Truffle is one layered product with independently linkable CMake targets. Core,
+Truffle is one layered product with independently linkable CMake targets. Base,
 RHI, backend, renderer, scene-integration, and future framework-facing layers
 build upward without hiding the lower layers from consumers.
 

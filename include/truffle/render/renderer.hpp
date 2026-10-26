@@ -1,6 +1,6 @@
 #pragma once
 
-#include "truffle/core/status.hpp"
+#include "truffle/base/status.hpp"
 #include "truffle/render/pipeline_cache.hpp"
 #include "truffle/render/render_batch.hpp"
 #include "truffle/render/frame_graph.hpp"
@@ -27,7 +27,7 @@ public:
     // omit (or pass nullptr) for headless and null-backend testing.
     // Render a full frame graph. Pass a swapchain for presentation-capable paths;
     // omit (or pass nullptr) for headless and null-backend testing.
-    [[nodiscard]] core::Status render(const FrameGraph& graph,
+    [[nodiscard]] base::Status render(const FrameGraph& graph,
                                       rhi::Swapchain* swapchain = nullptr);
 
     [[nodiscard]] const RendererFrameStats& last_frame_stats() const noexcept {

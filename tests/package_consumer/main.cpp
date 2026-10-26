@@ -1,12 +1,23 @@
 #include "truffle/asset_render/asset_render.hpp"
 #include "truffle/assets/assets.hpp"
+#include "truffle/base/config.hpp"
+#include "truffle/base/handle.hpp"
+#include "truffle/base/status.hpp"
+#include "truffle/base/version.hpp"
 #include "truffle/diagnostics/diagnostics.hpp"
 #include "truffle/rhi/null_backend.hpp"
 #include "truffle/scene/scene_adapter.hpp"
 
+#include <type_traits>
 #include <utility>
 
 int main() {
+    static_assert(std::is_default_constructible_v<truffle::base::RuntimeConfig>);
+    static_assert(std::is_same_v<truffle::rhi::Status, truffle::base::Status>);
+    static_assert(truffle::base::is_api_compatible(truffle::base::kApiVersion));
+    struct ConsumerHandleTag {};
+    static_assert(!truffle::base::Handle<ConsumerHandleTag>{}.valid());
+
     truffle::assets::GeometryStreamDesc stream;
     stream.id = truffle::assets::AssetId{1};
     stream.attributes.push_back({
