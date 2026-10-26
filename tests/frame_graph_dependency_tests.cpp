@@ -71,13 +71,13 @@ int main() {
         const auto first = graph.add_node(make_empty_render_node());
         const auto badStatus = graph.add_dependency(first, 42);
         TRUFFLE_CHECK(!badStatus.ok());
-        TRUFFLE_CHECK(badStatus.code == truffle::core::StatusCode::invalid_argument);
+        TRUFFLE_CHECK(badStatus.code == truffle::base::StatusCode::invalid_argument);
         const auto badUsageStatus = graph.add_resource_usage(42, {
             .resourceId = 1,
             .access = truffle::render::ResourceAccess::Read,
         });
         TRUFFLE_CHECK(!badUsageStatus.ok());
-        TRUFFLE_CHECK(badUsageStatus.code == truffle::core::StatusCode::invalid_argument);
+        TRUFFLE_CHECK(badUsageStatus.code == truffle::base::StatusCode::invalid_argument);
     }
 
     {
@@ -97,7 +97,7 @@ int main() {
 
         const auto result = renderer.render(graph);
         TRUFFLE_CHECK(!result.ok());
-        TRUFFLE_CHECK(result.code == truffle::core::StatusCode::invalid_argument);
+        TRUFFLE_CHECK(result.code == truffle::base::StatusCode::invalid_argument);
     }
 
     return 0;

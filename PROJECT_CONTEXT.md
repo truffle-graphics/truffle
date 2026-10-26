@@ -74,7 +74,7 @@ Current evidence is narrower than the old roadmap claimed:
 
 ## Architecture And Boundaries
 
-`truffle_core` supplies shared primitives. `truffle_rhi` defines the one
+`truffle_base` supplies shared primitives. `truffle_rhi` defines the one
 canonical backend-neutral graphics contract; `truffle_backend_*` modules own
 backend implementation. Rendering, assets, scene extraction, and diagnostics
 remain layered and independently linkable. Consumers can work directly with
@@ -93,6 +93,11 @@ consumer selects concrete loading, upload, and backend behavior.
 
 ## Constraints And Durable Decisions
 
+- Shared status/result, handle, configuration, and version contracts belong to
+  Truffle Base: `truffle_base`, `Truffle::Base`, `truffle::base`, and
+  `truffle/base/` headers. Issue #159 records the rename from Core, preserving
+  the existing namespace structure and dependency graph. This is an unreleased
+  naming migration, not a version or release boundary.
 - Development is local-first under the decision in #131. Git Flow retains
   `master`, `develop`, feature/fix, release, and hotfix branches with normal
   merge commits. Hosted builds/releases are explicit manual opt-ins, not

@@ -25,9 +25,9 @@ as an unused framework.
 
 ## Dependency Groups
 
-### Core runtime
+### Base and RHI runtime
 
-`truffle_core` and `truffle_rhi` use no third-party runtime source dependency.
+`truffle_base` and `truffle_rhi` use no third-party runtime source dependency.
 
 ### Native backends
 

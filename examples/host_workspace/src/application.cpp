@@ -41,7 +41,7 @@ constexpr rhi::Extent2D kSmokeResizeExtent{1280, 720};
     return lhs.width == rhs.width && lhs.height == rhs.height;
 }
 
-[[nodiscard]] int fail(std::string_view context, const core::Status& status) {
+[[nodiscard]] int fail(std::string_view context, const base::Status& status) {
     std::cerr << context << ": " << status.message << '\n';
     return 1;
 }
@@ -57,10 +57,10 @@ public:
     explicit WorkspaceSession(const IWorkspace& workspace)
         : workspace_(&workspace), shape_(workspace.expected_frame_shape()) {}
 
-    [[nodiscard]] core::Status initialize(void* hostWindowHandle,
+    [[nodiscard]] base::Status initialize(void* hostWindowHandle,
                                           rhi::Extent2D extent) {
         if (!non_zero(extent)) {
-            return core::Status::failure(core::StatusCode::invalid_argument,
+            return base::Status::failure(base::StatusCode::invalid_argument,
                                          "session extent must be non-zero");
         }
         auto instanceResult = rhi::create_null_instance();
@@ -109,13 +109,13 @@ public:
         systems_ = workspace_->systems();
         renderer_ = std::make_unique<render::Renderer>(device_);
         extent_ = extent;
-        return core::Status::success();
+        return base::Status::success();
     }
 
-    [[nodiscard]] core::Status render_frame(rhi::Extent2D extent,
+    [[nodiscard]] base::Status render_frame(rhi::Extent2D extent,
                                             double deltaSeconds) {
         if (!non_zero(extent)) {
-            return core::Status::failure(core::StatusCode::invalid_argument,
+            return base::Status::failure(base::StatusCode::invalid_argument,
                                          "frame extent must be non-zero");
         }
         if (!same_extent(extent_, extent)) {
@@ -127,8 +127,8 @@ public:
         world_.run(systems_, deltaSeconds);
         const auto frame = sceneAdapter_.extract(world_, ring_);
         if (!has_shape(frame, shape_)) {
-            return core::Status::failure(
-                core::StatusCode::invalid_state,
+            return base::Status::failure(
+                base::StatusCode::invalid_state,
                 "workspace extracted frame shape changed");
         }
         render::FrameGraph graph;
@@ -142,10 +142,10 @@ public:
             return status;
         }
         ++renderedFrames_;
-        return core::Status::success();
+        return base::Status::success();
     }
 
-    [[nodiscard]] core::Status validate_stats() const {
+    [[nodiscard]] base::Status validate_stats() const {
         const auto stats = instance_.stats();
         const auto expectedDraws =
             static_cast<std::uint64_t>(renderedFrames_) * shape_.meshBatches;
@@ -154,10 +154,10 @@ public:
             stats.drawsRecorded != expectedDraws ||
             stats.submissions != renderedFrames_ ||
             stats.presentations != renderedFrames_) {
-            return core::Status::failure(core::StatusCode::invalid_state,
+            return base::Status::failure(base::StatusCode::invalid_state,
                                          "null validation stats changed");
         }
-        return core::Status::success();
+        return base::Status::success();
     }
 
     [[nodiscard]] rhi::BackendStats stats() const noexcept {
@@ -307,7 +307,7 @@ int run_application(const ApplicationOptions& options) {
     if (options.useVulkan) {
 #ifdef TRUFFLE_BUILD_BACKEND_VULKAN
         const auto result = rhi::create_vulkan_instance();
-        if (result.ok() || result.status().code != core::StatusCode::unsupported) {
+        if (result.ok() || result.status().code != base::StatusCode::unsupported) {
             std::cerr << "Vulkan RHI 1 availability contract changed\n";
             return 1;
         }

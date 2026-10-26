@@ -1,4 +1,4 @@
-add_subdirectory(core)
+add_subdirectory(base)
 add_subdirectory(assets)
 add_subdirectory(ecs)
 add_subdirectory(rhi)

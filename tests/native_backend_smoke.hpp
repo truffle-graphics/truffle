@@ -46,8 +46,8 @@ inline void verify_native_backend_smoke(rhi::Result<rhi::Instance> result,
 
 inline void verify_unavailable_backend(const rhi::Result<rhi::Instance>& result) {
     assert(!result.ok());
-    assert(result.status().code == core::StatusCode::unsupported ||
-           result.status().code == core::StatusCode::unavailable);
+    assert(result.status().code == base::StatusCode::unsupported ||
+           result.status().code == base::StatusCode::unavailable);
 }
 
 inline void verify_native_buffer_backend(rhi::Result<rhi::Instance> result,

@@ -29,7 +29,7 @@ public:
     void record(BackendEventKind kind,
                 std::string label = {},
                 std::string message = {},
-                core::StatusCode status = core::StatusCode::ok) {
+                base::StatusCode status = base::StatusCode::ok) {
         if (events_.size() == kMaxEvents) {
             events_.erase(events_.begin());
         }
@@ -63,7 +63,7 @@ inline void record_backend_event(const BackendDiagnosticsPtr& diagnostics,
                                  BackendEventKind kind,
                                  std::string label = {},
                                  std::string message = {},
-                                 core::StatusCode status = core::StatusCode::ok) {
+                                 base::StatusCode status = base::StatusCode::ok) {
     if (diagnostics) {
         diagnostics->record(kind, std::move(label), std::move(message), status);
     }

@@ -48,17 +48,17 @@ struct AssetGroupRenderPlan {
     std::vector<RenderBatchPlan> batches;
 };
 
-[[nodiscard]] core::Result<RenderBatchPlan> plan_render_batch(
+[[nodiscard]] base::Result<RenderBatchPlan> plan_render_batch(
     const assets::MeshAssetDesc& mesh,
     const assets::MaterialAssetDesc& material,
     const RenderBatchPlanOptions& options = {});
 
-[[nodiscard]] core::Result<RenderBatchPlan> plan_catalog_render_batch(
+[[nodiscard]] base::Result<RenderBatchPlan> plan_catalog_render_batch(
     const assets::AssetCatalog& catalog,
     assets::AssetId mesh,
     const RenderBatchPlanOptions& options = {});
 
-[[nodiscard]] core::Result<AssetGroupRenderPlan> plan_group_render_batches(
+[[nodiscard]] base::Result<AssetGroupRenderPlan> plan_group_render_batches(
     const assets::AssetCatalog& catalog,
     assets::AssetId group,
     const RenderBatchPlanOptions& options = {});

@@ -1,3 +1,7 @@
+#include "truffle/base/config.hpp"
+#include "truffle/base/handle.hpp"
+#include "truffle/base/status.hpp"
+#include "truffle/base/version.hpp"
 #include "truffle/rhi/rhi.hpp"
 #include "truffle/rhi/validation.hpp"
 
@@ -7,6 +11,23 @@
 
 int main() {
     using namespace truffle;
+
+    static_assert(std::is_same_v<rhi::Status, base::Status>);
+    static_assert(std::is_same_v<rhi::Result<int>, base::Result<int>>);
+    static_assert(base::is_api_compatible(base::kApiVersion));
+
+    struct TestHandleTag {};
+    using TestHandle = base::Handle<TestHandleTag>;
+    static_assert(!TestHandle{}.valid());
+    constexpr TestHandle handle{42};
+    static_assert(handle.valid() && handle.value() == 42);
+
+    const base::RuntimeConfig config;
+    assert(config.application_name == "Truffle Consumer");
+    assert(config.enable_validation);
+
+    const base::Result<int> result{7};
+    assert(result.ok() && result.value() == 7);
 
     static_assert(!std::is_copy_constructible_v<rhi::Instance>);
     static_assert(!std::is_copy_constructible_v<rhi::Device>);
@@ -46,8 +67,8 @@ int main() {
     assert(reflection.find(0, 2, rhi::ShaderStage::vertex) != nullptr);
     assert(reflection.find(1, 2, rhi::ShaderStage::vertex) == nullptr);
 
-    const auto status = core::Status::failure(
-        core::StatusCode::backend_validation_failed, "validation failed",
+    const auto status = base::Status::failure(
+        base::StatusCode::backend_validation_failed, "validation failed",
         {
             .domain = "test",
             .nativeCode = 42,

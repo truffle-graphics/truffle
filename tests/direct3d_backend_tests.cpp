@@ -282,11 +282,11 @@ void verify_direct3d_buffers() {
   auto invalidFormatView = device.create_texture_view(
       sourceTexture, {.format = rhi::TextureFormat::bgra8_unorm});
   assert(!invalidFormatView.ok());
-  assert(invalidFormatView.status().code == truffle::core::StatusCode::invalid_argument);
+  assert(invalidFormatView.status().code == truffle::base::StatusCode::invalid_argument);
   auto invalidRangeView = device.create_texture_view(
       sourceTexture, {.range = {.baseMipLevel = 1, .mipLevelCount = 1}});
   assert(!invalidRangeView.ok());
-  assert(invalidRangeView.status().code == truffle::core::StatusCode::invalid_argument);
+  assert(invalidRangeView.status().code == truffle::base::StatusCode::invalid_argument);
 
   auto invalidListResult = pool.allocate();
   assert(invalidListResult.ok());
@@ -306,7 +306,7 @@ void verify_direct3d_buffers() {
   std::array<rhi::CommandList *, 1> invalidLists{&invalidList};
   const auto invalidSubmit = queue.submit(invalidLists);
   assert(!invalidSubmit.ok());
-  assert(invalidSubmit.code == truffle::core::StatusCode::invalid_argument);
+  assert(invalidSubmit.code == truffle::base::StatusCode::invalid_argument);
 
   auto arrayTexture = device.create_texture({
       .extent = {8, 8, 1},
@@ -353,7 +353,7 @@ void verify_direct3d_buffers() {
       .usage = rhi::TextureUsage::copy_source,
   });
   assert(!unsupportedTexture.ok());
-  assert(unsupportedTexture.status().code == truffle::core::StatusCode::unsupported);
+  assert(unsupportedTexture.status().code == truffle::base::StatusCode::unsupported);
 
   auto multisampleAttachment = device.create_texture({
       .extent = {4, 4, 1},
@@ -448,7 +448,7 @@ void verify_direct3d_synchronization() {
   assert(completion.value().wait(7, std::chrono::nanoseconds{1}).ok());
   const auto fenceTimeout = completion.value().wait(8, std::chrono::nanoseconds{1});
   assert(!fenceTimeout.ok());
-  assert(fenceTimeout.code == truffle::core::StatusCode::timeout);
+  assert(fenceTimeout.code == truffle::base::StatusCode::timeout);
   auto fenceRetryList = pool.value().allocate();
   assert(fenceRetryList.ok());
   assert(fenceRetryList.value().begin().ok());
@@ -480,7 +480,7 @@ void verify_direct3d_synchronization() {
       .waitTimeout = std::chrono::nanoseconds{1},
   });
   assert(!timeout.ok());
-  assert(timeout.code == truffle::core::StatusCode::timeout);
+  assert(timeout.code == truffle::base::StatusCode::timeout);
   assert(waiting.value().state() == rhi::CommandListState::executable);
 
   auto signalList = pool.value().allocate();
@@ -536,7 +536,7 @@ void verify_direct3d_synchronization() {
   std::array<rhi::CommandList *, 1> staleLists{&staleList.value()};
   const auto staleSubmit = queue.value().submit(staleLists);
   assert(!staleSubmit.ok());
-  assert(staleSubmit.code == truffle::core::StatusCode::invalid_state);
+  assert(staleSubmit.code == truffle::base::StatusCode::invalid_state);
 
   auto aliasList = pool.value().allocate();
   assert(aliasList.ok());
@@ -548,7 +548,7 @@ void verify_direct3d_synchronization() {
   });
   const auto aliasStatus = aliasList.value().barrier(invalidAlias);
   assert(!aliasStatus.ok());
-  assert(aliasStatus.code == truffle::core::StatusCode::invalid_argument);
+  assert(aliasStatus.code == truffle::base::StatusCode::invalid_argument);
 }
 
 void verify_direct3d_bindings_depth_and_compute() {
@@ -899,7 +899,7 @@ float4 computed_ps() : SV_Target0 {
       .colorTargets = {{.format = rhi::TextureFormat::rgba8_unorm}},
   });
   assert(!invalidPipeline.ok());
-  assert(invalidPipeline.status().code == truffle::core::StatusCode::invalid_argument);
+  assert(invalidPipeline.status().code == truffle::base::StatusCode::invalid_argument);
   auto unsupportedDynamicBias = device.value().create_pipeline({
       .vertexShader = &vertex,
       .fragmentShader = &computedFragment,
@@ -908,7 +908,7 @@ float4 computed_ps() : SV_Target0 {
       .dynamicState = rhi::DynamicState::depth_bias,
   });
   assert(!unsupportedDynamicBias.ok());
-  assert(unsupportedDynamicBias.status().code == truffle::core::StatusCode::unsupported);
+  assert(unsupportedDynamicBias.status().code == truffle::base::StatusCode::unsupported);
   assert(!device.value().create_pipeline_cache().ok());
   assert(!device.value()
               .create_bindless_table({.layout = &storageLayout.value(), .capacity = 8})
@@ -1038,7 +1038,7 @@ MrtOutput mrt_ps() {
       .count = 1,
   });
   assert(!unsupportedStatistics.ok());
-  assert(unsupportedStatistics.status().code == truffle::core::StatusCode::unsupported);
+  assert(unsupportedStatistics.status().code == truffle::base::StatusCode::unsupported);
   submit(device.value(), queue.value(), [&](rhi::CommandList &list) {
     assert(list.write_timestamp(timestamps.value(), 0).ok());
     assert(!list.write_timestamp(timestamps.value(), 2).ok());

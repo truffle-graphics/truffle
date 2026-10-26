@@ -98,7 +98,7 @@ int main() {
         asset_render::plan_render_batch(mesh, material);
     TRUFFLE_CHECK(!unsupported.ok());
     TRUFFLE_CHECK(unsupported.status().code ==
-                  core::StatusCode::unsupported);
+                  base::StatusCode::unsupported);
 
     auto planResult =
         asset_render::plan_render_batch(mesh, material, options);
@@ -218,7 +218,7 @@ int main() {
                                                 options);
     TRUFFLE_CHECK(!missingCatalogPlan.ok());
     TRUFFLE_CHECK(missingCatalogPlan.status().code ==
-                  core::StatusCode::unavailable);
+                  base::StatusCode::unavailable);
 
     auto groupPlan =
         asset_render::plan_group_render_batches(catalog, group.id, options);
@@ -234,7 +234,7 @@ int main() {
                                                 options);
     TRUFFLE_CHECK(!missingGroupPlan.ok());
     TRUFFLE_CHECK(missingGroupPlan.status().code ==
-                  core::StatusCode::unavailable);
+                  base::StatusCode::unavailable);
 
     return 0;
 }

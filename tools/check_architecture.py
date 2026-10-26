@@ -14,10 +14,10 @@ SOURCE_ROOT = ROOT / "src"
 INCLUDE_ROOT = ROOT / "include" / "truffle"
 
 DIRECT_DEPENDENCIES = {
-    "truffle_core": set(),
-    "truffle_assets": {"truffle_core"},
-    "truffle_ecs": {"truffle_core"},
-    "truffle_rhi": {"truffle_core"},
+    "truffle_base": set(),
+    "truffle_assets": {"truffle_base"},
+    "truffle_ecs": {"truffle_base"},
+    "truffle_rhi": {"truffle_base"},
     "truffle_render": {"truffle_rhi"},
     "truffle_asset_render": {"truffle_assets", "truffle_render"},
     "truffle_scene": {"truffle_ecs", "truffle_render"},
@@ -29,7 +29,7 @@ DIRECT_DEPENDENCIES = {
 }
 
 PUBLIC_MODULE_TARGETS = {
-    "core": "truffle_core",
+    "base": "truffle_base",
     "assets": "truffle_assets",
     "ecs": "truffle_ecs",
     "rhi": "truffle_rhi",

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "truffle/core/status.hpp"
+#include "truffle/base/status.hpp"
 #include "truffle/rhi/rhi.hpp"
 
 #include <cstddef>
@@ -26,7 +26,7 @@ class TransformComputePass {
 public:
     explicit TransformComputePass(rhi::Device& device, rhi::Shader* computeShader);
 
-    [[nodiscard]] core::Status dispatch(rhi::CommandList& cmd,
+    [[nodiscard]] base::Status dispatch(rhi::CommandList& cmd,
                                         const TransformComputePassDesc& desc);
 
 private:

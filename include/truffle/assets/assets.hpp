@@ -1,6 +1,6 @@
 #pragma once
 
-#include "truffle/core/status.hpp"
+#include "truffle/base/status.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -260,11 +260,11 @@ struct AssetGroupStats {
 
 class AssetCatalog {
 public:
-    [[nodiscard]] core::Status add_geometry_stream(GeometryStreamDesc stream);
-    [[nodiscard]] core::Status add_texture(TextureAssetDesc texture);
-    [[nodiscard]] core::Status add_material(MaterialAssetDesc material);
-    [[nodiscard]] core::Status add_mesh(MeshAssetDesc mesh);
-    [[nodiscard]] core::Status add_group(AssetGroupDesc group);
+    [[nodiscard]] base::Status add_geometry_stream(GeometryStreamDesc stream);
+    [[nodiscard]] base::Status add_texture(TextureAssetDesc texture);
+    [[nodiscard]] base::Status add_material(MaterialAssetDesc material);
+    [[nodiscard]] base::Status add_mesh(MeshAssetDesc mesh);
+    [[nodiscard]] base::Status add_group(AssetGroupDesc group);
 
     [[nodiscard]] const GeometryStreamDesc* geometry_stream(
         AssetId id) const noexcept;
@@ -276,14 +276,14 @@ public:
     [[nodiscard]] std::vector<AssetId> group_ids_with_tag(
         std::string_view tag) const;
 
-    [[nodiscard]] core::Status validate_mesh_material(
+    [[nodiscard]] base::Status validate_mesh_material(
         AssetId meshId) const;
     [[nodiscard]] AssetValidationReport validate_mesh_material_report(
         AssetId meshId) const;
     [[nodiscard]] AssetValidationReport validate_all_mesh_materials() const;
     [[nodiscard]] AssetValidationReport validate_group(AssetId groupId) const;
     [[nodiscard]] AssetCatalogStats stats() const noexcept;
-    [[nodiscard]] core::Result<AssetGroupStats> group_stats(
+    [[nodiscard]] base::Result<AssetGroupStats> group_stats(
         AssetId groupId) const;
 
     [[nodiscard]] std::size_t geometry_stream_count() const noexcept {
@@ -324,7 +324,7 @@ private:
     const MaterialAssetDesc& material);
 [[nodiscard]] bool provides_attribute(const MeshAssetDesc& mesh,
                                       AttributeSemantic semantic) noexcept;
-[[nodiscard]] core::Status validate_material_requirements(
+[[nodiscard]] base::Status validate_material_requirements(
     const MaterialAssetDesc& material,
     const MeshAssetDesc& mesh);
 

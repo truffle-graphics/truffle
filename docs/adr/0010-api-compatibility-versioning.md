@@ -12,7 +12,7 @@ could evaluate at runtime or compile time.
 
 ## Decision
 
-Truffle defines a public API version contract in `truffle/core/version.hpp`:
+Truffle defines a public API version contract in `truffle/base/version.hpp`:
 
 - `ApiVersion { major, minor, patch }` is the canonical semantic version shape.
 - `kApiVersion` is the current API identity at compile time.

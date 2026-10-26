@@ -21,9 +21,9 @@ bool World::alive(Entity entity) const noexcept {
            alive_[entity.index] && generations_[entity.index] == entity.generation;
 }
 
-core::Status World::destroy(Entity entity) {
+base::Status World::destroy(Entity entity) {
     if (!alive(entity)) {
-        return core::Status::failure(core::StatusCode::invalid_argument,
+        return base::Status::failure(base::StatusCode::invalid_argument,
                                      "entity is not alive");
     }
 
@@ -33,7 +33,7 @@ core::Status World::destroy(Entity entity) {
     for (auto& [_, storage] : storages_) {
         storage->erase(entity.index);
     }
-    return core::Status::success();
+    return base::Status::success();
 }
 
 void World::run(const std::vector<System>& systems, double delta_seconds) {

@@ -114,7 +114,7 @@ int main() {
     using namespace truffle;
     auto instanceResult = rhi::create_metal_instance();
     if (!instanceResult.ok()) {
-        assert(instanceResult.status().code == core::StatusCode::unavailable);
+        assert(instanceResult.status().code == base::StatusCode::unavailable);
         return 0;
     }
     auto instance = std::move(instanceResult).value();
@@ -312,7 +312,7 @@ int main() {
         .usage = rhi::TextureUsage::copy_source,
     });
     assert(!unsupportedTexture.ok());
-    assert(unsupportedTexture.status().code == core::StatusCode::unsupported);
+    assert(unsupportedTexture.status().code == base::StatusCode::unsupported);
 
     constexpr std::string_view msl = R"MSL(
 #include <metal_stdlib>
@@ -910,13 +910,13 @@ fragment float4 buffer_fragment(VertexOutput input [[stage_in]],
 
     const auto unsupportedCache = device.create_pipeline_cache();
     assert(!unsupportedCache.ok());
-    assert(unsupportedCache.status().code == core::StatusCode::unsupported);
+    assert(unsupportedCache.status().code == base::StatusCode::unsupported);
     const auto unsupportedBindless = device.create_bindless_table({
         .layout = &texturedLayout,
         .capacity = 64,
     });
     assert(!unsupportedBindless.ok());
-    assert(unsupportedBindless.status().code == core::StatusCode::unsupported);
+    assert(unsupportedBindless.status().code == base::StatusCode::unsupported);
 
     const auto stats = instance.stats();
     assert(stats.buffersCreated >= 12);

@@ -6,10 +6,10 @@
 namespace truffle::render {
 namespace {
 
-core::Status validate_compute_bindings(const TransformComputePassDesc& desc,
+base::Status validate_compute_bindings(const TransformComputePassDesc& desc,
                                        const rhi::ComputePipeline& pipeline) {
     if (pipeline.reflection().bindings().empty()) {
-        return core::Status::success();
+        return base::Status::success();
     }
     constexpr std::size_t kBindingCount = 3;
     std::array<bool, kBindingCount> expected{};
@@ -19,8 +19,8 @@ core::Status validate_compute_bindings(const TransformComputePassDesc& desc,
             continue;
         }
         if (binding.group != 0 || binding.binding >= kBindingCount) {
-            return core::Status::failure(
-                core::StatusCode::invalid_argument,
+            return base::Status::failure(
+                base::StatusCode::invalid_argument,
                 "TransformComputePass: reflected binding is outside group 0");
         }
         expected[binding.binding] = true;
@@ -32,14 +32,14 @@ core::Status validate_compute_bindings(const TransformComputePassDesc& desc,
     };
     for (std::size_t index = 0; index < kBindingCount; ++index) {
         if (expected[index] != provided[index]) {
-            return core::Status::failure(
-                core::StatusCode::invalid_argument,
+            return base::Status::failure(
+                base::StatusCode::invalid_argument,
                 expected[index]
                     ? "TransformComputePass: missing reflected buffer binding"
                     : "TransformComputePass: unexpected buffer binding");
         }
     }
-    return core::Status::success();
+    return base::Status::success();
 }
 
 } // namespace
@@ -59,10 +59,10 @@ TransformComputePass::TransformComputePass(rhi::Device& device,
     }
 }
 
-core::Status TransformComputePass::dispatch(
+base::Status TransformComputePass::dispatch(
     rhi::CommandList& list, const TransformComputePassDesc& desc) {
     if (!pipeline_.valid()) {
-        return core::Status::failure(core::StatusCode::invalid_state,
+        return base::Status::failure(base::StatusCode::invalid_state,
                                      "TransformComputePass has no pipeline");
     }
     if (auto status = validate_compute_bindings(desc, pipeline_); !status.ok()) {
