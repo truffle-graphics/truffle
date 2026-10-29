@@ -101,9 +101,8 @@ first-party convenience path, while large dynamic workloads can grow toward
 bulk, data-oriented, or GPU-resident render data without requiring per-entity
 conversion.
 
-Truffle has no dependency on FrameKit. A consumer may compose both projects in
-the same application when an application host and graphics system are useful
-together.
+Truffle has no dependency on an application or host framework. A consumer may
+compose Truffle with one at its own application boundary.
 
 ## Build
 

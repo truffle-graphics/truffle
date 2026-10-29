@@ -9,7 +9,7 @@
 
 As Truffle evolves in Phase 5, the rendering requirements are extending beyond a single forward swapchain output. The integration of the GPU transform compute pass (Phase 5A) revealed the need for multi-pass execution (compute passes before render passes). Support for shadow maps, post-processing, and multi-camera views demands an orchestration layer that represents the frame as a sequence of passes.
 
-Since Truffle is an embeddable infrastructure, the orchestration API needs to be lightweight, un-opinionated about the surrounding application logic (e.g. FrameKit), and capable of utilizing the inline descriptor model (`RenderPassDesc`) established in ADR 0007.
+Since Truffle is an embeddable infrastructure, the orchestration API needs to be lightweight, un-opinionated about the surrounding application logic, and capable of utilizing the inline descriptor model (`RenderPassDesc`) established in ADR 0007.
 
 ## Decision
 

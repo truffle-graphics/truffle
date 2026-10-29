@@ -173,3 +173,16 @@ Tracked by #35.
 RHI 1 is complete when its contract and governance are stable and every target
 has a truthful published maturity state. Not every backend must be `supported`
 at the same time.
+
+## Beyond RHI 1 — Not Yet Scheduled
+
+These directions are recorded in `docs/architecture.md` and have no issues or
+sequence commitment yet beyond full RHI, then Renderer, then Engine:
+
+- Renderer growth above the full RHI, plus the optional EnCom–Renderer
+  integration.
+- Engine with host-owned loop support; profiles and runners undecided.
+- GUI above Renderer, independent of EnCom.
+- Assets module; name and design undecided.
+- Deferred conveniences: Simple RHI and an optional windowing wrapper.
+- Expanded diagnostics/profiling and further developer tools.

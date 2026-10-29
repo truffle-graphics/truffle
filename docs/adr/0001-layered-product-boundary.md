@@ -1,8 +1,8 @@
-# ADR 0001: Layered Product Boundary
+# ADR 0001: Modular Framework Boundary
 
 ## Status
 
-Accepted
+Accepted (amended by #161: modular-framework wording and module names)
 
 ## Context
 
@@ -13,18 +13,21 @@ loop, input policy, native windowing, and simulation model.
 
 ## Decision
 
-Truffle is one layered product with independently linkable CMake targets. Base,
-RHI, backend, renderer, scene-integration, and future framework-facing layers
-build upward without hiding the lower layers from consumers.
+Truffle is a modular graphics framework, composed of independently usable
+libraries with independently linkable CMake targets. Base, RHI, backend,
+Renderer, EnCom, EnCom–Renderer integration, and future higher-level modules
+build upward without hiding the lower libraries from consumers.
 
 Application hosting stays outside Truffle. Consumers provide native surface
-boundaries and choose which Truffle layers to link.
+boundaries and choose which Truffle libraries to link.
 
 ## Consequences
 
-- Low-level tools can use RHI and backend targets without adopting future
-  framework modules.
-- Higher layers may add materials, asset-facing boundaries, debug hooks, and
-  tool orchestration above renderer and RHI contracts.
+- Low-level tools can use RHI and backend targets without adopting higher
+  modules.
+- EnCom and Renderer are usable independently; their integration is an
+  optional connector, not a mandatory scene system.
+- Higher modules may add materials, asset-facing boundaries, debug hooks, and
+  tool orchestration above Renderer and RHI contracts.
 - Architecture and CMake work must keep module boundaries explicit as features
   grow.

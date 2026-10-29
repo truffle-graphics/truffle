@@ -1,13 +1,15 @@
 # Overview
 
-Truffle is a CMake-first layered graphics library workspace. It starts from
-embeddable contracts, independently linkable modules, and validation paths so
+Truffle is a modular graphics framework, composed of independently usable
+libraries, built CMake-first. It starts from embeddable contracts,
+independently linkable modules, and validation paths so
 consumers can choose an application host, windowing policy, simulation model,
 and asset workflow independently.
 
 Current baseline:
 
-- General ECS entity, component, query, and system execution primitives.
+- Truffle EnCom (ENtity COMponent) entity, component, query, and system
+  execution primitives.
 - Modular RHI 1 move-only objects backed by opaque generation-checked handles
   and private dispatch tables, with explicit command, synchronization, surface,
   and presentation foundations.
@@ -29,7 +31,7 @@ Current baseline:
 - Deterministic ShaderPackage 1.0 creation/loading with normalized cross-target
   reflection, capability gates, native-variant precedence, and an optional
   dependency-free package assembly and inspection tool.
-- Renderer flow that currently proves ECS extraction while reserving non-ECS and
+- Renderer flow that currently proves EnCom extraction while reserving non-ECS and
   high-throughput render-data lanes for later rendering work.
 - Declarative asset, material-operation, geometry-stream, and group/tag
   descriptors for higher-level consumers that need metadata before GPU upload or
