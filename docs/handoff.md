@@ -41,7 +41,11 @@ setup, not immediate work. No issue labels or hosted workflows change.
   91.7)`): `truffle_opengl_tests` runs the shared buffer, texture, direct and
   expanded graphics, binding and compute-negative suites with GLSL 410 and
   zero GL errors; all 25 ctests pass with Metal and OpenGL on. Validation is
-  per-operation `glGetError`, not a debug layer; the matrix row says so.
+  per-call `glGetError` checking with zero errors required; no
+  debug-message layer exists on macOS GL 4.1 (user-approved wording in the
+  matrix, support note, README and PR). The expanded graphics suite asserts
+  nonzero base instance (direct, indexed, indirect) submits `unsupported` on
+  macOS and the context still renders afterwards.
 - Architecture guard: 19 dependency declarations (+1 for the private
   `OpenGL.framework` link).
 - Still open: host-window presentation on macOS and WGL (#61), GL fences,

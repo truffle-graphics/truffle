@@ -32,7 +32,9 @@ depth/stencil/MRT graphics and storage compute. See the support matrix.
 `GL_SILENCE_DEPRECATION` is defined for this target only. Verified on Apple M3
 Pro, macOS 27.0.1, adapter `Apple M3 Pro (4.1 Metal - 91.7)`, by
 `truffle_opengl_tests` (buffers, textures, direct/expanded graphics, bindings,
-compute negatives) with exact readback and zero GL errors.
+compute negatives) with exact readback. Validation on macOS is per-call
+`glGetError` checking with zero errors required; no debug-message layer exists
+on macOS GL 4.1, so this is not equivalent to KHR_debug or a validation layer.
 
 GL 4.1 lacks immutable texture storage, so textures allocate each level (and
 cube face) with `glTexImage*`. Advertised: transfer, descriptor arrays,
@@ -40,7 +42,8 @@ dynamic offsets, push constants; buffer/identity texture views, copies, fills,
 clears, resolve and blits; graphics, MRT, depth/stencil, 4x multisample and
 indirect draws whose first-instance word is zero. Unsupported and reported as
 such: compute and storage blocks, subresource texture views, nonzero base
-instance, KHR_debug diagnostics, external resources.
+instance (direct, indexed or indirect; rejected at submit and covered by
+`verify_expanded_gl_graphics`), KHR_debug diagnostics, external resources.
 
 Apple's GL-on-Metal driver may print `UNSUPPORTED (log once):
 gldCopyBufferSubData: NEEDS IMPLEMENTATION`; the buffer test still verifies

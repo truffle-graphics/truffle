@@ -15,8 +15,8 @@ constexpr BackendEvidence validated_native_smoke{
     .nativeSmoke = true,
     .validation = true,
 };
-// macOS OpenGL 4.1 has no KHR_debug layer; validation is the backend's
-// glGetError check after every native operation with zero errors observed.
+// macOS validation is per-call glGetError checking with zero errors
+// required; no debug-message layer exists on macOS GL 4.1.
 constexpr BackendEvidence gl_error_checked_smoke{
     .compiles = true,
     .nativeSmoke = true,
@@ -96,7 +96,10 @@ constexpr std::array support{
                            gl_error_checked_smoke,
                            "deprecated GL 4.1 core offscreen CGL resources, "
                            "bindings, and graphics with exact readback; "
-                           "glGetError-checked, no compute or presentation"},
+                           "validation is per-call glGetError checking with "
+                           "zero errors required (no debug-message layer "
+                           "exists on macOS GL 4.1); no compute or "
+                           "presentation"},
     BackendPlatformSupport{BackendKind::opengles, PlatformKind::linux_host,
                            BackendMaturity::native_smoke, true,
                            validated_native_smoke,

@@ -72,6 +72,9 @@ void main() { outputColor = color; secondColor = vec4(0.0, 0.0, 1.0, 1.0); }
     auto indexBuffer = upload(std::as_bytes(std::span{indices}), rhi::BufferUsage::index);
     const std::array<std::uint32_t, 5> draw{3, 2, 1, 0, 0};
     auto indirect = upload(std::as_bytes(std::span{draw}), rhi::BufferUsage::indirect);
+    const std::array<std::uint32_t, 5> baseInstanceDraw{3, 1, 1, 0, 1};
+    auto baseInstanceIndirect = upload(std::as_bytes(std::span{baseInstanceDraw}),
+                                       rhi::BufferUsage::indirect);
     constexpr std::uint32_t extent = 16;
     const auto texture = [&](std::uint32_t samples = 1) {
         auto target = device.create_texture({
@@ -129,7 +132,8 @@ void main() { outputColor = color; secondColor = vec4(0.0, 0.0, 1.0, 1.0); }
         .colorTargets = {{.format = rhi::TextureFormat::rgba8_unorm},
                          {.format = rhi::TextureFormat::rgba8_unorm}}};
     const auto execute = [&](const rhi::PipelineDesc& desc, rhi::RenderPassDesc pass,
-                             int kind, bool dynamic = false) {
+                             int kind, bool dynamic = false,
+                             rhi::StatusCode expected = rhi::StatusCode::ok) {
         auto created = device.create_pipeline(desc);
         assert(created.ok());
         auto pipeline = std::move(created).value();
@@ -143,7 +147,7 @@ void main() { outputColor = color; secondColor = vec4(0.0, 0.0, 1.0, 1.0); }
         assert(render.bind_pipeline(pipeline).ok());
         assert(render.bind_vertex_buffer(0, vertices).ok());
         assert(render.bind_vertex_buffer(1, instances).ok());
-        assert(render.bind_index_buffer(indexBuffer, kind == 2 ? 0 : 2,
+        assert(render.bind_index_buffer(indexBuffer, kind == 2 || kind == 5 ? 0 : 2,
                                          rhi::IndexFormat::uint16).ok());
         if (dynamic) {
             const std::array viewports{rhi::Viewport{0, 0, 16, 16, 0, 1}};
@@ -160,12 +164,18 @@ void main() { outputColor = color; secondColor = vec4(0.0, 0.0, 1.0, 1.0); }
             else assert(status.ok());
         } else if (kind == 1) {
             assert(render.draw_indexed(3, 2).ok());
+        } else if (kind == 3) {
+            assert(render.draw(3, 1, 0, 1).ok());
+        } else if (kind == 4) {
+            assert(render.draw_indexed(3, 1, 0, 0, 1).ok());
+        } else if (kind == 5) {
+            assert(render.draw_indirect(baseInstanceIndirect, 0, true).ok());
         } else {
             assert(render.draw(3).ok());
         }
         assert(render.end().ok() && list.end().ok());
         const std::array<rhi::CommandList*, 1> lists{&list};
-        assert(queue.submit(lists).ok());
+        assert(queue.submit(lists).code == expected);
     };
     rhi::RenderPassDesc pass{
         .extent = {extent, extent},
@@ -176,6 +186,15 @@ void main() { outputColor = color; secondColor = vec4(0.0, 0.0, 1.0, 1.0); }
     assert(pixel(first) == red);
     execute(pipelineDesc, pass, 2);
     if (desktop) assert(pixel(first) == green);
+    if (desktop && adapter.value().info().platform == rhi::PlatformKind::macos) {
+        // GL 4.1 has no base-instance draws: direct, indexed and indirect
+        // nonzero first instances must be reported unsupported, not dropped.
+        for (int kind = 3; kind <= 5; ++kind) {
+            execute(pipelineDesc, pass, kind, false, rhi::StatusCode::unsupported);
+        }
+        execute(pipelineDesc, pass, 1);
+        assert(pixel(first) == green);
+    }
 
     pipelineDesc.depthStencil.format = rhi::TextureFormat::depth24_unorm_stencil8;
     pipelineDesc.depthStencil.depthWriteEnabled = true;
