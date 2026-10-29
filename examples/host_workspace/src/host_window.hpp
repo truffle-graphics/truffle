@@ -25,6 +25,9 @@ public:
     // On other platforms: returns nullptr.
     [[nodiscard]] void* native_layer_handle() const noexcept;
     void poll_events() const noexcept;
+    // Requests a new window size in screen coordinates; the framebuffer
+    // extent follows once the platform applies it.
+    void set_size(rhi::Extent2D extent) const noexcept;
 
 private:
     GLFWwindow* window_ = nullptr;

@@ -52,6 +52,8 @@ The support matrix only claims what has actually been verified.
 
 - Vulkan on Windows (#58).
 - Desktop OpenGL on Windows, and on Linux beyond its current EGL evidence.
+- Metal on Intel Macs, including managed-storage flushes and eGPU
+  device-removal behavior (#69); current evidence is Apple Silicon only.
 - Any baseline backend feature first verified on only one platform.
 
 ## Deferred Backlog

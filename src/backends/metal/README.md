@@ -8,9 +8,49 @@ readback. It also creates native shader/pipeline state, maps timeline
 semaphores to shared events, and acquires and presents host-owned
 `CAMetalLayer` drawables. CI enables Metal API validation for its native proofs.
 
+`examples/host_workspace --metal` proves host-window integration: the host
+owns a GLFW window and its `CAMetalLayer`, Truffle receives only a
+`cocoa_layer` surface, and the bounded `--frames N` mode presents across a
+scripted window resize (ctest `truffle_host_workspace_metal_window`).
+
 Other texture shapes and formats, external sharing, texture clear/resolve/blit,
-bindless/update-after-bind, serialized pipeline caches, indirect-count,
-tessellation, physical device-loss evidence, host-window integration,
-and broader Apple-platform evidence remain explicitly unsupported or pending.
+bindless/update-after-bind, serialized pipeline caches, timestamp/occlusion
+queries, indirect-count, tessellation, and broader Apple-platform evidence
+remain explicitly unsupported or pending; each returns `unsupported`.
+
+## Device loss
+
+`MTLCommandBufferErrorDeviceRemoved` maps to `device_lost`. Physical device
+removal cannot occur on Apple Silicon (the macOS 27 SDK deprecates the error
+for that reason); it remains reachable only on Intel Macs with removable eGPUs,
+which have not been tested. Device-loss evidence is therefore a private,
+non-installed fault-injection hook that proves status propagation and
+recreate-to-recover, not a physical removal. The managed-storage flush path is
+likewise kept for Intel Macs and exercised only through shared storage on Apple
+Silicon.
+
+## Hardware coverage
+
+| Date | Hardware | OS / SDK | Result |
+|---|---|---|---|
+| 2026-10-29 | Apple M3 Pro (MacBook) | macOS 27.0.1 (26A434), Xcode 27.1, MacOSX27.0 SDK | Debug, warnings-as-errors: `truffle_metal_tests`, `truffle_metal_presentation_tests`, `truffle_host_workspace_metal_window`, plus Metal-linked backend-support, RHI contract and parity tests pass with API and GPU validation; no validation messages. |
+
+Commands used:
+
+```bash
+cmake -S . -B build/metal -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_OSX_SYSROOT="$(xcrun --sdk macosx --show-sdk-path)" \
+  -DTRUFFLE_WARNINGS_AS_ERRORS=ON -DTRUFFLE_BUILD_TESTS=ON
+cmake --build build/metal --target truffle_metal_tests \
+  truffle_metal_presentation_tests truffle_host_workspace_example \
+  truffle_backend_support_tests truffle_rhi_contract_tests \
+  truffle_rhi_parity_report
+MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 METAL_DEVICE_WRAPPER_TYPE=1 \
+  ctest --test-dir build/metal --output-on-failure \
+  -R "truffle_metal|truffle_host_workspace|truffle_backend_support|truffle_rhi_contract|truffle_rhi_parity"
+```
+
+The host-window test opens a real window and needs a logged-in GUI session.
+Intel Macs are pending verification (see `docs/roadmap.md`).
 
 See `docs/rhi1/support-matrix.md` for the evidence gates.

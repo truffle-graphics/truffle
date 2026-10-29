@@ -6,8 +6,8 @@
 #include "truffle/rhi/null_backend.hpp"
 #include "truffle/encom_renderer/encom_render_adapter.hpp"
 
-#ifdef __APPLE__
-#include "truffle/rhi/metal_backend.hpp"
+#ifdef TRUFFLE_HOST_WORKSPACE_METAL
+#include "metal_host_presenter.hpp"
 #endif
 
 #ifdef TRUFFLE_BUILD_BACKEND_VULKAN
@@ -248,50 +248,81 @@ void print_summary(std::string_view runKind, const IWorkspace& workspace,
     return 0;
 }
 
-#ifdef __APPLE__
-[[nodiscard]] int run_metal_foundation() {
-    auto instanceResult = rhi::create_metal_instance();
-    if (!instanceResult.ok()) {
-        return fail("create Metal instance", instanceResult.status());
+#ifdef TRUFFLE_HOST_WORKSPACE_METAL
+constexpr rhi::Extent2D kMetalWindowExtent{640, 400};
+constexpr rhi::Extent2D kMetalResizedWindowExtent{800, 520};
+constexpr std::uint32_t kResizeSettleAttempts = 60;
+
+[[nodiscard]] rhi::ClearColor frame_clear_color(std::uint32_t frame) noexcept {
+    constexpr std::array<rhi::ClearColor, 3> colors{{
+        {0.10F, 0.20F, 0.40F, 1.0F},
+        {0.15F, 0.35F, 0.20F, 1.0F},
+        {0.40F, 0.15F, 0.20F, 1.0F},
+    }};
+    return colors[(frame / 30) % colors.size()];
+}
+
+// The host owns the GLFW window and its CAMetalLayer; Truffle receives only
+// the layer as a cocoa_layer surface. A bounded run scripts one window resize
+// halfway through and requires the swapchain to track the new framebuffer.
+[[nodiscard]] int run_metal_host_window(std::uint32_t boundedFrames) {
+    HostWindow window;
+    if (auto status = window.open("Truffle Host Workspace - Metal",
+                                  kMetalWindowExtent);
+        !status.ok()) {
+        return fail("open host window", status);
     }
-    auto instance = std::move(instanceResult).value();
-    auto adapterResult = instance.adapter(0);
-    if (!adapterResult.ok()) {
-        return fail("enumerate Metal adapter", adapterResult.status());
+    void* layer = window.native_layer_handle();
+    const auto initialExtent = window.framebuffer_extent();
+    MetalHostPresenter presenter;
+    if (auto status = presenter.initialize(layer, initialExtent); !status.ok()) {
+        return fail("initialize Metal host presenter", status);
     }
-    auto adapter = std::move(adapterResult).value();
-    auto deviceResult = adapter.request_device();
-    if (!deviceResult.ok()) {
-        return fail("create Metal device", deviceResult.status());
+    std::uint32_t frame = 0;
+    while (!window.should_close() &&
+           (boundedFrames == 0 || frame < boundedFrames)) {
+        if (boundedFrames != 0 && frame == boundedFrames / 2) {
+            window.set_size(kMetalResizedWindowExtent);
+            for (std::uint32_t attempt = 0;
+                 attempt < kResizeSettleAttempts &&
+                 same_extent(window.framebuffer_extent(), initialExtent);
+                 ++attempt) {
+                window.poll_events();
+                std::this_thread::sleep_for(std::chrono::milliseconds{16});
+            }
+        }
+        window.poll_events();
+        const auto extent = window.framebuffer_extent();
+        if (!non_zero(extent)) {
+            std::this_thread::sleep_for(std::chrono::milliseconds{16});
+            continue;
+        }
+        if (auto status =
+                presenter.present_frame(extent, frame_clear_color(frame));
+            !status.ok()) {
+            return fail("present Metal host frame", status);
+        }
+        ++frame;
     }
-    auto device = std::move(deviceResult).value();
-    auto poolResult = device.create_command_pool(rhi::QueueKind::graphics);
-    if (!poolResult.ok()) {
-        return fail("create Metal command pool", poolResult.status());
+    const auto& stats = presenter.stats();
+    const auto finalExtent = presenter.extent();
+    std::cout << "Metal host window adapter=" << presenter.adapter_name()
+              << " frames=" << stats.framesPresented
+              << " resizes=" << stats.swapchainResizes
+              << " suboptimal=" << stats.suboptimalAcquires
+              << " out_of_date=" << stats.outOfDateAcquires
+              << " extent=" << initialExtent.width << 'x'
+              << initialExtent.height << "->" << finalExtent.width << 'x'
+              << finalExtent.height << '\n';
+    if (boundedFrames != 0 &&
+        (stats.framesPresented != boundedFrames ||
+         stats.swapchainResizes == 0 ||
+         same_extent(finalExtent, initialExtent) ||
+         !same_extent(finalExtent, window.framebuffer_extent()))) {
+        std::cerr << "Metal host window run did not present every frame "
+                     "across a tracked resize\n";
+        return 1;
     }
-    auto pool = std::move(poolResult).value();
-    auto listResult = pool.allocate();
-    if (!listResult.ok()) {
-        return fail("allocate Metal command list", listResult.status());
-    }
-    auto list = std::move(listResult).value();
-    if (auto status = list.begin(); !status.ok()) {
-        return fail("begin Metal command list", status);
-    }
-    if (auto status = list.end(); !status.ok()) {
-        return fail("end Metal command list", status);
-    }
-    auto queueResult = device.queue(rhi::QueueKind::graphics);
-    if (!queueResult.ok()) {
-        return fail("get Metal queue", queueResult.status());
-    }
-    auto queue = std::move(queueResult).value();
-    std::array<rhi::CommandList*, 1> lists{&list};
-    if (auto status = queue.submit(lists); !status.ok()) {
-        return fail("submit Metal command list", status);
-    }
-    std::cout << "Metal RHI 1 foundation submitted on " << adapter.info().name
-              << '\n';
     return 0;
 }
 #endif
@@ -318,11 +349,14 @@ int run_application(const ApplicationOptions& options) {
         return 1;
 #endif
     }
-#ifdef __APPLE__
     if (options.useMetal && !options.smoke) {
-        return run_metal_foundation();
-    }
+#ifdef TRUFFLE_HOST_WORKSPACE_METAL
+        return run_metal_host_window(options.frames);
+#else
+        std::cerr << "Metal backend target is not compiled\n";
+        return 1;
 #endif
+    }
     return options.smoke ? run_smoke(*workspace) : run_interactive(*workspace);
 }
 

@@ -26,6 +26,9 @@ void* HostWindow::native_layer_handle() const noexcept {
         view.wantsLayer = YES;
         view.layer = [CAMetalLayer layer];
     }
+    // Match the Retina backing scale so the framebuffer-sized drawable maps
+    // one-to-one onto window pixels.
+    view.layer.contentsScale = nsWindow.backingScaleFactor;
     return (__bridge void*)view.layer;
 }
 

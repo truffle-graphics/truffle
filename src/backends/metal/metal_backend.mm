@@ -201,12 +201,17 @@ struct MetalSwapchainResource {
                : std::move(fallback);
 }
 
+// macOS 27 deprecates device removal because it cannot occur on Apple
+// Silicon; Intel Macs can still lose an eGPU, so the mapping stays.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
 [[nodiscard]] StatusCode metal_command_status_code(NSError* error) {
     return error != nil &&
                    error.code == MTLCommandBufferErrorDeviceRemoved
                ? StatusCode::device_lost
                : StatusCode::backend_error;
 }
+#pragma clang diagnostic pop
 
 [[nodiscard]] MTLCompareFunction metal_compare(CompareOp operation) {
     switch (operation) {
@@ -631,9 +636,14 @@ struct MetalSwapchainResource {
                                "Metal buffer flush range is invalid");
     }
 #if TARGET_OS_OSX
+// macOS 27 deprecates managed storage because it is a no-op on Apple Silicon;
+// Intel Macs still require the explicit flush.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     if (metal->buffer.storageMode == MTLStorageModeManaged) {
         [metal->buffer didModifyRange:NSMakeRange(offset, size)];
     }
+#pragma clang diagnostic pop
 #endif
     return Status::success();
 }

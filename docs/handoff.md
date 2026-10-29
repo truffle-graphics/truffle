@@ -19,6 +19,44 @@ verification list instead of blocking development.
 Issue #166 records this planning update; #165 tracks future self-hosted runner
 setup, not immediate work. No issue labels or hosted workflows change.
 
+## Metal macOS Host Window (#69)
+
+- Branch `feat/metal-macos-host`. The macOS 27 SDK deprecates
+  `MTLCommandBufferErrorDeviceRemoved`, `MTLStorageModeManaged`, and
+  `didModifyRange:` (no-ops/unreachable on Apple Silicon), which broke the
+  warnings-as-errors build. The backend keeps both paths for Intel Macs and
+  suppresses the warning only around those uses.
+- Verified locally on Apple M3 Pro, macOS 27.0.1: `truffle_metal_tests` and
+  `truffle_metal_presentation_tests` pass with `MTL_DEBUG_LAYER=1
+  MTL_SHADER_VALIDATION=1`.
+- `examples/host_workspace --metal` now opens a host-owned GLFW window and
+  passes only its `CAMetalLayer` to Truffle as a `cocoa_layer` surface.
+  `MetalHostPresenter` acquires, clears via `begin_rendering`, presents, and
+  resizes the swapchain on framebuffer change, `suboptimal`, or `out_of_date`.
+  `--metal --frames N` scripts one `glfwSetWindowSize` halfway and exits
+  non-zero unless all frames present and the swapchain tracks the new
+  framebuffer. ctest `truffle_host_workspace_metal_window` (labels
+  `presentation;host-window;validation`) runs 120 frames and needs a logged-in
+  GUI session. The Renderer is unchanged; the old one-submit `--metal`
+  foundation path is replaced.
+- `truffle_metal_tests` now also proves advertised indirect support beyond
+  the MRT draw: an indirect dispatch reproduces the direct compute output, an
+  indexed indirect draw alone covers a cleared target, and timestamp query
+  pools (not advertised) return `unsupported`.
+- Evidence (2026-10-29, Apple M3 Pro, macOS 27.0.1, Xcode 27.1): with
+  `MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 METAL_DEVICE_WRAPPER_TYPE=1`,
+  nine Metal-linked ctests pass (metal, presentation, host-window, backend
+  support, RHI contract, parity, three Null host smokes) with no validation
+  messages; the host-window run is repeatable (five consecutive runs). The
+  Metal README records the commands and hardware table.
+- Physical device removal cannot occur on Apple Silicon; device-loss
+  evidence stays private fault injection and is documented as such. Intel-Mac
+  Metal is on the roadmap's pending-verification list. No capability flag or
+  `backend_support.cpp` row changed: Metal stays `native_smoke`.
+- Still open in #69: full advertised-feature conformance (queries,
+  texture clear/resolve/blit and other unsupported paths stay `unsupported`),
+  Intel-Mac/physical removal evidence, and a reviewed decision on closing.
+
 ## Module Taxonomy Update (#161)
 
 - Docs record the agreed module map: Engine (planned) → Renderer → RHI →
