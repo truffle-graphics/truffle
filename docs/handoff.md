@@ -43,7 +43,19 @@ setup, not immediate work. No issue labels or hosted workflows change.
   the MRT draw: an indirect dispatch reproduces the direct compute output, an
   indexed indirect draw alone covers a cleared target, and timestamp query
   pools (not advertised) return `unsupported`.
-- Next: record hardware/validation evidence and device-loss limits in docs.
+- Evidence (2026-10-29, Apple M3 Pro, macOS 27.0.1, Xcode 27.1): with
+  `MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 METAL_DEVICE_WRAPPER_TYPE=1`,
+  nine Metal-linked ctests pass (metal, presentation, host-window, backend
+  support, RHI contract, parity, three Null host smokes) with no validation
+  messages; the host-window run is repeatable (five consecutive runs). The
+  Metal README records the commands and hardware table.
+- Physical device removal cannot occur on Apple Silicon; device-loss
+  evidence stays private fault injection and is documented as such. Intel-Mac
+  Metal is on the roadmap's pending-verification list. No capability flag or
+  `backend_support.cpp` row changed: Metal stays `native_smoke`.
+- Still open in #69: full advertised-feature conformance (queries,
+  texture clear/resolve/blit and other unsupported paths stay `unsupported`),
+  Intel-Mac/physical removal evidence, and a reviewed decision on closing.
 
 ## Module Taxonomy Update (#161)
 
