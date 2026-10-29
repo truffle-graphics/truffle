@@ -53,6 +53,54 @@ under Xvfb proves exact padded BGRA8 readback before present and repeats the
 proof after resize. Wayland and other platform WSI paths remain unsupported.
 RHI 1 exposes no buffer-device-address contract. External sharing remains
 unadvertised until platform handle types and ownership are defined.
-Other platforms remain `source_only`, including Apple until a pinned MoltenVK
-group and execution lane exist. Shared logical validation belongs to Null and
+
+## macOS Through MoltenVK
+
+On macOS the backend links no Apple framework; it loads the host Vulkan loader,
+which selects the MoltenVK ICD. Portability enumeration and
+`VK_KHR_portability_subset` are enabled when exposed. If volk's default search
+fails, the backend tries `/opt/homebrew/lib/libvulkan.1.dylib` and then
+`/usr/local/lib/libvulkan.1.dylib`. Presentation uses `VK_EXT_metal_surface`
+with a host-owned `NativeSurfaceKind::cocoa_layer` (`CAMetalLayer*`); other
+surface kinds return `unsupported`.
+
+Local evidence (2026-10-29, Apple M3 Pro, macOS 27.0.1, Homebrew MoltenVK
+1.4.2, loader 1.4.363.0):
+
+```sh
+cmake -S . -B build/vulkan -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_OSX_SYSROOT="$(xcrun --sdk macosx --show-sdk-path)" \
+  -DTRUFFLE_WARNINGS_AS_ERRORS=ON -DTRUFFLE_BUILD_TESTS=ON \
+  -DTRUFFLE_BUILD_BACKEND_VULKAN=ON -DTRUFFLE_BUILD_SHADERC=ON \
+  -DTRUFFLE_SHADERC_ENABLE_GLSLANG=ON
+cmake --build build/vulkan
+ctest --test-dir build/vulkan --output-on-failure
+```
+
+`truffle_vulkan_tests` runs the same shared suite as Linux plus a
+`CAMetalLayer` presentation proof (exact readback before present and after a
+64x48 to 80x60 resize, then status/fault paths). Apple GPUs do not support
+`D24_UNORM_S8_UINT`; texture creation returns `unsupported` and the test uses
+`D32_SFLOAT_S8_UINT`. Timestamp queries are not advertised when the driver
+reports `VK_DRIVER_ID_MOLTENVK` (read through `VK_KHR_driver_properties`,
+because the instance targets Vulkan 1.1): MoltenVK 1.4.2 intermittently
+resolves the second of two timestamps to 0 when `vkCmdCopyQueryPoolResults`
+runs in the same submission, about 3-10% of runs, with no validation message.
+The feature request and timestamp pool creation return `unsupported`, and the
+test skips timestamp checks from the advertised features. The suite is clean under Homebrew
+`VK_LAYER_KHRONOS_validation` 1.4.363.0 (2026-10-30), also with
+`VK_LAYER_VALIDATE_SYNC=1`, so macOS is `native_smoke`. The ctest fails on any
+`Validation Error`/`Validation Warning` output, and it sets
+`DYLD_FALLBACK_LIBRARY_PATH` to the host loader directory because Homebrew's
+layer manifest names its dylib without a path. If an enumerated layer cannot
+load, the backend creates the instance without it, because validation is
+optional and a broken layer must not make Vulkan unavailable. The macOS test
+fails in that case, so validation evidence is never dropped silently. iOS-family targets remain
+`source_only`.
+
+Injected `suboptimal`/`out_of_date` present results still present the image
+natively before reporting the status, so fault tests never leave a swapchain
+image acquired.
+
+Other platforms remain `source_only`. Shared logical validation belongs to Null and
 is never used to simulate Vulkan behavior.

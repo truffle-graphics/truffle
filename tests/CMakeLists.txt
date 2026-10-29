@@ -91,6 +91,26 @@ if(TRUFFLE_BUILD_BACKEND_VULKAN)
                               PRIVATE "${TRUFFLE_XCB_LIBRARY}")
         set_tests_properties(truffle_vulkan_tests PROPERTIES
                              LABELS "native-smoke;presentation;validation")
+    elseif(APPLE)
+        target_sources(truffle_vulkan_tests PRIVATE vulkan_metal_layer.mm)
+        target_link_libraries(truffle_vulkan_tests PRIVATE
+                              "-framework Foundation" "-framework QuartzCore")
+        # Exit code 77 reports a host without a Vulkan loader/MoltenVK driver.
+        set_tests_properties(truffle_vulkan_tests PROPERTIES
+                             LABELS "native-smoke;presentation;validation"
+                             SKIP_RETURN_CODE 77
+                             FAIL_REGULAR_EXPRESSION "Validation (Error|Warning)")
+        # Homebrew's validation-layer manifest names its dylib without a path,
+        # and dyld does not search the Homebrew prefix. Let the test resolve
+        # layers next to the host loader; nothing is pinned or installed.
+        find_library(TRUFFLE_VULKAN_HOST_LOADER NAMES vulkan.1 vulkan
+                     PATHS /opt/homebrew/lib /usr/local/lib NO_DEFAULT_PATH)
+        if(TRUFFLE_VULKAN_HOST_LOADER)
+            get_filename_component(_truffle_vulkan_loader_dir
+                                   "${TRUFFLE_VULKAN_HOST_LOADER}" DIRECTORY)
+            set_property(TEST truffle_vulkan_tests APPEND PROPERTY ENVIRONMENT
+                "DYLD_FALLBACK_LIBRARY_PATH=${_truffle_vulkan_loader_dir}:/usr/local/lib:/usr/lib")
+        endif()
     endif()
 endif()
 

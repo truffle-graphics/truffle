@@ -91,6 +91,46 @@ setup, not immediate work. No issue labels or hosted workflows change.
   texture clear/resolve/blit and other unsupported paths stay `unsupported`),
   Intel-Mac/physical removal evidence, and a reviewed decision on closing.
 
+## Vulkan macOS MoltenVK Lane (#56)
+
+- Branch `feat/vulkan-macos`. The Vulkan test binary previously did nothing
+  off Linux. On macOS it now runs the shared suite plus a `CAMetalLayer`
+  presentation proof; adapter platform/maturity are checked against
+  `host_platform()` and the support table.
+- Backend: `VK_EXT_metal_surface` behind `VK_USE_PLATFORM_METAL_EXT` (set on
+  Darwin) accepts only `cocoa_layer`; WSI gates use `TRUFFLE_VULKAN_HAS_WSI`
+  (XCB or Metal). After volk's default search fails, Apple builds try the
+  Homebrew/`/usr/local` `libvulkan.1.dylib`. Injected `suboptimal`/
+  `out_of_date` present faults now present natively before returning, which
+  fixed an infinite acquire wait on MoltenVK's small swapchain.
+- Evidence (2026-10-29, Apple M3 Pro, macOS 27.0.1, Homebrew MoltenVK 1.4.2,
+  loader 1.4.363.0): all 26 ctests pass, including `truffle_vulkan_tests`
+  (the loader itself needs no `DYLD_*` variable). `D24_UNORM_S8_UINT` is unsupported on Apple
+  GPUs and returns `unsupported`; the test falls back to `D32_SFLOAT_S8_UINT`.
+- Validation (2026-10-30): with Homebrew `vulkan-validationlayers` 1.4.363.0
+  the suite reports zero validation messages, also with
+  `VK_LAYER_VALIDATE_SYNC=1`. The macOS row is now `native_smoke` (compile,
+  smoke, validation, presentation). The macOS ctest sets
+  `DYLD_FALLBACK_LIBRARY_PATH` to the found loader directory, because the
+  Homebrew layer manifest uses a bare dylib name. It fails on
+  `Validation (Error|Warning)` output. Before this, an enumerated layer that
+  could not load made instance creation fail, so default
+  (`enableValidation = true`) apps and `truffle-rhi-doctor --strict` lost
+  Vulkan entirely. The backend now retries without the layer on
+  `VK_ERROR_LAYER_NOT_PRESENT`, and the macOS test fails on that state via a
+  private test hook.
+- Timestamps (2026-10-30): after the rebase onto 7ffbb4e the suite failed
+  about 3-10% of runs because MoltenVK 1.4.2 resolved the second timestamp
+  to 0 when the copy ran in the same submission (an extra barrier did not
+  help; a separate submission did). Validation reported nothing. The backend
+  now reads the driver ID through `VK_KHR_driver_properties` (the 1.1
+  instance clamps `apiVersion`) and does not advertise timestamp queries on
+  MoltenVK; the test derives timestamp checks from advertised features and
+  asserts `unsupported` otherwise. 60 consecutive runs and three full
+  29-test ctest runs passed.
+- Still open in #56: iOS-family cross-builds, pinned/packaged MoltenVK
+  isolation, and Intel Macs (all on the roadmap pending-verification list).
+
 ## Module Taxonomy Update (#161)
 
 - Docs record the agreed module map: Engine (planned) → Renderer → RHI →

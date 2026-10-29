@@ -13,6 +13,9 @@ set_source_files_properties("${_truffle_volk_dir}/volk.c" PROPERTIES LANGUAGE CX
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID)
     target_compile_definitions(truffle_backend_vulkan
                                PRIVATE VK_USE_PLATFORM_XCB_KHR=1)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+    target_compile_definitions(truffle_backend_vulkan
+                               PRIVATE VK_USE_PLATFORM_METAL_EXT=1)
 endif()
 target_include_directories(truffle_backend_vulkan PRIVATE
     "${PROJECT_SOURCE_DIR}/src/rhi"

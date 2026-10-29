@@ -5,6 +5,16 @@
 
 #include <volk.h>
 
+#if defined(__APPLE__)
+#include <dlfcn.h>
+#endif
+
+#if defined(VK_USE_PLATFORM_XCB_KHR) || defined(VK_USE_PLATFORM_METAL_EXT)
+#define TRUFFLE_VULKAN_HAS_WSI 1
+#else
+#define TRUFFLE_VULKAN_HAS_WSI 0
+#endif
+
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -38,11 +48,25 @@ void set_vulkan_present_fault_for_testing(VulkanPresentFault fault) noexcept {
     gVulkanPresentFaultForTesting.store(fault);
 }
 
+std::atomic<VulkanValidationState> gVulkanValidationState{
+    VulkanValidationState::not_requested};
+
+VulkanValidationState last_vulkan_validation_state_for_testing() noexcept {
+    return gVulkanValidationState.load();
+}
+
 } // namespace detail
 
 namespace {
 
 constexpr auto portability_subset_extension = "VK_KHR_portability_subset";
+#if defined(VK_USE_PLATFORM_XCB_KHR)
+constexpr auto vulkan_platform_surface_extension =
+    VK_KHR_XCB_SURFACE_EXTENSION_NAME;
+#elif defined(VK_USE_PLATFORM_METAL_EXT)
+constexpr auto vulkan_platform_surface_extension =
+    VK_EXT_METAL_SURFACE_EXTENSION_NAME;
+#endif
 
 [[nodiscard]] Status vulkan_failure(StatusCode code, std::string message,
                                     VkResult result) {
@@ -79,7 +103,7 @@ struct VulkanContext {
     bool independentBlend = false;
     bool timelineSemaphores = false;
     bool timestampQueries = false;
-    bool linuxWsi = false;
+    bool surfaceWsi = false;
     VolkInstanceTable instanceTable{};
     VolkDeviceTable deviceTable{};
     std::mutex mutex;
@@ -683,7 +707,7 @@ struct VulkanTextureResource {
     std::mutex mutex;
 };
 
-#if defined(__linux__) && !defined(__ANDROID__)
+#if TRUFFLE_VULKAN_HAS_WSI
 struct VulkanSurfaceResource {
     VulkanSurfaceResource(std::shared_ptr<VulkanContext> contextValue,
                           VkSurfaceKHR surfaceValue)
@@ -4670,7 +4694,7 @@ void prepare_vulkan_binding_images(VulkanContext& context,
         context, pool, desc.type, desc.count));
 }
 
-#if defined(__linux__) && !defined(__ANDROID__)
+#if TRUFFLE_VULKAN_HAS_WSI
 [[nodiscard]] Status vulkan_wsi_failure(std::string message, VkResult result) {
     StatusCode code = StatusCode::backend_error;
     switch (result) {
@@ -4884,7 +4908,7 @@ void prepare_vulkan_binding_images(VulkanContext& context,
     if (presentSupported != VK_TRUE) {
         return Status::failure(
             StatusCode::unsupported,
-            "the Vulkan graphics queue cannot present to this XCB surface");
+            "the Vulkan graphics queue cannot present to this surface");
     }
 
     VkSurfaceCapabilitiesKHR capabilities{};
@@ -5033,10 +5057,11 @@ void prepare_vulkan_binding_images(VulkanContext& context,
         return Status::failure(StatusCode::device_lost,
                                "the Vulkan native context is unavailable");
     }
-    if (!context->linuxWsi) {
+    if (!context->surfaceWsi) {
         return Status::failure(StatusCode::unsupported,
-                               "Vulkan XCB presentation is unavailable");
+                               "Vulkan platform presentation is unavailable");
     }
+#if defined(VK_USE_PLATFORM_XCB_KHR)
     if (desc.native.kind != NativeSurfaceKind::xcb) {
         return Status::failure(StatusCode::unsupported,
                                "Linux Vulkan surfaces require XCB handles");
@@ -5060,6 +5085,30 @@ void prepare_vulkan_binding_images(VulkanContext& context,
     if (result != VK_SUCCESS) {
         return vulkan_wsi_failure("Vulkan XCB surface creation failed", result);
     }
+#elif defined(VK_USE_PLATFORM_METAL_EXT)
+    if (desc.native.kind != NativeSurfaceKind::cocoa_layer) {
+        return Status::failure(StatusCode::unsupported,
+                               "Apple Vulkan surfaces require a CAMetalLayer handle");
+    }
+    if (desc.native.handle == nullptr) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "a host-owned CAMetalLayer handle is required");
+    }
+    const VkMetalSurfaceCreateInfoEXT createInfo{
+        .sType = VK_STRUCTURE_TYPE_METAL_SURFACE_CREATE_INFO_EXT,
+        .pNext = nullptr,
+        .flags = 0,
+        .pLayer = static_cast<const CAMetalLayer*>(desc.native.handle),
+    };
+    VkSurfaceKHR surface = VK_NULL_HANDLE;
+    std::lock_guard lock{context->mutex};
+    const auto result = context->instanceTable.vkCreateMetalSurfaceEXT(
+        context->instance, &createInfo, nullptr, &surface);
+    if (result != VK_SUCCESS) {
+        return vulkan_wsi_failure("Vulkan Metal surface creation failed",
+                                  result);
+    }
+#endif
     return std::static_pointer_cast<void>(
         std::make_shared<VulkanSurfaceResource>(context, surface));
 }
@@ -5210,14 +5259,16 @@ void prepare_vulkan_binding_images(VulkanContext& context,
         return Status::failure(StatusCode::invalid_state,
                                "the Vulkan presentation image is not acquired");
     }
+    // Injected suboptimal/out-of-date results still present natively: as with
+    // real WSI results, the image is consumed and must return to the driver,
+    // otherwise later acquisitions can exhaust the swapchain.
     const auto fault = detail::gVulkanPresentFaultForTesting.load();
-    if (fault != detail::VulkanPresentFault::none) {
-        const auto status = vulkan_present_fault_status(fault);
-        if (status.code == StatusCode::suboptimal ||
-            status.code == StatusCode::out_of_date) {
-            swapchain->acquired = false;
-        }
-        return status;
+    const auto injectedStatus = vulkan_present_fault_status(fault);
+    const bool injectedAfterPresent =
+        injectedStatus.code == StatusCode::suboptimal ||
+        injectedStatus.code == StatusCode::out_of_date;
+    if (!injectedStatus.ok() && !injectedAfterPresent) {
+        return injectedStatus;
     }
     if (!waits.empty() && !context.timelineSemaphores) {
         return Status::failure(
@@ -5309,14 +5360,48 @@ void prepare_vulkan_binding_images(VulkanContext& context,
         presentResult == VK_ERROR_OUT_OF_DATE_KHR) {
         swapchain->acquired = false;
     }
-    return result == VK_SUCCESS ? Status::success()
-                                : vulkan_wsi_failure(
-                                      "Vulkan presentation failed", result);
+    if (result != VK_SUCCESS) {
+        return vulkan_wsi_failure("Vulkan presentation failed", result);
+    }
+    return injectedStatus;
+}
+#endif
+
+#if defined(__APPLE__)
+// volk searches the dyld paths, /usr/local/lib/libvulkan.dylib, and bundled
+// frameworks. Homebrew on Apple silicon installs the loader under
+// /opt/homebrew/lib, which dyld does not search by default.
+[[nodiscard]] VkResult initialize_apple_vulkan_loader() {
+    constexpr std::array candidates{
+        "/opt/homebrew/lib/libvulkan.1.dylib",
+        "/usr/local/lib/libvulkan.1.dylib",
+    };
+    for (const auto* candidate : candidates) {
+        void* module = dlopen(candidate, RTLD_NOW | RTLD_LOCAL);
+        if (module == nullptr) {
+            continue;
+        }
+        const auto getInstanceProcAddr =
+            reinterpret_cast<PFN_vkGetInstanceProcAddr>(
+                dlsym(module, "vkGetInstanceProcAddr"));
+        if (getInstanceProcAddr == nullptr) {
+            dlclose(module);
+            continue;
+        }
+        volkInitializeCustom(getInstanceProcAddr);
+        return VK_SUCCESS;
+    }
+    return VK_ERROR_INITIALIZATION_FAILED;
 }
 #endif
 
 [[nodiscard]] Result<VulkanProbe> initialize_vulkan(const InstanceDesc& desc) {
-    const auto loaderResult = volkInitialize();
+    auto loaderResult = volkInitialize();
+#if defined(__APPLE__)
+    if (loaderResult != VK_SUCCESS) {
+        loaderResult = initialize_apple_vulkan_loader();
+    }
+#endif
     if (loaderResult != VK_SUCCESS) {
         return vulkan_failure(StatusCode::unavailable,
                               "the native Vulkan loader is unavailable",
@@ -5356,7 +5441,7 @@ void prepare_vulkan_binding_images(VulkanContext& context,
         .apiVersion = VK_API_VERSION_1_1,
     };
     std::vector<const char*> extensions;
-    bool linuxSurfaceExtensions = false;
+    bool platformSurfaceExtensions = false;
     std::uint32_t extensionCount = 0;
     if (vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount,
                                                nullptr) == VK_SUCCESS &&
@@ -5377,7 +5462,7 @@ void prepare_vulkan_binding_images(VulkanContext& context,
                 extensions.push_back(
                     VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
             }
-#if defined(__linux__) && !defined(__ANDROID__)
+#if TRUFFLE_VULKAN_HAS_WSI
             const auto has_extension = [&](const char* name) {
                 return std::any_of(
                     availableExtensions.begin(), availableExtensions.end(),
@@ -5385,12 +5470,12 @@ void prepare_vulkan_binding_images(VulkanContext& context,
                         return std::strcmp(extension.extensionName, name) == 0;
                     });
             };
-            linuxSurfaceExtensions =
+            platformSurfaceExtensions =
                 has_extension(VK_KHR_SURFACE_EXTENSION_NAME) &&
-                has_extension(VK_KHR_XCB_SURFACE_EXTENSION_NAME);
-            if (linuxSurfaceExtensions) {
+                has_extension(vulkan_platform_surface_extension);
+            if (platformSurfaceExtensions) {
                 extensions.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
-                extensions.push_back(VK_KHR_XCB_SURFACE_EXTENSION_NAME);
+                extensions.push_back(vulkan_platform_surface_extension);
             }
 #endif
         }
@@ -5413,12 +5498,27 @@ void prepare_vulkan_binding_images(VulkanContext& context,
 
     auto context = std::make_shared<VulkanContext>();
     auto result = vkCreateInstance(&instanceInfo, nullptr, &context->instance);
+    auto validationState =
+        !desc.enableValidation ? detail::VulkanValidationState::not_requested
+        : layers.empty()       ? detail::VulkanValidationState::not_installed
+                               : detail::VulkanValidationState::active;
+    if (result == VK_ERROR_LAYER_NOT_PRESENT && !layers.empty()) {
+        // An enumerated layer whose library cannot load (for example a
+        // manifest naming a dylib outside the dyld search path) is not
+        // available; validation stays optional, so create without it.
+        auto withoutLayers = instanceInfo;
+        withoutLayers.enabledLayerCount = 0;
+        withoutLayers.ppEnabledLayerNames = nullptr;
+        result = vkCreateInstance(&withoutLayers, nullptr, &context->instance);
+        validationState = detail::VulkanValidationState::failed_to_load;
+    }
+    detail::gVulkanValidationState.store(validationState);
     if (result != VK_SUCCESS) {
         return vulkan_failure(StatusCode::unavailable,
                               "Vulkan instance creation failed", result);
     }
     volkLoadInstanceTable(&context->instanceTable, context->instance);
-    context->linuxWsi = linuxSurfaceExtensions;
+    context->surfaceWsi = platformSurfaceExtensions;
 
     std::uint32_t physicalDeviceCount = 0;
     result = context->instanceTable.vkEnumeratePhysicalDevices(
@@ -5496,6 +5596,52 @@ void prepare_vulkan_binding_images(VulkanContext& context,
 
     context->instanceTable.vkGetPhysicalDeviceProperties(
         context->physicalDevice, &context->properties);
+    // Drivers clamp apiVersion to the instance's 1.1, so driver identity
+    // usually comes from VK_KHR_driver_properties.
+    bool driverPropertiesQuery =
+        context->properties.apiVersion >= VK_API_VERSION_1_2;
+    if (!driverPropertiesQuery) {
+        std::uint32_t count = 0;
+        if (context->instanceTable.vkEnumerateDeviceExtensionProperties(
+                context->physicalDevice, nullptr, &count, nullptr) ==
+            VK_SUCCESS) {
+            std::vector<VkExtensionProperties> available(count);
+            if (context->instanceTable.vkEnumerateDeviceExtensionProperties(
+                    context->physicalDevice, nullptr, &count,
+                    available.data()) == VK_SUCCESS) {
+                driverPropertiesQuery = std::any_of(
+                    available.begin(), available.end(),
+                    [](const VkExtensionProperties& extension) {
+                        return std::strcmp(
+                                   extension.extensionName,
+                                   VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME) ==
+                               0;
+                    });
+            }
+        }
+    }
+    if (driverPropertiesQuery) {
+        VkPhysicalDeviceDriverProperties driverProperties{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES,
+            .pNext = nullptr,
+        };
+        VkPhysicalDeviceProperties2 properties2{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+            .pNext = &driverProperties,
+            .properties = {},
+        };
+        context->instanceTable.vkGetPhysicalDeviceProperties2(
+            context->physicalDevice, &properties2);
+        if (driverProperties.driverID == VK_DRIVER_ID_MOLTENVK) {
+            // MoltenVK (1.4.2 on Apple GPUs) can leave a timestamp written
+            // after the final encoder as zero when it is resolved in the same
+            // submission, despite VK_QUERY_RESULT_WAIT_BIT. RHI 1 allows that
+            // resolve, so timestamps are not advertised rather than returning
+            // unreliable values.
+            context->queueTimestampQueries = {};
+            context->timestampQueries = false;
+        }
+    }
     VkPhysicalDeviceTimelineSemaphoreFeatures timelineFeatures{
         .sType =
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES,
@@ -5569,7 +5715,7 @@ void prepare_vulkan_binding_images(VulkanContext& context,
                                VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME) == 0;
                 });
             timelineExtension = timeline != availableDeviceExtensions.end();
-#if defined(__linux__) && !defined(__ANDROID__)
+#if TRUFFLE_VULKAN_HAS_WSI
             const auto swapchain = std::find_if(
                 availableDeviceExtensions.begin(),
                 availableDeviceExtensions.end(),
@@ -5577,11 +5723,11 @@ void prepare_vulkan_binding_images(VulkanContext& context,
                     return std::strcmp(extension.extensionName,
                                        VK_KHR_SWAPCHAIN_EXTENSION_NAME) == 0;
                 });
-            if (context->linuxWsi &&
+            if (context->surfaceWsi &&
                 swapchain != availableDeviceExtensions.end()) {
                 deviceExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
             } else {
-                context->linuxWsi = false;
+                context->surfaceWsi = false;
             }
 #endif
         }
@@ -5717,7 +5863,8 @@ Result<Instance> create_vulkan_instance(const InstanceDesc& desc) {
     detail::FoundationBackendConfig config;
     config.kind = BackendKind::vulkan;
     config.platform = host_platform();
-    config.maturity = host_platform() == PlatformKind::linux_host
+    config.maturity = host_platform() == PlatformKind::linux_host ||
+                              host_platform() == PlatformKind::macos
                           ? BackendMaturity::native_smoke
                           : BackendMaturity::source_only;
     config.adapterName = std::move(native.adapterName);
@@ -5729,8 +5876,8 @@ Result<Instance> create_vulkan_instance(const InstanceDesc& desc) {
         config.queueKinds.push_back(QueueKind::transfer);
     }
     config.supportedFeatures = {Feature::transfer, Feature::memory_budget};
-#if defined(__linux__) && !defined(__ANDROID__)
-    if (native.context->linuxWsi) {
+#if TRUFFLE_VULKAN_HAS_WSI
+    if (native.context->surfaceWsi) {
         config.supportedFeatures.push_back(Feature::presentation);
     }
 #endif
@@ -5796,8 +5943,8 @@ Result<Instance> create_vulkan_instance(const InstanceDesc& desc) {
     };
     config.deviceLocalBudgetBytes = native.deviceLocalBudget;
     config.native = true;
-#if defined(__linux__) && !defined(__ANDROID__)
-    config.presentation = native.context->linuxWsi;
+#if TRUFFLE_VULKAN_HAS_WSI
+    config.presentation = native.context->surfaceWsi;
 #endif
     config.nativeContext = std::move(native.context);
     config.createBuffer = &create_vulkan_buffer;
@@ -5817,7 +5964,7 @@ Result<Instance> create_vulkan_instance(const InstanceDesc& desc) {
     config.createComputePipeline = &create_vulkan_compute_pipeline;
     config.createSemaphore = &create_vulkan_semaphore;
     config.createQueryPool = &create_vulkan_query_pool;
-#if defined(__linux__) && !defined(__ANDROID__)
+#if TRUFFLE_VULKAN_HAS_WSI
     config.createSurface = &create_vulkan_surface;
     config.createSwapchain = &create_vulkan_swapchain;
     config.acquireSwapchain = &acquire_vulkan_swapchain;

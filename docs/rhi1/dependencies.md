@@ -35,8 +35,23 @@ as an unused framework.
 - Vulkan currently compiles `Vulkan-Headers` `vulkan-sdk-1.4.350.1` and volk
   `1.4.350` directly into `truffle_backend_vulkan`; both are pinned Git
   submodules and remain private to that target. The host supplies only the
-  native loader/driver runtime. Vulkan Memory Allocator and MoltenVK remain
-  future backend-private groups and are not added before their paths exist.
+  native loader/driver runtime. Vulkan Memory Allocator remains a future
+  backend-private group and is not added before its path exists.
+- Vulkan on macOS uses MoltenVK (Apache-2.0) and the Khronos Vulkan loader
+  (Apache-2.0) as host runtime prerequisites; neither is bundled or pinned.
+  Recorded evidence used Homebrew `molten-vk` 1.4.2 and `vulkan-loader`
+  1.4.363.0 (`vulkan-tools` 1.4.363.0 supplied `vulkaninfo`). The loader
+  finds the MoltenVK ICD from its own manifest search. Because dyld does not
+  search the Homebrew prefix, the backend falls back to
+  `/opt/homebrew/lib/libvulkan.1.dylib` and then
+  `/usr/local/lib/libvulkan.1.dylib` after volk's default search fails;
+  `DYLD_FALLBACK_LIBRARY_PATH` or an SDK install also works. Khronos
+  validation layers are optional at runtime; the `native_smoke` evidence used
+  Homebrew `vulkan-validationlayers` 1.4.363.0. Its manifest names
+  `libVkLayer_khronos_validation.dylib` without a path, so the loader cannot
+  load the layer unless dyld can search the Homebrew prefix. The macOS Vulkan
+  ctest therefore sets `DYLD_FALLBACK_LIBRARY_PATH` to the directory of the
+  host loader that CMake finds; direct runs need the same variable.
 - D3D12 uses the Windows SDK and DXGI; D3D12 Memory Allocator and an optional
   pinned Agility SDK runtime are backend-local.
 - WebGPU uses pinned Emdawnwebgpu/Dawn components only when that backend is
@@ -82,7 +97,8 @@ require:
 - Android NDK and platform API 26 or newer for Android targets;
 - Emscripten for wasm32 WebGPU/WebGL2 targets;
 - driver/runtime packages needed for native Linux Vulkan, GL, GLES, and EGL
-  execution.
+  execution;
+- MoltenVK and a Vulkan loader for Vulkan on macOS.
 
 Configure diagnostics and the RHI doctor command distinguish a
 missing SDK, a missing checked-out submodule, and an incompatible expert system
