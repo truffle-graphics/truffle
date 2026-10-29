@@ -51,7 +51,10 @@ The support matrix only claims what has actually been verified.
 ### Pending Verification
 
 - Vulkan on Windows (#58).
-- Desktop OpenGL on Windows, and on Linux beyond its current EGL evidence.
+- Desktop OpenGL on Windows (WGL, #61), and on Linux beyond its current EGL
+  evidence.
+- Desktop OpenGL on Intel Macs; current macOS GL 4.1 evidence is Apple
+  Silicon only (#61).
 - Metal on Intel Macs, including managed-storage flushes and eGPU
   device-removal behavior (#69); current evidence is Apple Silicon only.
 - Any baseline backend feature first verified on only one platform.

@@ -1,13 +1,14 @@
 #pragma once
 
 #include "foundation_backend.hpp"
+#include "gl_api.hpp"
 
 #include <algorithm>
 #include <array>
 #include <cstring>
 #include <vector>
 
-namespace truffle::rhi::detail::egl_probe::program {
+namespace truffle::rhi::detail::gl_probe::program {
 
 struct Binding {
     std::uint32_t group = 0;
@@ -46,7 +47,7 @@ inline Result<Layout> configure(GLuint name,
     GLint textureLimit = 0;
     glGetIntegerv(GL_MAX_UNIFORM_BUFFER_BINDINGS, &uniformLimit);
     glGetIntegerv(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS, &textureLimit);
-#if defined(TRUFFLE_EGL_API_OPENGL)
+#if defined(TRUFFLE_GL_HAS_COMPUTE)
     GLint storageLimit = 0;
     glGetIntegerv(GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS, &storageLimit);
 #endif
@@ -130,7 +131,7 @@ inline Result<Layout> configure(GLuint name,
                         uniformBlocks.push_back(index);
                         glUniformBlockBinding(name, index, binding.slot);
                     } else if (entry->type == BindingType::storage_buffer) {
-#if defined(TRUFFLE_EGL_API_OPENGL)
+#if defined(TRUFFLE_GL_HAS_COMPUTE)
                         const auto index = glGetProgramResourceIndex(
                             name, GL_SHADER_STORAGE_BLOCK, resourceName.c_str());
                         if (index == GL_INVALID_INDEX ||
@@ -150,7 +151,7 @@ inline Result<Layout> configure(GLuint name,
                         glShaderStorageBlockBinding(name, index, binding.slot);
 #else
                         return Status::failure(StatusCode::unsupported,
-                                               "GLES 3.0 storage blocks are unsupported");
+                                               "GL storage blocks are unsupported by this context");
 #endif
                     } else if (entry->type == BindingType::sampled_texture ||
                                entry->type == BindingType::sampler) {
@@ -307,7 +308,7 @@ inline Result<Layout> configure(GLuint name,
             return mismatch("GL program contains an unreflected uniform block");
         }
     }
-#if defined(TRUFFLE_EGL_API_OPENGL)
+#if defined(TRUFFLE_GL_HAS_COMPUTE)
     glGetProgramInterfaceiv(name, GL_SHADER_STORAGE_BLOCK, GL_ACTIVE_RESOURCES, &blocks);
     for (GLint index = 0; index < blocks; ++index) {
         if (std::find(storageBlocks.begin(), storageBlocks.end(),
@@ -340,4 +341,4 @@ inline Result<Layout> configure(GLuint name,
     return result;
 }
 
-} // namespace truffle::rhi::detail::egl_probe::program
+} // namespace truffle::rhi::detail::gl_probe::program

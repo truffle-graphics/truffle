@@ -19,6 +19,36 @@ verification list instead of blocking development.
 Issue #166 records this planning update; #165 tracks future self-hosted runner
 setup, not immediate work. No issue labels or hosted workflows change.
 
+## OpenGL macOS Offscreen CGL (#61, #63)
+
+- Branch `feat/opengl-macos`. The shared GL command code is renamed
+  `gl_probe.hpp`/`gl_graphics.hpp`/`gl_program.hpp` (namespace
+  `detail::gl_probe`); context creation, make-current and proc loading move
+  behind a private seam: `egl_context.hpp` (Linux, unchanged behavior) and
+  `cgl_context.hpp` (macOS). `gl_api.hpp` picks headers and feature macros
+  (`TRUFFLE_GL_HAS_COMPUTE`, `_TEXTURE_STORAGE`, `_TEXTURE_VIEWS`,
+  `_BASE_INSTANCE`, `_DEBUG_OUTPUT`); CGL defines none of them.
+- macOS creates an accelerated `kCGLOGLPVersion_GL4_Core` context (GL 4.1),
+  `GL_SILENCE_DEPRECATION` only on `truffle_backend_opengl`. Textures without
+  immutable storage allocate each level/face with `glTexImage*`. Nonzero base
+  instance (direct, or the indirect first-instance word) returns
+  `unsupported`. The adapter smoke now clears an FBO on both contexts.
+- Advertised on macOS: transfer, descriptor arrays, dynamic offsets, push
+  constants; identity views, copies, fills, clears, resolve, blits;
+  graphics/MRT/depth-stencil/MSAA/indirect. Not advertised: compute/storage
+  blocks, subresource views, KHR_debug, external resources, presentation.
+- Evidence (Apple M3 Pro, macOS 27.0.1, adapter `Apple M3 Pro (4.1 Metal -
+  91.7)`): `truffle_opengl_tests` runs the shared buffer, texture, direct and
+  expanded graphics, binding and compute-negative suites with GLSL 410 and
+  zero GL errors; all 25 ctests pass with Metal and OpenGL on. Validation is
+  per-operation `glGetError`, not a debug layer; the matrix row says so.
+- Architecture guard: 19 dependency declarations (+1 for the private
+  `OpenGL.framework` link).
+- Still open: host-window presentation on macOS and WGL (#61), GL fences,
+  queries and context ownership evidence (#63), Intel Mac and Windows
+  verification (roadmap pending list). Linux EGL is compile-safe by
+  inspection only on this run.
+
 ## Metal macOS Host Window (#69)
 
 - Branch `feat/metal-macos-host`. The macOS 27 SDK deprecates
@@ -163,7 +193,7 @@ setup, not immediate work. No issue labels or hosted workflows change.
   GLES 3.0 keeps storage blocks/images, compute, indirect/base-vertex/base-
   instance drawing, MSAA and subresource views unsupported; identity sampling
   views are supported. Both profiles remain `native_smoke`, not conformant.
-- `egl_program.hpp` owns program interface policy and `egl_graphics.hpp` owns
+- `gl_program.hpp` owns program interface policy and `gl_graphics.hpp` owns
   graphics state/input details. The GL command interpreter remains cohesive
   around submission lifecycle and native-state ownership; dependencies and
   public RHI contracts are unchanged. The support matrix, shader conventions,

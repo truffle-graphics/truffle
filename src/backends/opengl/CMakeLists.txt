@@ -20,6 +20,19 @@ if(UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
         message(STATUS
             "OpenGL target is source-only: EGL/OpenGL development files were not found")
     endif()
+elseif(APPLE AND NOT IOS)
+    find_library(TRUFFLE_OPENGL_FRAMEWORK OpenGL)
+    if(TRUFFLE_OPENGL_FRAMEWORK)
+        # macOS deprecates OpenGL; silence only those warnings for this target.
+        target_compile_definitions(truffle_backend_opengl PRIVATE
+                                   TRUFFLE_HAS_CGL_OPENGL=1
+                                   GL_SILENCE_DEPRECATION=1)
+        target_link_libraries(truffle_backend_opengl PRIVATE
+                              "${TRUFFLE_OPENGL_FRAMEWORK}")
+    else()
+        message(STATUS
+            "OpenGL target is source-only: OpenGL.framework was not found")
+    endif()
 endif()
 truffle_configure_target(truffle_backend_opengl BackendOpenGL)
 add_library(Truffle::BackendOpenGL ALIAS truffle_backend_opengl)

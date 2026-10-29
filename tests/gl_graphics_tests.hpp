@@ -24,8 +24,8 @@ inline rhi::Shader gl_fixture_shader(rhi::Device& device, bool desktop,
                       .entryPoint = "main",
                       .reflection = std::move(reflection),
                       .code = native_shader_bytes(
-                          (desktop ? "#version 450 core\n" :
-                                     "#version 300 es\nprecision highp float;\n") +
+                          (desktop ? std::string(desktop_glsl_version) :
+                                     std::string("#version 300 es\nprecision highp float;\n")) +
                           source)}};
     auto package = rhi::ShaderPackage::create(std::move(desc));
     assert(package.ok());
