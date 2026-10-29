@@ -22,8 +22,8 @@ See `docs/planning.md` for the durable tracking contract.
 Active work is a practical baseline for three backends:
 
 1. **Metal** (macOS) — primary development backend: #69.
-2. **Vulkan** — portable backend; Linux baseline is done, development
-   continues on macOS through MoltenVK (#56).
+2. **Vulkan** — portable backend; Linux and macOS (MoltenVK, #56) baselines
+   are done. MoltenVK packaging and iOS-family lanes are deferred (#172).
 3. **OpenGL** (desktop) — surfaces/presentation (#61) and synchronization,
    queries, and context ownership (#63). macOS OpenGL is deprecated and capped
    at 4.1, so features above 4.1 (such as compute) need another platform.
@@ -48,19 +48,15 @@ to keep developing. Other platforms are not blockers: they go on the pending
 verification list below and are checked when someone works on that machine.
 The support matrix only claims what has actually been verified.
 
+macOS support targets Apple Silicon only (#171). Intel Macs are not an intended
+target: code that happens to work there is fine, but no Intel verification,
+lanes, or Intel-specific work is planned.
+
 ### Pending Verification
 
 - Vulkan on Windows (#58).
-- Vulkan through MoltenVK on Intel Macs, iOS-family MoltenVK cross-builds,
-  and pinned/packaged MoltenVK isolation (#56); current evidence is Apple
-  Silicon with host Homebrew MoltenVK only. Re-check MoltenVK timestamp
-  resolves before advertising timestamp queries there.
 - Desktop OpenGL on Windows (WGL, #61), and on Linux beyond its current EGL
-  evidence.
-- Desktop OpenGL on Intel Macs; current macOS GL 4.1 evidence is Apple
-  Silicon only (#61).
-- Metal on Intel Macs, including managed-storage flushes and eGPU
-  device-removal behavior (#69); current evidence is Apple Silicon only.
+  evidence, including the refactored EGL context path.
 - Any baseline backend feature first verified on only one platform.
 
 ## Deferred Backlog
@@ -71,7 +67,8 @@ use, guided by what that use revealed about the RHI.
 
 - **Other backends and platforms:** D3D12 beyond its current baseline, WebGPU
   and WebGL2 (#65-#68, #70), Vulkan Android (#59), OpenGL ES Android (#64),
-  and Metal on iOS/iPadOS/tvOS/visionOS (#71-#72).
+  Metal on iOS/iPadOS/tvOS/visionOS (#71-#72), and MoltenVK packaging plus
+  iOS-family Vulkan lanes (#172).
 - **Advanced GPU features (Phase 6):** ray tracing, mesh shaders,
   variable-rate shading, sparse resources, multiview, and extended queries
   (#75-#101). These need hardware that supports them.
@@ -186,6 +183,9 @@ Tracked by #33.
     pools with validation-enabled Linux evidence through #54.
   - [x] Complete host-owned Linux XCB surfaces, native acquire/present, exact
     swapchain readback, and resize recreation through #57.
+  - [x] Complete the macOS MoltenVK lane (suite, `CAMetalLayer` presentation,
+    validation-clean `native_smoke`) through #56; packaging and iOS-family
+    lanes are deferred to #172.
 - [ ] Complete OpenGL/OpenGL ES resources, pipelines, synchronization, and
   desktop presentation through #60-#63; Android GLES (#64) is deferred.
   - [x] Complete shared GL-family resources and transfers with separate desktop

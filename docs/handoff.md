@@ -9,8 +9,8 @@ rather than growing a historical transcript here.
 
 ## Current Focus
 
-Practical baseline for Metal (#69), Vulkan (MoltenVK #56), and
-desktop OpenGL (#61, #63), plus the shader-compiler routes they need (#73).
+Practical baseline for Metal (#69), Vulkan (macOS MoltenVK lane done in
+#56), and desktop OpenGL (#61, #63) on Apple Silicon macOS (#171), plus the shader-compiler routes they need (#73).
 What follows (likely the Renderer) is undecided. Other backends/platforms,
 Phase 6 advanced features, and Phase 7 hardening are backlog listed in
 `docs/roadmap.md`; their issues stay open.
@@ -18,6 +18,20 @@ Verification is local; other platforms go on the roadmap's pending
 verification list instead of blocking development.
 Issue #166 records this planning update; #165 tracks future self-hosted runner
 setup, not immediate work. No issue labels or hosted workflows change.
+
+## Apple Silicon Scope And #56 Split (#171, #172)
+
+- Decision (#171): macOS support targets Apple Silicon only. Intel Macs are
+  not a target; Intel-compatible code (Metal managed-storage flush, eGPU
+  removal mapping) stays as harmless code. Intel items are removed from the
+  roadmap pending-verification list, READMEs and matrix notes;
+  PROJECT_CONTEXT records the decision.
+- #56's macOS lane is delivered (PR #170); its packaging, package isolation,
+  iOS-family lanes and MoltenVK timestamp re-check move to deferred #172
+  (sub-issue of #33), so #56 closes.
+- Next: OpenGL macOS host-window presentation (#61) and macOS-supported GL
+  fences/queries/context ownership (#63); Metal advertised-capability
+  conformance audit (#69).
 
 ## OpenGL macOS Offscreen CGL (#61, #63)
 
@@ -49,8 +63,8 @@ setup, not immediate work. No issue labels or hosted workflows change.
 - Architecture guard: 19 dependency declarations (+1 for the private
   `OpenGL.framework` link).
 - Still open: host-window presentation on macOS and WGL (#61), GL fences,
-  queries and context ownership evidence (#63), Intel Mac and Windows
-  verification (roadmap pending list). Linux EGL is compile-safe by
+  queries and context ownership evidence (#63), Windows verification
+  (roadmap pending list). Linux EGL is compile-safe by
   inspection only on this run.
 
 ## Metal macOS Host Window (#69)
@@ -58,8 +72,8 @@ setup, not immediate work. No issue labels or hosted workflows change.
 - Branch `feat/metal-macos-host`. The macOS 27 SDK deprecates
   `MTLCommandBufferErrorDeviceRemoved`, `MTLStorageModeManaged`, and
   `didModifyRange:` (no-ops/unreachable on Apple Silicon), which broke the
-  warnings-as-errors build. The backend keeps both paths for Intel Macs and
-  suppresses the warning only around those uses.
+  warnings-as-errors build. The backend keeps both paths (harmless Intel-compatible
+  code) and suppresses the warning only around those uses.
 - Verified locally on Apple M3 Pro, macOS 27.0.1: `truffle_metal_tests` and
   `truffle_metal_presentation_tests` pass with `MTL_DEBUG_LAYER=1
   MTL_SHADER_VALIDATION=1`.
@@ -84,12 +98,12 @@ setup, not immediate work. No issue labels or hosted workflows change.
   messages; the host-window run is repeatable (five consecutive runs). The
   Metal README records the commands and hardware table.
 - Physical device removal cannot occur on Apple Silicon; device-loss
-  evidence stays private fault injection and is documented as such. Intel-Mac
-  Metal is on the roadmap's pending-verification list. No capability flag or
+  evidence stays private fault injection and is documented as such. Intel Macs
+  are not a target (#171). No capability flag or
   `backend_support.cpp` row changed: Metal stays `native_smoke`.
 - Still open in #69: full advertised-feature conformance (queries,
-  texture clear/resolve/blit and other unsupported paths stay `unsupported`),
-  Intel-Mac/physical removal evidence, and a reviewed decision on closing.
+  texture clear/resolve/blit and other unsupported paths stay `unsupported`)
+  and a reviewed decision on closing.
 
 ## Vulkan macOS MoltenVK Lane (#56)
 
@@ -128,8 +142,8 @@ setup, not immediate work. No issue labels or hosted workflows change.
   MoltenVK; the test derives timestamp checks from advertised features and
   asserts `unsupported` otherwise. 60 consecutive runs and three full
   29-test ctest runs passed.
-- Still open in #56: iOS-family cross-builds, pinned/packaged MoltenVK
-  isolation, and Intel Macs (all on the roadmap pending-verification list).
+- #56 is complete for macOS; packaging, isolation and iOS-family lanes are
+  deferred to #172.
 
 ## Module Taxonomy Update (#161)
 

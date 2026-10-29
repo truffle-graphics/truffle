@@ -96,7 +96,8 @@ layer manifest names its dylib without a path. If an enumerated layer cannot
 load, the backend creates the instance without it, because validation is
 optional and a broken layer must not make Vulkan unavailable. The macOS test
 fails in that case, so validation evidence is never dropped silently. iOS-family targets remain
-`source_only`.
+`source_only`; MoltenVK packaging and iOS-family lanes are tracked in #172.
+Intel Macs are not a target (#171).
 
 Injected `suboptimal`/`out_of_date` present results still present the image
 natively before reporting the status, so fault tests never leave a swapchain

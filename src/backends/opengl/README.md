@@ -54,4 +54,5 @@ the copied bytes exactly.
 - Host-window presentation (NSOpenGLContext/CGL attached to a host-owned
   NSView), WGL on Windows (#61).
 - GL fences, queries and multi-context ownership evidence (#63).
-- Intel Mac and Windows verification (roadmap Pending Verification).
+- Windows verification (roadmap Pending Verification). Intel Macs are not a
+  target (#171).

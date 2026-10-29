@@ -106,6 +106,9 @@ consumer selects concrete loading, upload, and backend behavior.
   deferred with name and design undecided; Simple RHI and a windowing
   convenience are deferred; shaderc and rhi-doctor are tools, not modules.
   Truffle has no planned dependency on any application framework.
+- macOS support targets Apple Silicon only (#171). Intel Macs are not an
+  intended target; code that happens to work there is fine, but no Intel
+  verification or Intel-specific work is planned.
 - Truffle has no consumers yet, so it keeps no backward-compatibility,
   deprecation, or migration scaffolding: no aliases, forwarding headers,
   shims, migration tables, or API compatibility helpers (#163). Revisit at the
