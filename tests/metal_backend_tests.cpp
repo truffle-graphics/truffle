@@ -908,6 +908,79 @@ fragment float4 buffer_fragment(VertexOutput input [[stage_in]],
         std::byte{0}, std::byte{0}, std::byte{255}, std::byte{255}};
     assert(read_color_pixel(device, computeRenderTarget, 8, 8) == blueTexel);
 
+    // Indirect dispatch must produce the same native output as a direct one.
+    const std::array<float, 4> clearedColor{};
+    assert(colorBuffer.write(0, std::as_bytes(std::span{clearedColor})).ok());
+    auto dispatchArgsResult = device.create_buffer({
+        .size = 3 * sizeof(std::uint32_t),
+        .usage = rhi::BufferUsage::indirect,
+        .memory = rhi::MemoryDomain::upload,
+    });
+    assert(dispatchArgsResult.ok());
+    auto dispatchArgs = std::move(dispatchArgsResult).value();
+    const std::array<std::uint32_t, 3> dispatchData{1, 1, 1};
+    assert(dispatchArgs.write(0, std::as_bytes(std::span{dispatchData})).ok());
+    auto indirectComputeListResult = computePool.allocate();
+    assert(indirectComputeListResult.ok());
+    auto indirectComputeList = std::move(indirectComputeListResult).value();
+    assert(indirectComputeList.begin().ok());
+    auto indirectComputeResult = indirectComputeList.begin_compute();
+    assert(indirectComputeResult.ok());
+    auto indirectCompute = std::move(indirectComputeResult).value();
+    assert(indirectCompute.bind_pipeline(computePipeline).ok());
+    assert(indirectCompute.bind_group(0, sharedGroup).ok());
+    assert(indirectCompute.dispatch_indirect(dispatchArgs, 0).ok());
+    assert(indirectCompute.end().ok());
+    assert(indirectComputeList.end().ok());
+    std::array<rhi::CommandList*, 1> indirectComputeLists{
+        &indirectComputeList};
+    assert(nativeComputeQueue.submit(indirectComputeLists).ok());
+    std::array<float, 4> dispatchedColor{};
+    assert(colorBuffer
+               .read(0, std::as_writable_bytes(std::span{dispatchedColor}))
+               .ok());
+    assert((dispatchedColor == std::array<float, 4>{0.0F, 0.0F, 1.0F, 1.0F}));
+
+    // An indexed indirect draw alone must cover the cleared target.
+    auto indexedIndirectResult = device.create_buffer({
+        .size = 5 * sizeof(std::uint32_t),
+        .usage = rhi::BufferUsage::indirect,
+        .memory = rhi::MemoryDomain::upload,
+    });
+    assert(indexedIndirectResult.ok());
+    auto indexedIndirect = std::move(indexedIndirectResult).value();
+    const std::array<std::uint32_t, 5> indexedIndirectData{3, 1, 0, 0, 0};
+    assert(indexedIndirect
+               .write(0, std::as_bytes(std::span{indexedIndirectData}))
+               .ok());
+    auto indexedTarget =
+        make_render_texture(device, rhi::TextureFormat::rgba8_unorm);
+    auto indexedListResult = graphicsPool.allocate();
+    assert(indexedListResult.ok());
+    auto indexedList = std::move(indexedListResult).value();
+    assert(indexedList.begin().ok());
+    auto indexedEncoderResult = indexedList.begin_rendering({
+        .extent = {16, 16},
+        .colorAttachments = {{.texture = &indexedTarget}},
+    });
+    assert(indexedEncoderResult.ok());
+    auto indexedEncoder = std::move(indexedEncoderResult).value();
+    assert(indexedEncoder.bind_pipeline(bufferPipeline).ok());
+    assert(indexedEncoder.bind_group(0, sharedGroup).ok());
+    assert(indexedEncoder
+               .bind_index_buffer(indices, 0, rhi::IndexFormat::uint16)
+               .ok());
+    assert(indexedEncoder.draw_indirect(indexedIndirect, 0, true).ok());
+    assert(indexedEncoder.end().ok());
+    assert(indexedList.end().ok());
+    submit_graphics(device, indexedList);
+    assert(read_color_pixel(device, indexedTarget, 8, 8) == blueTexel);
+
+    const auto unsupportedQueries = device.create_query_pool(
+        {.type = rhi::QueryType::timestamp, .count = 2});
+    assert(!unsupportedQueries.ok());
+    assert(unsupportedQueries.status().code == base::StatusCode::unsupported);
+
     const auto unsupportedCache = device.create_pipeline_cache();
     assert(!unsupportedCache.ok());
     assert(unsupportedCache.status().code == base::StatusCode::unsupported);
@@ -923,7 +996,7 @@ fragment float4 buffer_fragment(VertexOutput input [[stage_in]],
     assert(stats.texturesCreated >= 13);
     assert(stats.transfersExecuted >= 10);
     assert(stats.submissions >= 10);
-    assert(stats.drawsRecorded == 5);
-    assert(stats.dispatchesRecorded == 1);
+    assert(stats.drawsRecorded == 6);
+    assert(stats.dispatchesRecorded == 2);
     return 0;
 }

@@ -39,7 +39,11 @@ setup, not immediate work. No issue labels or hosted workflows change.
   `presentation;host-window;validation`) runs 120 frames and needs a logged-in
   GUI session. The Renderer is unchanged; the old one-submit `--metal`
   foundation path is replaced.
-- Next: extend native conformance under validation, then docs/evidence.
+- `truffle_metal_tests` now also proves advertised indirect support beyond
+  the MRT draw: an indirect dispatch reproduces the direct compute output, an
+  indexed indirect draw alone covers a cleared target, and timestamp query
+  pools (not advertised) return `unsupported`.
+- Next: record hardware/validation evidence and device-loss limits in docs.
 
 ## Module Taxonomy Update (#161)
 
