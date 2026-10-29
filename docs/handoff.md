@@ -19,6 +19,19 @@ verification list instead of blocking development.
 Issue #166 records this planning update; #165 tracks future self-hosted runner
 setup, not immediate work. No issue labels or hosted workflows change.
 
+## Metal macOS Host Window (#69)
+
+- Branch `feat/metal-macos-host`. The macOS 27 SDK deprecates
+  `MTLCommandBufferErrorDeviceRemoved`, `MTLStorageModeManaged`, and
+  `didModifyRange:` (no-ops/unreachable on Apple Silicon), which broke the
+  warnings-as-errors build. The backend keeps both paths for Intel Macs and
+  suppresses the warning only around those uses.
+- Verified locally on Apple M3 Pro, macOS 27.0.1: `truffle_metal_tests` and
+  `truffle_metal_presentation_tests` pass with `MTL_DEBUG_LAYER=1
+  MTL_SHADER_VALIDATION=1`.
+- Next: host-window Metal presentation/resize loop in
+  `examples/host_workspace`, then validation evidence and docs.
+
 ## Module Taxonomy Update (#161)
 
 - Docs record the agreed module map: Engine (planned) → Renderer → RHI →
