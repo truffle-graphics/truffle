@@ -91,6 +91,14 @@ if(TRUFFLE_BUILD_BACKEND_VULKAN)
                               PRIVATE "${TRUFFLE_XCB_LIBRARY}")
         set_tests_properties(truffle_vulkan_tests PROPERTIES
                              LABELS "native-smoke;presentation;validation")
+    elseif(APPLE)
+        target_sources(truffle_vulkan_tests PRIVATE vulkan_metal_layer.mm)
+        target_link_libraries(truffle_vulkan_tests PRIVATE
+                              "-framework Foundation" "-framework QuartzCore")
+        # Exit code 77 reports a host without a Vulkan loader/MoltenVK driver.
+        set_tests_properties(truffle_vulkan_tests PROPERTIES
+                             LABELS "native-smoke;presentation;validation"
+                             SKIP_RETURN_CODE 77)
     endif()
 endif()
 

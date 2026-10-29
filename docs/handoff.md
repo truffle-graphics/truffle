@@ -91,6 +91,27 @@ setup, not immediate work. No issue labels or hosted workflows change.
   texture clear/resolve/blit and other unsupported paths stay `unsupported`),
   Intel-Mac/physical removal evidence, and a reviewed decision on closing.
 
+## Vulkan macOS MoltenVK Lane (#56)
+
+- Branch `feat/vulkan-macos`. The Vulkan test binary previously did nothing
+  off Linux. On macOS it now runs the shared suite plus a `CAMetalLayer`
+  presentation proof; adapter platform/maturity are checked against
+  `host_platform()` and the support table.
+- Backend: `VK_EXT_metal_surface` behind `VK_USE_PLATFORM_METAL_EXT` (set on
+  Darwin) accepts only `cocoa_layer`; WSI gates use `TRUFFLE_VULKAN_HAS_WSI`
+  (XCB or Metal). After volk's default search fails, Apple builds try the
+  Homebrew/`/usr/local` `libvulkan.1.dylib`. Injected `suboptimal`/
+  `out_of_date` present faults now present natively before returning, which
+  fixed an infinite acquire wait on MoltenVK's small swapchain.
+- Evidence (2026-10-29, Apple M3 Pro, macOS 27.0.1, Homebrew MoltenVK 1.4.2,
+  loader 1.4.363.0): all 26 ctests pass, including `truffle_vulkan_tests`
+  (no `DYLD_*` variable needed). `D24_UNORM_S8_UINT` is unsupported on Apple
+  GPUs and returns `unsupported`; the test falls back to `D32_SFLOAT_S8_UINT`.
+- No Khronos validation layer is installed, so the macOS row stays
+  `source_only` with compile/smoke/presentation evidence only. Still open in
+  #56: validated run, iOS-family cross-builds, pinned/packaged MoltenVK
+  isolation, and Intel Macs (all on the roadmap pending-verification list).
+
 ## Module Taxonomy Update (#161)
 
 - Docs record the agreed module map: Engine (planned) → Renderer → RHI →

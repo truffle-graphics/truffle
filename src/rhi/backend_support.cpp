@@ -34,6 +34,11 @@ constexpr BackendEvidence d3d12_smoke{
     .validation = true,
     .presentation = true,
 };
+constexpr BackendEvidence vulkan_moltenvk_unvalidated{
+    .compiles = true,
+    .nativeSmoke = true,
+    .presentation = true,
+};
 constexpr BackendEvidence validation_only{
     .compiles = true,
     .conformance = true,
@@ -73,8 +78,11 @@ constexpr std::array support{
                            BackendMaturity::source_only, true, source_only,
                            "target identified; no NDK lane yet"},
     BackendPlatformSupport{BackendKind::vulkan, PlatformKind::macos,
-                           BackendMaturity::source_only, true, source_only,
-                           "MoltenVK dependency and execution lane not present"},
+                           BackendMaturity::source_only, true,
+                           vulkan_moltenvk_unvalidated,
+                           "host MoltenVK resources, pipelines, sync and "
+                           "CAMetalLayer presentation recorded locally; "
+                           "D24S8 unsupported; no Khronos validation run yet"},
     BackendPlatformSupport{BackendKind::vulkan, PlatformKind::ios,
                            BackendMaturity::source_only, true, source_only,
                            "MoltenVK dependency and execution lane not present"},

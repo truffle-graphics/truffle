@@ -21,6 +21,17 @@
 #include <xcb/xcb.h>
 #endif
 
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+
+#if defined(__linux__) && !defined(__ANDROID__)
+#define TRUFFLE_VULKAN_TEST_XCB 1
+#elif defined(__APPLE__) && TARGET_OS_OSX
+#define TRUFFLE_VULKAN_TEST_METAL_LAYER 1
+#include "vulkan_metal_layer.hpp"
+#endif
+
 namespace {
 
 #if defined(TRUFFLE_VULKAN_SHADER_PACKAGE_PATH)
@@ -49,8 +60,10 @@ void verify_vulkan_buffers() {
     auto adapter = std::move(adapterResult).value();
     const auto info = adapter.info();
     assert(info.backend == rhi::BackendKind::vulkan);
-    assert(info.platform == rhi::PlatformKind::linux_host);
-    assert(info.maturity == rhi::BackendMaturity::native_smoke);
+    assert(info.platform == rhi::host_platform());
+    assert(info.maturity == (rhi::host_platform() == rhi::PlatformKind::linux_host
+                                 ? rhi::BackendMaturity::native_smoke
+                                 : rhi::BackendMaturity::source_only));
     assert(info.native && !info.validationOnly);
     assert(info.resources.bufferViews);
     assert(info.resources.bufferCopy);
@@ -1614,14 +1627,25 @@ void verify_vulkan_buffers() {
     std::memcpy(&depthValue, depthOutput.data(), sizeof(depthValue));
     assert(depthValue == 0.25F);
 
-    auto stencilTexture = device.create_texture({
-        .extent = {2, 2, 1},
-        .format = rhi::TextureFormat::depth24_unorm_stencil8,
-        .usage = rhi::TextureUsage::copy_source |
-                 rhi::TextureUsage::depth_stencil_attachment,
-    });
+    // Apple GPUs lack packed D24S8; the adapter reports it unsupported and
+    // the proof uses the alternative depth/stencil format instead.
+    const auto create_stencil_texture = [&](rhi::TextureFormat format) {
+        return device.create_texture({
+            .extent = {2, 2, 1},
+            .format = format,
+            .usage = rhi::TextureUsage::copy_source |
+                     rhi::TextureUsage::depth_stencil_attachment,
+        });
+    };
+    auto stencilTexture =
+        create_stencil_texture(rhi::TextureFormat::depth24_unorm_stencil8);
+    if (!stencilTexture.ok()) {
+        assert(stencilTexture.status().code == rhi::StatusCode::unsupported);
+        stencilTexture =
+            create_stencil_texture(rhi::TextureFormat::depth32_float_stencil8);
+    }
     auto stencilReadback = create_transfer_buffer(
-        16, rhi::BufferUsage::copy_destination,
+        32, rhi::BufferUsage::copy_destination,
         rhi::MemoryDomain::readback);
     assert(stencilTexture.ok());
     submit_copy([&](rhi::CopyEncoder& copy) {
@@ -1639,7 +1663,7 @@ void verify_vulkan_buffers() {
                                            {.texture = region})
                    .ok());
     });
-    std::array<std::byte, 16> stencilOutput{};
+    std::array<std::byte, 32> stencilOutput{};
     assert(stencilReadback.read(0, stencilOutput).ok());
     for (std::size_t index = 0; index < 4; ++index) {
         assert(stencilOutput[index] == std::byte{0x5a});
@@ -1841,7 +1865,7 @@ void verify_vulkan_buffers() {
     assert(!recoveredDevice.value().lost());
 }
 
-#if defined(__linux__) && !defined(__ANDROID__)
+#if defined(TRUFFLE_VULKAN_TEST_XCB)
 class VulkanTestWindow {
 public:
     VulkanTestWindow(std::uint32_t width, std::uint32_t height) {
@@ -1887,6 +1911,13 @@ public:
 
     [[nodiscard]] xcb_window_t window() const noexcept { return window_; }
 
+    [[nodiscard]] truffle::rhi::NativeSurface native_surface() const noexcept {
+        return {.kind = truffle::rhi::NativeSurfaceKind::xcb,
+                .handle = reinterpret_cast<void*>(
+                    static_cast<std::uintptr_t>(window_)),
+                .display = connection_};
+    }
+
     void resize(std::uint32_t width, std::uint32_t height) {
         const std::array values{width, height};
         const auto cookie = xcb_configure_window_checked(
@@ -1911,6 +1942,27 @@ private:
     xcb_screen_t* screen_ = nullptr;
     xcb_window_t window_ = XCB_WINDOW_NONE;
 };
+#elif defined(TRUFFLE_VULKAN_TEST_METAL_LAYER)
+class VulkanTestWindow {
+public:
+    VulkanTestWindow(std::uint32_t width, std::uint32_t height)
+        : layer_(width, height) {}
+
+    [[nodiscard]] truffle::rhi::NativeSurface native_surface() const noexcept {
+        return {.kind = truffle::rhi::NativeSurfaceKind::cocoa_layer,
+                .handle = layer_.layer()};
+    }
+
+    void resize(std::uint32_t width, std::uint32_t height) {
+        layer_.resize(width, height);
+    }
+
+private:
+    truffle::tests::VulkanMetalTestLayer layer_;
+};
+#endif
+
+#if defined(TRUFFLE_VULKAN_TEST_XCB) || defined(TRUFFLE_VULKAN_TEST_METAL_LAYER)
 
 struct VulkanPresentationContext {
     truffle::rhi::Instance instance;
@@ -2146,12 +2198,9 @@ void verify_vulkan_presentation() {
     assert(unsupported.status().code == rhi::StatusCode::unsupported);
 
     auto surface = context.device.create_surface({
-        .native = {.kind = rhi::NativeSurfaceKind::xcb,
-                   .handle = reinterpret_cast<void*>(
-                       static_cast<std::uintptr_t>(window.window())),
-                   .display = window.connection()},
+        .native = window.native_surface(),
         .initialExtent = {64, 48},
-        .debugName = "Vulkan XCB test surface",
+        .debugName = "Vulkan test surface",
     });
     assert(surface.ok());
     auto swapchain = context.device.create_swapchain(
@@ -2160,7 +2209,7 @@ void verify_vulkan_presentation() {
          .format = rhi::TextureFormat::bgra8_unorm,
          .presentMode = rhi::PresentMode::fifo,
          .imageCount = 2,
-         .debugName = "Vulkan XCB test swapchain"});
+         .debugName = "Vulkan test swapchain"});
     assert(swapchain.ok());
     render_readback_and_present(context, swapchain.value(), {64, 48});
 
@@ -2174,23 +2223,34 @@ void verify_vulkan_presentation() {
 } // namespace
 
 int main() {
-#if defined(__linux__) && !defined(__ANDROID__)
+#if defined(TRUFFLE_VULKAN_TEST_XCB)
     verify_vulkan_buffers();
     if (std::getenv("DISPLAY") != nullptr) {
         verify_vulkan_presentation();
     }
 #else
     auto result = truffle::rhi::create_vulkan_instance();
-    if (result.ok()) {
+    if (!result.ok()) {
+        truffle::tests::verify_unavailable_backend(result);
+#if defined(TRUFFLE_VULKAN_TEST_METAL_LAYER)
+        // No Vulkan loader or MoltenVK driver is installed: report a skip.
+        return 77;
+#else
+        return 0;
+#endif
+    }
+    {
         auto instance = std::move(result).value();
         auto adapter = instance.adapter(0);
         assert(adapter.ok());
         assert(adapter.value().info().native);
         assert(adapter.value().info().backend ==
                truffle::rhi::BackendKind::vulkan);
-    } else {
-        truffle::tests::verify_unavailable_backend(result);
     }
+#if defined(TRUFFLE_VULKAN_TEST_METAL_LAYER)
+    verify_vulkan_buffers();
+    verify_vulkan_presentation();
+#endif
 #endif
     return 0;
 }
