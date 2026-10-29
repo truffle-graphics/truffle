@@ -83,7 +83,7 @@ constexpr std::array support{
                            vulkan_moltenvk_smoke,
                            "host MoltenVK resources, pipelines, sync and "
                            "CAMetalLayer presentation under Khronos "
-                           "validation; D24S8 unsupported"},
+                           "validation; D24S8 and timestamps unsupported"},
     BackendPlatformSupport{BackendKind::vulkan, PlatformKind::ios,
                            BackendMaturity::source_only, true, source_only,
                            "MoltenVK dependency and execution lane not present"},

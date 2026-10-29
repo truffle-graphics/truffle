@@ -5596,6 +5596,52 @@ void prepare_vulkan_binding_images(VulkanContext& context,
 
     context->instanceTable.vkGetPhysicalDeviceProperties(
         context->physicalDevice, &context->properties);
+    // Drivers clamp apiVersion to the instance's 1.1, so driver identity
+    // usually comes from VK_KHR_driver_properties.
+    bool driverPropertiesQuery =
+        context->properties.apiVersion >= VK_API_VERSION_1_2;
+    if (!driverPropertiesQuery) {
+        std::uint32_t count = 0;
+        if (context->instanceTable.vkEnumerateDeviceExtensionProperties(
+                context->physicalDevice, nullptr, &count, nullptr) ==
+            VK_SUCCESS) {
+            std::vector<VkExtensionProperties> available(count);
+            if (context->instanceTable.vkEnumerateDeviceExtensionProperties(
+                    context->physicalDevice, nullptr, &count,
+                    available.data()) == VK_SUCCESS) {
+                driverPropertiesQuery = std::any_of(
+                    available.begin(), available.end(),
+                    [](const VkExtensionProperties& extension) {
+                        return std::strcmp(
+                                   extension.extensionName,
+                                   VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME) ==
+                               0;
+                    });
+            }
+        }
+    }
+    if (driverPropertiesQuery) {
+        VkPhysicalDeviceDriverProperties driverProperties{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES,
+            .pNext = nullptr,
+        };
+        VkPhysicalDeviceProperties2 properties2{
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,
+            .pNext = &driverProperties,
+            .properties = {},
+        };
+        context->instanceTable.vkGetPhysicalDeviceProperties2(
+            context->physicalDevice, &properties2);
+        if (driverProperties.driverID == VK_DRIVER_ID_MOLTENVK) {
+            // MoltenVK (1.4.2 on Apple GPUs) can leave a timestamp written
+            // after the final encoder as zero when it is resolved in the same
+            // submission, despite VK_QUERY_RESULT_WAIT_BIT. RHI 1 allows that
+            // resolve, so timestamps are not advertised rather than returning
+            // unreliable values.
+            context->queueTimestampQueries = {};
+            context->timestampQueries = false;
+        }
+    }
     VkPhysicalDeviceTimelineSemaphoreFeatures timelineFeatures{
         .sType =
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES,

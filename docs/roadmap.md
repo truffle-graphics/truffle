@@ -53,7 +53,8 @@ The support matrix only claims what has actually been verified.
 - Vulkan on Windows (#58).
 - Vulkan through MoltenVK on Intel Macs, iOS-family MoltenVK cross-builds,
   and pinned/packaged MoltenVK isolation (#56); current evidence is Apple
-  Silicon with host Homebrew MoltenVK only.
+  Silicon with host Homebrew MoltenVK only. Re-check MoltenVK timestamp
+  resolves before advertising timestamp queries there.
 - Desktop OpenGL on Windows (WGL, #61), and on Linux beyond its current EGL
   evidence.
 - Desktop OpenGL on Intel Macs; current macOS GL 4.1 evidence is Apple

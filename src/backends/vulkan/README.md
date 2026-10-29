@@ -81,7 +81,13 @@ ctest --test-dir build/vulkan --output-on-failure
 `CAMetalLayer` presentation proof (exact readback before present and after a
 64x48 to 80x60 resize, then status/fault paths). Apple GPUs do not support
 `D24_UNORM_S8_UINT`; texture creation returns `unsupported` and the test uses
-`D32_SFLOAT_S8_UINT`. The suite is clean under Homebrew
+`D32_SFLOAT_S8_UINT`. Timestamp queries are not advertised when the driver
+reports `VK_DRIVER_ID_MOLTENVK` (read through `VK_KHR_driver_properties`,
+because the instance targets Vulkan 1.1): MoltenVK 1.4.2 intermittently
+resolves the second of two timestamps to 0 when `vkCmdCopyQueryPoolResults`
+runs in the same submission, about 3-10% of runs, with no validation message.
+The feature request and timestamp pool creation return `unsupported`, and the
+test skips timestamp checks from the advertised features. The suite is clean under Homebrew
 `VK_LAYER_KHRONOS_validation` 1.4.363.0 (2026-10-30), also with
 `VK_LAYER_VALIDATE_SYNC=1`, so macOS is `native_smoke`. The ctest fails on any
 `Validation Error`/`Validation Warning` output, and it sets

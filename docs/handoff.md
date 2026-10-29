@@ -119,6 +119,15 @@ setup, not immediate work. No issue labels or hosted workflows change.
   Vulkan entirely. The backend now retries without the layer on
   `VK_ERROR_LAYER_NOT_PRESENT`, and the macOS test fails on that state via a
   private test hook.
+- Timestamps (2026-10-30): after the rebase onto 7ffbb4e the suite failed
+  about 3-10% of runs because MoltenVK 1.4.2 resolved the second timestamp
+  to 0 when the copy ran in the same submission (an extra barrier did not
+  help; a separate submission did). Validation reported nothing. The backend
+  now reads the driver ID through `VK_KHR_driver_properties` (the 1.1
+  instance clamps `apiVersion`) and does not advertise timestamp queries on
+  MoltenVK; the test derives timestamp checks from advertised features and
+  asserts `unsupported` otherwise. 60 consecutive runs and three full
+  29-test ctest runs passed.
 - Still open in #56: iOS-family cross-builds, pinned/packaged MoltenVK
   isolation, and Intel Macs (all on the roadmap pending-verification list).
 

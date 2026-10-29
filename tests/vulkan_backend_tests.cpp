@@ -82,17 +82,30 @@ void verify_vulkan_buffers() {
     assert(!info.pipelines.indirectCount);
     assert(!info.pipelines.pipelineCache);
     assert(info.pipelines.maxColorAttachments >= 2);
-    assert(info.timestampPeriodNanoseconds > 0.0);
-    assert(std::find(info.supportedFeatures.begin(),
-                     info.supportedFeatures.end(),
-                     rhi::Feature::timestamp_queries) !=
-           info.supportedFeatures.end());
+    // Timestamp coverage follows the advertised capability; MoltenVK does not
+    // advertise it (see the Vulkan README).
+    const bool timestampQueries =
+        std::find(info.supportedFeatures.begin(),
+                  info.supportedFeatures.end(),
+                  rhi::Feature::timestamp_queries) !=
+        info.supportedFeatures.end();
+    assert(!timestampQueries || info.timestampPeriodNanoseconds > 0.0);
+    std::vector<rhi::Feature> requiredFeatures{rhi::Feature::transfer,
+                                               rhi::Feature::compute,
+                                               rhi::Feature::memory_budget};
+    if (timestampQueries) {
+        requiredFeatures.push_back(rhi::Feature::timestamp_queries);
+    } else {
+        auto unavailableTimestamps = adapter.request_device({
+            .requiredFeatures = {rhi::Feature::timestamp_queries},
+        });
+        assert(!unavailableTimestamps.ok());
+        assert(unavailableTimestamps.status().code ==
+               rhi::StatusCode::unsupported);
+    }
 
     auto deviceResult = adapter.request_device({
-        .requiredFeatures = {rhi::Feature::transfer,
-                             rhi::Feature::compute,
-                             rhi::Feature::memory_budget,
-                             rhi::Feature::timestamp_queries},
+        .requiredFeatures = requiredFeatures,
     });
     assert(deviceResult.ok());
     auto device = std::move(deviceResult).value();
@@ -387,6 +400,14 @@ void verify_vulkan_buffers() {
         .type = rhi::QueryType::timestamp,
         .count = 2,
     });
+    if (!timestampQueries) {
+        assert(!timestamps.ok());
+        assert(timestamps.status().code == rhi::StatusCode::unsupported);
+        timestamps = device.create_query_pool({
+            .type = rhi::QueryType::occlusion,
+            .count = 2,
+        });
+    }
     auto occlusion = device.create_query_pool({
         .type = rhi::QueryType::occlusion,
         .count = 1,
@@ -406,7 +427,9 @@ void verify_vulkan_buffers() {
     auto queryList = trianglePool.allocate();
     assert(queryList.ok());
     assert(queryList.value().begin().ok());
-    assert(queryList.value().write_timestamp(timestamps.value(), 0).ok());
+    if (timestampQueries) {
+        assert(queryList.value().write_timestamp(timestamps.value(), 0).ok());
+    }
     auto queryRender = queryList.value().begin_rendering({
         .extent = {triangleSize, triangleSize},
         .colorAttachments = {{.texture = &triangleTarget}},
@@ -419,11 +442,13 @@ void verify_vulkan_buffers() {
     assert(queryRender.value().draw(3).ok());
     assert(queryRender.value().end_occlusion_query().ok());
     assert(queryRender.value().end().ok());
-    assert(queryList.value().write_timestamp(timestamps.value(), 1).ok());
-    assert(queryList.value()
-               .resolve_queries(timestamps.value(), 0, 2,
-                                queryReadback.value())
-               .ok());
+    if (timestampQueries) {
+        assert(queryList.value().write_timestamp(timestamps.value(), 1).ok());
+        assert(queryList.value()
+                   .resolve_queries(timestamps.value(), 0, 2,
+                                    queryReadback.value())
+                   .ok());
+    }
     assert(queryList.value()
                .resolve_queries(occlusion.value(), 0, 1,
                                 queryReadback.value(),
@@ -436,8 +461,10 @@ void verify_vulkan_buffers() {
     assert(queryReadback.value()
                .read(0, std::as_writable_bytes(std::span{queryResults}))
                .ok());
-    assert(queryResults[0] != 0);
-    assert(queryResults[1] >= queryResults[0]);
+    if (timestampQueries) {
+        assert(queryResults[0] != 0);
+        assert(queryResults[1] >= queryResults[0]);
+    }
     assert(queryResults[2] > 0);
     assert(queryResults[2] <= triangleSize * triangleSize);
 
@@ -1856,9 +1883,7 @@ void verify_vulkan_buffers() {
     rhi::detail::set_vulkan_device_loss_for_testing(false);
     assert(queue.submit(lossLists).code == rhi::StatusCode::device_lost);
     auto recoveredDevice = adapter.request_device({
-        .requiredFeatures = {rhi::Feature::transfer,
-                             rhi::Feature::compute,
-                             rhi::Feature::timestamp_queries},
+        .requiredFeatures = requiredFeatures,
     });
     assert(recoveredDevice.ok());
     assert(!recoveredDevice.value().lost());
