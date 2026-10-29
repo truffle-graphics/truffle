@@ -22,12 +22,12 @@ remain explicitly unsupported or pending; each returns `unsupported`.
 
 `MTLCommandBufferErrorDeviceRemoved` maps to `device_lost`. Physical device
 removal cannot occur on Apple Silicon (the macOS 27 SDK deprecates the error
-for that reason); it remains reachable only on Intel Macs with removable eGPUs,
-which have not been tested. Device-loss evidence is therefore a private,
+for that reason); the mapping is kept as harmless code for Intel Macs with
+removable eGPUs, which are not a supported target (#171). Device-loss evidence is therefore a private,
 non-installed fault-injection hook that proves status propagation and
 recreate-to-recover, not a physical removal. The managed-storage flush path is
-likewise kept for Intel Macs and exercised only through shared storage on Apple
-Silicon.
+likewise kept as harmless Intel-compatible code; Apple Silicon uses shared
+storage.
 
 ## Hardware coverage
 
@@ -51,6 +51,6 @@ MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 METAL_DEVICE_WRAPPER_TYPE=1 \
 ```
 
 The host-window test opens a real window and needs a logged-in GUI session.
-Intel Macs are pending verification (see `docs/roadmap.md`).
+macOS support targets Apple Silicon only; Intel Macs are not a target (#171).
 
 See `docs/rhi1/support-matrix.md` for the evidence gates.
