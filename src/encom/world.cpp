@@ -1,6 +1,6 @@
-#include "truffle/ecs/world.hpp"
+#include "truffle/encom/world.hpp"
 
-namespace truffle::ecs {
+namespace truffle::encom {
 
 Entity World::create() {
     if (!freeIndices_.empty()) {
@@ -42,4 +42,4 @@ void World::run(const std::vector<System>& systems, double delta_seconds) {
     }
 }
 
-} // namespace truffle::ecs
+} // namespace truffle::encom

@@ -9,10 +9,33 @@ rather than growing a historical transcript here.
 
 ## Current Focus
 
-Use Truffle Base for shared contracts under the naming decision in #159.
-The local-first workflow in #131 remains in effect without automatic hosted
-builds or cloud-agent companions. #62 is complete through PR #156; further
-engine work follows the next dependency-ready focused issue under #33.
+#161 reconciles docs and module names with the agreed architecture: Truffle is
+a modular graphics framework of independently usable libraries; Render,
+ECS and Scene become Renderer, EnCom and EnComRenderer. Truffle Base (#159)
+and the local-first workflow (#131) remain in effect. Further engine work
+follows the next dependency-ready focused issue under #33.
+
+## Module Taxonomy Update (#161)
+
+- Docs record the agreed module map: Engine (planned) → Renderer → RHI →
+  Base; EnCom → Base; optional EnComRenderer → EnCom + Renderer; GUI
+  (planned) → Renderer without EnCom; Assets deferred with name/design
+  undecided; Simple RHI and a windowing convenience deferred; shaderc and
+  rhi-doctor are developer tools, not modules.
+- All FrameKit references are removed; no application-framework dependency is
+  planned.
+- No behavior, dependency direction, or version changed in the docs commit.
+- Renames: `truffle_renderer`/`Truffle::Renderer`/`truffle::renderer`,
+  `truffle_encom`/`Truffle::EnCom`/`truffle::encom`, and
+  `truffle_encom_renderer`/`Truffle::EnComRenderer`/`truffle::encom_renderer`
+  with `EnComRenderAdapter`/`EnComRenderFrame`. Headers moved to
+  `truffle/renderer/`, `truffle/encom/`, and `truffle/encom_renderer/`; no
+  aliases or forwarding headers. `asset_render` is unchanged.
+- Local evidence: architecture guard 16/18/76 unchanged; fresh lean Debug build
+  with focused EnCom, Renderer, integration, asset-render, diagnostics, Base and
+  version tests plus the installed package consumer passing; install contains
+  only the new headers/libraries. Examples were syntax-checked; the GLFW host
+  window source was not compiled locally.
 
 ## Delivery Workflow Update
 

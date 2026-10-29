@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <memory>
 
-namespace truffle::render {
+namespace truffle::renderer {
 
 struct TransformComputePassDesc {
     rhi::Buffer* localTransformBuffer = nullptr;
@@ -34,4 +34,4 @@ private:
     rhi::ComputePipeline pipeline_;
 };
 
-} // namespace truffle::render
+} // namespace truffle::renderer

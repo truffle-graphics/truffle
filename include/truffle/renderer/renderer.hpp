@@ -1,16 +1,16 @@
 #pragma once
 
 #include "truffle/base/status.hpp"
-#include "truffle/render/pipeline_cache.hpp"
-#include "truffle/render/render_batch.hpp"
-#include "truffle/render/frame_graph.hpp"
-#include "truffle/render/transform_compute_pass.hpp"
+#include "truffle/renderer/pipeline_cache.hpp"
+#include "truffle/renderer/render_batch.hpp"
+#include "truffle/renderer/frame_graph.hpp"
+#include "truffle/renderer/transform_compute_pass.hpp"
 #include "truffle/rhi/rhi.hpp"
 
 #include <memory>
 #include <span>
 
-namespace truffle::render {
+namespace truffle::renderer {
 
 struct RendererFrameStats {
     std::uint32_t computeNodesExecuted = 0;
@@ -41,4 +41,4 @@ private:
     RendererFrameStats  lastFrameStats_{};
 };
 
-} // namespace truffle::render
+} // namespace truffle::renderer

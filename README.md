@@ -32,7 +32,8 @@ for each backend/platform pair:
   upload.
 - `truffle_asset_render` turns declared asset streams into metadata-only render
   layout and batch plans without owning buffers, uploads, shaders, or backends.
-- `truffle_ecs` provides a general-purpose ECS world.
+- `truffle_encom` provides Truffle EnCom (ENtity COMponent), a general-purpose
+  entity-component world.
 - `truffle_rhi` contains the modular RHI 1 object, dispatch, command,
   synchronization, and presentation foundation.
 - `truffle_backend_null` strictly validates RHI 1 lifetime and state without a
@@ -91,19 +92,20 @@ for each backend/platform pair:
   normalized cross-target reflection and native-variant selection. The optional
   `truffle-shaderc` target assembles and inspects packages without adding a
   compiler dependency to RHI consumers.
-- `truffle_render` starts the independently consumable rendering layer above RHI.
+- `truffle_renderer` starts the independently consumable rendering layer above RHI.
+- `truffle_encom_renderer` is the optional EnCom–Renderer integration that
+  extracts EnCom state into render batches.
 - `truffle_diagnostics` provides opt-in asset/render/frame/asset-render-plan/
   debug-overlay inspection helpers and bundle reports without adding diagnostics
-  dependencies back into render or scene code.
+  dependencies back into Renderer or EnCom–Renderer code.
 
 The renderer layer will accept more than one data path. ECS extraction stays a
 first-party convenience path, while large dynamic workloads can grow toward
 bulk, data-oriented, or GPU-resident render data without requiring per-entity
 conversion.
 
-Truffle has no dependency on FrameKit. A consumer may compose both projects in
-the same application when an application host and graphics system are useful
-together.
+Truffle has no dependency on an application or host framework. A consumer may
+compose Truffle with one at its own application boundary.
 
 ## Build
 
@@ -149,12 +151,12 @@ workspace and import the package from a consumer:
 
 ```cmake
 find_package(Truffle CONFIG REQUIRED)
-target_link_libraries(my_tool PRIVATE Truffle::RHI Truffle::Render)
+target_link_libraries(my_tool PRIVATE Truffle::RHI Truffle::Renderer)
 ```
 
 The current package exports `Truffle::Base`, `Truffle::Assets`,
-`Truffle::AssetRender`, `Truffle::ECS`, `Truffle::RHI`,
-`Truffle::BackendNull`, `Truffle::Render`, `Truffle::Scene`, and
+`Truffle::AssetRender`, `Truffle::EnCom`, `Truffle::RHI`,
+`Truffle::BackendNull`, `Truffle::Renderer`, `Truffle::EnComRenderer`, and
 `Truffle::Diagnostics`. Additional backend exports
 (`Truffle::BackendMetal`, `Truffle::BackendVulkan`, `Truffle::BackendOpenGL`,
 `Truffle::BackendDirect3D`) are available when their corresponding CMake
@@ -183,6 +185,24 @@ aliases or forwarding headers. Behavior, dependency direction, and version
 numbers are unchanged; this migration is part of the current unreleased work.
 Use a fresh install prefix when migrating an existing installation so obsolete
 headers and libraries from the former module are not retained.
+
+### Renderer And EnCom Naming Migration
+
+[#161](https://github.com/truffle-graphics/truffle/issues/161) renames the
+rendering module to **Renderer**, the ECS module to **EnCom** (ENtity
+COMponent), and the scene module to the optional **EnCom–Renderer**
+integration.
+
+| Surface | Previous spelling | Current spelling |
+|---|---|---|
+| CMake build targets | `truffle_render`, `truffle_ecs`, `truffle_scene` | `truffle_renderer`, `truffle_encom`, `truffle_encom_renderer` |
+| Exported CMake targets | `Truffle::Render`, `Truffle::ECS`, `Truffle::Scene` | `Truffle::Renderer`, `Truffle::EnCom`, `Truffle::EnComRenderer` |
+| C++ namespaces | `truffle::render`, `truffle::ecs`, `truffle::scene` | `truffle::renderer`, `truffle::encom`, `truffle::encom_renderer` |
+| Public headers | `truffle/render/`, `truffle/ecs/`, `truffle/scene/scene_adapter.hpp` | `truffle/renderer/`, `truffle/encom/`, `truffle/encom_renderer/encom_render_adapter.hpp` |
+| Integration classes | `SceneAdapter`, `SceneFrame` | `EnComRenderAdapter`, `EnComRenderFrame` |
+
+The same rules apply: no aliases or forwarding headers, unchanged behavior,
+dependency direction, and version, and a fresh install prefix when migrating.
 
 ## Continuity And AI Guidance
 

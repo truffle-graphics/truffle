@@ -1,6 +1,6 @@
 #include "workspace.hpp"
 
-#include "truffle/render/components.hpp"
+#include "truffle/renderer/components.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -9,12 +9,12 @@
 namespace truffle::examples::host_workspace {
 namespace {
 
-using ecs::Entity;
-using ecs::World;
-using render::Camera;
-using render::Light;
-using render::MeshRenderer;
-using render::Transform;
+using encom::Entity;
+using encom::World;
+using renderer::Camera;
+using renderer::Light;
+using renderer::MeshRenderer;
+using renderer::Transform;
 
 struct PreviewDrift {
     float unitsPerSecond = 0.0F;

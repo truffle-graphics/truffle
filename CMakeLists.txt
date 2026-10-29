@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.23)
 project(
     Truffle
     VERSION 0.1.0
-    DESCRIPTION "Embeddable graphics engine and rendering system"
+    DESCRIPTION "Modular graphics framework, composed of independently usable libraries"
     LANGUAGES CXX)
 
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")

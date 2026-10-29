@@ -22,7 +22,7 @@ endif()
 add_executable(truffle_host_workspace_example ${_host_workspace_sources})
 target_include_directories(truffle_host_workspace_example PRIVATE src)
 
-set(_host_workspace_libs glfw truffle_backend_null truffle_scene truffle_render)
+set(_host_workspace_libs glfw truffle_backend_null truffle_encom_renderer truffle_renderer)
 if(APPLE AND TRUFFLE_BUILD_BACKEND_METAL)
     list(APPEND _host_workspace_libs truffle_backend_metal)
 endif()

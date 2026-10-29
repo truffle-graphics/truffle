@@ -1,8 +1,8 @@
 #include "test_support.hpp"
-#include "truffle/render/render_batch.hpp"
+#include "truffle/renderer/render_batch.hpp"
 
 int main() {
-    using namespace truffle::render;
+    using namespace truffle::renderer;
 
     // --- InstanceLayout hash is deterministic ---
     InstanceLayout a;

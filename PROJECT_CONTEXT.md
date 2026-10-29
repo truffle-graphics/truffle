@@ -2,8 +2,9 @@
 
 ## Intent
 
-Truffle is a CMake-first layered graphics library workspace. It provides
-embeddable graphics contracts and independently linkable modules so consumers
+Truffle is a modular graphics framework, composed of independently usable
+libraries, built CMake-first. It provides embeddable graphics contracts and
+independently linkable modules so consumers
 can choose their own application host, windowing policy, simulation model, and
 asset workflow.
 
@@ -12,7 +13,7 @@ asset workflow.
 - Truffle does not own native windowing, input policy, application lifetime, or
   a consumer's simulation model.
 - Low-level runtime modules do not depend on optional diagnostics, tooling, or
-  ECS layers.
+  EnCom modules.
 - The library does not force all consumers through one scene, asset, or render
   ingestion path.
 - The future Simple RHI is not part of the RHI 1 replacement.
@@ -76,9 +77,9 @@ Current evidence is narrower than the old roadmap claimed:
 
 `truffle_base` supplies shared primitives. `truffle_rhi` defines the one
 canonical backend-neutral graphics contract; `truffle_backend_*` modules own
-backend implementation. Rendering, assets, scene extraction, and diagnostics
-remain layered and independently linkable. Consumers can work directly with
-RHI, with render batches, or with the optional ECS scene adapter.
+backend implementation. Renderer, assets, EnCom, EnCom–Renderer integration, and diagnostics
+remain independently linkable. Consumers can work directly with RHI, with
+Renderer batches, or with the optional EnCom–Renderer integration.
 
 RHI 1 uses move-only RAII objects over opaque generation-checked handles and a
 backend dispatch table. It separates portable typed results from optional
@@ -98,6 +99,15 @@ consumer selects concrete loading, upload, and backend behavior.
   `truffle/base/` headers. Issue #159 records the rename from Core, preserving
   the existing namespace structure and dependency graph. This is an unreleased
   naming migration, not a version or release boundary.
+- Module taxonomy and names follow #161: Truffle is a "modular graphics
+  framework, composed of independently usable libraries". Renderer
+  (`truffle_renderer`), EnCom (`truffle_encom`, ENtity COMponent) and the
+  optional EnCom–Renderer integration (`truffle_encom_renderer`) replace the
+  Render, ECS and Scene names. GUI depends on Renderer but not EnCom; Engine
+  supports a host-owned loop with profiles/runners undecided; Assets is
+  deferred with name and design undecided; Simple RHI and a windowing
+  convenience are deferred; shaderc and rhi-doctor are tools, not modules.
+  Truffle has no planned dependency on any application framework.
 - Development is local-first under the decision in #131. Git Flow retains
   `master`, `develop`, feature/fix, release, and hotfix branches with normal
   merge commits. Hosted builds/releases are explicit manual opt-ins, not

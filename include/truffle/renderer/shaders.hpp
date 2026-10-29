@@ -2,7 +2,7 @@
 
 #include <string_view>
 
-namespace truffle::render {
+namespace truffle::renderer {
 
 constexpr std::string_view kTransformComputeMSL = R"msl(
 #include <metal_stdlib>
@@ -31,4 +31,4 @@ using namespace metal;
 }
 )msl";
 
-} // namespace truffle::render
+} // namespace truffle::renderer

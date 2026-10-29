@@ -1,6 +1,6 @@
 set(CPACK_PACKAGE_NAME "Truffle")
 set(CPACK_PACKAGE_VENDOR "TinMan")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Embeddable graphics engine and rendering system")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Modular graphics framework, composed of independently usable libraries")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_RESOURCE_FILE_LICENSE "${PROJECT_SOURCE_DIR}/LICENSE")
 set(CPACK_RESOURCE_FILE_README "${PROJECT_SOURCE_DIR}/README.md")

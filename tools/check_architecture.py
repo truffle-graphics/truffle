@@ -16,26 +16,26 @@ INCLUDE_ROOT = ROOT / "include" / "truffle"
 DIRECT_DEPENDENCIES = {
     "truffle_base": set(),
     "truffle_assets": {"truffle_base"},
-    "truffle_ecs": {"truffle_base"},
+    "truffle_encom": {"truffle_base"},
     "truffle_rhi": {"truffle_base"},
-    "truffle_render": {"truffle_rhi"},
-    "truffle_asset_render": {"truffle_assets", "truffle_render"},
-    "truffle_scene": {"truffle_ecs", "truffle_render"},
+    "truffle_renderer": {"truffle_rhi"},
+    "truffle_asset_render": {"truffle_assets", "truffle_renderer"},
+    "truffle_encom_renderer": {"truffle_encom", "truffle_renderer"},
     "truffle_diagnostics": {
         "truffle_asset_render",
         "truffle_assets",
-        "truffle_render",
+        "truffle_renderer",
     },
 }
 
 PUBLIC_MODULE_TARGETS = {
     "base": "truffle_base",
     "assets": "truffle_assets",
-    "ecs": "truffle_ecs",
+    "encom": "truffle_encom",
     "rhi": "truffle_rhi",
-    "render": "truffle_render",
+    "renderer": "truffle_renderer",
     "asset_render": "truffle_asset_render",
-    "scene": "truffle_scene",
+    "encom_renderer": "truffle_encom_renderer",
     "diagnostics": "truffle_diagnostics",
 }
 

@@ -1,5 +1,5 @@
 #include "test_support.hpp"
-#include "truffle/ecs/world.hpp"
+#include "truffle/encom/world.hpp"
 
 #include <vector>
 
@@ -16,7 +16,7 @@ struct Velocity {
 } // namespace
 
 int main() {
-    truffle::ecs::World world;
+    truffle::encom::World world;
     const auto movingEntity = world.create();
     const auto staticEntity = world.create();
 
@@ -26,7 +26,7 @@ int main() {
 
     std::size_t queryCount = 0;
     world.each<Position, Velocity>(
-        [&queryCount](truffle::ecs::Entity, Position& position, Velocity& velocity) {
+        [&queryCount](truffle::encom::Entity, Position& position, Velocity& velocity) {
             position.x += velocity.x;
             ++queryCount;
         });
@@ -35,10 +35,10 @@ int main() {
     TRUFFLE_CHECK(world.get<Position>(movingEntity)->x == 5.0F);
     TRUFFLE_CHECK(world.get<Position>(staticEntity)->x == 9.0F);
 
-    std::vector<truffle::ecs::World::System> systems{
-        [](truffle::ecs::World& systemWorld, double deltaSeconds) {
+    std::vector<truffle::encom::World::System> systems{
+        [](truffle::encom::World& systemWorld, double deltaSeconds) {
             systemWorld.each<Position>(
-                [deltaSeconds](truffle::ecs::Entity, Position& position) {
+                [deltaSeconds](truffle::encom::Entity, Position& position) {
                     position.x += static_cast<float>(deltaSeconds);
                 });
         },

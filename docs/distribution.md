@@ -87,7 +87,7 @@ An explicitly dispatched `release.yml` run:
   exported high-level opt-in targets. Consumers link them only when they need
   asset declarations, metadata-only asset-to-render planning, or
   diagnostics/tooling helpers. Diagnostics links asset-render planning so tools
-  can summarize planned layouts without making render or scene depend on
+  can summarize planned layouts without making Renderer or EnCom–Renderer depend on
   diagnostics.
 - `Truffle::BackendMetal`, `Truffle::BackendVulkan`, and
   `Truffle::BackendOpenGL` are exported when enabled at configure time.

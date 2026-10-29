@@ -3,7 +3,7 @@
 #include <array>
 #include <cstdint>
 
-namespace truffle::render {
+namespace truffle::renderer {
 
 struct Transform {
     std::array<float, 16> worldMatrix{
@@ -47,5 +47,5 @@ struct DirectionalLight {
     std::array<float, 3> color{1.0F, 1.0F, 1.0F};
 };
 
-} // namespace truffle::render
+} // namespace truffle::renderer
 

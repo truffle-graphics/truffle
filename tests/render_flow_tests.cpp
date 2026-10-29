@@ -1,8 +1,8 @@
 #include "test_support.hpp"
 #include "rhi_test_utils.hpp"
-#include "truffle/render/render_batch.hpp"
-#include "truffle/render/renderer.hpp"
-#include "truffle/render/frame_graph.hpp"
+#include "truffle/renderer/render_batch.hpp"
+#include "truffle/renderer/renderer.hpp"
+#include "truffle/renderer/frame_graph.hpp"
 #include "truffle/rhi/null_backend.hpp"
 
 #include <cstring>
@@ -16,12 +16,12 @@ int main() {
     auto ring = std::move(ringResult).value();
 
     // Build an InstanceLayout with one Transform channel (SoA).
-    truffle::render::InstanceLayout layout;
+    truffle::renderer::InstanceLayout layout;
     layout.channels.push_back({
-        truffle::render::ChannelKind::Transform,
+        truffle::renderer::ChannelKind::Transform,
         0, 0, 64,
     });
-    layout.bindingModel = truffle::render::BindingModel::Separate;
+    layout.bindingModel = truffle::renderer::BindingModel::Separate;
 
     // Allocate ring memory for 3 instances × 64 bytes each.
     constexpr std::uint32_t kInstances  = 3;
@@ -36,18 +36,18 @@ int main() {
         std::memcpy(dst + i * 16, identity, kStride);
     }
 
-    truffle::render::RenderBatch batch;
+    truffle::renderer::RenderBatch batch;
     batch.layout        = layout;
     batch.instanceCount = kInstances;
     batch.vertexCount   = 3;
     batch.bindings[0]   = {alloc.buffer, alloc.offset, kInstances * kStride};
-    batch.kind          = truffle::render::DrawKind::Direct;
+    batch.kind          = truffle::renderer::DrawKind::Direct;
 
-    const truffle::render::RenderBatch batches[] = {batch};
+    const truffle::renderer::RenderBatch batches[] = {batch};
 
     // --- Headless path (no swapchain) ---
-    truffle::render::Renderer headlessRenderer{context.device};
-    TRUFFLE_CHECK(headlessRenderer.render([&]() { truffle::render::FrameGraph fg; fg.add_node(std::make_unique<truffle::render::RenderPassNode>(true, std::vector<truffle::render::RenderBatch>(std::begin(batches), std::end(batches)))); return fg; }()).ok());
+    truffle::renderer::Renderer headlessRenderer{context.device};
+    TRUFFLE_CHECK(headlessRenderer.render([&]() { truffle::renderer::FrameGraph fg; fg.add_node(std::make_unique<truffle::renderer::RenderPassNode>(true, std::vector<truffle::renderer::RenderBatch>(std::begin(batches), std::end(batches)))); return fg; }()).ok());
     const auto& headlessStats = headlessRenderer.last_frame_stats();
     TRUFFLE_CHECK(headlessStats.computeNodesExecuted == 0);
     TRUFFLE_CHECK(headlessStats.renderNodesExecuted == 1);
@@ -69,8 +69,8 @@ int main() {
     TRUFFLE_CHECK(swapchainResult.ok());
     auto swapchain = std::move(swapchainResult).value();
 
-    truffle::render::Renderer renderer{context.device};
-    TRUFFLE_CHECK(renderer.render([&]() { truffle::render::FrameGraph fg; fg.add_node(std::make_unique<truffle::render::RenderPassNode>(true, std::vector<truffle::render::RenderBatch>(std::begin(batches), std::end(batches)))); return fg; }(), &swapchain).ok());
+    truffle::renderer::Renderer renderer{context.device};
+    TRUFFLE_CHECK(renderer.render([&]() { truffle::renderer::FrameGraph fg; fg.add_node(std::make_unique<truffle::renderer::RenderPassNode>(true, std::vector<truffle::renderer::RenderBatch>(std::begin(batches), std::end(batches)))); return fg; }(), &swapchain).ok());
     const auto& swapchainStats = renderer.last_frame_stats();
     TRUFFLE_CHECK(swapchainStats.computeNodesExecuted == 0);
     TRUFFLE_CHECK(swapchainStats.renderNodesExecuted == 1);

@@ -2,32 +2,38 @@
 
 ## Purpose
 
-Truffle is a generalized graphics engine and rendering system. It gives C++
-applications layered rendering modules and GPU abstraction without requiring a
-game-engine object model or application framework.
+Truffle is a modular graphics framework, composed of independently usable
+libraries. It gives C++ applications GPU abstraction, rendering, an
+entity-component library, and future higher-level modules without requiring a
+game-engine object model or an application framework.
 
 ## In Scope
 
 - Backend-neutral RHI and renderer contracts.
-- Render data paths that can support extracted scenes and future high-throughput
-  bulk or GPU-oriented workflows.
-- Render-facing ECS components, scene extraction, and a general ECS suitable for
-  tools, simulations, and games when a consumer wants that integration.
-- Framework-facing rendering modules that build above lower Truffle layers
-  without making them mandatory.
+- Render data paths that can support extracted ECS state and future
+  high-throughput bulk or GPU-oriented workflows.
+- Truffle EnCom (ENtity COMponent), a general entity-component library suitable
+  for tools, simulations, and games, usable without the renderer.
+- Optional EnCom–Renderer integration that moves EnCom data to the GPU
+  efficiently when a consumer uses both.
+- Future higher-level modules (Engine, GUI, Assets) that build above lower
+  Truffle libraries without making them mandatory.
 - Presentation contracts for consumer-owned native surfaces.
-- Validation backends, examples, and contract tests that keep backend work honest.
+- Validation backends, examples, developer tools, and contract tests that keep
+  backend work honest.
 
 ## Out of Scope
 
-- Application-host ownership, input policy, and application lifecycle policy.
+- Native windowing, input policy, and application-host ownership. A future
+  optional windowing convenience may wrap GLFW, SDL, or native APIs, but
+  Truffle does not implement a windowing framework.
 - A game editor, gameplay framework, or game-specific asset model.
-- A required dependency on FrameKit or another host framework.
-- A requirement that consumers adopt Truffle ECS before using the renderer.
+- A required dependency on any application or host framework.
+- A requirement that consumers adopt Truffle EnCom before using the renderer.
 - Backend-specific public API leakage outside explicit capabilities or extensions.
 
 ## Integration Boundary
 
-Truffle can run inside a consumer-owned loop and on a consumer-owned native
-surface. FrameKit and Truffle remain independent projects; applications that
-need both compose them at their own boundary.
+Truffle runs inside a consumer-owned loop and on a consumer-owned native
+surface. Applications that combine Truffle with an application or host
+framework compose them at their own boundary.

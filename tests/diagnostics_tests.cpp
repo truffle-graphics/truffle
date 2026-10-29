@@ -88,7 +88,7 @@ int main() {
     asset_render::RenderBatchPlanOptions assetRenderOptions;
     assetRenderOptions.channelMappings.push_back({
         assets::AttributeSemantic::Position,
-        render::ChannelKind::CustomFloat4,
+        renderer::ChannelKind::CustomFloat4,
     });
     auto assetRenderPlanResult = asset_render::plan_render_batch(
         assetMesh, assetMaterial, assetRenderOptions);
@@ -106,7 +106,7 @@ int main() {
     TRUFFLE_CHECK(assetRenderSummary.attributes.front().semantic ==
                   assets::AttributeSemantic::Position);
     TRUFFLE_CHECK(assetRenderSummary.attributes.front().channel ==
-                  render::ChannelKind::CustomFloat4);
+                  renderer::ChannelKind::CustomFloat4);
     TRUFFLE_CHECK(assetRenderSummary.bindings.size() == 1);
     TRUFFLE_CHECK(assetRenderSummary.bindings.front().byteSize ==
                   assetStream.byteSize);
@@ -228,19 +228,19 @@ int main() {
     TRUFFLE_CHECK(instanceBufferResult.ok());
     auto instanceBuffer = std::move(instanceBufferResult).value();
 
-    render::RenderBatch batch;
+    renderer::RenderBatch batch;
     batch.instanceCount = 1'000'000;
     batch.vertexCount = 1;
     batch.material = 42;
-    batch.layout.bindingModel = render::BindingModel::Interleaved;
+    batch.layout.bindingModel = renderer::BindingModel::Interleaved;
     batch.layout.channels.push_back({
-        .kind = render::ChannelKind::Transform,
+        .kind = renderer::ChannelKind::Transform,
         .binding = 0,
         .offset = 0,
         .stride = 80,
     });
     batch.layout.channels.push_back({
-        .kind = render::ChannelKind::Color,
+        .kind = renderer::ChannelKind::Color,
         .binding = 0,
         .offset = 64,
         .stride = 80,
@@ -289,22 +289,22 @@ int main() {
     rhi::RenderPassDesc passDesc;
     passDesc.extent = {640, 480};
 
-    render::FrameGraph graph;
-    const auto nodeId = graph.add_node(std::make_unique<render::RenderPassNode>(
-        passDesc, std::vector<render::RenderBatch>{batch}));
+    renderer::FrameGraph graph;
+    const auto nodeId = graph.add_node(std::make_unique<renderer::RenderPassNode>(
+        passDesc, std::vector<renderer::RenderBatch>{batch}));
     TRUFFLE_CHECK(nodeId == 0);
     const auto presentNodeId = graph.add_node(
-        std::make_unique<render::RenderPassNode>(
-            true, std::vector<render::RenderBatch>{}));
+        std::make_unique<renderer::RenderPassNode>(
+            true, std::vector<renderer::RenderBatch>{}));
     TRUFFLE_CHECK(presentNodeId == 1);
     TRUFFLE_CHECK(graph.add_dependency(nodeId, presentNodeId).ok());
     TRUFFLE_CHECK(graph.add_resource_usage(nodeId, {
         .resourceId = 99,
-        .access = render::ResourceAccess::Write,
+        .access = renderer::ResourceAccess::Write,
     }).ok());
     TRUFFLE_CHECK(graph.add_resource_usage(presentNodeId, {
         .resourceId = 99,
-        .access = render::ResourceAccess::Read,
+        .access = renderer::ResourceAccess::Read,
     }).ok());
 
     diagnostics::FrameGraphInspectionOptions options;
@@ -376,7 +376,7 @@ int main() {
         diagnostics::format_renderer_stats_summary(statsSummary);
     TRUFFLE_CHECK(statsReport.find("presented=true") != std::string::npos);
 
-    render::RendererFrameStats frameStats;
+    renderer::RendererFrameStats frameStats;
     frameStats.computeNodesExecuted = 1;
     frameStats.renderNodesExecuted = 2;
     frameStats.renderBatchesExecuted = 1;

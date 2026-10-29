@@ -1,7 +1,7 @@
 #pragma once
 
 #include "truffle/assets/assets.hpp"
-#include "truffle/render/render_batch.hpp"
+#include "truffle/renderer/render_batch.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -11,11 +11,11 @@ namespace truffle::asset_render {
 
 struct AttributeChannelMapping {
     assets::AttributeSemantic semantic = assets::AttributeSemantic::Custom;
-    render::ChannelKind channel = render::ChannelKind::CustomFloat4;
+    renderer::ChannelKind channel = renderer::ChannelKind::CustomFloat4;
 };
 
 struct RenderBatchPlanOptions {
-    render::BindingModel bindingModel = render::BindingModel::Interleaved;
+    renderer::BindingModel bindingModel = renderer::BindingModel::Interleaved;
     std::uint32_t baseBinding = 0;
     bool includeOptionalMappedAttributes = false;
     std::vector<AttributeChannelMapping> channelMappings;
@@ -24,7 +24,7 @@ struct RenderBatchPlanOptions {
 struct AttributeChannelPlan {
     assets::AssetId stream;
     assets::AttributeDesc attribute;
-    render::ChannelDesc channel;
+    renderer::ChannelDesc channel;
 };
 
 struct PlannedBufferBinding {
@@ -38,7 +38,7 @@ struct PlannedBufferBinding {
 struct RenderBatchPlan {
     assets::AssetId mesh;
     assets::AssetId material;
-    render::RenderBatch batch;
+    renderer::RenderBatch batch;
     std::vector<AttributeChannelPlan> attributes;
     std::vector<PlannedBufferBinding> bindings;
 };

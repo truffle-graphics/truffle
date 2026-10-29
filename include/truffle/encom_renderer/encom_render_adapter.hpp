@@ -1,20 +1,20 @@
 #pragma once
 
-#include "truffle/ecs/world.hpp"
-#include "truffle/render/components.hpp"
-#include "truffle/render/render_batch.hpp"
+#include "truffle/encom/world.hpp"
+#include "truffle/renderer/components.hpp"
+#include "truffle/renderer/render_batch.hpp"
 #include "truffle/rhi/rhi.hpp"
 
 #include <array>
 #include <vector>
 
-namespace truffle::scene {
+namespace truffle::encom_renderer {
 
 // ---------------------------------------------------------------------------
-// SceneFrame — camera/light state + mesh batches extracted from an ECS world
+// EnComRenderFrame — camera/light state + mesh batches extracted from an EnCom world
 // ---------------------------------------------------------------------------
 
-struct SceneFrame {
+struct EnComRenderFrame {
     struct CameraState {
         std::array<float, 16> worldMatrix{
             1.0F, 0.0F, 0.0F, 0.0F,
@@ -38,20 +38,20 @@ struct SceneFrame {
     std::vector<LightState>        lights;
 
     // Mesh batches — pass directly to Renderer::render()
-    std::vector<render::RenderBatch> meshBatches;
+    std::vector<renderer::RenderBatch> meshBatches;
 };
 
 // ---------------------------------------------------------------------------
-// SceneAdapter — ECS → SceneFrame via UploadRing
+// EnComRenderAdapter — ECS → EnComRenderFrame via UploadRing
 //
 // Writes transform data directly into ring-allocated upload memory.
 // No per-entity intermediate copy; callers own the ring's lifetime.
 // ---------------------------------------------------------------------------
 
-class SceneAdapter {
+class EnComRenderAdapter {
 public:
-    [[nodiscard]] SceneFrame extract(ecs::World& world,
+    [[nodiscard]] EnComRenderFrame extract(encom::World& world,
                                      rhi::UploadRing& ring) const;
 };
 
-} // namespace truffle::scene
+} // namespace truffle::encom_renderer

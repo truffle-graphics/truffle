@@ -1,0 +1,4 @@
+add_library(truffle_encom_renderer STATIC encom_render_adapter.cpp)
+target_link_libraries(truffle_encom_renderer PUBLIC truffle_encom truffle_renderer)
+truffle_configure_target(truffle_encom_renderer EnComRenderer)
+add_library(Truffle::EnComRenderer ALIAS truffle_encom_renderer)

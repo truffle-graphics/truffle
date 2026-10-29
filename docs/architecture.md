@@ -2,24 +2,52 @@
 
 ## Product Shape
 
-Truffle is a modular graphics library, not an application framework. A consumer
-chooses a low-level graphics API, rendering helpers, asset metadata, scene
-extraction, or diagnostics without inheriting unrelated layers.
+Truffle is a modular graphics framework, composed of independently usable
+libraries. A consumer chooses a low-level graphics API, rendering, an
+entity-component library, asset metadata, or diagnostics without inheriting
+unrelated modules. Truffle is not an application framework.
 
 1. `truffle_base` provides shared status, version, configuration, and identity
    primitives.
 2. `truffle_rhi` defines the canonical backend-neutral graphics contract.
 3. `truffle_backend_*` modules implement that contract behind backend ownership.
-4. `truffle_render` provides render batches, frame-graph orchestration,
-   renderer execution, and pipeline-cache integration without depending on ECS.
+4. `truffle_renderer` provides render batches, frame-graph orchestration,
+   renderer execution, and pipeline-cache integration without depending on
+   EnCom. The Renderer owns GPU resources: buffers, textures, uploads, and
+   their lifetimes.
 5. `truffle_assets` declares backend-free asset, material, texture, geometry,
-   group, and tag metadata.
+   group, and tag metadata (provisional; see Planned Modules).
 6. `truffle_asset_render` validates and maps asset declarations to metadata-only
-   render plans without allocating GPU resources.
-7. `truffle_ecs` supplies a general ECS; optional `truffle_scene` converts ECS
-   state into render batches.
-8. `truffle_diagnostics` provides opt-in, pull-based inspection. Runtime layers
-   do not depend on it.
+   render plans without allocating GPU resources (provisional).
+7. `truffle_encom` is Truffle EnCom (ENtity COMponent), a general
+   entity-component library that depends only on Base.
+8. `truffle_encom_renderer` is the optional EnCom–Renderer integration that
+   converts EnCom state into render batches.
+9. `truffle_diagnostics` provides opt-in, pull-based inspection. Runtime
+   modules do not depend on it.
+
+Developer tools (`truffle-shaderc`, `truffle-rhi-doctor`) are tools, not
+modules. They depend on RHI and are never runtime dependencies.
+
+## Module Dependencies
+
+Arrows mean "depends on". Dashed edges are optional; parenthesized modules are
+planned, not implemented.
+
+```text
+(Engine) --> Renderer
+(Engine) -.-> EnCom, (GUI), (Assets)
+(GUI) -----> Renderer          (no EnCom dependency; own lightweight hierarchy)
+EnComRenderer --> EnCom, Renderer
+Renderer --> RHI --> Base
+EnCom ----------------> Base
+backends --> RHI
+```
+
+EnCom and Renderer are each usable alone. Using both through
+`truffle_encom_renderer` is the intended fastest combination: aligned data
+layouts and change-only uploads are optimization possibilities for that
+connector, not guarantees.
 
 Public contracts live under `include/truffle`. Module implementations live under
 `src`, backend code under `src/backends`, build policy under `cmake`, and
@@ -97,21 +125,21 @@ manages GPU resources, synchronization, and presentation directly.
 
 ### Level 2 — Rendering
 
-Add `truffle_render`. Build `RenderBatch` objects from any data source and
+Add `truffle_renderer`. Build `RenderBatch` objects from any data source and
 execute a `FrameGraph`. Use upload/readback resources directly, or add
 `truffle_asset_render` for metadata-to-layout planning.
 
-### Level 3 — Scene Convenience
+### Level 3 — EnCom–Renderer Integration
 
-Add `truffle_ecs` and `truffle_scene`. `SceneAdapter` extracts camera, light,
-and batch state from an ECS world. This is one first-party ingestion lane, not
-a requirement for RHI or renderer consumers.
+Add `truffle_encom` and `truffle_encom_renderer`. `EnComRenderAdapter` extracts
+camera, light, and batch state from an EnCom world. This is one first-party
+ingestion lane, not a requirement for RHI or renderer consumers.
 
 ## Render Data Lanes
 
 ```text
 ECS extraction
-  ecs::World -> SceneAdapter -> RenderBatch[]
+  encom::World -> EnComRenderAdapter -> RenderBatch[]
 
 Caller-owned bulk data
   typed arrays / streams -> upload allocation -> RenderBatch[]
@@ -134,10 +162,16 @@ shaders, allocate resources, or own backend state.
 resource-usage hazards. It resolves deterministic topological order and rejects
 cycles before recording.
 
+Diagnostics separate three concerns. Each module owns its own error and
+lightweight profiling primitives; instrumentation stays optional and detailed
+tracing can be compiled out. Collectors, reports, and tools are separate opt-in
+consumers. Expanded GPU/renderer/EnCom profiling is planned but not an
+immediate priority.
+
 Diagnostics remain pull-based. Callers can request snapshots or reports for
 assets, plans, batches, frame graphs, renderer statistics, and debug-overlay
 declarations. Diagnostics install no global hooks and do not become a runtime
-dependency of render or scene modules.
+dependency of Renderer or EnCom-Renderer modules.
 
 ## Host Boundary
 
@@ -147,7 +181,10 @@ handle to RHI and keeps it alive until the RHI `Surface` and its swapchains are
 destroyed.
 
 RHI owns graphics-side surface capabilities, swapchain images, acquisition, and
-queue presentation. It does not introduce a window module as part of RHI 1.
+queue presentation. Truffle does not implement a windowing framework. Renderer
+and future Engine consumers pass window handles or offscreen targets. An
+optional windowing convenience that wraps GLFW, SDL, or native APIs is a
+deferred idea, not a planned RHI 1 module.
 
 ## Dependency Boundary
 
@@ -197,8 +234,30 @@ target variants must agree on normalized reflection.
 
 See [the shader package contract](rhi1/shader-package.md).
 
+## Planned Modules
+
+These are agreed directions, not implementations. Details stay undecided until
+their own design issues.
+
+- **Engine**: a multipurpose graphics engine above Renderer, optionally using
+  EnCom, GUI, and Assets. It supports a host-owned application loop; runner
+  conveniences, use-case profiles, and scheduling are undecided.
+- **GUI**: a GUI library above Renderer that does not depend on EnCom and keeps
+  its own lightweight hierarchy. Its retained/immediate design is undecided.
+- **Assets**: file loading and import, separate from GPU resources, which the
+  Renderer owns. An asset-to-resource bridge is optional. The module's name,
+  architecture, and the future of the provisional `truffle_assets` and
+  `truffle_asset_render` targets are decided later.
+
+Priority after RHI 1 is the full RHI, then Renderer, then Engine.
+
 ## Deferred Surfaces
 
-The Simple RHI, compatibility facade, D3D11, WebGL1, legacy GL/GLES profiles,
+The Simple RHI is deferred: a beginner-friendly, OpenGL-like convenience layer
+over the full RHI whose parts can be replaced incrementally with full-RHI usage.
+Further developer-tool work waits until RHI and Renderer reach a minimum usable
+level.
+
+The compatibility facade, D3D11, WebGL1, legacy GL/GLES profiles,
 CUDA/OpenCL, and public proprietary-console implementations are outside RHI 1.
 Backend factory boundaries remain extensible for future private platform work.

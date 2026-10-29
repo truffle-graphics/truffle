@@ -1,8 +1,8 @@
 #pragma once
 
 #include "truffle/base/status.hpp"
-#include "truffle/render/render_batch.hpp"
-#include "truffle/render/transform_compute_pass.hpp"
+#include "truffle/renderer/render_batch.hpp"
+#include "truffle/renderer/transform_compute_pass.hpp"
 #include "truffle/rhi/rhi.hpp"
 
 #include <cstdint>
@@ -13,7 +13,7 @@
 #include <utility>
 #include <vector>
 
-namespace truffle::render {
+namespace truffle::renderer {
 
 enum class FrameGraphNodeKind {
     Compute,
@@ -249,4 +249,4 @@ private:
     std::vector<std::unique_ptr<IFrameGraphNode>> nodes_;
 };
 
-} // namespace truffle::render
+} // namespace truffle::renderer

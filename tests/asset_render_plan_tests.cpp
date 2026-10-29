@@ -72,14 +72,14 @@ truffle::asset_render::RenderBatchPlanOptions make_detection_options() {
     using namespace truffle;
 
     asset_render::RenderBatchPlanOptions options;
-    options.bindingModel = render::BindingModel::Interleaved;
+    options.bindingModel = renderer::BindingModel::Interleaved;
     options.channelMappings = {
         {assets::AttributeSemantic::Position,
-         render::ChannelKind::CustomFloat4},
+         renderer::ChannelKind::CustomFloat4},
         {assets::AttributeSemantic::Confidence,
-         render::ChannelKind::CustomFloat4},
+         renderer::ChannelKind::CustomFloat4},
         {assets::AttributeSemantic::Classification,
-         render::ChannelKind::CustomFloat4},
+         renderer::ChannelKind::CustomFloat4},
     };
     return options;
 }
@@ -107,7 +107,7 @@ int main() {
     TRUFFLE_CHECK(plan.mesh == mesh.id);
     TRUFFLE_CHECK(plan.material == material.id);
     TRUFFLE_CHECK(plan.batch.layout.bindingModel ==
-                  render::BindingModel::Interleaved);
+                  renderer::BindingModel::Interleaved);
     TRUFFLE_CHECK(plan.batch.layout.channels.size() == 3);
     TRUFFLE_CHECK(plan.attributes.size() == 3);
     TRUFFLE_CHECK(plan.bindings.size() == 1);
@@ -119,15 +119,15 @@ int main() {
     const auto& position = plan.batch.layout.channels[0];
     const auto& confidence = plan.batch.layout.channels[1];
     const auto& classification = plan.batch.layout.channels[2];
-    TRUFFLE_CHECK(position.kind == render::ChannelKind::CustomFloat4);
+    TRUFFLE_CHECK(position.kind == renderer::ChannelKind::CustomFloat4);
     TRUFFLE_CHECK(position.binding == 0);
     TRUFFLE_CHECK(position.offset == 0);
     TRUFFLE_CHECK(position.stride == 32);
-    TRUFFLE_CHECK(confidence.kind == render::ChannelKind::CustomFloat4);
+    TRUFFLE_CHECK(confidence.kind == renderer::ChannelKind::CustomFloat4);
     TRUFFLE_CHECK(confidence.binding == 0);
     TRUFFLE_CHECK(confidence.offset == 12);
     TRUFFLE_CHECK(confidence.stride == 32);
-    TRUFFLE_CHECK(classification.kind == render::ChannelKind::CustomFloat4);
+    TRUFFLE_CHECK(classification.kind == renderer::ChannelKind::CustomFloat4);
     TRUFFLE_CHECK(classification.binding == 0);
     TRUFFLE_CHECK(classification.offset == 16);
     TRUFFLE_CHECK(classification.stride == 32);
@@ -140,7 +140,7 @@ int main() {
     TRUFFLE_CHECK(plan.batch.instanceCount == stream.elementCount);
     TRUFFLE_CHECK(plan.batch.vertexCount == 1);
     TRUFFLE_CHECK(plan.batch.material == material.id.value);
-    TRUFFLE_CHECK(plan.batch.kind == render::DrawKind::Direct);
+    TRUFFLE_CHECK(plan.batch.kind == renderer::DrawKind::Direct);
     TRUFFLE_CHECK(plan.batch.bindings[0].buffer == nullptr);
     TRUFFLE_CHECK(plan.batch.variantHash != 0);
 
@@ -187,9 +187,9 @@ int main() {
     TRUFFLE_CHECK(defaultPlan.ok());
     TRUFFLE_CHECK(defaultPlan.value().batch.layout.channels.size() == 2);
     TRUFFLE_CHECK(defaultPlan.value().batch.layout.channels[0].kind ==
-                  render::ChannelKind::Transform);
+                  renderer::ChannelKind::Transform);
     TRUFFLE_CHECK(defaultPlan.value().batch.layout.channels[1].kind ==
-                  render::ChannelKind::Color);
+                  renderer::ChannelKind::Color);
     TRUFFLE_CHECK(defaultPlan.value().batch.instanceCount == 4);
 
     assets::AssetCatalog catalog;
