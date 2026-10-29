@@ -1,11 +1,12 @@
 #pragma once
 
 #include "foundation_backend.hpp"
+#include "gl_api.hpp"
 
 #include <array>
 #include <cstring>
 
-namespace truffle::rhi::detail::egl_probe::graphics {
+namespace truffle::rhi::detail::gl_probe::graphics {
 
 inline GLenum compare(CompareOp value) {
     constexpr std::array<GLenum, 8> values{
@@ -50,9 +51,9 @@ inline Status validate(const PipelineDesc& desc) {
     if (desc.rasterization.depthBiasClamp != 0.0F ||
         desc.topology == PrimitiveTopology::patch_list) {
         return Status::failure(StatusCode::unsupported,
-                               "EGL/GL clamped depth bias and patches are unsupported");
+                               "GL clamped depth bias and patches are unsupported");
     }
-#if defined(TRUFFLE_EGL_API_OPENGLES)
+#if defined(TRUFFLE_GL_API_ES)
     if (desc.rasterization.polygonMode != PolygonMode::fill ||
         desc.rasterization.depthClampEnabled ||
         desc.multisample.sampleMask != 0xffffffffu) {
@@ -85,7 +86,7 @@ inline void viewport(const Viewport& value) {
     glViewport(static_cast<GLint>(value.x), static_cast<GLint>(value.y),
                static_cast<GLsizei>(value.width),
                static_cast<GLsizei>(value.height));
-#if defined(TRUFFLE_EGL_API_OPENGL)
+#if defined(TRUFFLE_GL_API_DESKTOP)
     glDepthRange(value.minimumDepth, value.maximumDepth);
 #else
     glDepthRangef(value.minimumDepth, value.maximumDepth);
@@ -128,7 +129,7 @@ inline void apply(const PipelineDesc& desc, Extent2D extent) {
         glCullFace(raster.cullMode == CullMode::front ? GL_FRONT : GL_BACK);
     }
     glFrontFace(raster.frontFace == FrontFace::clockwise ? GL_CW : GL_CCW);
-#if defined(TRUFFLE_EGL_API_OPENGL)
+#if defined(TRUFFLE_GL_API_DESKTOP)
     glPolygonMode(GL_FRONT_AND_BACK,
                   raster.polygonMode == PolygonMode::line ? GL_LINE :
                   raster.polygonMode == PolygonMode::point ? GL_POINT : GL_FILL);
@@ -157,7 +158,7 @@ inline void apply(const PipelineDesc& desc, Extent2D extent) {
     for (std::size_t index = 0; index < desc.colorTargets.size(); ++index) {
         const auto& target = desc.colorTargets[index];
         const auto& blend = target.blend;
-#if defined(TRUFFLE_EGL_API_OPENGL)
+#if defined(TRUFFLE_GL_API_DESKTOP)
         const auto slot = static_cast<GLuint>(index);
         if (blend.enabled) glEnablei(GL_BLEND, slot);
         else glDisablei(GL_BLEND, slot);
@@ -220,7 +221,7 @@ struct InputState {
             const auto& buffer = vertices[slot];
             if (buffer.name == 0) {
                 return Status::failure(StatusCode::invalid_state,
-                                       "EGL/GL vertex stream is not bound");
+                                       "GL vertex stream is not bound");
             }
             glBindBuffer(GL_ARRAY_BUFFER, buffer.name);
             for (const auto& attribute : layout.attributes) {
@@ -232,7 +233,7 @@ struct InputState {
                     attribute.offset > buffer.size - buffer.offset ||
                     bytes > buffer.size - buffer.offset - attribute.offset) {
                     return Status::failure(StatusCode::invalid_argument,
-                                           "EGL/GL vertex attribute is out of range");
+                                           "GL vertex attribute is out of range");
                 }
                 const auto* offset = reinterpret_cast<const void*>(
                     buffer.offset + attribute.offset);
@@ -255,4 +256,4 @@ struct InputState {
     }
 };
 
-} // namespace truffle::rhi::detail::egl_probe::graphics
+} // namespace truffle::rhi::detail::gl_probe::graphics

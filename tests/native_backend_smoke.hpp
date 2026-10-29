@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -153,7 +155,9 @@ inline void verify_native_texture_backend(rhi::Result<rhi::Instance> result,
     const bool desktopGl = backend == rhi::BackendKind::opengl;
     assert(info.resources.textureViews);
     assert(info.resources.textureResolve == desktopGl);
-    assert(info.name.find("KHR_debug") != std::string::npos);
+    // macOS caps OpenGL at 4.1, which has no KHR_debug message output.
+    assert(platform == rhi::PlatformKind::macos ||
+           info.name.find("KHR_debug") != std::string::npos);
     assert(!info.resources.externalImport &&
            !info.resources.externalExport);
 
@@ -527,6 +531,14 @@ inline void count_native_diagnostic(const rhi::BackendDiagnostic&, void* data) {
     ++*static_cast<std::size_t*>(data);
 }
 
+// Desktop GL fixtures target the newest GLSL the expected context accepts.
+inline constexpr std::string_view desktop_glsl_version =
+#ifdef TRUFFLE_EXPECT_CGL_OPENGL
+    "#version 410 core\n";
+#else
+    "#version 450 core\n";
+#endif
+
 inline std::vector<std::byte> native_shader_bytes(std::string_view source) {
     std::vector<std::byte> bytes(source.size());
     std::transform(source.begin(), source.end(), bytes.begin(), [](char value) {
@@ -547,7 +559,9 @@ inline void verify_native_gl_graphics(rhi::Result<rhi::Instance> result,
     const auto info = adapter.info();
     assert(info.backend == backend && info.pipelines.graphics);
     const bool desktop = backend == rhi::BackendKind::opengl;
-    assert(info.pipelines.compute == desktop && info.pipelines.depthStencil &&
+    const bool expectCompute =
+        desktop && info.platform != rhi::PlatformKind::macos;
+    assert(info.pipelines.compute == expectCompute && info.pipelines.depthStencil &&
            info.pipelines.multipleRenderTargets &&
            info.pipelines.multisample == desktop &&
            info.pipelines.indirect == desktop && !info.pipelines.tessellation);
@@ -558,7 +572,7 @@ inline void verify_native_gl_graphics(rhi::Result<rhi::Instance> result,
     assert(deviceResult.ok());
     auto device = std::move(deviceResult).value();
 
-    const std::string_view vertexSource = desktop ? R"GLSL(#version 450 core
+    const std::string vertexSource = desktop ? std::string(desktop_glsl_version) + R"GLSL(
 const vec2 positions[3] = vec2[3](vec2(-0.75, -0.75), vec2(0.75, -0.75), vec2(0.0, 0.75));
 void main() { gl_Position = vec4(positions[gl_VertexID], 0.0, 1.0); }
 )GLSL" : R"GLSL(#version 300 es
@@ -566,7 +580,7 @@ precision highp float;
 const vec2 positions[3] = vec2[3](vec2(-0.75, -0.75), vec2(0.75, -0.75), vec2(0.0, 0.75));
 void main() { gl_Position = vec4(positions[gl_VertexID], 0.0, 1.0); }
 )GLSL";
-    const std::string_view fragmentSource = desktop ? R"GLSL(#version 450 core
+    const std::string fragmentSource = desktop ? std::string(desktop_glsl_version) + R"GLSL(
 layout(location = 0) out vec4 outputColor;
 void main() { outputColor = vec4(1.0, 0.0, 0.0, 1.0); }
 )GLSL" : R"GLSL(#version 300 es

@@ -102,11 +102,18 @@ if(TRUFFLE_BUILD_BACKEND_OPENGL)
         target_compile_definitions(truffle_opengl_tests
                                    PRIVATE TRUFFLE_EXPECT_EGL_OPENGL=1)
     endif()
+    if(APPLE AND NOT IOS AND TRUFFLE_OPENGL_FRAMEWORK)
+        target_compile_definitions(truffle_opengl_tests
+                                   PRIVATE TRUFFLE_EXPECT_CGL_OPENGL=1)
+    endif()
     add_test(NAME truffle_opengl_tests COMMAND truffle_opengl_tests)
     if(TRUFFLE_EGL_INCLUDE_DIR AND TRUFFLE_OPENGL_INCLUDE_DIR AND
        TRUFFLE_EGL_LIBRARY AND TRUFFLE_OPENGL_LIBRARY)
         set_tests_properties(truffle_opengl_tests PROPERTIES
                              LABELS "native-smoke;validation")
+    elseif(APPLE AND NOT IOS AND TRUFFLE_OPENGL_FRAMEWORK)
+        set_tests_properties(truffle_opengl_tests PROPERTIES
+                             LABELS "native-smoke")
     endif()
 endif()
 

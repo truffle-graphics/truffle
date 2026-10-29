@@ -15,6 +15,13 @@ constexpr BackendEvidence validated_native_smoke{
     .nativeSmoke = true,
     .validation = true,
 };
+// macOS validation is per-call glGetError checking with zero errors
+// required; no debug-message layer exists on macOS GL 4.1.
+constexpr BackendEvidence gl_error_checked_smoke{
+    .compiles = true,
+    .nativeSmoke = true,
+    .validation = true,
+};
 constexpr BackendEvidence metal_smoke{
     .compiles = true,
     .nativeSmoke = true,
@@ -85,8 +92,14 @@ constexpr std::array support{
                            BackendMaturity::source_only, true, source_only,
                            "target identified; no WGL execution lane yet"},
     BackendPlatformSupport{BackendKind::opengl, PlatformKind::macos,
-                           BackendMaturity::source_only, true, source_only,
-                           "deprecated compatibility target; no native lane yet"},
+                           BackendMaturity::native_smoke, true,
+                           gl_error_checked_smoke,
+                           "deprecated GL 4.1 core offscreen CGL resources, "
+                           "bindings, and graphics with exact readback; "
+                           "validation is per-call glGetError checking with "
+                           "zero errors required (no debug-message layer "
+                           "exists on macOS GL 4.1); no compute or "
+                           "presentation"},
     BackendPlatformSupport{BackendKind::opengles, PlatformKind::linux_host,
                            BackendMaturity::native_smoke, true,
                            validated_native_smoke,

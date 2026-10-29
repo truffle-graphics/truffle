@@ -5,19 +5,24 @@
 #include "gl_binding_tests.hpp"
 
 int main() {
-#ifdef TRUFFLE_EXPECT_EGL_OPENGL
+#if defined(TRUFFLE_EXPECT_EGL_OPENGL) || defined(TRUFFLE_EXPECT_CGL_OPENGL)
+#if defined(TRUFFLE_EXPECT_CGL_OPENGL)
+    constexpr auto platform = truffle::rhi::PlatformKind::macos;
+#else
+    constexpr auto platform = truffle::rhi::PlatformKind::linux_host;
+#endif
     std::size_t diagnostics = 0;
     truffle::tests::verify_native_buffer_backend(
         truffle::rhi::create_opengl_instance(),
         truffle::rhi::BackendKind::opengl,
-        truffle::rhi::PlatformKind::linux_host);
+        platform);
     truffle::tests::verify_native_texture_backend(
         truffle::rhi::create_opengl_instance({
             .debugCallback = &truffle::tests::count_native_diagnostic,
             .debugUserData = &diagnostics,
         }),
         truffle::rhi::BackendKind::opengl,
-        truffle::rhi::PlatformKind::linux_host, &diagnostics);
+        platform, &diagnostics);
     truffle::tests::verify_native_gl_graphics(
         truffle::rhi::create_opengl_instance({
             .debugCallback = &truffle::tests::count_native_diagnostic,

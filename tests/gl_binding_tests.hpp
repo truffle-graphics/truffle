@@ -260,10 +260,11 @@ inline void verify_gl_compute(rhi::Result<rhi::Instance> result, bool desktop,
     auto requested = adapter.value().request_device();
     assert(requested.ok());
     auto device = std::move(requested).value();
-    if (!desktop) {
+    if (!desktop || !adapter.value().info().pipelines.compute) {
         const auto shader = device.create_shader({
             .stage = rhi::ShaderStage::compute,
-            .code = native_shader_bytes("#version 300 es\nvoid main() {}")});
+            .code = native_shader_bytes(desktop ? std::string(desktop_glsl_version) + "void main() {}"
+                                                : std::string("#version 300 es\nvoid main() {}"))});
         assert(shader.status().code == rhi::StatusCode::unsupported);
         return;
     }
