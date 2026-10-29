@@ -29,8 +29,17 @@ setup, not immediate work. No issue labels or hosted workflows change.
 - Verified locally on Apple M3 Pro, macOS 27.0.1: `truffle_metal_tests` and
   `truffle_metal_presentation_tests` pass with `MTL_DEBUG_LAYER=1
   MTL_SHADER_VALIDATION=1`.
-- Next: host-window Metal presentation/resize loop in
-  `examples/host_workspace`, then validation evidence and docs.
+- `examples/host_workspace --metal` now opens a host-owned GLFW window and
+  passes only its `CAMetalLayer` to Truffle as a `cocoa_layer` surface.
+  `MetalHostPresenter` acquires, clears via `begin_rendering`, presents, and
+  resizes the swapchain on framebuffer change, `suboptimal`, or `out_of_date`.
+  `--metal --frames N` scripts one `glfwSetWindowSize` halfway and exits
+  non-zero unless all frames present and the swapchain tracks the new
+  framebuffer. ctest `truffle_host_workspace_metal_window` (labels
+  `presentation;host-window;validation`) runs 120 frames and needs a logged-in
+  GUI session. The Renderer is unchanged; the old one-submit `--metal`
+  foundation path is replaced.
+- Next: extend native conformance under validation, then docs/evidence.
 
 ## Module Taxonomy Update (#161)
 

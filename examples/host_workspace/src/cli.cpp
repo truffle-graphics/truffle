@@ -2,12 +2,19 @@
 
 #include "workspace.hpp"
 
+#include <charconv>
+#include <cstdint>
+#include <string>
 #include <string_view>
+#include <system_error>
 #include <utility>
 
 namespace truffle::examples::host_workspace {
 
 namespace {
+
+// A bounded run needs frames before and after its scripted resize.
+constexpr std::uint32_t kMinimumBoundedFrames = 2;
 
 [[nodiscard]] CommandLineParse fail(std::string message) {
     CommandLineParse result;
@@ -44,6 +51,23 @@ CommandLineParse parse_command_line(int argc, char* argv[]) {
             continue;
         }
 
+        if (argument == "--frames") {
+            if (index + 1 >= argc) {
+                return fail("--frames requires a value");
+            }
+            const std::string_view value{argv[++index]};
+            std::uint32_t frames = 0;
+            const auto [end, error] =
+                std::from_chars(value.data(), value.data() + value.size(), frames);
+            if (error != std::errc{} || end != value.data() + value.size() ||
+                frames < kMinimumBoundedFrames) {
+                return fail("--frames requires an integer of at least " +
+                            std::to_string(kMinimumBoundedFrames));
+            }
+            result.options.frames = frames;
+            continue;
+        }
+
         if (argument == "--workspace") {
             if (index + 1 >= argc) {
                 return fail("--workspace requires a value");
@@ -61,12 +85,16 @@ CommandLineParse parse_command_line(int argc, char* argv[]) {
         return fail("unknown argument: " + std::string{argument});
     }
 
+    if (result.options.frames != 0 &&
+        (!result.options.useMetal || result.options.smoke)) {
+        return fail("--frames requires --metal without --smoke");
+    }
     return result;
 }
 
 void print_usage(std::ostream& output) {
     output << "Usage: truffle_host_workspace_example [--smoke] "
-              "[--metal] [--vulkan] "
+              "[--metal [--frames N]] [--vulkan] "
               "[--workspace editor|cad|simulation]\n";
 }
 

@@ -95,4 +95,11 @@ void HostWindow::poll_events() const noexcept {
     glfwPollEvents();
 }
 
+void HostWindow::set_size(rhi::Extent2D extent) const noexcept {
+    if (window_ != nullptr) {
+        glfwSetWindowSize(window_, static_cast<int>(extent.width),
+                          static_cast<int>(extent.height));
+    }
+}
+
 } // namespace truffle::examples::host_workspace

@@ -2,6 +2,8 @@
 
 #include "workspace.hpp"
 
+#include <cstdint>
+
 namespace truffle::examples::host_workspace {
 
 struct ApplicationOptions {
@@ -9,6 +11,9 @@ struct ApplicationOptions {
     bool smoke      = false;
     bool useMetal   = false;
     bool useVulkan  = false;
+    // With useMetal: present this many host-window frames (including one
+    // resize) and exit; zero runs until the window closes.
+    std::uint32_t frames = 0;
 };
 
 [[nodiscard]] int run_application(const ApplicationOptions& options);
