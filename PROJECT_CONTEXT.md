@@ -143,8 +143,9 @@ consumer selects concrete loading, upload, and backend behavior.
 
 ## Next Meaningful Direction
 
-Continue issue #33 from the native initialization matrix into backend-owned
-resources, shaders, synchronization, WSI/presentation, and platform lanes;
-promote no pair beyond its recorded evidence. Execute from the focused #33
-sub-issues in the Truffle delivery project rather than from an untracked local
-plan.
+Bring Metal, Vulkan, and desktop OpenGL to a practical baseline on available
+local hardware. Verification on other platforms is recorded, not a blocker.
+The step after that (possibly the Renderer) is undecided.
+Other backends/platforms, Phase 6 advanced features, and Phase 7 hardening are
+deferred backlog (see `docs/roadmap.md`), not abandoned. Promote no pair beyond
+its recorded evidence.
