@@ -9,12 +9,15 @@ rather than growing a historical transcript here.
 
 ## Current Focus
 
-Truffle has no consumers yet, so #163 removed backward-compatibility and
-migration scaffolding (README migration tables and the unused API
-compatibility/deprecation helpers). Module names follow #161 (Renderer, EnCom,
-EnComRenderer) and #159 (Base). The local-first workflow (#131) remains in
-effect. Further engine work follows the next dependency-ready focused issue
-under #33.
+Practical baseline for Metal (#69), Vulkan (MoltenVK #56), and
+desktop OpenGL (#61, #63), plus the shader-compiler routes they need (#73).
+What follows (likely the Renderer) is undecided. Other backends/platforms,
+Phase 6 advanced features, and Phase 7 hardening are backlog listed in
+`docs/roadmap.md`; their issues stay open.
+Verification is local; other platforms go on the roadmap's pending
+verification list instead of blocking development.
+Issue #166 records this planning update; #165 tracks future self-hosted runner
+setup, not immediate work. No issue labels or hosted workflows change.
 
 ## Module Taxonomy Update (#161)
 

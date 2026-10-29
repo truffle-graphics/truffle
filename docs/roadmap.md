@@ -17,6 +17,65 @@ issues are epics, and their structurally linked sub-issues contain the
 executable scope, dependencies, acceptance criteria, and evidence requirements.
 See `docs/planning.md` for the durable tracking contract.
 
+## Current Priorities
+
+Active work is a practical baseline for three backends:
+
+1. **Metal** (macOS) — primary development backend: #69.
+2. **Vulkan** — portable backend; Linux baseline is done, development
+   continues on macOS through MoltenVK (#56).
+3. **OpenGL** (desktop) — surfaces/presentation (#61) and synchronization,
+   queries, and context ownership (#63). macOS OpenGL is deprecated and capped
+   at 4.1, so features above 4.1 (such as compute) need another platform.
+4. Offline shader-compiler routes those backends need (#73).
+
+What follows the baseline is not decided; starting the Renderer is a likely
+candidate. Real use of the RHI is expected to expose gaps, and fixing them is
+active work, not deferred work.
+
+A practical baseline means resources, shaders, drawing and compute where
+supported, synchronization, presentation, and usable error handling. It does
+not mean every advanced feature on every platform.
+
+## Verification Policy
+
+Verification is local. Hosted GitHub Actions stay disabled to avoid plan and
+minute limits; a spare local PC may later run checks directly or as a
+self-hosted runner. Future runner setup is tracked in #165, not immediate work.
+
+For cross-platform backends, working on one platform is a sufficient baseline
+to keep developing. Other platforms are not blockers: they go on the pending
+verification list below and are checked when someone works on that machine.
+The support matrix only claims what has actually been verified.
+
+### Pending Verification
+
+- Vulkan on Windows (#58).
+- Desktop OpenGL on Windows, and on Linux beyond its current EGL evidence.
+- Any baseline backend feature first verified on only one platform.
+
+## Deferred Backlog
+
+Accepted work scheduled after the current priorities. Every item keeps its
+open issue, so it is not forgotten. Revisit once the baseline backends are in
+use, guided by what that use revealed about the RHI.
+
+- **Other backends and platforms:** D3D12 beyond its current baseline, WebGPU
+  and WebGL2 (#65-#68, #70), Vulkan Android (#59), OpenGL ES Android (#64),
+  and Metal on iOS/iPadOS/tvOS/visionOS (#71-#72).
+- **Advanced GPU features (Phase 6):** ray tracing, mesh shaders,
+  variable-rate shading, sparse resources, multiview, and extended queries
+  (#75-#101). These need hardware that supports them.
+- **Hardening and optimization (Phase 7):** asynchronous submission,
+  allocation and memory optimization, object reuse, conformance harness,
+  benchmarks, provenance, and backend promotion (#102-#128).
+
+Correctness problems found in the baseline backends (lifetime,
+synchronization, presentation) are fixed as active work, not deferred.
+
+The phase sections below remain the full record of what is done and what is
+outstanding.
+
 ## Phase 0: Restore Baseline And Project Truth — Complete
 
 - [x] #26 restore warning-clean package, macOS, Ubuntu, and Windows CI.
@@ -110,8 +169,8 @@ Tracked by #33.
   compute pipelines through #49-#50.
 - [x] Complete D3D12 synchronization, barrier, and query paths through #51.
 - [x] Complete D3D12 DXGI presentation through #52.
-- [ ] Complete Vulkan baseline capability and Linux, Windows, Android, and
-  MoltenVK platform lanes through #53-#59.
+- [ ] Complete Vulkan baseline capability and Linux, Windows, and MoltenVK
+  platform lanes through #53-#58; Android (#59) is deferred.
   - [x] Complete Linux Vulkan ShaderPackage bindings and graphics/compute
     pipelines with deterministic native output through #53.
   - [x] Complete Vulkan queue discovery, synchronization, barriers, and query
@@ -119,23 +178,24 @@ Tracked by #33.
   - [x] Complete host-owned Linux XCB surfaces, native acquire/present, exact
     swapchain readback, and resize recreation through #57.
 - [ ] Complete OpenGL/OpenGL ES resources, pipelines, synchronization, and
-  desktop/Android presentation through #60-#64.
+  desktop presentation through #60-#63; Android GLES (#64) is deferred.
   - [x] Complete shared GL-family resources and transfers with separate desktop
     GL/GLES capability and KHR_debug evidence through #60.
   - [x] Complete reflected native GLSL bindings and expanded graphics, with
     desktop GL compute/indirect/MSAA and explicit GLES 3.0 gates through #62;
     Build `40230852839` proves exact native output without changing maturity.
-- [ ] Complete WebGPU and WebGL2 runtime, rendering, browser presentation, and
-  recovery through #65-#68 and #70.
-- [ ] Complete Metal macOS conformance plus Apple cross-build and runtime
-  evidence through #69 and #71-#72.
-- [ ] Close the phase only through the evidence audit in #74.
+- [ ] Deferred: WebGPU and WebGL2 runtime, rendering, browser presentation,
+  and recovery through #65-#68 and #70.
+- [ ] Complete Metal macOS conformance through #69; Apple cross-build and
+  runtime evidence (#71-#72) is deferred.
+- [ ] Close the phase only through the evidence audit in #74, scoped to the
+  current priorities with deferred rows recorded truthfully.
 
 Every backend-platform pair advances from `source_only` through `supported`
 only when it meets the published evidence gate. Unsupported features fail
 explicitly and remain visible in capabilities.
 
-## Phase 6: Advanced Capability Tracks — Pending
+## Phase 6: Advanced Capability Tracks — Deferred
 
 Tracked by #34.
 
@@ -154,7 +214,7 @@ Each subsystem has a distinct capability contract and native conformance suite.
 Standard/KHR/ARB GL-family features may participate; vendor-only extensions are
 deferred.
 
-## Phase 7: Harden, Package, And Promote — Pending
+## Phase 7: Harden, Package, And Promote — Deferred
 
 Tracked by #35.
 
@@ -177,7 +237,8 @@ at the same time.
 ## Beyond RHI 1 — Not Yet Scheduled
 
 These directions are recorded in `docs/architecture.md` and have no issues or
-sequence commitment yet beyond full RHI, then Renderer, then Engine:
+sequence commitment yet. The Renderer is a likely candidate after the Metal,
+Vulkan, and OpenGL baseline, but that order is not decided:
 
 - Renderer growth above the full RHI, plus the optional EnCom–Renderer
   integration.
