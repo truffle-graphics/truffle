@@ -48,6 +48,13 @@ void set_vulkan_present_fault_for_testing(VulkanPresentFault fault) noexcept {
     gVulkanPresentFaultForTesting.store(fault);
 }
 
+std::atomic<VulkanValidationState> gVulkanValidationState{
+    VulkanValidationState::not_requested};
+
+VulkanValidationState last_vulkan_validation_state_for_testing() noexcept {
+    return gVulkanValidationState.load();
+}
+
 } // namespace detail
 
 namespace {
@@ -5491,6 +5498,21 @@ void prepare_vulkan_binding_images(VulkanContext& context,
 
     auto context = std::make_shared<VulkanContext>();
     auto result = vkCreateInstance(&instanceInfo, nullptr, &context->instance);
+    auto validationState =
+        !desc.enableValidation ? detail::VulkanValidationState::not_requested
+        : layers.empty()       ? detail::VulkanValidationState::not_installed
+                               : detail::VulkanValidationState::active;
+    if (result == VK_ERROR_LAYER_NOT_PRESENT && !layers.empty()) {
+        // An enumerated layer whose library cannot load (for example a
+        // manifest naming a dylib outside the dyld search path) is not
+        // available; validation stays optional, so create without it.
+        auto withoutLayers = instanceInfo;
+        withoutLayers.enabledLayerCount = 0;
+        withoutLayers.ppEnabledLayerNames = nullptr;
+        result = vkCreateInstance(&withoutLayers, nullptr, &context->instance);
+        validationState = detail::VulkanValidationState::failed_to_load;
+    }
+    detail::gVulkanValidationState.store(validationState);
     if (result != VK_SUCCESS) {
         return vulkan_failure(StatusCode::unavailable,
                               "Vulkan instance creation failed", result);
@@ -5795,9 +5817,8 @@ Result<Instance> create_vulkan_instance(const InstanceDesc& desc) {
     detail::FoundationBackendConfig config;
     config.kind = BackendKind::vulkan;
     config.platform = host_platform();
-    // macOS/MoltenVK stays source_only until a Khronos validation run exists;
-    // the native_smoke gate requires validation evidence.
-    config.maturity = host_platform() == PlatformKind::linux_host
+    config.maturity = host_platform() == PlatformKind::linux_host ||
+                              host_platform() == PlatformKind::macos
                           ? BackendMaturity::native_smoke
                           : BackendMaturity::source_only;
     config.adapterName = std::move(native.adapterName);

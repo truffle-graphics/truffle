@@ -105,11 +105,21 @@ setup, not immediate work. No issue labels or hosted workflows change.
   fixed an infinite acquire wait on MoltenVK's small swapchain.
 - Evidence (2026-10-29, Apple M3 Pro, macOS 27.0.1, Homebrew MoltenVK 1.4.2,
   loader 1.4.363.0): all 26 ctests pass, including `truffle_vulkan_tests`
-  (no `DYLD_*` variable needed). `D24_UNORM_S8_UINT` is unsupported on Apple
+  (the loader itself needs no `DYLD_*` variable). `D24_UNORM_S8_UINT` is unsupported on Apple
   GPUs and returns `unsupported`; the test falls back to `D32_SFLOAT_S8_UINT`.
-- No Khronos validation layer is installed, so the macOS row stays
-  `source_only` with compile/smoke/presentation evidence only. Still open in
-  #56: validated run, iOS-family cross-builds, pinned/packaged MoltenVK
+- Validation (2026-10-30): with Homebrew `vulkan-validationlayers` 1.4.363.0
+  the suite reports zero validation messages, also with
+  `VK_LAYER_VALIDATE_SYNC=1`. The macOS row is now `native_smoke` (compile,
+  smoke, validation, presentation). The macOS ctest sets
+  `DYLD_FALLBACK_LIBRARY_PATH` to the found loader directory, because the
+  Homebrew layer manifest uses a bare dylib name. It fails on
+  `Validation (Error|Warning)` output. Before this, an enumerated layer that
+  could not load made instance creation fail, so default
+  (`enableValidation = true`) apps and `truffle-rhi-doctor --strict` lost
+  Vulkan entirely. The backend now retries without the layer on
+  `VK_ERROR_LAYER_NOT_PRESENT`, and the macOS test fails on that state via a
+  private test hook.
+- Still open in #56: iOS-family cross-builds, pinned/packaged MoltenVK
   isolation, and Intel Macs (all on the roadmap pending-verification list).
 
 ## Module Taxonomy Update (#161)

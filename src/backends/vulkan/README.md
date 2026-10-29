@@ -81,9 +81,16 @@ ctest --test-dir build/vulkan --output-on-failure
 `CAMetalLayer` presentation proof (exact readback before present and after a
 64x48 to 80x60 resize, then status/fault paths). Apple GPUs do not support
 `D24_UNORM_S8_UINT`; texture creation returns `unsupported` and the test uses
-`D32_SFLOAT_S8_UINT`. No Khronos validation layer was installed, so macOS stays
-`source_only` with compile, smoke, and presentation evidence until a validated
-run exists. iOS-family targets remain `source_only`.
+`D32_SFLOAT_S8_UINT`. The suite is clean under Homebrew
+`VK_LAYER_KHRONOS_validation` 1.4.363.0 (2026-10-30), also with
+`VK_LAYER_VALIDATE_SYNC=1`, so macOS is `native_smoke`. The ctest fails on any
+`Validation Error`/`Validation Warning` output, and it sets
+`DYLD_FALLBACK_LIBRARY_PATH` to the host loader directory because Homebrew's
+layer manifest names its dylib without a path. If an enumerated layer cannot
+load, the backend creates the instance without it, because validation is
+optional and a broken layer must not make Vulkan unavailable. The macOS test
+fails in that case, so validation evidence is never dropped silently. iOS-family targets remain
+`source_only`.
 
 Injected `suboptimal`/`out_of_date` present results still present the image
 natively before reporting the status, so fault tests never leave a swapchain

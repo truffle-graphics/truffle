@@ -10,6 +10,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -61,9 +62,7 @@ void verify_vulkan_buffers() {
     const auto info = adapter.info();
     assert(info.backend == rhi::BackendKind::vulkan);
     assert(info.platform == rhi::host_platform());
-    assert(info.maturity == (rhi::host_platform() == rhi::PlatformKind::linux_host
-                                 ? rhi::BackendMaturity::native_smoke
-                                 : rhi::BackendMaturity::source_only));
+    assert(info.maturity == rhi::BackendMaturity::native_smoke);
     assert(info.native && !info.validationOnly);
     assert(info.resources.bufferViews);
     assert(info.resources.bufferCopy);
@@ -2247,6 +2246,21 @@ int main() {
         assert(adapter.value().info().backend ==
                truffle::rhi::BackendKind::vulkan);
     }
+#if defined(TRUFFLE_VULKAN_TEST_METAL_LAYER)
+    // A missing layer is an optional host prerequisite; an installed layer
+    // that cannot load would silently drop validation evidence.
+    const auto validation =
+        truffle::rhi::detail::last_vulkan_validation_state_for_testing();
+    if (validation ==
+        truffle::rhi::detail::VulkanValidationState::failed_to_load) {
+        std::fprintf(stderr, "VK_LAYER_KHRONOS_validation failed to load\n");
+        return 1;
+    }
+    if (validation ==
+        truffle::rhi::detail::VulkanValidationState::not_installed) {
+        std::fprintf(stderr, "note: running without VK_LAYER_KHRONOS_validation\n");
+    }
+#endif
 #if defined(TRUFFLE_VULKAN_TEST_METAL_LAYER)
     verify_vulkan_buffers();
     verify_vulkan_presentation();

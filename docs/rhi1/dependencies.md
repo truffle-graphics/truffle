@@ -46,8 +46,12 @@ as an unused framework.
   `/opt/homebrew/lib/libvulkan.1.dylib` and then
   `/usr/local/lib/libvulkan.1.dylib` after volk's default search fails;
   `DYLD_FALLBACK_LIBRARY_PATH` or an SDK install also works. Khronos
-  validation layers (`vulkan-validationlayers`) are optional and were not
-  present for the first macOS run.
+  validation layers are optional at runtime; the `native_smoke` evidence used
+  Homebrew `vulkan-validationlayers` 1.4.363.0. Its manifest names
+  `libVkLayer_khronos_validation.dylib` without a path, so the loader cannot
+  load the layer unless dyld can search the Homebrew prefix. The macOS Vulkan
+  ctest therefore sets `DYLD_FALLBACK_LIBRARY_PATH` to the directory of the
+  host loader that CMake finds; direct runs need the same variable.
 - D3D12 uses the Windows SDK and DXGI; D3D12 Memory Allocator and an optional
   pinned Agility SDK runtime are backend-local.
 - WebGPU uses pinned Emdawnwebgpu/Dawn components only when that backend is
