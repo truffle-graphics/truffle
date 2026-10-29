@@ -9,11 +9,12 @@ rather than growing a historical transcript here.
 
 ## Current Focus
 
-#161 reconciles docs and module names with the agreed architecture: Truffle is
-a modular graphics framework of independently usable libraries; Render,
-ECS and Scene become Renderer, EnCom and EnComRenderer. Truffle Base (#159)
-and the local-first workflow (#131) remain in effect. Further engine work
-follows the next dependency-ready focused issue under #33.
+Truffle has no consumers yet, so #163 removed backward-compatibility and
+migration scaffolding (README migration tables and the unused API
+compatibility/deprecation helpers). Module names follow #161 (Renderer, EnCom,
+EnComRenderer) and #159 (Base). The local-first workflow (#131) remains in
+effect. Further engine work follows the next dependency-ready focused issue
+under #33.
 
 ## Module Taxonomy Update (#161)
 
@@ -22,20 +23,15 @@ follows the next dependency-ready focused issue under #33.
   (planned) → Renderer without EnCom; Assets deferred with name/design
   undecided; Simple RHI and a windowing convenience deferred; shaderc and
   rhi-doctor are developer tools, not modules.
-- All FrameKit references are removed; no application-framework dependency is
-  planned.
-- No behavior, dependency direction, or version changed in the docs commit.
-- Renames: `truffle_renderer`/`Truffle::Renderer`/`truffle::renderer`,
-  `truffle_encom`/`Truffle::EnCom`/`truffle::encom`, and
-  `truffle_encom_renderer`/`Truffle::EnComRenderer`/`truffle::encom_renderer`
-  with `EnComRenderAdapter`/`EnComRenderFrame`. Headers moved to
-  `truffle/renderer/`, `truffle/encom/`, and `truffle/encom_renderer/`; no
-  aliases or forwarding headers. `asset_render` is unchanged.
-- Local evidence: architecture guard 16/18/76 unchanged; fresh lean Debug build
-  with focused EnCom, Renderer, integration, asset-render, diagnostics, Base and
-  version tests plus the installed package consumer passing; install contains
-  only the new headers/libraries. Examples were syntax-checked; the GLFW host
-  window source was not compiled locally.
+- Current names: `truffle_renderer`, `truffle_encom`, `truffle_encom_renderer`
+  with `EnComRenderAdapter`/`EnComRenderFrame`. No aliases or forwarding
+  headers exist.
+
+## Compatibility Scaffolding Removal (#163)
+
+- `truffle/base/version.hpp` keeps only version identity (`ApiVersion`,
+  `kApiVersion`, packing). ADR 0010 is amended.
+- No version, dependency direction, or runtime behavior changed.
 
 ## Delivery Workflow Update
 

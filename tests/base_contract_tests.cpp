@@ -14,7 +14,7 @@ int main() {
 
     static_assert(std::is_same_v<rhi::Status, base::Status>);
     static_assert(std::is_same_v<rhi::Result<int>, base::Result<int>>);
-    static_assert(base::is_api_compatible(base::kApiVersion));
+    static_assert(base::kApiVersionPacked == base::pack_api_version(base::kApiVersion));
 
     struct TestHandleTag {};
     using TestHandle = base::Handle<TestHandleTag>;

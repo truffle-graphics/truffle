@@ -24,8 +24,8 @@ Architecture decisions that need long-term tradeoff history belong here.
   to execute compute and render passes in a unified frame pipeline.
 - `0009-phase-completion-governance.md` defines mandatory implementation,
   testing, CI, and documentation gates before any phase can be marked complete.
-- `0010-api-compatibility-versioning.md` establishes Truffle's code-level API
-  version contract and compatibility semantics used by CI gates.
+- `0010-api-compatibility-versioning.md` defines Truffle's code-level API
+  version identity; compatibility and deprecation helpers were removed (#163).
 - `0011-rhi-1-replacement-contract.md` adopts the breaking RHI 1 object,
   dispatch, result, threading, lifetime, dependency, shader, and evidence-based
   backend maturity direction.

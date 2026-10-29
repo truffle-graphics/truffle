@@ -14,7 +14,8 @@
 int main() {
     static_assert(std::is_default_constructible_v<truffle::base::RuntimeConfig>);
     static_assert(std::is_same_v<truffle::rhi::Status, truffle::base::Status>);
-    static_assert(truffle::base::is_api_compatible(truffle::base::kApiVersion));
+    static_assert(truffle::base::kApiVersionPacked ==
+                  truffle::base::pack_api_version(truffle::base::kApiVersion));
     struct ConsumerHandleTag {};
     static_assert(!truffle::base::Handle<ConsumerHandleTag>{}.valid());
 
