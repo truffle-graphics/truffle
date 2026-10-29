@@ -168,42 +168,6 @@ the public backend/platform matrix and the RHI doctor evidence.
 See `docs/distribution.md` for package generation, install verification, and
 release workflow guidance.
 
-### Base Module Naming Migration
-
-The shared module is now **Truffle Base**, formerly Core, under
-[#159](https://github.com/truffle-graphics/truffle/issues/159).
-
-| Surface | Previous spelling | Current spelling |
-|---|---|---|
-| CMake build target | `truffle_core` | `truffle_base` |
-| Exported CMake target | `Truffle::Core` | `Truffle::Base` |
-| C++ namespace | `truffle::core` | `truffle::base` |
-| Public headers | `truffle/core/*.hpp` | `truffle/base/*.hpp` |
-
-Update consumer references consistently. The former names are not retained as
-aliases or forwarding headers. Behavior, dependency direction, and version
-numbers are unchanged; this migration is part of the current unreleased work.
-Use a fresh install prefix when migrating an existing installation so obsolete
-headers and libraries from the former module are not retained.
-
-### Renderer And EnCom Naming Migration
-
-[#161](https://github.com/truffle-graphics/truffle/issues/161) renames the
-rendering module to **Renderer**, the ECS module to **EnCom** (ENtity
-COMponent), and the scene module to the optional **EnCom–Renderer**
-integration.
-
-| Surface | Previous spelling | Current spelling |
-|---|---|---|
-| CMake build targets | `truffle_render`, `truffle_ecs`, `truffle_scene` | `truffle_renderer`, `truffle_encom`, `truffle_encom_renderer` |
-| Exported CMake targets | `Truffle::Render`, `Truffle::ECS`, `Truffle::Scene` | `Truffle::Renderer`, `Truffle::EnCom`, `Truffle::EnComRenderer` |
-| C++ namespaces | `truffle::render`, `truffle::ecs`, `truffle::scene` | `truffle::renderer`, `truffle::encom`, `truffle::encom_renderer` |
-| Public headers | `truffle/render/`, `truffle/ecs/`, `truffle/scene/scene_adapter.hpp` | `truffle/renderer/`, `truffle/encom/`, `truffle/encom_renderer/encom_render_adapter.hpp` |
-| Integration classes | `SceneAdapter`, `SceneFrame` | `EnComRenderAdapter`, `EnComRenderFrame` |
-
-The same rules apply: no aliases or forwarding headers, unchanged behavior,
-dependency direction, and version, and a fresh install prefix when migrating.
-
 ## Continuity And AI Guidance
 
 Cross-machine working state belongs in [`docs/handoff.md`](docs/handoff.md).

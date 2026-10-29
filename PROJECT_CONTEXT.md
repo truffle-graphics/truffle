@@ -96,18 +96,20 @@ consumer selects concrete loading, upload, and backend behavior.
 
 - Shared status/result, handle, configuration, and version contracts belong to
   Truffle Base: `truffle_base`, `Truffle::Base`, `truffle::base`, and
-  `truffle/base/` headers. Issue #159 records the rename from Core, preserving
-  the existing namespace structure and dependency graph. This is an unreleased
-  naming migration, not a version or release boundary.
+  `truffle/base/` headers (#159).
 - Module taxonomy and names follow #161: Truffle is a "modular graphics
   framework, composed of independently usable libraries". Renderer
   (`truffle_renderer`), EnCom (`truffle_encom`, ENtity COMponent) and the
-  optional EnCom–Renderer integration (`truffle_encom_renderer`) replace the
-  Render, ECS and Scene names. GUI depends on Renderer but not EnCom; Engine
+  optional EnCom–Renderer integration (`truffle_encom_renderer`) are the
+  current module names. GUI depends on Renderer but not EnCom; Engine
   supports a host-owned loop with profiles/runners undecided; Assets is
   deferred with name and design undecided; Simple RHI and a windowing
   convenience are deferred; shaderc and rhi-doctor are tools, not modules.
   Truffle has no planned dependency on any application framework.
+- Truffle has no consumers yet, so it keeps no backward-compatibility,
+  deprecation, or migration scaffolding: no aliases, forwarding headers,
+  shims, migration tables, or API compatibility helpers (#163). Revisit at the
+  first release.
 - Development is local-first under the decision in #131. Git Flow retains
   `master`, `develop`, feature/fix, release, and hotfix branches with normal
   merge commits. Hosted builds/releases are explicit manual opt-ins, not
