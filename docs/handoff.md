@@ -25,6 +25,17 @@ follows the next dependency-ready focused issue under #33.
 - All FrameKit references are removed; no application-framework dependency is
   planned.
 - No behavior, dependency direction, or version changed in the docs commit.
+- Renames: `truffle_renderer`/`Truffle::Renderer`/`truffle::renderer`,
+  `truffle_encom`/`Truffle::EnCom`/`truffle::encom`, and
+  `truffle_encom_renderer`/`Truffle::EnComRenderer`/`truffle::encom_renderer`
+  with `EnComRenderAdapter`/`EnComRenderFrame`. Headers moved to
+  `truffle/renderer/`, `truffle/encom/`, and `truffle/encom_renderer/`; no
+  aliases or forwarding headers. `asset_render` is unchanged.
+- Local evidence: architecture guard 16/18/76 unchanged; fresh lean Debug build
+  with focused EnCom, Renderer, integration, asset-render, diagnostics, Base and
+  version tests plus the installed package consumer passing; install contains
+  only the new headers/libraries. Examples were syntax-checked; the GLFW host
+  window source was not compiled locally.
 
 ## Delivery Workflow Update
 

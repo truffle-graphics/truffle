@@ -2,9 +2,9 @@
 
 #include "host_window.hpp"
 
-#include "truffle/render/renderer.hpp"
+#include "truffle/renderer/renderer.hpp"
 #include "truffle/rhi/null_backend.hpp"
-#include "truffle/scene/scene_adapter.hpp"
+#include "truffle/encom_renderer/encom_render_adapter.hpp"
 
 #ifdef __APPLE__
 #include "truffle/rhi/metal_backend.hpp"
@@ -46,7 +46,7 @@ constexpr rhi::Extent2D kSmokeResizeExtent{1280, 720};
     return 1;
 }
 
-[[nodiscard]] bool has_shape(const scene::SceneFrame& frame, FrameShape shape) {
+[[nodiscard]] bool has_shape(const encom_renderer::EnComRenderFrame& frame, FrameShape shape) {
     return frame.cameras.size() == shape.cameras &&
            frame.lights.size() == shape.lights &&
            frame.meshBatches.size() == shape.meshBatches;
@@ -107,7 +107,7 @@ public:
 
         workspace_->build_scene(world_);
         systems_ = workspace_->systems();
-        renderer_ = std::make_unique<render::Renderer>(device_);
+        renderer_ = std::make_unique<renderer::Renderer>(device_);
         extent_ = extent;
         return base::Status::success();
     }
@@ -131,9 +131,9 @@ public:
                 base::StatusCode::invalid_state,
                 "workspace extracted frame shape changed");
         }
-        render::FrameGraph graph;
-        graph.add_node(std::make_unique<render::RenderPassNode>(
-            true, std::vector<render::RenderBatch>(frame.meshBatches.begin(),
+        renderer::FrameGraph graph;
+        graph.add_node(std::make_unique<renderer::RenderPassNode>(
+            true, std::vector<renderer::RenderBatch>(frame.meshBatches.begin(),
                                                    frame.meshBatches.end())));
         if (auto status = renderer_->render(graph, &swapchain_); !status.ok()) {
             return status;
@@ -174,11 +174,11 @@ private:
     rhi::Device device_;
     rhi::Surface surface_;
     rhi::Swapchain swapchain_;
-    ecs::World world_;
-    std::vector<ecs::World::System> systems_;
-    scene::SceneAdapter sceneAdapter_;
+    encom::World world_;
+    std::vector<encom::World::System> systems_;
+    encom_renderer::EnComRenderAdapter sceneAdapter_;
     rhi::UploadRing ring_;
-    std::unique_ptr<render::Renderer> renderer_;
+    std::unique_ptr<renderer::Renderer> renderer_;
     rhi::Extent2D extent_;
     std::uint32_t renderedFrames_ = 0;
 };

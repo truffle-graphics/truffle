@@ -1,10 +1,10 @@
-#include "truffle/render/pipeline_cache.hpp"
-#include "truffle/render/renderer.hpp"
+#include "truffle/renderer/pipeline_cache.hpp"
+#include "truffle/renderer/renderer.hpp"
 
 #include <array>
 #include <string>
 
-namespace truffle::render {
+namespace truffle::renderer {
 namespace {
 
 base::Status validate_render_batch_bindings(const RenderBatch& batch,
@@ -402,4 +402,4 @@ base::Status Renderer::render(const FrameGraph& graph, rhi::Swapchain* swapchain
     return base::Status::success();
 }
 
-} // namespace truffle::render
+} // namespace truffle::renderer

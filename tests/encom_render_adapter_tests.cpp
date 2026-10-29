@@ -1,9 +1,9 @@
 #include "test_support.hpp"
 #include "rhi_test_utils.hpp"
-#include "truffle/render/renderer.hpp"
-#include "truffle/render/frame_graph.hpp"
+#include "truffle/renderer/renderer.hpp"
+#include "truffle/renderer/frame_graph.hpp"
 #include "truffle/rhi/null_backend.hpp"
-#include "truffle/scene/scene_adapter.hpp"
+#include "truffle/encom_renderer/encom_render_adapter.hpp"
 
 int main() {
     // --- Setup backend, device, and upload ring ---
@@ -13,29 +13,29 @@ int main() {
     TRUFFLE_CHECK(ringResult.ok());
     auto ring = std::move(ringResult).value();
 
-    // --- Populate ECS world ---
-    truffle::ecs::World world;
+    // --- Populate EnCom world ---
+    truffle::encom::World world;
 
     const auto cam = world.create();
-    world.emplace<truffle::render::Transform>(cam);
-    world.emplace<truffle::render::Camera>(
-        cam, truffle::render::Camera{1.0472F, 1.5708F, 0.1F, 5000.0F, 1.7778F});
+    world.emplace<truffle::renderer::Transform>(cam);
+    world.emplace<truffle::renderer::Camera>(
+        cam, truffle::renderer::Camera{1.0472F, 1.5708F, 0.1F, 5000.0F, 1.7778F});
 
     const auto light = world.create();
-    world.emplace<truffle::render::Transform>(light);
-    world.emplace<truffle::render::Light>(
-        light, truffle::render::Light{2.0F, 200.0F, {1.0F, 0.9F, 0.8F}});
+    world.emplace<truffle::renderer::Transform>(light);
+    world.emplace<truffle::renderer::Light>(
+        light, truffle::renderer::Light{2.0F, 200.0F, {1.0F, 0.9F, 0.8F}});
 
     // Three mesh instances
     for (int i = 0; i < 3; ++i) {
         const auto mesh = world.create();
-        world.emplace<truffle::render::Transform>(mesh);
-        world.emplace<truffle::render::MeshRenderer>(
-            mesh, truffle::render::MeshRenderer{1, 0, 6, 0});
+        world.emplace<truffle::renderer::Transform>(mesh);
+        world.emplace<truffle::renderer::MeshRenderer>(
+            mesh, truffle::renderer::MeshRenderer{1, 0, 6, 0});
     }
 
-    // --- Extract via SceneAdapter ---
-    truffle::scene::SceneAdapter adapter;
+    // --- Extract via EnComRenderAdapter ---
+    truffle::encom_renderer::EnComRenderAdapter adapter;
     auto frame = adapter.extract(world, ring);
 
     TRUFFLE_CHECK(frame.cameras.size() == 1);
@@ -51,7 +51,7 @@ int main() {
     TRUFFLE_CHECK(batch.bindings[0].size == 3 * 64);
 
     // --- Render the extracted batches ---
-    TRUFFLE_CHECK(truffle::render::Renderer{context.device}.render([&]() { truffle::render::FrameGraph fg; fg.add_node(std::make_unique<truffle::render::RenderPassNode>(true, frame.meshBatches)); return fg; }()).ok());
+    TRUFFLE_CHECK(truffle::renderer::Renderer{context.device}.render([&]() { truffle::renderer::FrameGraph fg; fg.add_node(std::make_unique<truffle::renderer::RenderPassNode>(true, frame.meshBatches)); return fg; }()).ok());
     TRUFFLE_CHECK(context.instance.stats().drawsRecorded == 1);
     TRUFFLE_CHECK(context.instance.stats().submissions == 1);
 

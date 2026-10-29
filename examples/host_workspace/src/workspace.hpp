@@ -1,6 +1,6 @@
 #pragma once
 
-#include "truffle/ecs/world.hpp"
+#include "truffle/encom/world.hpp"
 
 #include <cstddef>
 #include <memory>
@@ -13,7 +13,7 @@ namespace truffle::examples::host_workspace {
 struct FrameShape {
     std::size_t cameras     = 0;
     std::size_t lights      = 0;
-    std::size_t meshBatches = 0; // batches produced by SceneAdapter (not per-entity)
+    std::size_t meshBatches = 0; // batches produced by EnComRenderAdapter (not per-entity)
 };
 
 enum class WorkspaceKind {
@@ -27,8 +27,8 @@ public:
     virtual ~IWorkspace() = default;
 
     [[nodiscard]] virtual std::string_view name() const noexcept = 0;
-    virtual void build_scene(ecs::World& world) const = 0;
-    [[nodiscard]] virtual std::vector<ecs::World::System> systems() const = 0;
+    virtual void build_scene(encom::World& world) const = 0;
+    [[nodiscard]] virtual std::vector<encom::World::System> systems() const = 0;
     [[nodiscard]] virtual FrameShape expected_frame_shape() const noexcept = 0;
 };
 

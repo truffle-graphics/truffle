@@ -1,7 +1,7 @@
 #pragma once
 
 #include "truffle/base/status.hpp"
-#include "truffle/ecs/entity.hpp"
+#include "truffle/encom/entity.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -13,7 +13,7 @@
 #include <utility>
 #include <vector>
 
-namespace truffle::ecs {
+namespace truffle::encom {
 
 class World {
 public:
@@ -139,4 +139,4 @@ private:
     std::unordered_map<std::type_index, std::unique_ptr<IStorage>> storages_;
 };
 
-} // namespace truffle::ecs
+} // namespace truffle::encom

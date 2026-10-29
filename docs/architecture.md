@@ -139,7 +139,7 @@ ingestion lane, not a requirement for RHI or renderer consumers.
 
 ```text
 ECS extraction
-  ecs::World -> SceneAdapter -> RenderBatch[]
+  encom::World -> EnComRenderAdapter -> RenderBatch[]
 
 Caller-owned bulk data
   typed arrays / streams -> upload allocation -> RenderBatch[]

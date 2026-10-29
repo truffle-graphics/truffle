@@ -77,7 +77,7 @@ Current evidence is narrower than the old roadmap claimed:
 
 `truffle_base` supplies shared primitives. `truffle_rhi` defines the one
 canonical backend-neutral graphics contract; `truffle_backend_*` modules own
-backend implementation. Rendering, assets, scene extraction, and diagnostics
+backend implementation. Renderer, assets, EnCom, EnCom–Renderer integration, and diagnostics
 remain independently linkable. Consumers can work directly with RHI, with
 Renderer batches, or with the optional EnCom–Renderer integration.
 

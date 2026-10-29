@@ -1,6 +1,6 @@
-add_executable(truffle_ecs_tests ecs_contract_tests.cpp)
-target_link_libraries(truffle_ecs_tests PRIVATE truffle_ecs)
-add_test(NAME truffle_ecs_tests COMMAND truffle_ecs_tests)
+add_executable(truffle_encom_tests encom_contract_tests.cpp)
+target_link_libraries(truffle_encom_tests PRIVATE truffle_encom)
+add_test(NAME truffle_encom_tests COMMAND truffle_encom_tests)
 
 add_executable(truffle_assets_tests asset_declaration_tests.cpp)
 target_link_libraries(truffle_assets_tests PRIVATE truffle_assets)
@@ -21,16 +21,16 @@ target_link_libraries(truffle_rhi_binding_pipeline_tests
 add_test(NAME truffle_rhi_binding_pipeline_tests
          COMMAND truffle_rhi_binding_pipeline_tests)
 
-add_executable(truffle_render_tests render_flow_tests.cpp)
-target_link_libraries(truffle_render_tests PRIVATE truffle_backend_null truffle_render)
-add_test(NAME truffle_render_tests COMMAND truffle_render_tests)
+add_executable(truffle_renderer_tests render_flow_tests.cpp)
+target_link_libraries(truffle_renderer_tests PRIVATE truffle_backend_null truffle_renderer)
+add_test(NAME truffle_renderer_tests COMMAND truffle_renderer_tests)
 
 add_executable(truffle_advanced_render_flow_tests advanced_render_flow_tests.cpp)
-target_link_libraries(truffle_advanced_render_flow_tests PRIVATE truffle_backend_null truffle_render)
+target_link_libraries(truffle_advanced_render_flow_tests PRIVATE truffle_backend_null truffle_renderer)
 add_test(NAME truffle_advanced_render_flow_tests COMMAND truffle_advanced_render_flow_tests)
 
 add_executable(truffle_render_batch_tests render_batch_tests.cpp)
-target_link_libraries(truffle_render_batch_tests PRIVATE truffle_render)
+target_link_libraries(truffle_render_batch_tests PRIVATE truffle_renderer)
 add_test(NAME truffle_render_batch_tests COMMAND truffle_render_batch_tests)
 
 add_executable(truffle_asset_render_tests asset_render_plan_tests.cpp)
@@ -38,7 +38,7 @@ target_link_libraries(truffle_asset_render_tests PRIVATE truffle_asset_render)
 add_test(NAME truffle_asset_render_tests COMMAND truffle_asset_render_tests)
 
 add_executable(truffle_frame_graph_dependency_tests frame_graph_dependency_tests.cpp)
-target_link_libraries(truffle_frame_graph_dependency_tests PRIVATE truffle_backend_null truffle_render)
+target_link_libraries(truffle_frame_graph_dependency_tests PRIVATE truffle_backend_null truffle_renderer)
 add_test(NAME truffle_frame_graph_dependency_tests COMMAND truffle_frame_graph_dependency_tests)
 
 add_executable(truffle_diagnostics_tests diagnostics_tests.cpp)
@@ -49,13 +49,13 @@ add_executable(truffle_frame_ring_tests frame_ring_tests.cpp)
 target_link_libraries(truffle_frame_ring_tests PRIVATE truffle_backend_null)
 add_test(NAME truffle_frame_ring_tests COMMAND truffle_frame_ring_tests)
 
-add_executable(truffle_scene_adapter_tests scene_adapter_tests.cpp)
-target_link_libraries(truffle_scene_adapter_tests PRIVATE truffle_scene truffle_backend_null)
-add_test(NAME truffle_scene_adapter_tests COMMAND truffle_scene_adapter_tests)
+add_executable(truffle_encom_render_adapter_tests encom_render_adapter_tests.cpp)
+target_link_libraries(truffle_encom_render_adapter_tests PRIVATE truffle_encom_renderer truffle_backend_null)
+add_test(NAME truffle_encom_render_adapter_tests COMMAND truffle_encom_render_adapter_tests)
 
 if(TRUFFLE_BUILD_BACKEND_METAL)
     add_executable(truffle_metal_tests metal_backend_tests.cpp)
-    target_link_libraries(truffle_metal_tests PRIVATE truffle_backend_metal truffle_render)
+    target_link_libraries(truffle_metal_tests PRIVATE truffle_backend_metal truffle_renderer)
     add_test(NAME truffle_metal_tests COMMAND truffle_metal_tests)
     set_tests_properties(truffle_metal_tests PROPERTIES
                          LABELS "native-smoke;validation")
@@ -286,5 +286,5 @@ if(TRUFFLE_INSTALL)
 endif()
 
 add_executable(truffle_transform_compute_tests transform_compute_tests.cpp)
-target_link_libraries(truffle_transform_compute_tests PRIVATE truffle_backend_null truffle_render)
+target_link_libraries(truffle_transform_compute_tests PRIVATE truffle_backend_null truffle_renderer)
 add_test(NAME truffle_transform_compute_tests COMMAND truffle_transform_compute_tests)

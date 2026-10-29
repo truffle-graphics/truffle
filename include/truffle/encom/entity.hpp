@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <limits>
 
-namespace truffle::ecs {
+namespace truffle::encom {
 
 struct Entity {
     static constexpr std::uint32_t invalid_index =
@@ -19,5 +19,5 @@ struct Entity {
     friend constexpr bool operator==(Entity, Entity) = default;
 };
 
-} // namespace truffle::ecs
+} // namespace truffle::encom
 

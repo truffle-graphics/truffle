@@ -1,13 +1,13 @@
 #pragma once
 
-#include "truffle/render/render_batch.hpp"
+#include "truffle/renderer/render_batch.hpp"
 #include "truffle/rhi/rhi.hpp"
 
 #include <memory>
 #include <unordered_map>
 #include <vector>
 
-namespace truffle::render {
+namespace truffle::renderer {
 
 // ---------------------------------------------------------------------------
 // ShaderBinding — vertex/fragment shader pair for one material
@@ -122,4 +122,4 @@ private:
     std::unordered_map<CacheKey, rhi::Pipeline, CacheKeyHash> pipelines_;
 };
 
-} // namespace truffle::render
+} // namespace truffle::renderer

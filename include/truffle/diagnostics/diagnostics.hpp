@@ -3,9 +3,9 @@
 #include "truffle/asset_render/asset_render.hpp"
 #include "truffle/assets/assets.hpp"
 #include "truffle/base/status.hpp"
-#include "truffle/render/frame_graph.hpp"
-#include "truffle/render/render_batch.hpp"
-#include "truffle/render/renderer.hpp"
+#include "truffle/renderer/frame_graph.hpp"
+#include "truffle/renderer/render_batch.hpp"
+#include "truffle/renderer/renderer.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -15,7 +15,7 @@
 namespace truffle::diagnostics {
 
 struct ChannelSummary {
-    render::ChannelKind kind = render::ChannelKind::Transform;
+    renderer::ChannelKind kind = renderer::ChannelKind::Transform;
     std::uint32_t       binding = 0;
     std::uint32_t       offset  = 0;
     std::uint32_t       stride  = 0;
@@ -41,11 +41,11 @@ struct RenderBatchSummary {
     std::string          name;
     std::uint32_t        instanceCount = 0;
     std::uint32_t        vertexCount   = 0;
-    render::MaterialId   material      = 0;
+    renderer::MaterialId   material      = 0;
     std::size_t          variantHash   = 0;
-    render::DrawKind     drawKind      = render::DrawKind::Direct;
+    renderer::DrawKind     drawKind      = renderer::DrawKind::Direct;
     std::size_t          layoutHash    = 0;
-    render::BindingModel bindingModel  = render::BindingModel::Separate;
+    renderer::BindingModel bindingModel  = renderer::BindingModel::Separate;
     std::vector<ChannelSummary> channels;
     std::vector<BufferBindingSummary> bindings;
     std::size_t totalBindingBytes = 0;
@@ -59,7 +59,7 @@ struct AssetRenderAttributeSummary {
     assets::AttributeSemantic semantic = assets::AttributeSemantic::Custom;
     assets::AttributeFormat format = assets::AttributeFormat::Float32;
     std::string name;
-    render::ChannelKind channel = render::ChannelKind::CustomFloat4;
+    renderer::ChannelKind channel = renderer::ChannelKind::CustomFloat4;
     std::uint32_t binding = 0;
     std::uint32_t offset = 0;
     std::uint32_t stride = 0;
@@ -78,8 +78,8 @@ struct AssetRenderBatchPlanSummary {
     assets::AssetId material;
     std::uint32_t instanceCount = 0;
     std::uint32_t vertexCount = 0;
-    render::DrawKind drawKind = render::DrawKind::Direct;
-    render::BindingModel bindingModel = render::BindingModel::Separate;
+    renderer::DrawKind drawKind = renderer::DrawKind::Direct;
+    renderer::BindingModel bindingModel = renderer::BindingModel::Separate;
     std::size_t layoutHash = 0;
     std::size_t variantHash = 0;
     std::vector<AssetRenderAttributeSummary> attributes;
@@ -96,7 +96,7 @@ struct AssetRenderGroupPlanSummary {
 };
 
 struct FrameGraphNodeLabel {
-    render::FrameGraph::NodeId id = 0;
+    renderer::FrameGraph::NodeId id = 0;
     std::string name;
 };
 
@@ -111,9 +111,9 @@ struct FrameGraphInspectionOptions {
 };
 
 struct FrameGraphNodeSummary {
-    render::FrameGraph::NodeId id = 0;
+    renderer::FrameGraph::NodeId id = 0;
     std::string name;
-    render::FrameGraphNodeKind kind = render::FrameGraphNodeKind::Render;
+    renderer::FrameGraphNodeKind kind = renderer::FrameGraphNodeKind::Render;
     bool usesSwapchain = false;
     bool hasExplicitRenderPass = false;
     std::uint32_t renderBatchCount = 0;
@@ -121,20 +121,20 @@ struct FrameGraphNodeSummary {
 };
 
 struct FrameGraphDependencySummary {
-    render::FrameGraph::NodeId before = 0;
-    render::FrameGraph::NodeId after = 0;
+    renderer::FrameGraph::NodeId before = 0;
+    renderer::FrameGraph::NodeId after = 0;
 };
 
 struct FrameGraphResourceUsageSummary {
-    render::FrameGraph::NodeId node = 0;
+    renderer::FrameGraph::NodeId node = 0;
     std::uint64_t resourceId = 0;
-    render::ResourceAccess access = render::ResourceAccess::Read;
+    renderer::ResourceAccess access = renderer::ResourceAccess::Read;
     std::string resourceName;
 };
 
 struct FrameGraphSummary {
     std::vector<FrameGraphNodeSummary> nodes;
-    std::vector<render::FrameGraph::NodeId> executionOrder;
+    std::vector<renderer::FrameGraph::NodeId> executionOrder;
     std::vector<FrameGraphDependencySummary> dependencies;
     std::vector<FrameGraphResourceUsageSummary> resourceUsages;
     std::vector<ResourceLabel> resourceLabels;
@@ -293,7 +293,7 @@ struct AssetCatalogSummary {
 };
 
 struct RenderBatchInspectionTarget {
-    const render::RenderBatch* batch = nullptr;
+    const renderer::RenderBatch* batch = nullptr;
     RenderBatchInspectionOptions options;
 };
 
@@ -301,9 +301,9 @@ struct DiagnosticsBundleOptions {
     const assets::AssetCatalog* assetCatalog = nullptr;
     AssetCatalogInspectionOptions assetCatalogOptions;
     std::vector<RenderBatchInspectionTarget> renderBatches;
-    const render::FrameGraph* frameGraph = nullptr;
+    const renderer::FrameGraph* frameGraph = nullptr;
     FrameGraphInspectionOptions frameGraphOptions;
-    const render::RendererFrameStats* rendererStats = nullptr;
+    const renderer::RendererFrameStats* rendererStats = nullptr;
     const DebugOverlayLayer* debugOverlay = nullptr;
     DebugOverlayInspectionOptions debugOverlayOptions;
     RenderBatchBudget renderBatchBudget;
@@ -329,21 +329,21 @@ struct DiagnosticsBundle {
     const assets::AssetCatalog& catalog,
     const AssetCatalogInspectionOptions& options);
 [[nodiscard]] RenderBatchSummary summarize_render_batch(
-    const render::RenderBatch& batch);
+    const renderer::RenderBatch& batch);
 [[nodiscard]] RenderBatchSummary summarize_render_batch(
-    const render::RenderBatch& batch,
+    const renderer::RenderBatch& batch,
     const RenderBatchInspectionOptions& options);
 [[nodiscard]] AssetRenderBatchPlanSummary summarize_asset_render_batch_plan(
     const asset_render::RenderBatchPlan& plan);
 [[nodiscard]] AssetRenderGroupPlanSummary summarize_asset_render_group_plan(
     const asset_render::AssetGroupRenderPlan& plan);
 [[nodiscard]] base::Result<FrameGraphSummary> summarize_frame_graph(
-    const render::FrameGraph& graph);
+    const renderer::FrameGraph& graph);
 [[nodiscard]] base::Result<FrameGraphSummary> summarize_frame_graph(
-    const render::FrameGraph& graph,
+    const renderer::FrameGraph& graph,
     const FrameGraphInspectionOptions& options);
 [[nodiscard]] RendererStatsSummary summarize_renderer_stats(
-    const render::RendererFrameStats& stats) noexcept;
+    const renderer::RendererFrameStats& stats) noexcept;
 [[nodiscard]] DebugOverlaySummary summarize_debug_overlay(
     const DebugOverlayLayer& layer);
 [[nodiscard]] DebugOverlaySummary summarize_debug_overlay(

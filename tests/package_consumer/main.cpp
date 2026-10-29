@@ -6,7 +6,7 @@
 #include "truffle/base/version.hpp"
 #include "truffle/diagnostics/diagnostics.hpp"
 #include "truffle/rhi/null_backend.hpp"
-#include "truffle/scene/scene_adapter.hpp"
+#include "truffle/encom_renderer/encom_render_adapter.hpp"
 
 #include <type_traits>
 #include <utility>
@@ -40,7 +40,7 @@ int main() {
     truffle::asset_render::RenderBatchPlanOptions planning;
     planning.channelMappings.push_back({
         truffle::assets::AttributeSemantic::Position,
-        truffle::render::ChannelKind::CustomFloat4,
+        truffle::renderer::ChannelKind::CustomFloat4,
     });
     auto plannedBatch =
         truffle::asset_render::plan_render_batch(mesh, material, planning);
@@ -60,12 +60,12 @@ int main() {
     if (!ringResult.ok()) return 1;
     auto ring = std::move(ringResult).value();
 
-    truffle::ecs::World world;
+    truffle::encom::World world;
     const auto e = world.create();
-    world.emplace<truffle::render::Transform>(e);
-    world.emplace<truffle::render::MeshRenderer>(e);
+    world.emplace<truffle::renderer::Transform>(e);
+    world.emplace<truffle::renderer::MeshRenderer>(e);
 
-    truffle::scene::SceneAdapter adapter;
+    truffle::encom_renderer::EnComRenderAdapter adapter;
     auto frame = adapter.extract(world, ring);
     if (frame.meshBatches.size() != 1) return 1;
 

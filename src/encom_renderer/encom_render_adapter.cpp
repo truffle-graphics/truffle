@@ -1,37 +1,37 @@
-#include "truffle/scene/scene_adapter.hpp"
+#include "truffle/encom_renderer/encom_render_adapter.hpp"
 
 #include <algorithm>
 #include <cstring>
 
-namespace truffle::scene {
+namespace truffle::encom_renderer {
 
 namespace {
 
 constexpr std::size_t   kTransformBytes  = 64; // 16 floats × 4 bytes
 constexpr std::uint32_t kTransformStride = 64;
 
-render::InstanceLayout make_transform_layout() {
-    render::InstanceLayout layout;
-    layout.channels.push_back(render::ChannelDesc{
-        .kind    = render::ChannelKind::Transform,
+renderer::InstanceLayout make_transform_layout() {
+    renderer::InstanceLayout layout;
+    layout.channels.push_back(renderer::ChannelDesc{
+        .kind    = renderer::ChannelKind::Transform,
         .binding = 0,
         .offset  = 0,
         .stride  = kTransformStride,
     });
-    layout.bindingModel = render::BindingModel::Separate;
+    layout.bindingModel = renderer::BindingModel::Separate;
     return layout;
 }
 
 } // namespace
 
-SceneFrame SceneAdapter::extract(ecs::World& world,
+EnComRenderFrame EnComRenderAdapter::extract(encom::World& world,
                                   rhi::UploadRing& ring) const {
-    SceneFrame frame;
+    EnComRenderFrame frame;
 
     // --- Cameras ---
-    world.each<render::Transform, render::Camera>(
-        [&frame](ecs::Entity, render::Transform& t, render::Camera& c) {
-            frame.cameras.push_back(SceneFrame::CameraState{
+    world.each<renderer::Transform, renderer::Camera>(
+        [&frame](encom::Entity, renderer::Transform& t, renderer::Camera& c) {
+            frame.cameras.push_back(EnComRenderFrame::CameraState{
                 t.worldMatrix,
                 c.verticalFieldOfViewRadians,
                 c.nearPlane,
@@ -41,9 +41,9 @@ SceneFrame SceneAdapter::extract(ecs::World& world,
         });
 
     // --- Lights ---
-    world.each<render::Transform, render::Light>(
-        [&frame](ecs::Entity, render::Transform& t, render::Light& l) {
-            frame.lights.push_back(SceneFrame::LightState{
+    world.each<renderer::Transform, renderer::Light>(
+        [&frame](encom::Entity, renderer::Transform& t, renderer::Light& l) {
+            frame.lights.push_back(EnComRenderFrame::LightState{
                 {t.worldMatrix[12], t.worldMatrix[13], t.worldMatrix[14], 1.0F},
                 l.intensity,
                 l.color,
@@ -54,8 +54,8 @@ SceneFrame SceneAdapter::extract(ecs::World& world,
     std::uint32_t meshCount       = 0;
     std::uint32_t firstVertexCount = 3;
 
-    world.each<render::Transform, render::MeshRenderer>(
-        [&](ecs::Entity, render::Transform&, render::MeshRenderer& m) {
+    world.each<renderer::Transform, renderer::MeshRenderer>(
+        [&](encom::Entity, renderer::Transform&, renderer::MeshRenderer& m) {
             ++meshCount;
             firstVertexCount = m.vertexCount;
         });
@@ -65,19 +65,19 @@ SceneFrame SceneAdapter::extract(ecs::World& world,
         if (alloc.valid()) {
             auto* dst = static_cast<float*>(alloc.mapped);
 
-            world.each<render::Transform, render::MeshRenderer>(
-                [&](ecs::Entity, render::Transform& t, render::MeshRenderer&) {
+            world.each<renderer::Transform, renderer::MeshRenderer>(
+                [&](encom::Entity, renderer::Transform& t, renderer::MeshRenderer&) {
                     std::memcpy(dst, t.worldMatrix.data(), kTransformBytes);
                     dst += 16;
                 });
 
-            render::RenderBatch batch;
+            renderer::RenderBatch batch;
             batch.layout        = make_transform_layout();
             batch.instanceCount = meshCount;
             batch.vertexCount   = firstVertexCount;
             batch.bindings[0]   = {alloc.buffer, alloc.offset,
                                    meshCount * kTransformBytes};
-            batch.kind          = render::DrawKind::Direct;
+            batch.kind          = renderer::DrawKind::Direct;
 
             frame.meshBatches.push_back(std::move(batch));
         }
@@ -86,4 +86,4 @@ SceneFrame SceneAdapter::extract(ecs::World& world,
     return frame;
 }
 
-} // namespace truffle::scene
+} // namespace truffle::encom_renderer

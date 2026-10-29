@@ -22,7 +22,7 @@ public APIs.
 
 ## Consequences
 
-- Future renderer APIs must not require Truffle ECS adoption.
+- Future renderer APIs must not require Truffle EnCom adoption.
 - ECS adapters may optimize extraction, but they cannot be the only path into
   renderer-facing data.
 - Later render-data and frame orchestration work must evaluate dense LiDAR,

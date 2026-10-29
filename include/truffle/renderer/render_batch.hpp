@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace truffle::render {
+namespace truffle::renderer {
 
 using MaterialId = std::uint64_t;
 
@@ -115,4 +115,4 @@ struct RenderBatch {
     BufferView uniformBuffer;
 };
 
-} // namespace truffle::render
+} // namespace truffle::renderer

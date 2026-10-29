@@ -18,7 +18,7 @@ Introduce a minimal `FrameGraph` data structure describing a sequence of compute
 1. **`IFrameGraphNode` Interface**: Base interface for any pass recorded in the frame.
 2. **`ComputePassNode`**: A concrete node that accepts a `TransformComputePassDesc` and an associated `TransformComputePass` to dispatch before fragment work.
 3. **`RenderPassNode`**: A concrete node defining a single native `RenderPassDesc` (or resolving to the swapchain) and a vector of `RenderBatch` elements. It models a single topological render phase (e.g., G-Buffer, Opaque, UI).
-4. **`FrameGraph`**: An aggregation of nodes built per frame by the consumer (or SceneAdapter) and submitted to the new `Renderer::execute(const FrameGraph& graph, rhi::ISwapchain* swapchain)` entry point.
+4. **`FrameGraph`**: An aggregation of nodes built per frame by the consumer (or EnComRenderAdapter) and submitted to the new `Renderer::execute(const FrameGraph& graph, rhi::ISwapchain* swapchain)` entry point.
 
 Instead of heavy automatic resource aliasing/virtual resources seen in highly complex AAA engines, this first increment relies on the user (or ECS layer) allocating and binding actual `rhi::ITexture` and `rhi::IBuffer` views. 
 

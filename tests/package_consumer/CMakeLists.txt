@@ -18,9 +18,9 @@ target_link_libraries(
     PRIVATE
         Truffle::Base
         Truffle::Assets
-        Truffle::ECS
+        Truffle::EnCom
         Truffle::RHI
         Truffle::BackendNull
-        Truffle::Render
-        Truffle::Scene
+        Truffle::Renderer
+        Truffle::EnComRenderer
         Truffle::Diagnostics)
