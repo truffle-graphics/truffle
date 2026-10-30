@@ -290,6 +290,12 @@ base::Result<rhi::Pipeline*> PipelineCache::get_or_create(
     return &program.pipeline_;
 }
 
+const rhi::Pipeline* PipelineCache::published(
+    MaterialId material, std::size_t variantHash) const noexcept {
+    const auto found = programs_.find({material, variantHash});
+    return found == programs_.end() ? nullptr : &found->second->pipeline_;
+}
+
 void PipelineCache::invalidate(MaterialId material) {
     std::erase_if(programs_, [material](const auto& entry) {
         return entry.first.material == material;

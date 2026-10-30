@@ -72,7 +72,7 @@ cmake -S . -B build/vulkan -G Ninja -DCMAKE_BUILD_TYPE=Debug \
   -DCMAKE_OSX_SYSROOT="$(xcrun --sdk macosx --show-sdk-path)" \
   -DTRUFFLE_WARNINGS_AS_ERRORS=ON -DTRUFFLE_BUILD_TESTS=ON \
   -DTRUFFLE_BUILD_BACKEND_VULKAN=ON -DTRUFFLE_BUILD_SHADERC=ON \
-  -DTRUFFLE_SHADERC_ENABLE_GLSLANG=ON
+  -DTRUFFLE_SHADER_ENABLE_GLSLANG=ON
 cmake --build build/vulkan
 ctest --test-dir build/vulkan --output-on-failure
 ```

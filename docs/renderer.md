@@ -1,9 +1,11 @@
-# Prepared programs in Renderer (#179)
+# Programs in Renderer (#179, #181)
 
-Renderer depends only on RHI/Base. Prepared **Truffle Shader Packages (TSP)**,
-including `.tsp` files loaded with `rhi::ShaderPackage::load`, are permanent
-first-class inputs. There is no source compiler, EnCom, Assets, GUI, Engine or
-window dependency.
+Renderer depends on Shader, RHI and Base (Renderer → Shader → RHI → Base).
+Prepared **Truffle Shader Packages (TSP)**, including `.tsp` files loaded with
+`rhi::ShaderPackage::load`, are permanent first-class inputs and need no
+compiler. Source programs are compiled in memory through `truffle::shader`
+(see [Source programs](#source-programs-181)). There is no EnCom, Assets, GUI,
+Engine or window dependency.
 
 ## Registration and replacement
 
@@ -117,13 +119,57 @@ follow RHI synchronization rules.
 This is the first independently usable prepared-program Renderer slice, not a
 complete rendering engine. Dynamic graphics-state batches and push-constant TSP
 programs are explicitly unsupported. Low-level owned shader callers must not
-require push constants. Source includes, compilation, dependencies, caching
-compiled results and rebuild policy belong to the separate optional Shader
-module. In #181 Renderer will use the Shader module directly after #178 lands;
-there is no intermediate adapter module. That dependency is not added by #179.
-The same staging/publication boundary accepts the resulting prepared packages.
-The default shaderless Renderer cache remains a Null-validation aid;
-native consumers pass a real `PipelineCache`.
+require push constants. Source includes, compilation, dependencies and caching
+compiled results belong to the Shader module, which Renderer uses directly;
+there is no intermediate adapter module. The default shaderless Renderer cache
+remains a Null-validation aid; native consumers pass a real `PipelineCache`.
+
+## Source programs (#181)
+
+`renderer::SourceProgram` (`truffle/renderer/source_program.hpp`) owns one
+`(material, variantHash)` slot whose program is compiled from source:
+
+```cpp
+shader::Compiler compiler;
+renderer::SourceProgram program(programs, material, state);
+
+renderer::SourceProgramRequest request;
+request.vertex.source = {"fullscreen.vert", vertexText};
+request.fragment.source = {"palette.frag", fragmentText};
+request.fragment.includeRoots = {"shaders/include"};
+request.fragment.defines = {{"PALETTE_ENTRY", "0"}};
+
+// Host-triggered, for example once per frame or after an editor save.
+auto update = program.rebuild(compiler, request);
+if (!update) {
+    log(update.error().message); // last working program is still published
+}
+```
+
+Each `rebuild` compiles exactly the requested stage configurations (only their
+defines, never every permutation) through `shader::Compiler` and consumes the
+`Compilation` packages in memory; there is no subprocess, CLI or disk round
+trip. Includes are re-resolved on every attempt, so an unchanged rebuild is a
+Shader cache hit and reports `published == false` without creating a pipeline,
+while an edited include is a cache miss that is republished. Before staging,
+Renderer checks that each fragment input has a vertex output at the same
+location and type and that each vertex input has a pipeline vertex attribute.
+The result is then staged and committed through the same `PipelineCache` path
+as prepared TSPs, so the binding/layout/attachment contract and native pipeline
+creation are validated. Any failure—compile error, include error, interface
+mismatch, layout mismatch or native pipeline failure—returns the error and
+keeps the last working program; `published_vertex()`/`published_fragment()`
+expose the compilations currently in use. Without a compiler adapter
+(`TRUFFLE_SHADER_ENABLE_GLSLANG=OFF`) `rebuild` returns `unsupported` and
+prepared TSPs keep working.
+
+The host owns the rebuild policy and timing; Shader owns sources, includes,
+compilation and caching; Renderer owns GPU objects, validation and publication.
+There is no OS file watcher, thread or background service. Graphics state is
+fixed per `SourceProgram`; its layout/cache pointers are borrowed for the
+object's lifetime. The first compiler route is GLSL/GLSL ES to SPIR-V, so
+runtime source compilation currently targets Vulkan; Metal consumes prepared
+MSL/metallib TSPs.
 
 ## Evidence and consumer
 
@@ -143,8 +189,25 @@ are retained. A separately recorded old pipeline still submits and produces
 red after its published owner is replaced with green.
 
 The helper `tests/renderer_native_test_utils.hpp` uses only RHI/Renderer and
-explicit attachment/transfer barriers so future Vulkan/GL tests can reuse the
-frame/readback harness; native evidence here is Metal only.
+explicit attachment/transfer barriers and is shared by the Metal and Vulkan
+Renderer tests.
+
+`tests/renderer_source_program_tests.cpp` runs on the Null oracle in every
+build. With compilers disabled it proves `unsupported` and an untouched
+prepared slot. With glslang it covers first publication, cache-hit no-ops,
+republish after invalidation, include changes, interface/attribute/stage/
+layout/include failures that keep the published program, and recovery.
+
+`tests/renderer_vulkan_source_tests.cpp` (built with Vulkan and
+`TRUFFLE_SHADER_ENABLE_GLSLANG=ON`, validation layers required) writes a
+multi-file GLSL program with nested includes, compiles one configured define at
+runtime to SPIR-V and reads back exact 16×16 RGBA8 output: red initial, an
+unchanged cache hit reusing the same pipeline, a red list recorded before an
+include edit still rendering red after the blue rebuild is adopted, then a
+compile error, an interface mismatch and a layout mismatch all keeping blue,
+and recovery to green. Runtime GLSL evidence is Vulkan/MoltenVK only; a
+genuine native pipeline-creation failure is covered by the Metal prepared test,
+not by this Vulkan source test.
 
 ```bash
 cmake -S . -B build/renderer -G Ninja \
@@ -152,12 +215,23 @@ cmake -S . -B build/renderer -G Ninja \
   -DCMAKE_OSX_SYSROOT="$(xcrun --sdk macosx --show-sdk-path)" \
   -DTRUFFLE_WARNINGS_AS_ERRORS=ON -DTRUFFLE_BUILD_TESTS=ON \
   -DTRUFFLE_BUILD_BACKEND_METAL=ON -DTRUFFLE_BUILD_SHADERC=OFF \
-  -DTRUFFLE_SHADERC_ENABLE_GLSLANG=OFF
+  -DTRUFFLE_SHADER_ENABLE_GLSLANG=OFF
 cmake --build build/renderer --parallel 4 --target \
-  truffle_renderer_program_tests truffle_renderer_metal_tests
+  truffle_renderer_program_tests truffle_renderer_source_program_tests \
+  truffle_renderer_metal_tests
 MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 METAL_DEVICE_WRAPPER_TYPE=1 \
   ctest --test-dir build/renderer --output-on-failure \
-  -R '^truffle_renderer_(program|metal)_tests$'
+  -R '^truffle_renderer_(program|source_program|metal)_tests$'
+
+cmake -S . -B build/renderer-shader -G Ninja \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_OSX_SYSROOT="$(xcrun --sdk macosx --show-sdk-path)" \
+  -DTRUFFLE_WARNINGS_AS_ERRORS=ON -DTRUFFLE_BUILD_TESTS=ON \
+  -DTRUFFLE_BUILD_BACKEND_VULKAN=ON -DTRUFFLE_BUILD_BACKEND_METAL=OFF \
+  -DTRUFFLE_SHADER_ENABLE_GLSLANG=ON
+cmake --build build/renderer-shader --parallel 4
+ctest --test-dir build/renderer-shader --output-on-failure \
+  -R '^truffle_renderer_(source_program|vulkan_source)_tests$'
 ```
 
 See [`examples/prepared_renderer`](../examples/prepared_renderer/README.md) for a

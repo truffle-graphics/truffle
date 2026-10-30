@@ -118,6 +118,9 @@ public:
     [[nodiscard]] base::Result<rhi::Pipeline*> get_or_create(
         const InstanceLayout& layout, MaterialId material,
         std::size_t variantHash = 0) override;
+    // Published slot pipeline without render-pass checks, or null. Borrowed as above.
+    [[nodiscard]] const rhi::Pipeline* published(
+        MaterialId material, std::size_t variantHash = 0) const noexcept;
 
     // Removes complete programs; subsequent lookup fails until registration.
     void invalidate(MaterialId material) override;

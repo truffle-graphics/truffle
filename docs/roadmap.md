@@ -19,20 +19,30 @@ See `docs/planning.md` for the durable tracking contract.
 
 ## Current Priorities
 
-Active work is a practical baseline for three backends:
+The practical Apple Silicon backend baseline is established: Metal (#69),
+Vulkan via MoltenVK (#56), and OpenGL 4.1 host-view presentation and
+synchronization (#61/#63 macOS parts). Other-platform verification remains
+non-blocking.
 
-1. **Metal** (macOS) — primary development backend: #69.
-2. **Vulkan** — portable backend; Linux and macOS (MoltenVK, #56) baselines
-   are done. MoltenVK packaging and iOS-family lanes are deferred (#172).
-3. **OpenGL** (desktop) — surfaces/presentation (#61; macOS host-owned
-   `NSView` done) and synchronization, queries, and context ownership (#63;
-   macOS fences, occlusion queries and context ownership done). macOS OpenGL is deprecated and capped
-   at 4.1, so features above 4.1 (such as compute) need another platform.
-4. Offline shader-compiler routes those backends need (#73).
+The next work is parallel Shader and Renderer development:
 
-What follows the baseline is not decided; starting the Renderer is a likely
-candidate. Real use of the RHI is expected to expose gaps, and fixing them is
-active work, not deferred work.
+1. **Shader library (#178):** shared source composition/configuration,
+   optional offline/runtime compilation, reflection, dependencies, caching,
+   and rebuilding, initially using pinned GLSL/GLSL ES to SPIR-V.
+2. **Shader tools (#180):** clients of that library, with Truffle Shader
+   Package (TSP) naming and `.tsp` artifacts. This follows the library API.
+3. **Renderer (#179):** prepared-TSP GPU shader/pipeline ownership and real
+   frame-graph/batch execution. This runs independently of source compilation
+   and does not require EnCom or compiler dependencies.
+4. **Runtime integration (#181):** Renderer uses Shader directly (no adapter
+   module) for on-demand compilation and safe shader rebuild adoption, with
+   native output evidence.
+
+The common compiled-result boundary is the existing RHI ShaderPackage;
+optional runtime compilation additionally uses the Shader request/result
+contract. Neither track waits for every compiler route in #73. Remaining
+languages/targets keep their tracking there. Real Renderer use of the RHI is
+expected to expose gaps, and fixing them is active work, not deferred work.
 
 A practical baseline means resources, shaders, drawing and compute where
 supported, synchronization, presentation, and usable error handling. It does
@@ -247,14 +257,13 @@ RHI 1 is complete when its contract and governance are stable and every target
 has a truthful published maturity state. Not every backend must be `supported`
 at the same time.
 
-## Beyond RHI 1 — Not Yet Scheduled
+## Further Module Work — Not Yet Scheduled
 
 These directions are recorded in `docs/architecture.md` and have no issues or
-sequence commitment yet. The Renderer is a likely candidate after the Metal,
-Vulkan, and OpenGL baseline, but that order is not decided:
+sequence commitment yet beyond the initial Shader/Renderer work above:
 
-- Renderer growth above the full RHI, plus the optional EnCom–Renderer
-  integration.
+- Renderer growth beyond its initial native slice, plus expanded optional
+  EnCom–Renderer integration.
 - Engine with host-owned loop support; profiles and runners undecided.
 - GUI above Renderer, independent of EnCom.
 - Assets module; name and design undecided.

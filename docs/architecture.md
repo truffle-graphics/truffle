@@ -14,7 +14,8 @@ unrelated modules. Truffle is not an application framework.
 4. `truffle_renderer` provides render batches, frame-graph orchestration,
    renderer execution, and pipeline-cache integration without depending on
    EnCom. The Renderer owns GPU resources: buffers, textures, uploads, and
-   their lifetimes.
+   their lifetimes. It uses the Shader module directly; no adapter module
+   sits between them.
 5. `truffle_assets` declares backend-free asset, material, texture, geometry,
    group, and tag metadata (provisional; see Planned Modules).
 6. `truffle_asset_render` validates and maps asset declarations to metadata-only
@@ -25,9 +26,15 @@ unrelated modules. Truffle is not an application framework.
    converts EnCom state into render batches.
 9. `truffle_diagnostics` provides opt-in, pull-based inspection. Runtime
    modules do not depend on it.
+10. The Shader module (`truffle_shader`) provides independently usable
+    source composition, configuration, compilation, reflection, dependency
+    tracking, and compilation-result caching. Its compiler backends are
+    optional build parts inside Shader; without them, prepared packages still
+    work and source-compilation requests report `unsupported`.
 
 Developer tools (`truffle-shaderc`, `truffle-rhi-doctor`) are tools, not
-modules. They depend on RHI and are never runtime dependencies.
+modules. Shader tools use the Shader module; the doctor uses RHI. Neither tool
+is a runtime dependency.
 
 ## Module Dependencies
 
@@ -39,10 +46,17 @@ planned, not implemented.
 (Engine) -.-> EnCom, (GUI), (Assets)
 (GUI) -----> Renderer          (no EnCom dependency; own lightweight hierarchy)
 EnComRenderer --> EnCom, Renderer
-Renderer --> RHI --> Base
+Renderer --> (Shader) --> RHI --> Base
 EnCom ----------------> Base
 backends --> RHI
 ```
+
+Renderer depends on Shader directly. Unlike EnCom, Shader exists to serve
+rendering, so an EnComRenderer-style integration module would add a layer
+without benefit. Compiler toolchains (initially glslang) are optional Shader
+build parts, so Renderer gains no mandatory compiler dependency. RHI does not
+depend on Shader. Shader tooling and runtime clients share compilation
+mechanisms.
 
 EnCom and Renderer are each usable alone. Using both through
 `truffle_encom_renderer` is the intended fastest combination: aligned data
@@ -189,8 +203,9 @@ deferred idea, not a planned RHI 1 module.
 ## Dependency Boundary
 
 Backend-neutral runtime code depends only on C++20 and the standard library.
-Optional backends and shader tools acquire only their own pinned dependencies. Checked-
-out bundled source is the default; configure never downloads source. Platform
+Optional backends and Shader compiler adapters acquire only their own pinned
+dependencies. Checked-out bundled source is the default; configure never
+downloads source. Platform
 SDKs are explicit prerequisites, and expert system-package mode is deliberate
 rather than an implicit fallback.
 
@@ -224,13 +239,58 @@ owning implementation.
 
 ## Shader Boundary
 
-RHI consumes a format-neutral `ShaderPackage`. The optional host-side
-`truffle-shaderc` tool assembles and appends precompiled or backend-native
-variants into deterministic multi-target packages while recording authoring
-language and compiler provenance. A separately enabled, target-private glslang
-dependency adds offline GLSL/GLSL ES to SPIR-V compilation without changing the
-runtime or exported package dependencies. Runtime compilation is optional, and
-target variants must agree on normalized reflection.
+The product/format name is **Truffle Shader Package (TSP)**, with the file
+extension `.tsp`. The C++ type remains `truffle::rhi::ShaderPackage`; the
+namespace already supplies the product name. A TSP can contain compiled
+intermediate/binary code or backend-native source, and can be consumed
+directly in memory rather than through a file.
+
+The accepted architecture separates four responsibilities:
+
+- **Shader library:** reusable source modules, includes/imports, composition,
+  compile-time configuration, source dependency tracking, compilation,
+  reflection, and compilation-result caching. Existing shader languages and
+  their compiler facilities supply language semantics; Truffle does not
+  introduce a shader language. Only requested configurations need compiling.
+- **Shader tools:** offline command-line/build clients of the same library,
+  including package assembly and inspection. Compiler implementations do not
+  belong exclusively to the CLI.
+- **Renderer:** GPU shader/program and pipeline ownership, material/variant
+  use, binding compatibility, pipeline caching, and safe adoption of rebuilt
+  programs. Renderer calls the Shader module directly for compilation and
+  rebuild requests; source parsing, include resolution, and compiler
+  implementations stay inside Shader.
+- **RHI/backends:** package selection and native shader/pipeline creation,
+  with accurate capabilities and explicit failures. They do not depend on
+  Shader, Renderer, or compiler tools.
+
+There are two integration contracts, not only a file boundary. Prepared
+shader use consumes a TSP and its normalized interfaces. Optional runtime
+compilation also needs a request/result contract carrying source identity,
+entry points, configuration, target requirements, dependencies, and
+diagnostics. This result can be consumed without writing a package to disk.
+Reflection must agree across variants of the same logical interface.
+
+Hot reload separates rebuilding from GPU publication. Shader tracks source
+changes and produces rebuild results that Renderer consumes directly.
+Renderer accepts a replacement only after its interfaces
+and native pipeline are valid. Failed rebuilding/publication reports an
+error without discarding the last working program, and in-flight GPU work
+retains the resources it references. No OS file watcher or background service
+becomes a mandatory dependency.
+
+Shader-library work (#178), tool reuse and TSP naming (#180), prepared-TSP
+Renderer execution (#179), and Renderer's direct use of Shader for runtime
+compilation and rebuild adoption (#181) are implemented. `renderer::SourceProgram`
+compiles only the requested configuration through `shader::Compiler`, consumes
+the in-memory `Compilation`, validates the vertex/fragment link and pipeline
+vertex inputs, then adopts the result through the same Renderer stage/commit
+path used for prepared TSPs. The host decides when to rebuild (for example by
+polling); every attempt re-resolves includes, so the Shader compilation cache
+detects dependency changes. There is no watcher or service. The first compiler route
+reuses pinned glslang for GLSL/GLSL ES to SPIR-V; this does not claim that every
+language/target in #73 is implemented. Compiler-free package consumption and
+assembly remain supported.
 
 See [the shader package contract](rhi1/shader-package.md).
 
@@ -249,14 +309,15 @@ their own design issues.
   architecture, and the future of the provisional `truffle_assets` and
   `truffle_asset_render` targets are decided later.
 
-Priority after RHI 1 is the full RHI, then Renderer, then Engine.
+The practical macOS RHI baseline is followed by the initial Shader and Renderer
+slices (#178-#181). Engine and other higher-level modules remain later work.
 
 ## Deferred Surfaces
 
 The Simple RHI is deferred: a beginner-friendly, OpenGL-like convenience layer
 over the full RHI whose parts can be replaced incrementally with full-RHI usage.
-Further developer-tool work waits until RHI and Renderer reach a minimum usable
-level.
+Developer-tool expansion beyond the shared shader compilation needs waits
+until RHI and Renderer reach a minimum usable level.
 
 The compatibility facade, D3D11, WebGL1, legacy GL/GLES profiles,
 CUDA/OpenCL, and public proprietary-console implementations are outside RHI 1.
