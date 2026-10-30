@@ -60,6 +60,50 @@ libraries are not part of Shader's install closure. SPIRV-Cross installs its
 core/GLSL/MSL static closure and CMake configs. Enabled installs include the
 new dependencies' license notices; all-off consumers require none of them.
 
+## Completion scope and evidence (#73, #193)
+
+The agreed Shader baseline is implemented: reusable-source composition,
+requested configurations, optional offline/runtime compilation, canonical
+reflection, dependencies, caching, rebuilding and shared tools. Completion is
+bounded by the route and reflection matrices below, not every upstream
+language construct or source-to-target cross-product. Experimental outputs
+retain their safety gates; backend maturity is unchanged.
+
+| Accepted gate | Implementation and evidence |
+| --- | --- |
+| Route discovery and typed targets (#185) | [PR #194](https://github.com/truffle-graphics/truffle/pull/194); `truffle_shader_route_tests` |
+| Canonical reflection and specialization (#186) | [PR #195](https://github.com/truffle-graphics/truffle/pull/195), [PR #196](https://github.com/truffle-graphics/truffle/pull/196); reflection/package tests and Vulkan/Metal default/override readback |
+| Portable MSL/GL output (#187) | [PR #197](https://github.com/truffle-graphics/truffle/pull/197); `truffle_shader_portable_tests`, `truffle_shader_portable_native_tests` |
+| Native MSL source/metallib (#188) | [PR #201](https://github.com/truffle-graphics/truffle/pull/201); `truffle_shader_native_msl_tests`, native CLI and installed consumers |
+| HLSL/DXC (#189) | [PR #199](https://github.com/truffle-graphics/truffle/pull/199); `truffle_shader_hlsl_tests`, `truffle_shader_hlsl_native_tests`, CLI equivalence |
+| Native Slang modules (#190) | [PR #200](https://github.com/truffle-graphics/truffle/pull/200); Slang module/cache/CLI tests and `truffle_shader_slang_vulkan_tests` |
+| WGSL/Tint (#191) | [PR #198](https://github.com/truffle-graphics/truffle/pull/198); `truffle_shader_wgsl_tests`, `truffle_shader_wgsl_native_tests`, CLI equivalence |
+| Shared composition/cache/rebuild/tool behavior (#192) | [PR #202](https://github.com/truffle-graphics/truffle/pull/202); standalone installed/in-tree workflow, native reflection/package failure recovery, compiler-off consumers |
+
+Parent acceptance accumulated 29 focused all-provider checks with
+warnings-as-errors and nine compiler-disabled checks. The integrated shared
+audit then passed seven affected enabled checks and eight compiler-disabled
+checks. These are local Apple Silicon results, not a new hosted matrix run.
+Provider-only/subset evidence remains in the linked PRs; enabling shaderc is
+not required to compile through the library.
+
+[Dependency pins, licenses, acquisition and update policy](../../docs/rhi1/dependencies.md#shader-tooling)
+and [Slang's nested source closure](../../docs/shader-slang.md) define the
+offline source-build inputs. Platform SDKs and Apple's Metal Toolchain remain
+explicit host prerequisites, not vendored reproducibility guarantees.
+Installed consumers exercise the private compiler closure and actual shaderc
+without loader overrides. Compiler-off consumers acquire no compiler
+dependency; installed glslang notices are checked against the pinned source.
+
+Remaining platform evidence is deliberately separate: new DXIL consumption on
+Windows/D3D12 is tracked in #122; current provider/native-output revalidation
+on Linux Vulkan in #124, GL/GLES in #125, and browser WGSL in #123. Existing
+backend evidence does not substitute for those new Shader-output checks.
+Higher GL profiles, Apple mobile execution, advanced GPU stages, Slang output
+beyond its advertised SPIR-V route, WGSL pipeline override substitution and
+the representational errors below are not completed routes. They do not gain
+support merely because an upstream compiler accepts them.
+
 ## Shared composition, cache and rebuild contract (#192)
 
 Shader compiles requested entries/configurations, not a Cartesian product of
@@ -127,7 +171,7 @@ requires explicit package safety consent.
 | GLSL or GLSL ES, vertex/fragment/compute | macOS MSL 2.1 source | glslang + SPIRV-Tools + SPIRV-Cross | Experimental explicit opt-in; generated graphics and compute execute on Apple M3 Pro |
 | GLSL or GLSL ES, vertex/fragment | GLSL 410 core (macOS OpenGL 4.1) | same three optional adapters | Generated resource-backed graphics executes on macOS 4.1; compute rejected |
 | GLSL or GLSL ES, vertex/fragment | GLSL ES 300 | same three optional adapters | Emission and real glslang parse/link validation; **no native GLES execution evidence** |
-| Slang, native modules/imports, vertex/fragment/compute | Vulkan 1.1 / SPIR-V 1.3 | pinned Slang + SPIRV-Tools | Native source/module/entry composition; only requested entry/configuration; see #190 documentation |
+| Slang, native modules/imports, vertex/fragment/compute | Vulkan 1.1 / SPIR-V 1.3 | pinned Slang + SPIRV-Tools | Requested native module/entry composition; exact graphics/compute execute on Vulkan/MoltenVK (PR #200) |
 | HLSL 2021, shader model 6.0, vertex/fragment/compute | Vulkan SPIR-V or DXIL | pinned DXC + SPIRV-Tools | In-process compile/validation and emitted-target reflection; Vulkan/MoltenVK graphics and compute execute on Apple M3 Pro |
 | HLSL, vertex/fragment/compute | Experimental macOS MSL 2.1 source | DXC + the portable adapters above | Generated graphics and compute execute on Apple M3 Pro |
 | HLSL, vertex/fragment | GLSL 410 core / GLSL ES 300 | same portable adapters | GL graphics executes on macOS 4.1; ES has real compiler validation, no native evidence |
@@ -136,8 +180,7 @@ requires explicit package safety consent.
 | Vulkan SPIR-V, vertex/fragment/compute | WGSL | Tint + SPIRV-Tools (including optimizer) | Real upstream reader, selected-entry emission and validation; bounded by Tint's representable input subset |
 | WGSL, vertex/fragment/compute | macOS MSL 2.1 | Tint + SPIRV-Tools + SPIRV-Cross | Experimental opt-in; native resource-backed graphics and compute exact readback on Metal |
 | MSL, vertex/fragment/compute | macOS MSL 2.1 source | optional Apple Metal framework adapter | #188; requires macOS 26+ runtime reflection API and Metal device; exact M3 Pro graphics/compute readback |
-| MSL, vertex/fragment/compute | macOS metallib | optional Apple Metal framework adapter plus installed Metal Toolchain | #188; actual `metal`/`metallib` compile and exact M3 Pro graphics/compute readback |
-| Slang, vertex/fragment/compute | Vulkan 1.1 / SPIR-V 1.3 | pinned in-process Slang + SPIRV-Tools | Implemented in PR #200; native Vulkan/MoltenVK graphics and compute execute on Apple M3 Pro |
+| MSL, vertex/fragment/compute | macOS metallib | optional Apple Metal framework adapter plus installed Metal Toolchain | #188; installed Metal compiler/AIR linker output, actual-library reflection and exact M3 Pro graphics/compute readback |
 | Backend-native source | No Shader source-compilation route | none needed for assembly | Prepared TSP inputs, **not** source-compilation routes |
 
 ### WGSL and Tint (#191)
@@ -441,6 +484,10 @@ route. The current supported profile is macOS Metal 2.1, with vertex,
 fragment and compute entry points. Offline AIR is compiled for
 `air64-apple-macos13.0`; successful compilation is not a minimum-runtime claim
 for every library feature. No toolchain or SDK is fetched or redistributed.
+The installed toolchain's `air-lld` links the AIR with reflection-list
+compression disabled so the exact emitted library can be loaded and reflected
+before packaging. Toolchain layout/version failures are explicit; there is no
+silent linker fallback or claim that arbitrary Apple toolchain versions work.
 
 Every native request requires a typed `CompileRequest::interfaceDeclaration`
 (`rhi::ShaderReflection`). Fields exposed by `MTLFunction` and
@@ -525,7 +572,10 @@ pixels and compute values `10,12,14,16` (declared specialization default) /
 cross-machine or older-OS guarantees.
 
 ## On-demand compilation and reload
-## On-demand compilation and reload
+
+The following example describes the GLSL route's preprocessing and cache
+details. The common ownership/rebuild contract applies to every route;
+language-specific composition and cache work are listed above.
 
 ```cpp
 #include <truffle/shader/compiler.hpp>
@@ -661,8 +711,8 @@ bytes under the approved [unreleased-format policy](../../docs/rhi1/shader-packa
 Container/schema identifiers remain `1` / `1.0`; there is no version bump,
 legacy reader, migration or dependency-boundary change. The adapter/cache
 identity advances to `truffle-glslang=4` because emitted metadata changes.
-The implementation awaits independent review; #186 stays open until the parent
-accepts it. This is not completion of the Shader module.
+The extension was accepted in merged PR #196. That reflection phase alone
+did not complete Shader; final baseline acceptance is recorded in #193.
 
 `WorkgroupSpecializationIds` contains optional X/Y/Z references into canonical
 scalar specialization records. Required size is the default extent. Only

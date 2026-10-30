@@ -24,52 +24,39 @@ Vulkan via MoltenVK (#56), and OpenGL 4.1 host-view presentation and
 synchronization (#61/#63 macOS parts). Other-platform verification remains
 non-blocking.
 
-**Complete Shader first (#73); Renderer feature development is paused.**
-The merged Shader library (#178), shared Shader tools/TSP naming (#180),
-prepared-TSP Renderer execution (#179), and direct runtime compilation/rebuild
-integration (#181) are usable foundations, not module-completion claims.
+**The agreed Shader baseline (#73) is implemented; #193 records its final
+acceptance.** The library/tools and direct Renderer integration (#178-#181)
+are followed by these delivered completion phases:
 
-Shader completion proceeds through bounded, independently validated phases:
+1. **Route/target contracts (#185, PR #194):** truthful discovery, typed profiles,
+   target-aware cache/provenance and shared CLI capability queries.
+2. **Reflection (#186, PRs #195/#196):** canonical directional IO, push ranges,
+   fixed arrays and scalar/per-axis specialization with exact Vulkan/Metal
+   default/override consumption.
+3. **Portable output (#187, PR #197):** optional validated MSL 2.1, GLSL 410
+   and GLSL ES 300, actual remaps/entry identities and native Metal/Vulkan/GL
+   readback. GLES has compiler validation, not new native evidence.
+4. **Native/compiler routes:** MSL source/metallib (#188, PR #201), HLSL/DXC
+   (#189, PR #199), Slang imports/components (#190, PR #200), and WGSL/Tint
+   (#191, PR #198), each with its documented profile/reflection limits.
+5. **Shared behavior (#192, PR #202):** native composition/configuration,
+   cache ownership/invalidation, compile/reflection/package failure retention,
+   installed standalone Shader use and compiler-off tools/consumers.
+6. **Final audit (#193):** evidence-linked matrix, compiler pin/license/export
+   checks, missing glslang license installation fixed and regression-covered,
+   architecture isolation, and tracker/documentation reconciliation.
 
-1. **Route/target contracts (#185), done (PR #194):** discover enabled source/target/stage
-   support, explicit validated Vulkan/SPIR-V settings, target-aware cache and
-   provenance, and shaderc discovery. The implemented versus planned matrix
-   is in [the Shader documentation](../src/shader/README.md).
-2. **Baseline reflection (#186), done (PRs #195/#196):** emitted-SPIR-V push ranges, scalar
-   specialization, fixed descriptor arrays and expanded matrix/array/block IO
-   have implementation and native consumption evidence (merged PR #195).
-   The approved RHI/TSP extension now serializes full canonical directional/
-   internal IO and direct per-axis workgroup IDs/defaults; typed overrides
-   resolve before explicit size matching, limits and retained/native metadata.
-   Exact Vulkan/MoltenVK and prepared Metal default/override dispatch proofs
-   pass. The unreleased draft keeps current `1.0` identifiers, without legacy
-   readers or migrations. Do not promote the entire Shader module. Explicit
-   representational limits remain in the Shader feature matrix.
-3. **Portable native generation (#187), done (PR #197):** pinned private optional
-   SPIRV-Cross plus SPIRV-Tools/Headers; macOS MSL 2.1 (experimental), GLSL 410
-   core and GLSL ES 300. Real generated TSP resource-backed graphics match exact
-   output on Metal/Vulkan/OpenGL 4.1; compute Metal/Vulkan, GLES compiler
-   validation only. Logical/native entry identity preserves cross-target
-   agreement. Scalar descriptor/one-to-one GL sampling limits are explicit;
-   higher profiles and GLES native evidence are not claimed. Parent owns acceptance.
-4. **Native MSL inputs/libraries (#188), active:** optional in-process Metal
-   source/reflection route, explicit ordered source-unit composition, and
-   separate optional offline `metal`/`metallib` output. Validate declared
-   observable interface fields and retain explicit assertions for unavailable
-   reflection. See the [native MSL evidence and limits](../src/shader/README.md#native-msl-source-and-libraries-188).
-   **HLSL (#189), done (PR #199); Slang (#190), done (PR #200); WGSL/Tint
-   (#191), done (PR #198)**. These routes retain their bounded optional
-   compiler contracts; Shader completion still requires the shared behavior
-   and final evidence audits below.
-5. **Shared behavior audit (#192):** composition, cache, rebuilding, and tools.
-6. **Completion audit (#193):** close #73 only after the required route,
-   reflection, package-isolation, and native evidence gates are satisfied.
+The [Shader completion matrix](../src/shader/README.md#completion-scope-and-evidence-73-193)
+is the authority for actual routes and remaining explicit limits. Completion
+does not mean all upstream-language constructs, cross-product conversions,
+platform execution or backend conformance. The unreleased TSP draft remains
+`1.0`, without compatibility readers or migration scaffolding.
 
-Delivery remains signed phased commits, immediate pushes, and reviewed
-merge-commit PRs. Each phase stays issue-scoped; #185 alone does not complete
-Shader. Renderer may supply existing regression/native Shader-output evidence
-and directly required correctness fixes only. Materials, lighting, texture/
-asset management, and other Renderer features wait until Shader completion.
+After #193 acceptance, Renderer development may resume from the existing
+prepared-TSP and `SourceProgram` paths. Materials, lighting, texture/asset
+management and other Renderer features still need their own accepted scope;
+they were not added by Shader completion. Delivery remains signed issue-scoped
+phases, immediate pushes and reviewed merge-commit PRs.
 The common compiled-result boundary remains the existing RHI ShaderPackage;
 runtime compilation uses the Shader request/result contract. There is no
 adapter module and no RHI → Shader dependency.
@@ -96,6 +83,9 @@ lanes, or Intel-specific work is planned.
 ### Pending Verification
 
 - Vulkan on Windows (#58).
+- Current Shader-provider/native-output checks on Windows D3D12 (#122), Linux
+  Vulkan (#124), Linux GL/GLES (#125), and browser WGSL (#123). Older backend
+  smoke receipts are not evidence for the newly added Shader routes.
 - Desktop OpenGL on Windows (WGL, #61), and on Linux beyond its current EGL
   evidence, including the refactored EGL context path and window
   presentation (#61).
@@ -212,7 +202,7 @@ Tracked by #33.
   smoke.
 - [x] Reconcile merged native resource evidence and public matrix claims in
   #48.
-- [ ] Complete the compiler prerequisites in #73.
+- [x] Complete the agreed Shader library/compiler baseline in #73 (#193 audit).
 - [x] Complete D3D12 baseline resources and ShaderPackage-backed graphics and
   compute pipelines through #49-#50.
 - [x] Complete D3D12 synchronization, barrier, and query paths through #51.

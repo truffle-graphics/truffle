@@ -76,10 +76,12 @@ uses `TRUFFLE_SHADER_ENABLE_SLANG` plus SPIRV-Tools; its clean pinned source
 closure, Apache-2.0 WITH LLVM-exception license, source-only offline policy,
 install behavior and update checks are recorded in
 [native Slang](../shader-slang.md). Compiler dependencies are enabled
-individually. No compiler submodule is introduced before
-its route exists, and configure never downloads it. Runtime packages do not
-acquire the compiler toolchain. Runtime source compilation is an explicit
-optional feature; production packages prefer offline variants.
+individually as private build parts of `Truffle::Shader`; shaderc and runtime
+clients share those library adapters. No compiler submodule is introduced
+before its route exists, and configure never downloads it. Prepared-TSP
+consumers built with all adapters disabled acquire no compiler toolchain.
+Runtime source compilation is an explicit optional feature, not exclusively
+an offline-tool capability.
 
 Native MSL compilation is an Apple-platform-only optional capability enabled
 with `TRUFFLE_SHADER_ENABLE_METAL_COMPILER`; it links the SDK's Metal and
@@ -87,6 +89,10 @@ Foundation frameworks privately and introduces no vendored source or license
 bundle. `TRUFFLE_SHADER_ENABLE_METALLIB_COMPILER` additionally requires the
 locally installed Apple Metal Toolchain (`xcrun metal` and `xcrun metallib`).
 These Apple components are neither downloaded nor redistributed by Truffle.
+Offline linking uses the matching toolchain's `air-lld` with reflection-list
+compression disabled; the exact emitted library is loaded/reflected before
+publication. Toolchain layout/version failures are explicit, not a silent
+fallback or portability guarantee across arbitrary Apple SDKs.
 Prepared TSP consumers and all-off Shader builds do not acquire either
 framework/toolchain dependency.
 
@@ -114,6 +120,9 @@ route/invalid-source/cache/CLI-equivalence/install tests and the generated
 Vulkan/Metal/GL native fixture. Tools/Headers update as a compatible pair;
 the Cross SDK tag is separately tested against emitted SPIR-V 1.0/1.3.
 Enabled installs preserve their license texts under `share/licenses/Truffle`.
+The glslang notice is installed explicitly rather than relying on upstream's
+archive/config export; installed-consumer smoke compares it with the pinned
+source, respecting the configured data directory.
 Disabling all adapters removes these libraries and package requirements entirely.
 
 Tint additionally requires explicit `git submodule update --init vendor/dawn

@@ -6,6 +6,19 @@ execute_process(COMMAND "${CMAKE_COMMAND}" --install "${TRUFFLE_BINARY_DIR}"
     --prefix "${TRUFFLE_INSTALL_PREFIX}" ${_config} COMMAND_ERROR_IS_FATAL ANY)
 cmake_path(ABSOLUTE_PATH TRUFFLE_INSTALL_LIBDIR
     BASE_DIRECTORY "${TRUFFLE_INSTALL_PREFIX}" NORMALIZE OUTPUT_VARIABLE _install_libdir)
+if(TRUFFLE_SHADER_ENABLE_GLSLANG)
+    cmake_path(ABSOLUTE_PATH TRUFFLE_INSTALL_DATADIR
+        BASE_DIRECTORY "${TRUFFLE_INSTALL_PREFIX}" NORMALIZE OUTPUT_VARIABLE _install_datadir)
+    set(_glslang_license "${_install_datadir}/licenses/Truffle/glslang/LICENSE.txt")
+    if(NOT EXISTS "${_glslang_license}")
+        message(FATAL_ERROR "Installed glslang license notice is missing: ${_glslang_license}")
+    endif()
+    file(SHA256 "${TRUFFLE_SOURCE_DIR}/vendor/glslang/LICENSE.txt" _source_license_hash)
+    file(SHA256 "${_glslang_license}" _installed_license_hash)
+    if(NOT _source_license_hash STREQUAL _installed_license_hash)
+        message(FATAL_ERROR "Installed glslang license notice differs from the pinned source")
+    endif()
+endif()
 if(TRUFFLE_BUILD_SHADERC)
     cmake_path(ABSOLUTE_PATH TRUFFLE_INSTALL_BINDIR
         BASE_DIRECTORY "${TRUFFLE_INSTALL_PREFIX}" NORMALIZE OUTPUT_VARIABLE _install_bindir)
