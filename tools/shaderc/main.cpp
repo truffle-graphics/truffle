@@ -43,6 +43,9 @@ struct Arguments {
     std::vector<std::string> sourceUnits;
     std::vector<truffle::rhi::ShaderDefine> defines;
     truffle::shader::VulkanTarget vulkanTarget;
+    truffle::shader::HlslShaderModel hlslShaderModel =
+        truffle::shader::HlslShaderModel::v6_0;
+    bool hlslModelSpecified = false;
     bool targetSettings = false;
     bool compile = false;
     bool experimentalMetal = false;
@@ -64,6 +67,7 @@ void usage(std::ostream& output) {
            "[--compile [--include-root DIR]... [--define NAME[=VALUE]]... "
            "[--source-unit FILE]... [--interface-from PACKAGE] "
            "[--vulkan-version VERSION] [--spirv-version VERSION] "
+           "[--hlsl-shader-model 6.0] "
            "[--msl-version 2.1|--glsl-version 410|--glsl-es-version 300] "
            "[--allow-experimental-metal]]\n"
         << "       truffle-shaderc --routes\n"
@@ -80,6 +84,7 @@ void usage(std::ostream& output) {
         << "--routes lists enabled source compilation, not package assembly "
            "or native GPU support. GLSL defaults to Vulkan 1.1/SPIR-V 1.3; "
            "native MSL is macOS Metal 2.1.\n"
+        << "--hlsl-shader-model selects the exact HLSL target model.\n"
         << "--source-unit composes an ordered MSL source unit before the root. "
         << "--interface-from reuses typed reflection from a TSP variant with "
         << "the requested stage (and prefers an exact entry-point match).\n";
@@ -158,6 +163,12 @@ void usage(std::ostream& output) {
             else if (value == truffle::shader::spirv_version_name(truffle::shader::SpirvVersion::v1_3))
                 result.vulkanTarget.spirv = truffle::shader::SpirvVersion::v1_3;
             else return invalid("unknown SPIR-V version: " + value);
+        } else if (key == "--hlsl-shader-model") {
+            result.targetSettings = true;
+            result.hlslModelSpecified = true;
+            if (value != truffle::shader::hlsl_shader_model_name(
+                             result.hlslShaderModel))
+                return invalid("unsupported HLSL shader model: " + value);
         } else if (key == "--msl-version" || key == "--glsl-version" || key == "--glsl-es-version") {
             result.targetSettings = true;
             const auto expected = key == "--msl-version" ? "2.1" : key == "--glsl-version" ? "410" : "300";
@@ -184,6 +195,8 @@ void usage(std::ostream& output) {
     if (!result.nativeVersionTarget.empty() && !nativeMetalTarget &&
         result.nativeVersionTarget != result.target)
         return invalid("native version option disagrees with target");
+    if (result.hlslModelSpecified && result.sourceLanguage != "hlsl")
+        return invalid("HLSL shader model requires HLSL source");
     if (!result.compile && (!result.includeRoots.empty() || !result.sourceUnits.empty() ||
                             !result.interfacePackage.empty() || !result.defines.empty() ||
                             result.targetSettings))
@@ -325,6 +338,10 @@ int main(int argc, char** argv) {
                     if (!route.metalTargets.empty()) std::cout << " msl=macos-2.1";
                     if (!route.glslTargets.empty()) std::cout << " glsl=410-core";
                     if (!route.glslEsTargets.empty()) std::cout << " glsl-es=300-es";
+                    for (const auto model : route.hlslShaderModels) {
+                        std::cout << " hlsl-shader-model="
+                                  << shader::hlsl_shader_model_name(model);
+                    }
                     if (route.experimental) std::cout << " experimental";
                     std::cout << '\n';
                 };
@@ -479,6 +496,7 @@ int main(int argc, char** argv) {
         request.target = target;
         request.language = languageResult.value();
         request.vulkanTarget = arguments.vulkanTarget;
+        request.hlslShaderModel = arguments.hlslShaderModel;
         request.allowExperimentalMetalGeneration = arguments.experimentalMetal;
         request.sourceUnits = arguments.sourceUnits;
         request.includeRoots = arguments.includeRoots;

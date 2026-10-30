@@ -46,15 +46,19 @@ rather than growing a historical transcript here.
   readback and compute `10,12,14,16` (declared default) / `15,18,21,24`
   (override). Focused native/route/CLI tests pass; shaderc smoke compiles both
   source and metallib through `--source-unit` and `--interface-from`.
-- Latest develop is `5852204c9f49c933c6a6fbbd6e1b3b560ac93bac` (#199 HLSL).
-  Before delivery merge `origin/develop` normally into this MSL branch and
-  preserve `HlslShaderModel` plus DXC/CMake/CLI integration. Shared
-  `compiler_inputs.hpp` should be reused where appropriate; nonempty
-  `sourceUnits` must remain explicitly unsupported on DXC and all other routes.
-  Do not undo the SPIR-V `DrawParameters` capability guard from Slang work.
-- No commit or PR has been made yet. Parent owns review/merge/tracking; #188
-  remains active until accepted. No TSP version bump, migration, legacy reader,
-  or Shader-module completion claim.
+- MSL implementation commit `173f2249ea96c032e63996a2ae2e535119a6aeb5` is
+  signed and pushed. HLSL #189 merged via PR #199 at
+  `5852204c9f49c933c6a6fbbd6e1b3b560ac93bac`; its DXC route/request/CMake/CLI
+  integration has been reconciled here. Shared compiler dispatch rejects
+  nonempty `sourceUnits` on DXC and every non-MSL route. The SPIR-V
+  `DrawParameters` capability guard from Slang work is retained.
+- WGSL #191 merged via PR #198; latest develop is
+  `f2079307fd2cd5432d465c083cc0c416e0b1ec5f`. Before delivery, merge that
+  revision normally, retaining Tint routes/opt-ins and the canonical
+  SPIRV-Headers include. Slang #200 is not merged yet; coordinate only the
+  shared source-unit API/gate when it is integrated.
+- Parent owns review/merge/tracking; #188 remains active until accepted. No
+  TSP version bump, migration, legacy reader, or Shader-module completion claim.
 
 ## Portable Shader Targets (#187, Ready For Parent Review)
 

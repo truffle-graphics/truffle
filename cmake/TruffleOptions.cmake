@@ -9,6 +9,8 @@ option(TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS
        "Validate emitted SPIR-V with pinned SPIRV-Tools" OFF)
 option(TRUFFLE_SHADER_ENABLE_SPIRV_CROSS
        "Translate validated portable SPIR-V to Metal/GLSL/GLSL ES" OFF)
+option(TRUFFLE_SHADER_ENABLE_DXC
+       "Enable the optional pinned DXC HLSL 2021 compiler adapter" OFF)
 option(TRUFFLE_SHADER_ENABLE_METAL_COMPILER
        "Enable the optional in-process native MSL compiler/reflection adapter (Apple only)" OFF)
 option(TRUFFLE_SHADER_ENABLE_METALLIB_COMPILER

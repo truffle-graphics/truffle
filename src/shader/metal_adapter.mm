@@ -2,6 +2,7 @@
 #import <Metal/Metal.h>
 
 #include "metal_adapter.hpp"
+#include "compiler_inputs.hpp"
 #include "digest.hpp"
 
 #include <algorithm>
@@ -105,26 +106,10 @@ Status validate_includes(std::span<const Source> units) {
     return Status::success();
 }
 
-void field(std::string& output, std::string_view value) {
-    output += std::to_string(value.size()) + ":";
-    output += value;
-}
-
 template <typename Value>
     requires std::is_integral_v<Value>
 void field(std::string& output, Value value) {
     field(output, std::to_string(value));
-}
-
-bool identifier(std::string_view value) {
-    if (value.empty() ||
-        !(std::isalpha(static_cast<unsigned char>(value.front())) ||
-          value.front() == '_')) {
-        return false;
-    }
-    return std::all_of(value.begin(), value.end(), [](unsigned char character) {
-        return std::isalnum(character) || character == '_';
-    });
 }
 
 std::string utf8(NSString* value) {
@@ -654,25 +639,6 @@ std::string define_preamble(const std::vector<rhi::ShaderDefine>& defines) {
     return result;
 }
 
-std::vector<rhi::ShaderDefine> normalized_defines(
-    const CompileRequest& request, Status& status) {
-    auto defines = request.defines;
-    std::sort(defines.begin(), defines.end(), [](const auto& lhs, const auto& rhs) {
-        return lhs.name < rhs.name;
-    });
-    for (std::size_t index = 0; index < defines.size(); ++index) {
-        const auto& define = defines[index];
-        if (!identifier(define.name) ||
-            define.value.find_first_of("\r\n\0", 0, 3) != std::string::npos ||
-            (index != 0 && defines[index - 1].name == define.name)) {
-            status = invalid("Invalid/duplicate shader define: " + define.name);
-            return {};
-        }
-    }
-    status = Status::success();
-    return defines;
-}
-
 struct CommandOutput {
     int status = -1;
     std::string output;
@@ -1059,9 +1025,9 @@ rhi::Result<Compilation> compile_msl(
     const auto stageStatus =
         validate_stage(*request.interfaceDeclaration, request.stage);
     if (!stageStatus.ok()) return stageStatus;
-    Status defineStatus = Status::success();
-    const auto defines = normalized_defines(request, defineStatus);
-    if (!defineStatus.ok()) return defineStatus;
+    auto definesResult = normalized_defines(request.defines);
+    if (!definesResult.ok()) return definesResult.status();
+    const auto defines = std::move(definesResult).value();
     auto sourcesResult = resolve_units(request);
     if (!sourcesResult.ok()) return sourcesResult.status();
     auto sources = std::move(sourcesResult).value();

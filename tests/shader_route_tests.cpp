@@ -60,6 +60,15 @@ int main() {
     invalidRequest.interfaceDeclaration = rhi::ShaderReflection{};
     expect(invalidRequest, rhi::StatusCode::unsupported);
     invalidRequest.interfaceDeclaration.reset();
+#if defined(TRUFFLE_TEST_DXC)
+    invalidRequest.language = rhi::ShaderSourceLanguage::hlsl;
+    invalidRequest.target = rhi::ShaderTarget::spirv;
+    invalidRequest.sourceUnits = {"shared.hlsl"};
+    expect(invalidRequest, rhi::StatusCode::unsupported);
+    invalidRequest.language = request.language;
+    invalidRequest.target = request.target;
+    invalidRequest.sourceUnits.clear();
+#endif
 
     constexpr rhi::ShaderSourceLanguage languages[]{
         rhi::ShaderSourceLanguage::slang, rhi::ShaderSourceLanguage::hlsl,
@@ -116,13 +125,33 @@ int main() {
               nativeLibrary->experimental,
           "Offline metallib route advertises exact stages and Metal configuration");
 #endif
+#if defined(TRUFFLE_TEST_DXC)
+    const auto hlslSpirv = std::find_if(
+        routes.begin(), routes.end(), [](const auto& route) {
+            return route.language == rhi::ShaderSourceLanguage::hlsl &&
+                   route.target == rhi::ShaderTarget::spirv;
+        });
+    const auto hlslDxil = std::find_if(
+        routes.begin(), routes.end(), [](const auto& route) {
+            return route.language == rhi::ShaderSourceLanguage::hlsl &&
+                   route.target == rhi::ShaderTarget::dxil;
+        });
+    check(hlslSpirv != routes.end() && hlslSpirv->stages.size() == 3 &&
+              hlslSpirv->vulkanTargets.size() == 2 &&
+              hlslSpirv->hlslShaderModels.size() == 1 &&
+              hlslDxil != routes.end() && hlslDxil->vulkanTargets.empty() &&
+              hlslDxil->hlslShaderModels.size() == 1,
+          "DXC routes preserve exact HLSL stages and shader models");
+#endif
     if (std::none_of(routes.begin(), routes.end(), [](const auto& route) {
             return route.target == rhi::ShaderTarget::spirv;
         })) {
         return 0;
     }
     for (const auto& route : routes) {
-        if (route.target != rhi::ShaderTarget::spirv) continue;
+        if (route.target != rhi::ShaderTarget::spirv ||
+            (route.language != rhi::ShaderSourceLanguage::glsl &&
+             route.language != rhi::ShaderSourceLanguage::glsl_es)) continue;
         check(route.target == rhi::ShaderTarget::spirv &&
               (route.language == rhi::ShaderSourceLanguage::glsl ||
                route.language == rhi::ShaderSourceLanguage::glsl_es),
@@ -155,6 +184,7 @@ int main() {
                         "void main(){ data.value=gl_GlobalInvocationID.x; }\n";
                     break;
                 }
+                if (keys.empty()) return 0;
                 auto result = compiler.compile(request);
                 if (!result.ok()) std::cerr << result.status().message << '\n';
                 check(result.ok() && !result.value().cacheHit, "Every advertised configuration compiles");
