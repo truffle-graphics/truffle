@@ -10,6 +10,92 @@
 namespace {
 using namespace truffle;
 
+void specialized_workgroups(rhi::Device& device, shader::Compiler& compiler) {
+    shader::CompileRequest request;
+    request.stage = rhi::ShaderStage::compute;
+    constexpr std::string_view body = R"(
+layout(set=0,binding=0,std430) buffer Output { uint values[32]; } outputData;
+void main() {
+    uint count=gl_WorkGroupSize.x*gl_WorkGroupSize.y*gl_WorkGroupSize.z;
+    uint index=gl_WorkGroupID.x*count+gl_LocalInvocationIndex;
+    outputData.values[index]=gl_WorkGroupSize.x*100u+gl_WorkGroupSize.y*1000u+
+        gl_WorkGroupSize.z*10000u+index;
+}
+)";
+    request.source = {"workgroups.comp", "#version 450\n"
+        "layout(local_size_x=2,local_size_y=1,local_size_z=2,local_size_x_id=0,local_size_y_id=7) in;\n" +
+        std::string{body}};
+    auto compiled = tests::require(compiler.compile(request));
+    auto package = tests::require(rhi::ShaderPackage::load(compiled.package.bytes()));
+    const auto& reflection = package.desc().variants[0].reflection;
+    TRUFFLE_SHADER_CHECK(reflection.workgroupSpecializationIds ==
+                        rhi::WorkgroupSpecializationIds({0, 7, std::nullopt}));
+    TRUFFLE_SHADER_CHECK(reflection.requiredWorkgroupSize == rhi::Extent3D(2, 1, 2));
+    TRUFFLE_SHADER_CHECK(reflection.bindings[0].minimumSize == 128);
+    auto shader = tests::require(device.create_shader(package, rhi::ShaderTarget::spirv,
+                                                      "main", rhi::ShaderStage::compute));
+    auto sharedRequest = request;
+    sharedRequest.source = {"shared-workgroups.comp", "#version 450\n"
+        "layout(local_size_x=1,local_size_y=1,local_size_z=2,local_size_x_id=0,local_size_y_id=0) in;\n" +
+        std::string{body}};
+    auto shared = tests::require(compiler.compile(sharedRequest));
+    auto sharedPackage = tests::require(rhi::ShaderPackage::load(shared.package.bytes()));
+    TRUFFLE_SHADER_CHECK(sharedPackage.desc().variants[0].reflection.specializationConstants.size() == 1);
+    auto sharedShader = tests::require(device.create_shader(sharedPackage, rhi::ShaderTarget::spirv,
+                                                            "main", rhi::ShaderStage::compute));
+    auto groupLayout = tests::require(device.create_bind_group_layout({
+        .entries = {{.binding = 0, .type = rhi::BindingType::storage_buffer,
+                     .visibility = rhi::ShaderStageMask::compute, .minimumBufferSize = 128}}}));
+    auto layout = tests::require(device.create_pipeline_layout({.bindGroupLayouts = {&groupLayout}}));
+    auto arena = tests::require(device.create_descriptor_arena());
+    auto pool = tests::require(device.create_command_pool(rhi::QueueKind::compute));
+    auto queue = tests::require(device.queue(rhi::QueueKind::compute));
+    for (std::size_t pass = 0; pass < 3; ++pass) {
+        const auto dimensions = pass == 0 ? rhi::Extent3D{2, 1, 2} :
+                                pass == 1 ? rhi::Extent3D{3, 2, 2} : rhi::Extent3D{2, 2, 2};
+        const std::vector<rhi::SpecializationValue> values = pass == 0 ? std::vector<rhi::SpecializationValue>{} :
+            pass == 1 ? std::vector<rhi::SpecializationValue>{{0, rhi::ShaderValueType::uint32, 3},
+                                                            {7, rhi::ShaderValueType::uint32, 2}}
+                      : std::vector<rhi::SpecializationValue>{{0, rhi::ShaderValueType::uint32, 2}};
+        auto pipeline = tests::require(device.create_compute_pipeline({
+            .computeShader = pass == 2 ? &sharedShader : &shader,
+            .layout = &layout, .requiredWorkgroupSize = dimensions, .specializationConstants = values}));
+        TRUFFLE_SHADER_CHECK(pipeline.preferred_workgroup_size() == dimensions);
+        auto output = tests::require(device.create_buffer({
+            .size = 128, .usage = rhi::BufferUsage::storage, .memory = rhi::MemoryDomain::readback}));
+        std::array<std::uint32_t, 32> actual;
+        actual.fill(0xdeadbeefu);
+        tests::require(output.write(0, std::as_bytes(std::span{actual})));
+        auto group = tests::require(device.create_bind_group({
+            .layout = &groupLayout, .arena = &arena, .entries = {{.binding = 0, .buffer = &output, .size = 128}}}));
+        auto list = tests::require(pool.allocate());
+        tests::require(list.begin());
+        auto encoder = tests::require(list.begin_compute());
+        tests::require(encoder.bind_pipeline(pipeline));
+        tests::require(encoder.bind_group(0, group));
+        tests::require(encoder.dispatch(2, 1, 1));
+        tests::require(encoder.end());
+        tests::require(list.end());
+        const std::array<rhi::CommandList*, 1> lists{&list};
+        tests::require(queue.submit(lists));
+        tests::require(output.read(0, std::as_writable_bytes(std::span{actual})));
+        const auto written = 2 * dimensions.width * dimensions.height * dimensions.depth;
+        const auto base = dimensions.width * 100 + dimensions.height * 1000 + dimensions.depth * 10000;
+        for (std::size_t index = 0; index < actual.size(); ++index)
+            TRUFFLE_SHADER_CHECK(actual[index] == (index < written ? base + index : 0xdeadbeefu));
+    }
+    TRUFFLE_SHADER_CHECK(!device.create_compute_pipeline({
+        .computeShader = &shader, .layout = &layout,
+        .requiredWorkgroupSize = {2, 1, 2},
+        .specializationConstants = {{0, rhi::ShaderValueType::uint32, 3}}}).ok());
+    const auto outOfLimits = device.create_compute_pipeline({
+        .computeShader = &shader, .layout = &layout,
+        .specializationConstants = {{0, rhi::ShaderValueType::uint32, 0xffffffffu}}});
+    TRUFFLE_SHADER_CHECK(!outOfLimits.ok() && outOfLimits.status().code == rhi::StatusCode::unsupported);
+    std::cout << "specialized workgroups: 2x1x2 -> 3x2x2 + shared-ID 2x2x2; "
+                 "exact 8/24/16 invocations and untouched tail passed\n";
+}
+
 int run() {
     auto created = rhi::create_vulkan_instance({.enableValidation = true});
     if (!created.ok()) {
@@ -176,6 +262,7 @@ void main() {
         }
     }
     std::cout << "exact scalar defaults/overrides + offset push + buffer/image/sampler-array readback passed\n";
+    specialized_workgroups(device, compiler);
     return 0;
 }
 }

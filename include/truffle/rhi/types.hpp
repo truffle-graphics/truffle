@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <optional>
 #include <span>
 #include <string>
 #include <utility>
@@ -719,6 +720,23 @@ struct PushConstantRange {
     bool operator==(const PushConstantRange&) const = default;
 };
 
+enum class ShaderInterfaceDirection : std::uint8_t { input = 0, output = 1 };
+
+// One occupied 32-bit scalar/vector location; names are diagnostic paths.
+struct ShaderInterfaceVariable {
+    ShaderStage stage = ShaderStage::vertex;
+    ShaderInterfaceDirection direction = ShaderInterfaceDirection::input;
+    std::uint32_t location = 0;
+    std::string name;
+    std::string type;
+    std::string interpolation;
+
+    bool operator==(const ShaderInterfaceVariable&) const = default;
+};
+
+// X/Y/Z direct scalar IDs. nullopt denotes a fixed axis; required size holds defaults.
+using WorkgroupSpecializationIds = std::array<std::optional<std::uint32_t>, 3>;
+
 struct ShaderDesc {
     ShaderStage stage = ShaderStage::vertex;
     ShaderByteFormat format = ShaderByteFormat::native_source;
@@ -728,8 +746,11 @@ struct ShaderDesc {
     std::vector<PushConstantRange> pushConstants;
     std::vector<ShaderSpecializationConstant> specializationConstants;
     std::vector<ShaderBindingMap> bindingMap;
+    std::vector<ShaderInterfaceVariable> interfaces;
+    // Required dimensions are defaults; referenced scalar constants must agree.
     Extent3D requiredWorkgroupSize{1, 1, 1};
     Extent3D preferredWorkgroupSize{1, 1, 1};
+    WorkgroupSpecializationIds workgroupSpecializationIds{};
     std::string debugName;
 };
 

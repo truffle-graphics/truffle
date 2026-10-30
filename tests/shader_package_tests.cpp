@@ -35,6 +35,13 @@ truffle::rhi::ShaderReflection reflection() {
                                      .type = ShaderValueType::uint32,
                                      .defaultValueBits = 1}},
         .interfaces = {{.stage = ShaderStage::fragment,
+                        .direction = ShaderInterfaceDirection::input,
+                        .location = 0,
+                        .name = "varying",
+                        .type = "float4",
+                        .interpolation = "perspective"},
+                       {.stage = ShaderStage::fragment,
+                        .direction = ShaderInterfaceDirection::output,
                         .location = 0,
                         .name = "color",
                         .type = "float4",
@@ -225,6 +232,16 @@ int main() {
         variant.reflection.interfaces[0].interpolation = "smooth";
     smoothDesc.variants[0].reflection.interfaces[0].interpolation.clear();
     assert(ShaderPackage::create(std::move(smoothDesc)).ok());
+    for (const auto& pair : {std::pair{"centroid perspective", "smooth centroid"},
+                             {"sample", "sample smooth"}, {"noperspective centroid", "centroid noperspective"}}) {
+        auto equivalent = renamedDesc;
+        for (auto& variant : equivalent.variants)
+            variant.reflection.interfaces[0].interpolation = pair.first;
+        equivalent.variants[0].reflection.interfaces[0].interpolation = pair.second;
+        assert(ShaderPackage::create(equivalent).ok());
+        equivalent.variants[0].reflection.interfaces[0].interpolation = "flat";
+        assert(!ShaderPackage::create(equivalent).ok());
+    }
     for (const auto& pair : {std::pair{"float2", "vec2"}, {"float3", "vec3"}, {"float4", "vec4"},
                              {"int2", "ivec2"}, {"int3", "ivec3"}, {"int4", "ivec4"},
                              {"uint2", "uvec2"}, {"uint3", "uvec3"}, {"uint4", "uvec4"}}) {
@@ -264,6 +281,21 @@ int main() {
     badReflection = renamed;
     ++badReflection.interfaces[0].location;
     rejectsReflection(badReflection);
+    badReflection = renamed;
+    badReflection.interfaces[0].direction = ShaderInterfaceDirection::output;
+    rejectsReflection(badReflection);
+    badReflection.interfaces[0].location = 1;
+    rejectsReflection(badReflection);
+    badReflection = renamed;
+    badReflection.interfaces[0].stage = ShaderStage::vertex;
+    rejectsReflection(badReflection);
+    badReflection = renamed;
+    badReflection.interfaces[0].direction = static_cast<ShaderInterfaceDirection>(255);
+    rejectsReflection(badReflection);
+    auto directionMismatch = renamedDesc;
+    directionMismatch.variants[0].reflection.interfaces.erase(
+        directionMismatch.variants[0].reflection.interfaces.begin());
+    assert(!ShaderPackage::create(directionMismatch).ok());
     badReflection = renamed;
     ++badReflection.specializationConstants[0].id;
     rejectsReflection(badReflection);

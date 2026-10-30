@@ -62,23 +62,21 @@ struct Dependency {
     std::string sha256;
 };
 
-struct StageInterface {
-    // One occupied location per 32-bit scalar/vector leaf. Matrices, fixed
-    // arrays and blocks expand in location order; names are diagnostic paths,
-    // not linkage identities. Built-ins are excluded.
-    bool input = true;
-    rhi::ShaderInterfaceVariable variable;
-};
-
 struct Compilation {
     rhi::ShaderPackage package;
     std::vector<Dependency> dependencies;
-    std::vector<StageInterface> interfaces;
     rhi::ShaderCompilerRecord compiler;
     VulkanTarget vulkanTarget;
     std::string cacheKey;
     std::string diagnostics;
     bool cacheHit = false;
+
+    // Borrow the package's canonical full directional IO; no second copy.
+    [[nodiscard]] std::span<const rhi::ShaderInterfaceVariable> interfaces() const noexcept {
+        const auto& variants = package.desc().variants;
+        return variants.empty() ? std::span<const rhi::ShaderInterfaceVariable>{}
+                                : variants.front().reflection.interfaces;
+    }
 };
 
 // Instances are single-thread-owned. Distinct instances may compile concurrently.

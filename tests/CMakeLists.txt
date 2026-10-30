@@ -11,6 +11,11 @@ add_executable(truffle_shader_reflection_tests shader_reflection_tests.cpp)
 target_link_libraries(truffle_shader_reflection_tests PRIVATE truffle_shader)
 truffle_target_warnings(truffle_shader_reflection_tests)
 add_test(NAME truffle_shader_reflection_tests COMMAND truffle_shader_reflection_tests)
+if(TRUFFLE_SHADER_ENABLE_GLSLANG)
+    target_compile_definitions(truffle_shader_reflection_tests PRIVATE TRUFFLE_TEST_SPIRV_REFLECTION=1)
+    target_include_directories(truffle_shader_reflection_tests PRIVATE
+        "${PROJECT_SOURCE_DIR}/src/shader" "${PROJECT_SOURCE_DIR}/vendor/glslang")
+endif()
 target_link_libraries(truffle_encom_tests PRIVATE truffle_encom)
 add_test(NAME truffle_encom_tests COMMAND truffle_encom_tests)
 

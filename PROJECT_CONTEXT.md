@@ -115,7 +115,9 @@ consumer selects concrete loading, upload, and backend behavior.
 - Truffle has no consumers yet, so it keeps no backward-compatibility,
   deprecation, or migration scaffolding: no aliases, forwarding headers,
   shims, migration tables, or API compatibility helpers (#163). Revisit at the
-  first release.
+  first release. TSP is likewise an evolving unreleased draft: approved
+  contract/codec/fixture changes retain current `1.0` identifiers. Stable
+  format/versioning guarantees begin with release (#186 comment 6527097946).
 - Shader mechanisms belong to an independently usable library: source
   composition/includes/imports, compile-time configuration, compilation,
   reflection, dependency tracking, caching, and rebuilding. Offline tools
@@ -168,8 +170,11 @@ execution (#179), and optional runtime compilation with safe rebuild adoption
 **Complete Shader first (#73); Renderer feature work is paused.** The bounded
 first phase (#185, merged PR #194) adds truthful route discovery and typed target settings.
 Baseline reflection (#186) is active: representable push/constants/arrays/IO
-have focused implementation evidence; workgroup specialization and serialized
-directional IO need shared-contract decisions before completion.
+have focused implementation evidence (merged PR #195). The approved RHI/TSP
+extension now serializes canonical full directional IO and direct per-axis
+workgroup specialization; typed resolution precedes limits/native/dispatch
+metadata. Native Vulkan and Metal exact readback pass. This signed phase awaits
+independent review; #186 stays open, and the Shader module is not complete.
 Remaining phases are portable native Metal/OpenGL
 generation (#187), MSL/Metal libraries (#188), HLSL (#189), Slang/native module
 imports (#190), WGSL (#191), shared composition/cache/rebuild/tool audit (#192),

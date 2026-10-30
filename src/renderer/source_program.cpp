@@ -14,40 +14,39 @@ base::Status mismatch(std::string message) {
                                  "Renderer: " + std::move(message));
 }
 
-// Linked varyings are only in the compilation result (TSP keeps pipeline edges),
-// so stage linkage is checked here before any native object is created.
+// Validate the package's canonical directional IO before publication.
 base::Status validate_interfaces(const shader::Compilation& vertex,
                                  const shader::Compilation& fragment,
                                  const rhi::PipelineDesc& state) {
-    for (const auto& input : fragment.interfaces) {
-        if (!input.input) {
+    for (const auto& input : fragment.interfaces()) {
+        if (input.direction != rhi::ShaderInterfaceDirection::input) {
             continue;
         }
         const auto matched = std::any_of(
-            vertex.interfaces.begin(), vertex.interfaces.end(), [&](const auto& output) {
-                return !output.input && output.variable.location == input.variable.location &&
-                       output.variable.type == input.variable.type;
+            vertex.interfaces().begin(), vertex.interfaces().end(), [&](const auto& output) {
+                return output.direction == rhi::ShaderInterfaceDirection::output &&
+                       output.location == input.location && output.type == input.type;
             });
         if (!matched) {
             return mismatch("fragment input location " +
-                            std::to_string(input.variable.location) + " (" +
-                            input.variable.type + ") has no matching vertex output");
+                            std::to_string(input.location) + " (" +
+                            input.type + ") has no matching vertex output");
         }
     }
-    for (const auto& input : vertex.interfaces) {
-        if (!input.input) {
+    for (const auto& input : vertex.interfaces()) {
+        if (input.direction != rhi::ShaderInterfaceDirection::input) {
             continue;
         }
         const auto matched = std::any_of(
             state.vertexBuffers.begin(), state.vertexBuffers.end(), [&](const auto& buffer) {
                 return std::any_of(buffer.attributes.begin(), buffer.attributes.end(),
                                    [&](const auto& attribute) {
-                                       return attribute.location == input.variable.location;
+                                       return attribute.location == input.location;
                                    });
             });
         if (!matched) {
             return mismatch("vertex input location " +
-                            std::to_string(input.variable.location) +
+                            std::to_string(input.location) +
                             " has no pipeline vertex attribute");
         }
     }

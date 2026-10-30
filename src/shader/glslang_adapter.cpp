@@ -178,7 +178,7 @@ rhi::Result<Compilation> compile_glslang(const CompileRequest& request,
     result.vulkanTarget = request.vulkanTarget;
     result.compiler = {"glslang", std::to_string(version.major) + "." + std::to_string(version.minor) +
                                    "." + std::to_string(version.patch), TRUFFLE_GLSLANG_REVISION};
-    result.compiler.revision += ";truffle-glslang=3;vulkan=" +
+    result.compiler.revision += ";truffle-glslang=4;vulkan=" +
         std::string{vulkan_version_name(request.vulkanTarget.environment)} + ";spirv=" +
         std::string{spirv_version_name(request.vulkanTarget.spirv)};
     glslang::TShader shader{stage};
@@ -258,7 +258,7 @@ rhi::Result<Compilation> compile_glslang(const CompileRequest& request,
     spv::SpvBuildLogger logger;
     glslang::GlslangToSpv(*program.getIntermediate(stage), words, &logger, &options);
     if (words.empty() || words[0] != 0x07230203) return invalid("glslang SPIR-V generation failed");
-    auto status = detail::reflect_spirv(words, request.stage, variant.reflection, result.interfaces);
+    auto status = detail::reflect_spirv(words, request.stage, variant.reflection);
     if (!status.ok()) return status;
     variant.code.resize(words.size() * sizeof(unsigned int));
     std::memcpy(variant.code.data(), words.data(), variant.code.size());

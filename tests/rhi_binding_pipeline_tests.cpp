@@ -1,5 +1,7 @@
 #include "rhi_test_utils.hpp"
+#include "truffle/rhi/shader_package.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <cstddef>
@@ -41,6 +43,200 @@ truffle::rhi::Texture make_texture(truffle::rhi::Device& device,
     });
     assert(result.ok());
     return std::move(result).value();
+}
+
+void workgroup_contracts() {
+    using namespace truffle;
+    auto context = tests::make_null_context();
+    const auto& limits = context.adapter.info().pipelines;
+    rhi::ShaderDesc desc{
+        .stage = rhi::ShaderStage::compute,
+        .code = {std::byte{1}},
+        .specializationConstants = {{7, "shared", rhi::ShaderValueType::uint32, 2},
+                                    {0, "depth", rhi::ShaderValueType::sint32, 3}},
+        .requiredWorkgroupSize = {2, 2, 3},
+        .preferredWorkgroupSize = {2, 2, 3},
+        .workgroupSpecializationIds = {7, 7, 0}};
+    rhi::ShaderReflection reflection{
+        .specializationConstants = desc.specializationConstants,
+        .requiredWorkgroupSize = desc.requiredWorkgroupSize,
+        .preferredWorkgroupSize = desc.preferredWorkgroupSize,
+        .workgroupSpecializationIds = desc.workgroupSpecializationIds};
+    rhi::ShaderPackageDesc packageDesc{
+        .name = "workgroup",
+        .sources = {{.path = "fixture", .sha256 = std::string(64, 'a')}},
+        .compilers = {{.name = "fixture", .version = "1"}},
+        .variants = {{.stage = rhi::ShaderStage::compute, .reflection = reflection, .code = desc.code}}};
+    auto package = rhi::ShaderPackage::create(packageDesc);
+    assert(package.ok());
+    auto loaded = rhi::ShaderPackage::load(package.value().bytes());
+    assert(loaded.ok());
+    const auto& roundtrip = loaded.value().desc().variants[0].reflection;
+    assert(roundtrip.workgroupSpecializationIds == desc.workgroupSpecializationIds);
+    assert(roundtrip.requiredWorkgroupSize == desc.requiredWorkgroupSize);
+    assert(roundtrip.specializationConstants.size() == 2);
+    auto shaderResult = context.device.create_shader(loaded.value(), rhi::ShaderTarget::spirv,
+                                                     "main", rhi::ShaderStage::compute);
+    assert(shaderResult.ok());
+    auto shader = std::move(shaderResult).value();
+    auto defaults = context.device.create_compute_pipeline({.computeShader = &shader});
+    assert(defaults.ok() && defaults.value().preferred_workgroup_size() == rhi::Extent3D(2, 2, 3));
+    const std::vector<rhi::SpecializationValue> changed{{7, rhi::ShaderValueType::uint32, 5},
+                                                      {0, rhi::ShaderValueType::sint32, 4}};
+    auto specialized = context.device.create_compute_pipeline({
+        .computeShader = &shader, .requiredWorkgroupSize = {5, 5, 4},
+        .specializationConstants = changed});
+    assert(specialized.ok() && specialized.value().preferred_workgroup_size() == rhi::Extent3D(5, 5, 4));
+    auto explicitPreferred = context.device.create_compute_pipeline({
+        .computeShader = &shader, .preferredWorkgroupSize = {1, 1, 1}, .specializationConstants = changed});
+    assert(explicitPreferred.ok() && explicitPreferred.value().preferred_workgroup_size() == rhi::Extent3D(1, 1, 1));
+    assert(!context.device.create_compute_pipeline({
+        .computeShader = &shader, .requiredWorkgroupSize = {2, 2, 3},
+        .specializationConstants = changed}).ok());
+    assert(!context.device.create_compute_pipeline({
+        .computeShader = &shader, .requiredWorkgroupSize = {0, 2, 3}}).ok());
+    for (const auto& values : std::vector<std::vector<rhi::SpecializationValue>>{
+            {{7, rhi::ShaderValueType::uint32, 0}},
+            {{0, rhi::ShaderValueType::sint32, 0xffffffffu}},
+            {{0, rhi::ShaderValueType::sint32, 0}},
+            {{0, rhi::ShaderValueType::uint32, 4}},
+            {{7, rhi::ShaderValueType::float32, 4}},
+            {{99, rhi::ShaderValueType::uint32, 4}},
+            {{7, rhi::ShaderValueType::uint32, 4}, {7, rhi::ShaderValueType::uint32, 4}}}) {
+        auto invalid = context.device.create_compute_pipeline({
+            .computeShader = &shader, .specializationConstants = values});
+        assert(!invalid.ok() && invalid.status().code == rhi::StatusCode::invalid_argument);
+    }
+    const auto rejects = [&](rhi::ShaderDesc invalid) {
+        assert(!context.device.create_shader(invalid).ok());
+        auto malformed = packageDesc;
+        auto& r = malformed.variants[0].reflection;
+        r.specializationConstants = invalid.specializationConstants;
+        r.requiredWorkgroupSize = invalid.requiredWorkgroupSize;
+        r.workgroupSpecializationIds = invalid.workgroupSpecializationIds;
+        assert(!rhi::ShaderPackage::create(malformed).ok());
+    };
+    auto invalid = desc;
+    invalid.workgroupSpecializationIds[0] = 99;
+    rejects(invalid);
+    invalid = desc;
+    invalid.requiredWorkgroupSize.height = 3;
+    rejects(invalid);
+    for (const auto type : {rhi::ShaderValueType::float32, rhi::ShaderValueType::boolean}) {
+        invalid = desc;
+        invalid.specializationConstants[0].type = type;
+        rejects(invalid);
+    }
+    invalid = desc;
+    invalid.specializationConstants[1].defaultValueBits = 0xffffffffu;
+    invalid.requiredWorkgroupSize.depth = 0xffffffffu;
+    rejects(invalid);
+    invalid = desc;
+    invalid.specializationConstants[0].defaultValueBits = 0;
+    invalid.requiredWorkgroupSize.width = invalid.requiredWorkgroupSize.height = 0;
+    rejects(invalid);
+    invalid = desc;
+    invalid.stage = rhi::ShaderStage::vertex;
+    assert(!context.device.create_shader(invalid).ok());
+    const auto axisLimit = context.device.create_compute_pipeline({
+        .computeShader = &shader,
+        .specializationConstants = {{7, rhi::ShaderValueType::uint32, limits.maxComputeWorkgroupSize.width + 1}}});
+    assert(!axisLimit.ok() && axisLimit.status().code == rhi::StatusCode::unsupported);
+    const auto side = std::min(limits.maxComputeWorkgroupSize.width, limits.maxComputeWorkgroupSize.height);
+    assert(static_cast<std::uint64_t>(side) * side * 3 > limits.maxComputeInvocations);
+    const auto totalLimit = context.device.create_compute_pipeline({
+        .computeShader = &shader, .specializationConstants = {{7, rhi::ShaderValueType::uint32, side}}});
+    assert(!totalLimit.ok() && totalLimit.status().code == rhi::StatusCode::unsupported);
+    invalid = desc;
+    invalid.specializationConstants.clear();
+    invalid.workgroupSpecializationIds = {};
+    invalid.requiredWorkgroupSize = {0xffffffffu, 0xffffffffu, 0xffffffffu};
+    auto hugeShader = context.device.create_shader(invalid);
+    assert(hugeShader.ok());
+    assert(!context.device.create_compute_pipeline({.computeShader = &hugeShader.value()}).ok());
+    // Out-of-limit defaults can be specialized into a valid extent before limits.
+    invalid = desc;
+    invalid.specializationConstants[0].defaultValueBits = side;
+    invalid.requiredWorkgroupSize = {side, side, 3};
+    invalid.preferredWorkgroupSize = invalid.requiredWorkgroupSize;
+    auto largeDefault = context.device.create_shader(invalid);
+    assert(largeDefault.ok());
+    assert(!context.device.create_compute_pipeline({.computeShader = &largeDefault.value()}).ok());
+    auto reduced = context.device.create_compute_pipeline({
+        .computeShader = &largeDefault.value(),
+        .specializationConstants = {{7, rhi::ShaderValueType::uint32, 2}}});
+    assert(reduced.ok() && reduced.value().preferred_workgroup_size() == rhi::Extent3D(2, 2, 3));
+    auto crossTarget = packageDesc;
+    auto other = crossTarget.variants[0];
+    other.target = rhi::ShaderTarget::dxil;
+    other.format = rhi::ShaderByteFormat::dxil;
+    crossTarget.variants.push_back(other);
+    assert(rhi::ShaderPackage::create(crossTarget).ok());
+    crossTarget.variants[1].reflection.workgroupSpecializationIds[0] = std::nullopt;
+    assert(!rhi::ShaderPackage::create(crossTarget).ok());
+}
+
+void directional_interfaces() {
+    using namespace truffle;
+    auto context = tests::make_null_context();
+    assert(context.device.create_pipeline({}).ok());
+    assert(context.device.create_shader({
+        .stage = rhi::ShaderStage::vertex, .code = {std::byte{1}},
+        .requiredWorkgroupSize = {0, 0, 0}}).ok());
+    rhi::ShaderPackageDesc desc{
+        .name = "directional",
+        .sources = {{.path = "fixture", .sha256 = std::string(64, 'a')}},
+        .compilers = {{.name = "fixture", .version = "1"}},
+        .variants = {
+            {.stage = rhi::ShaderStage::vertex,
+             .reflection = {.interfaces = {
+                 {rhi::ShaderStage::vertex, rhi::ShaderInterfaceDirection::input, 0, "position", "float3", ""},
+                 {rhi::ShaderStage::vertex, rhi::ShaderInterfaceDirection::output, 0, "varying", "float4", ""}}},
+             .code = {std::byte{1}}},
+            {.stage = rhi::ShaderStage::fragment,
+             .reflection = {.interfaces = {
+                 {rhi::ShaderStage::fragment, rhi::ShaderInterfaceDirection::input, 0, "renamed", "vec4", "smooth"},
+                 {rhi::ShaderStage::fragment, rhi::ShaderInterfaceDirection::output, 0, "color", "vec4", ""}}},
+             .code = {std::byte{1}}}}};
+    auto package = rhi::ShaderPackage::create(desc);
+    assert(package.ok());
+    auto loaded = rhi::ShaderPackage::load(package.value().bytes());
+    assert(loaded.ok());
+    for (const auto& variant : loaded.value().desc().variants) {
+        assert(variant.reflection.interfaces.size() == 2);
+        assert(variant.reflection.interfaces[0].direction == rhi::ShaderInterfaceDirection::input);
+        assert(variant.reflection.interfaces[1].direction == rhi::ShaderInterfaceDirection::output);
+        assert(variant.reflection.interfaces[0].location == variant.reflection.interfaces[1].location);
+    }
+    auto vertex = context.device.create_shader(loaded.value(), rhi::ShaderTarget::spirv, "main", rhi::ShaderStage::vertex);
+    auto fragment = context.device.create_shader(loaded.value(), rhi::ShaderTarget::spirv, "main", rhi::ShaderStage::fragment);
+    assert(vertex.ok() && fragment.ok());
+    assert(!context.device.create_pipeline({.fragmentShader = &fragment.value()}).ok());
+    rhi::PipelineDesc pipeline{
+        .vertexShader = &vertex.value(), .fragmentShader = &fragment.value(),
+        .vertexBuffers = {{.stride = 12, .attributes = {{.location = 0, .format = rhi::VertexFormat::float32x3}}}}};
+    assert(context.device.create_pipeline(pipeline).ok());
+    auto depthOnly = pipeline;
+    depthOnly.fragmentShader = nullptr;
+    assert(context.device.create_pipeline(depthOnly).ok());
+    pipeline.vertexBuffers.clear();
+    assert(!context.device.create_pipeline(pipeline).ok());
+    pipeline.vertexBuffers = {{.stride = 12, .attributes = {{.location = 0, .format = rhi::VertexFormat::uint32x3}}}};
+    assert(!context.device.create_pipeline(pipeline).ok());
+    pipeline.vertexBuffers[0].attributes[0].format = rhi::VertexFormat::float32x3;
+    for (const bool wrongType : {false, true}) {
+        auto mismatch = desc;
+        auto& input = mismatch.variants[1].reflection.interfaces[0];
+        if (wrongType) input.type = "vec3";
+        else input.location = 3;
+        auto mismatchedPackage = rhi::ShaderPackage::create(mismatch);
+        assert(mismatchedPackage.ok());
+        auto shader = context.device.create_shader(mismatchedPackage.value(), rhi::ShaderTarget::spirv,
+                                                   "main", rhi::ShaderStage::fragment);
+        assert(shader.ok());
+        pipeline.fragmentShader = &shader.value();
+        assert(!context.device.create_pipeline(pipeline).ok());
+    }
 }
 
 } // namespace
@@ -448,5 +644,7 @@ int main() {
     assert(stats.pipelineCachesCreated == 1);
     assert(stats.drawsRecorded == 5);
     assert(stats.dispatchesRecorded == 2);
+    workgroup_contracts();
+    directional_interfaces();
     return 0;
 }

@@ -323,6 +323,9 @@ int main(int argc, char** argv) {
                       << " workgroup=" << variant.reflection.requiredWorkgroupSize.width << 'x'
                       << variant.reflection.requiredWorkgroupSize.height << 'x'
                       << variant.reflection.requiredWorkgroupSize.depth << '\n';
+            for (std::size_t axis = 0; axis < variant.reflection.workgroupSpecializationIds.size(); ++axis)
+                if (const auto id = variant.reflection.workgroupSpecializationIds[axis])
+                    std::cout << "workgroup-axis=" << "xyz"[axis] << " specialization-id=" << *id << '\n';
             for (const auto& binding : variant.reflection.bindings) {
                 std::cout << "binding=" << binding.group << ':' << binding.binding
                           << " name=" << binding.name
@@ -343,6 +346,7 @@ int main(int argc, char** argv) {
             }
             for (const auto& value : variant.reflection.interfaces) {
                 std::cout << "location=" << value.location << " name=" << value.name
+                          << " direction=" << (value.direction == truffle::rhi::ShaderInterfaceDirection::input ? "input" : "output")
                           << " type=" << value.type << " interpolation=" << value.interpolation
                           << " stage=" << static_cast<unsigned>(value.stage) << '\n';
             }

@@ -323,6 +323,20 @@ merged and #186 reflection is active); Renderer feature growth is paused. Existi
 may supply native Shader-output evidence. Engine and other higher-level
 modules remain later work.
 
+The #186 contract extension makes RHI's `ShaderInterfaceVariable::direction`
+canonical and serializes all located stage IO with `(stage,direction,location)`
+keys. Shader's compilation borrows package records instead of retaining a
+second IO/direction representation; Renderer and RHI validate linkage from
+those records. Optional per-axis scalar specialization IDs/defaults belong to
+RHI reflection/shader contracts; RHI resolves typed values before pipeline
+sizes, limits, native creation and retained dispatch metadata. Shader only
+decodes emitted metadata, and tools remain clients. This approved change
+updates the unreleased TSP draft in place under identifiers `1.0`; there is no
+legacy reader, migration, version bump or dependency-edge change. Stable
+format/versioning guarantees begin with release. Vulkan and prepared Metal
+exact consumption evidence is local to Apple Silicon; no unrun-platform
+claim is implied. This phase awaits independent review, not module completion.
+
 ## Deferred Surfaces
 
 The Simple RHI is deferred: a beginner-friendly, OpenGL-like convenience layer
