@@ -82,6 +82,9 @@ struct CompileRequest {
     bool allowExperimentalMetalGeneration = false;
     bool allowExperimentalWgslGeneration = false;
     std::vector<std::string> includeRoots;
+    // Ordered extra source units for native MSL only. Compiler::compile rejects
+    // them for every other language before adapter discovery or source resolution.
+    std::vector<std::string> sourceUnits;
     SourceResolver resolver;
     std::vector<rhi::ShaderDefine> defines;
     bool generateDebugInfo = false;

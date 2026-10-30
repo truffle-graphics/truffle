@@ -19,7 +19,9 @@ int main() {
         request.language = route.language;
         request.allowExperimentalMetalGeneration = true;
         request.allowExperimentalWgslGeneration = true;
-        request.source.text = route.language == rhi::ShaderSourceLanguage::hlsl
+        request.source.text = route.language == rhi::ShaderSourceLanguage::slang
+            ? "float4 main(uint id : SV_VulkanVertexID) : SV_Position { return float4(0,0,0,1); }\n"
+            : route.language == rhi::ShaderSourceLanguage::hlsl
             ? "float4 main():SV_Position{return float4(0,0,0,1);}\n"
             : route.language == rhi::ShaderSourceLanguage::glsl_es
                 ? "#version 310 es\nvoid main(){gl_Position=vec4(0);}\n"

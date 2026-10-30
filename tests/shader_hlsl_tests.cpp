@@ -153,6 +153,12 @@ void rebuilds(rhi::ShaderTarget target) {
     TRUFFLE_SHADER_CHECK(rebuild.last_good() && rebuild.last_good()->cacheKey == changed.cacheKey);
     configuration.resize(configuration.find("\n#error"));
     TRUFFLE_SHADER_CHECK(tests::require(rebuild.rebuild(compiler, request)).cacheKey == changed.cacheKey);
+    request.sourceUnits = {"extra.hlsli"};
+    const auto sourceUnits = compiler.compile(request);
+    TRUFFLE_SHADER_CHECK(!sourceUnits.ok() &&
+        sourceUnits.status().code == rhi::StatusCode::unsupported &&
+        sourceUnits.status().message.find("sourceUnits") != std::string::npos);
+    request.sourceUnits.clear();
     request.defines.push_back({"QUALITY", "2"});
     TRUFFLE_SHADER_CHECK(!compiler.compile(request).ok());
     request.defines.pop_back();

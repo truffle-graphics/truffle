@@ -2,6 +2,7 @@
 #include "shader_test_utils.hpp"
 
 #include <array>
+#include <algorithm>
 
 int main() {
     using namespace truffle;

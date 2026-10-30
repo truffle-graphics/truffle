@@ -9,14 +9,30 @@ int main() {
     try {
         shader::Compiler compiler;
         auto request = tests::wgsl_request(rhi::ShaderStage::compute);
+        const auto rejectSourceUnits = [&](shader::CompileRequest input) {
+            input.sourceUnits = {"must-not-resolve.wgsl"};
+            bool resolved = false;
+            input.resolver = [&](auto, auto, bool) -> rhi::Result<shader::Source> {
+                resolved = true;
+                return shader::Source{"unexpected", ""};
+            };
+            const auto result = compiler.compile(input);
+            TRUFFLE_SHADER_CHECK(!result.ok() &&
+                result.status().code == rhi::StatusCode::unsupported &&
+                result.status().message.find("sourceUnits") != std::string::npos && !resolved);
+        };
+        rejectSourceUnits(request);
         if (!tests::shader_route_enabled(rhi::ShaderSourceLanguage::wgsl)) {
             const auto disabled = compiler.compile(request);
-            TRUFFLE_SHADER_CHECK(!disabled.ok() && disabled.status().code == rhi::StatusCode::unsupported);
+            TRUFFLE_SHADER_CHECK(!disabled.ok() && disabled.status().code == rhi::StatusCode::unsupported &&
+                (disabled.status().message.find("Shader compilers disabled") != std::string::npos ||
+                 disabled.status().message.find("No enabled Shader compiler route") != std::string::npos));
             return 0;
         }
         for (const auto stage : {rhi::ShaderStage::vertex, rhi::ShaderStage::fragment, rhi::ShaderStage::compute}) {
             auto input = tests::wgsl_request(stage);
             const auto result = tests::require(compiler.compile(input));
+            rejectSourceUnits(input);
             const auto& variant = result.package.desc().variants.front();
             TRUFFLE_SHADER_CHECK(result.compiler.name == "Tint" && !result.cacheHit);
             TRUFFLE_SHADER_CHECK(result.dependencies.size() == 1 && result.dependencies.front().identity == input.source.identity);
@@ -45,6 +61,7 @@ int main() {
             intermediate.target = rhi::ShaderTarget::wgsl;
             intermediate.source.identity = "intermediate.spv";
             intermediate.source.text.assign(reinterpret_cast<const char*>(variant.code.data()), variant.code.size());
+            rejectSourceUnits(intermediate);
             const auto imported = tests::require(compiler.compile(intermediate));
             TRUFFLE_SHADER_CHECK(imported.package.desc().variants.front().format == rhi::ShaderByteFormat::native_source);
             input.target = rhi::ShaderTarget::wgsl;

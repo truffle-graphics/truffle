@@ -11,6 +11,10 @@ namespace truffle::shader {
 rhi::Result<Compilation> compile_glslang(const CompileRequest& request,
                                        std::vector<Compilation>& cache);
 #endif
+#if defined(TRUFFLE_SHADER_HAS_SLANG)
+rhi::Result<Compilation> compile_slang(const CompileRequest& request,
+                                     std::vector<Compilation>& cache);
+#endif
 #if defined(TRUFFLE_SHADER_HAS_TINT)
 rhi::Result<Compilation> compile_tint(const CompileRequest&, std::vector<Compilation>&);
 #endif
@@ -50,7 +54,8 @@ std::string_view hlsl_shader_model_name(HlslShaderModel model) noexcept {
 }
 
 std::span<const CompilerRoute> Compiler::routes() noexcept {
-#if defined(TRUFFLE_SHADER_HAS_GLSLANG) || defined(TRUFFLE_SHADER_HAS_DXC) || defined(TRUFFLE_SHADER_HAS_TINT)
+#if defined(TRUFFLE_SHADER_HAS_GLSLANG) || defined(TRUFFLE_SHADER_HAS_SLANG) || \
+    defined(TRUFFLE_SHADER_HAS_DXC) || defined(TRUFFLE_SHADER_HAS_TINT)
     static constexpr rhi::ShaderStage stages[]{
         rhi::ShaderStage::vertex, rhi::ShaderStage::fragment, rhi::ShaderStage::compute};
 #if defined(TRUFFLE_SHADER_HAS_GLSLANG)
@@ -58,6 +63,9 @@ std::span<const CompilerRoute> Compiler::routes() noexcept {
         {VulkanVersion::v1_0, SpirvVersion::v1_0},
         {VulkanVersion::v1_1, SpirvVersion::v1_0},
         {VulkanVersion::v1_1, SpirvVersion::v1_3}};
+#endif
+#if defined(TRUFFLE_SHADER_HAS_SLANG)
+    static constexpr VulkanTarget slangTargets[]{{VulkanVersion::v1_1, SpirvVersion::v1_3}};
 #endif
 #if defined(TRUFFLE_SHADER_HAS_DXC)
     static constexpr VulkanTarget dxcTargets[]{
@@ -88,6 +96,9 @@ std::span<const CompilerRoute> Compiler::routes() noexcept {
         {rhi::ShaderSourceLanguage::glsl, rhi::ShaderTarget::glsl_es, graphics, targets, {}, {}, es},
         {rhi::ShaderSourceLanguage::glsl_es, rhi::ShaderTarget::glsl_es, graphics, targets, {}, {}, es},
 #endif
+#endif
+#if defined(TRUFFLE_SHADER_HAS_SLANG)
+        {rhi::ShaderSourceLanguage::slang, rhi::ShaderTarget::spirv, stages, slangTargets},
 #endif
 #if defined(TRUFFLE_SHADER_HAS_TINT)
         {rhi::ShaderSourceLanguage::wgsl, rhi::ShaderTarget::spirv, stages,
@@ -132,10 +143,14 @@ rhi::Result<Compilation> Compiler::compile(const CompileRequest& request) {
         return rhi::Status::failure(rhi::StatusCode::invalid_argument,
                                    "Invalid Vulkan environment, SPIR-V version or HLSL shader model");
     }
+    if (!request.sourceUnits.empty() && request.language != rhi::ShaderSourceLanguage::msl) {
+        return rhi::Status::failure(rhi::StatusCode::unsupported,
+                                   "sourceUnits are supported only for native MSL");
+    }
     const auto enabled = routes();
     if (enabled.empty()) {
         return rhi::Status::failure(rhi::StatusCode::unsupported,
-                                   "Shader compilers disabled: enable TRUFFLE_SHADER_ENABLE_GLSLANG, TRUFFLE_SHADER_ENABLE_DXC or TRUFFLE_SHADER_ENABLE_TINT");
+                                   "Shader compilers disabled: enable TRUFFLE_SHADER_ENABLE_GLSLANG, TRUFFLE_SHADER_ENABLE_DXC, TRUFFLE_SHADER_ENABLE_TINT or TRUFFLE_SHADER_ENABLE_SLANG");
     }
     const auto route = std::find_if(enabled.begin(), enabled.end(), [&](const auto& value) {
         return value.language == request.language && value.target == request.target;
@@ -187,11 +202,16 @@ rhi::Result<Compilation> Compiler::compile(const CompileRequest& request) {
         return compile_dxc(request, impl_->cache);
 #endif
 #if defined(TRUFFLE_SHADER_HAS_GLSLANG)
-    return compile_glslang(request, impl_->cache);
-#else
+    if (request.language == rhi::ShaderSourceLanguage::glsl ||
+        request.language == rhi::ShaderSourceLanguage::glsl_es)
+        return compile_glslang(request, impl_->cache);
+#endif
+#if defined(TRUFFLE_SHADER_HAS_SLANG)
+    if (request.language == rhi::ShaderSourceLanguage::slang)
+        return compile_slang(request, impl_->cache);
+#endif
     return rhi::Status::failure(rhi::StatusCode::unsupported,
                                "No enabled Shader compiler route");
-#endif
 }
 
 void Compiler::clear_cache() { impl_->cache.clear(); }
