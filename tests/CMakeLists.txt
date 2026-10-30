@@ -1,5 +1,23 @@
 add_executable(truffle_encom_tests encom_contract_tests.cpp)
 add_executable(truffle_shader_compiler_tests shader_compiler_tests.cpp)
+add_executable(truffle_shader_wgsl_tests shader_wgsl_tests.cpp)
+target_link_libraries(truffle_shader_wgsl_tests PRIVATE truffle_shader)
+truffle_target_warnings(truffle_shader_wgsl_tests)
+add_test(NAME truffle_shader_wgsl_tests COMMAND truffle_shader_wgsl_tests)
+if(APPLE AND TRUFFLE_SHADER_ENABLE_TINT AND TRUFFLE_SHADER_ENABLE_SPIRV_CROSS AND
+   TRUFFLE_BUILD_BACKEND_VULKAN AND TRUFFLE_BUILD_BACKEND_METAL)
+    add_executable(truffle_shader_wgsl_native_tests shader_wgsl_native_tests.cpp)
+    target_link_libraries(truffle_shader_wgsl_native_tests PRIVATE
+        truffle_shader truffle_backend_vulkan truffle_backend_metal)
+    target_include_directories(truffle_shader_wgsl_native_tests PRIVATE
+        "${PROJECT_SOURCE_DIR}/src/backends/vulkan")
+    truffle_target_warnings(truffle_shader_wgsl_native_tests)
+    add_test(NAME truffle_shader_wgsl_native_tests COMMAND truffle_shader_wgsl_native_tests)
+    set_tests_properties(truffle_shader_wgsl_native_tests PROPERTIES
+        LABELS "native-smoke;validation;shader"
+        FAIL_REGULAR_EXPRESSION "Validation (Error|Warning)"
+        ENVIRONMENT "MTL_DEBUG_LAYER=1;MTL_SHADER_VALIDATION=1")
+endif()
 target_link_libraries(truffle_shader_compiler_tests PRIVATE truffle_shader)
 truffle_target_warnings(truffle_shader_compiler_tests)
 add_test(NAME truffle_shader_compiler_tests COMMAND truffle_shader_compiler_tests)
@@ -18,7 +36,7 @@ if(TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS)
     truffle_target_warnings(truffle_shader_spirv_validation_tests)
     add_test(NAME truffle_shader_spirv_validation_tests COMMAND truffle_shader_spirv_validation_tests)
 endif()
-if(APPLE AND TRUFFLE_SHADER_ENABLE_SPIRV_CROSS AND TRUFFLE_BUILD_BACKEND_VULKAN AND
+if(APPLE AND TRUFFLE_SHADER_ENABLE_GLSLANG AND TRUFFLE_SHADER_ENABLE_SPIRV_CROSS AND TRUFFLE_BUILD_BACKEND_VULKAN AND
    TRUFFLE_BUILD_BACKEND_METAL AND TRUFFLE_BUILD_BACKEND_OPENGL)
     add_executable(truffle_shader_portable_native_tests shader_portable_native_tests.cpp)
     target_link_libraries(truffle_shader_portable_native_tests PRIVATE
@@ -183,6 +201,10 @@ if(TRUFFLE_BUILD_BACKEND_VULKAN)
                 "DYLD_FALLBACK_LIBRARY_PATH=${_truffle_vulkan_loader_dir}:/usr/local/lib:/usr/lib")
             if(TARGET truffle_shader_portable_native_tests)
                 set_property(TEST truffle_shader_portable_native_tests APPEND PROPERTY ENVIRONMENT
+                    "DYLD_FALLBACK_LIBRARY_PATH=${_truffle_vulkan_loader_dir}:/usr/local/lib:/usr/lib")
+            endif()
+            if(TARGET truffle_shader_wgsl_native_tests)
+                set_property(TEST truffle_shader_wgsl_native_tests APPEND PROPERTY ENVIRONMENT
                     "DYLD_FALLBACK_LIBRARY_PATH=${_truffle_vulkan_loader_dir}:/usr/local/lib:/usr/lib")
             endif()
         endif()
@@ -393,7 +415,17 @@ target_link_libraries(truffle_shader_package_tests PRIVATE truffle_backend_null)
 add_test(NAME truffle_shader_package_tests COMMAND truffle_shader_package_tests)
 
 if(TRUFFLE_BUILD_SHADERC)
-    if(TRUFFLE_SHADER_ENABLE_SPIRV_CROSS)
+    if(TRUFFLE_SHADER_ENABLE_TINT)
+        add_executable(truffle_shader_wgsl_equivalence_tests shader_wgsl_equivalence_tests.cpp)
+        target_link_libraries(truffle_shader_wgsl_equivalence_tests PRIVATE truffle_shader)
+        truffle_target_warnings(truffle_shader_wgsl_equivalence_tests)
+        add_test(NAME truffle_shaderc_wgsl_smoke COMMAND "${CMAKE_COMMAND}"
+            "-DTRUFFLE_SHADERC=$<TARGET_FILE:truffle-shaderc>"
+            "-DTRUFFLE_SHADER_EQUIVALENCE=$<TARGET_FILE:truffle_shader_wgsl_equivalence_tests>"
+            "-DTRUFFLE_SHADERC_TEST_DIR=${PROJECT_BINARY_DIR}/shaderc-wgsl-smoke"
+            -P "${PROJECT_SOURCE_DIR}/cmake/ShadercWgslSmoke.cmake")
+    endif()
+    if(TRUFFLE_SHADER_ENABLE_GLSLANG AND TRUFFLE_SHADER_ENABLE_SPIRV_CROSS)
         add_executable(truffle_shader_portable_equivalence_tests shader_portable_equivalence_tests.cpp)
         target_link_libraries(truffle_shader_portable_equivalence_tests PRIVATE truffle_shader)
         truffle_target_warnings(truffle_shader_portable_equivalence_tests)
@@ -407,6 +439,7 @@ if(TRUFFLE_BUILD_SHADERC)
         COMMAND "${CMAKE_COMMAND}"
             "-DTRUFFLE_SHADERC=$<TARGET_FILE:truffle-shaderc>"
             "-DTRUFFLE_EXPECT_COMPILER=$<BOOL:${TRUFFLE_SHADER_ENABLE_GLSLANG}>"
+            "-DTRUFFLE_EXPECT_TINT=$<BOOL:${TRUFFLE_SHADER_ENABLE_TINT}>"
             "-DTRUFFLE_SHADERC_TEST_DIR=${PROJECT_BINARY_DIR}/shaderc-routes"
             -P "${PROJECT_SOURCE_DIR}/cmake/ShadercRoutesSmoke.cmake")
     add_test(NAME truffle_shaderc_self_test COMMAND truffle-shaderc --self-test)
@@ -458,7 +491,7 @@ if(TRUFFLE_INSTALL)
             "-DTRUFFLE_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
             "-DTRUFFLE_OSX_SYSROOT=${CMAKE_OSX_SYSROOT}"
             "-DTRUFFLE_EXECUTABLE_SUFFIX=${CMAKE_EXECUTABLE_SUFFIX}"
-            "-DTRUFFLE_EXPECT_COMPILER=$<BOOL:${TRUFFLE_SHADER_ENABLE_GLSLANG}>"
+            "-DTRUFFLE_EXPECT_COMPILER=$<OR:$<BOOL:${TRUFFLE_SHADER_ENABLE_GLSLANG}>,$<BOOL:${TRUFFLE_SHADER_ENABLE_TINT}>>"
             "-DTRUFFLE_CONFIG=$<CONFIG>"
             -P "${PROJECT_SOURCE_DIR}/cmake/ShaderInstallSmoke.cmake")
     add_test(

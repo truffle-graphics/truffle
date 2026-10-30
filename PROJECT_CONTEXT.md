@@ -181,8 +181,12 @@ metadata. Native Vulkan and Metal exact readback pass. Portable native
 Metal/OpenGL generation (#187) is the active, bounded review phase: pinned
 optional translation/validation, target limits, true native remaps and logical/
 native entry identities retain evolving TSP `1.0`. Shader is not complete.
-Remaining phases are MSL/Metal libraries (#188), HLSL (#189), Slang/native module
-imports (#190), WGSL (#191), shared composition/cache/rebuild/tool audit (#192),
+WGSL/Tint (#191) now has optional real WGSL→SPIR-V, WGSL regeneration,
+SPIR-V→WGSL and WGSL→MSL routes, canonical reflection and focused native
+Vulkan/Metal exact graphics/compute readback; no WebGPU execution is claimed.
+WGSL preprocessing/imports and pipeline override substitution remain explicitly
+unsupported rather than invented. Remaining phases are MSL/Metal libraries (#188), HLSL (#189), Slang/native module
+imports (#190), shared composition/cache/rebuild/tool audit (#192),
 and final evidence/completion audit (#193). Use signed phased commits,
 immediate pushes, and reviewed PR merge commits. Existing Renderer regressions
 may establish Shader-output evidence; materials, lighting, texture/asset

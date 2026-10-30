@@ -11,6 +11,9 @@ namespace truffle::shader {
 rhi::Result<Compilation> compile_glslang(const CompileRequest& request,
                                        std::vector<Compilation>& cache);
 #endif
+#if defined(TRUFFLE_SHADER_HAS_TINT)
+rhi::Result<Compilation> compile_tint(const CompileRequest&, std::vector<Compilation>&);
+#endif
 
 struct Compiler::Impl {
     std::vector<Compilation> cache;
@@ -36,7 +39,7 @@ std::string_view spirv_version_name(SpirvVersion version) noexcept {
 }
 
 std::span<const CompilerRoute> Compiler::routes() noexcept {
-#if defined(TRUFFLE_SHADER_HAS_GLSLANG)
+#if defined(TRUFFLE_SHADER_HAS_GLSLANG) || defined(TRUFFLE_SHADER_HAS_TINT)
     static constexpr rhi::ShaderStage stages[]{
         rhi::ShaderStage::vertex, rhi::ShaderStage::fragment, rhi::ShaderStage::compute};
     static constexpr VulkanTarget targets[]{
@@ -44,12 +47,15 @@ std::span<const CompilerRoute> Compiler::routes() noexcept {
         {VulkanVersion::v1_1, SpirvVersion::v1_0},
         {VulkanVersion::v1_1, SpirvVersion::v1_3}};
 #if defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS)
-    static constexpr rhi::ShaderStage graphics[]{rhi::ShaderStage::vertex, rhi::ShaderStage::fragment};
     static constexpr MetalTarget metal[]{{}};
+#if defined(TRUFFLE_SHADER_HAS_GLSLANG)
+    static constexpr rhi::ShaderStage graphics[]{rhi::ShaderStage::vertex, rhi::ShaderStage::fragment};
     static constexpr GlslTarget glsl[]{{}};
     static constexpr GlslEsTarget es[]{{}};
 #endif
+#endif
     static constexpr CompilerRoute enabled[]{
+#if defined(TRUFFLE_SHADER_HAS_GLSLANG)
         {rhi::ShaderSourceLanguage::glsl, rhi::ShaderTarget::spirv, stages, targets},
         {rhi::ShaderSourceLanguage::glsl_es, rhi::ShaderTarget::spirv, stages, targets},
 #if defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS)
@@ -59,6 +65,19 @@ std::span<const CompilerRoute> Compiler::routes() noexcept {
         {rhi::ShaderSourceLanguage::glsl_es, rhi::ShaderTarget::glsl, graphics, targets, {}, glsl},
         {rhi::ShaderSourceLanguage::glsl, rhi::ShaderTarget::glsl_es, graphics, targets, {}, {}, es},
         {rhi::ShaderSourceLanguage::glsl_es, rhi::ShaderTarget::glsl_es, graphics, targets, {}, {}, es},
+#endif
+#endif
+#if defined(TRUFFLE_SHADER_HAS_TINT)
+        {rhi::ShaderSourceLanguage::wgsl, rhi::ShaderTarget::spirv, stages,
+         std::span{targets}.subspan(2)},
+        {rhi::ShaderSourceLanguage::wgsl, rhi::ShaderTarget::wgsl, stages,
+         std::span{targets}.subspan(2), {}, {}, {}, true},
+        {rhi::ShaderSourceLanguage::spirv, rhi::ShaderTarget::wgsl, stages,
+         std::span{targets}.subspan(2), {}, {}, {}, true},
+#if defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS)
+        {rhi::ShaderSourceLanguage::wgsl, rhi::ShaderTarget::metal_source, stages,
+         std::span{targets}.subspan(2), metal, {}, {}, true},
+#endif
 #endif
     };
     return enabled;
@@ -78,7 +97,7 @@ rhi::Result<Compilation> Compiler::compile(const CompileRequest& request) {
     const auto enabled = routes();
     if (enabled.empty()) {
         return rhi::Status::failure(rhi::StatusCode::unsupported,
-                                   "Shader compiler disabled: enable TRUFFLE_SHADER_ENABLE_GLSLANG");
+                                   "Shader compiler disabled: enable TRUFFLE_SHADER_ENABLE_GLSLANG or TRUFFLE_SHADER_ENABLE_TINT");
     }
     const auto route = std::find_if(enabled.begin(), enabled.end(), [&](const auto& value) {
         return value.language == request.language && value.target == request.target;
@@ -100,6 +119,11 @@ rhi::Result<Compilation> Compiler::compile(const CompileRequest& request) {
         return rhi::Status::failure(rhi::StatusCode::unsupported,
                                    "Generated Metal requires explicit experimental opt-in");
     }
+    if (request.target == rhi::ShaderTarget::wgsl &&
+        !request.allowExperimentalWgslGeneration) {
+        return rhi::Status::failure(rhi::StatusCode::unsupported,
+                                   "Generated WGSL requires explicit experimental opt-in");
+    }
     if (std::find(route->stages.begin(), route->stages.end(), request.stage) == route->stages.end()) {
         return rhi::Status::failure(rhi::StatusCode::unsupported,
                                    "Shader stage not supported by the selected compiler route");
@@ -111,6 +135,11 @@ rhi::Result<Compilation> Compiler::compile(const CompileRequest& request) {
             std::string{vulkan_version_name(request.vulkanTarget.environment)} + " / SPIR-V " +
             std::string{spirv_version_name(request.vulkanTarget.spirv)});
     }
+#if defined(TRUFFLE_SHADER_HAS_TINT)
+    if (request.language == rhi::ShaderSourceLanguage::wgsl ||
+        request.language == rhi::ShaderSourceLanguage::spirv)
+        return compile_tint(request, impl_->cache);
+#endif
 #if defined(TRUFFLE_SHADER_HAS_GLSLANG)
     return compile_glslang(request, impl_->cache);
 #else

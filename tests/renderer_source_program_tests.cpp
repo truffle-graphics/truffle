@@ -1,6 +1,7 @@
 #include "rhi_test_utils.hpp"
 #include "test_support.hpp"
 #include "truffle/renderer/source_program.hpp"
+#include <algorithm>
 
 #include <cstdlib>
 #include <map>
@@ -89,7 +90,11 @@ void main() { color = shade() * tint; }
 
     shader::Compiler compiler;
     renderer::SourceProgram program(cache, compiled, {});
-    if (!shader::Compiler::available()) {
+    const auto routes = shader::Compiler::routes();
+    if (std::none_of(routes.begin(), routes.end(), [](const auto& route) {
+            return route.language == rhi::ShaderSourceLanguage::glsl &&
+                   route.target == rhi::ShaderTarget::spirv;
+        })) {
         // Compiler-disabled build: Renderer links Shader's core only, prepared
         // programs keep working and source requests are explicitly unsupported.
         auto attempt = program.rebuild(compiler, request);

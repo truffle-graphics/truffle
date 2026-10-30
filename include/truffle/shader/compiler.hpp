@@ -74,8 +74,9 @@ struct CompileRequest {
     MetalTarget metalTarget;
     GlslTarget glslTarget;
     GlslEsTarget glslEsTarget;
-    // Explicit consent is required both to produce and to load generated MSL.
+    // Explicit consent is required both to produce and to load generated MSL/WGSL.
     bool allowExperimentalMetalGeneration = false;
+    bool allowExperimentalWgslGeneration = false;
     std::vector<std::string> includeRoots;
     SourceResolver resolver;
     std::vector<rhi::ShaderDefine> defines;

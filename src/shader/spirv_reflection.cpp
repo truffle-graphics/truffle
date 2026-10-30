@@ -1,7 +1,7 @@
 #include "spirv_reflection.hpp"
 
 #define SPV_ENABLE_UTILITY_CODE
-#include <SPIRV/spirv.hpp11>
+#include <spirv/unified1/spirv.hpp11>
 
 #include <algorithm>
 #include <cstring>
