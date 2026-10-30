@@ -136,6 +136,18 @@ Native-generation limits, distinct from SPIR-V reflection:
   push data), textures 0..127 and samplers 0..15, rejecting excess slots.
   Push constants map to buffer 30; function constants preserve logical IDs and
   defaults, including direct workgroup axis specialization.
+- Metal runtime storage-buffer tails can be indexed, but querying their
+  `.length()` is `unsupported`: SPIRV-Cross requires an auxiliary buffer-size
+  table that RHI does not supply. Translation also rejects reported auxiliary
+  swizzle, view-mask, dispatch-base, captured-output/patch-output and input
+  threadgroup resources. Multiview, capture/tessellation, swizzling and
+  compiler-side dynamic-offset helpers are not enabled; dynamic offsets remain
+  native bind-group offsets. No helper slot or fake resource remap is published.
+- Generated package shaders explicitly carry complete per-stage resource
+  reflection into RHI. Metal skips layout-visible resources absent from that
+  stage, even with `ShaderStageMask::all`; it does not fall back into reserved
+  vertex-stream slots. Low-level/native shaders do not infer completeness from
+  empty reflection; their default binding convention remains available.
 - GL 410/ES 300 require one-to-one scalar texture/sampler pairing; many-to-one,
   one-to-many, unpaired resources and synthesized samplers are explicit
   `unsupported` results. A broader sampling graph needs a shared multi-use

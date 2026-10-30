@@ -108,7 +108,7 @@ void submit_graphics(truffle::rhi::Device& device,
     assert(queue.submit(lists).ok());
 }
 
-void specialized_workgroups(truffle::rhi::Device& device) {
+void specialized_workgroups(truffle::rhi::Device& device, bool provideResourceMetadata) {
     using namespace truffle;
     constexpr std::string_view source = R"MSL(
 #include <metal_stdlib>
@@ -130,6 +130,8 @@ kernel void workgroups(device uint* output [[buffer(0)]],
                                      {18, "groupY", rhi::ShaderValueType::uint32, 2}},
         .requiredWorkgroupSize = {2, 2, 1}, .preferredWorkgroupSize = {2, 2, 1},
         .workgroupSpecializationIds = {17, 18, std::nullopt}};
+    if (!provideResourceMetadata) desc.reflection.clear();
+    assert(!desc.resourceBindingsComplete);
     auto shader = device.create_shader(desc);
     assert(shader.ok());
     auto groupLayout = device.create_bind_group_layout({
@@ -225,7 +227,8 @@ int main() {
     auto device = std::move(deviceResult).value();
     assert(!device.lost());
     assert(device.memory_budget(rhi::MemoryDomain::device_local).ok());
-    specialized_workgroups(device);
+    specialized_workgroups(device, true);
+    specialized_workgroups(device, false);
 
     auto computeQueueProof = device.queue(rhi::QueueKind::compute);
     assert(computeQueueProof.ok());
@@ -1067,6 +1070,6 @@ fragment float4 buffer_fragment(VertexOutput input [[stage_in]],
     assert(stats.transfersExecuted >= 10);
     assert(stats.submissions >= 10);
     assert(stats.drawsRecorded == 6);
-    assert(stats.dispatchesRecorded == 4);
+    assert(stats.dispatchesRecorded == 6);
     return 0;
 }

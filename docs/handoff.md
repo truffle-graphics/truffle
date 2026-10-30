@@ -9,6 +9,38 @@ rather than growing a historical transcript here.
 
 ## Portable Shader Targets (#187, Ready For Parent Review)
 
+- **Independent review fixes on PR #197:** MSL translation now checks all seven
+  upstream auxiliary-resource feedback APIs **after** compilation and rejects
+  unsupported helper contracts before publishing source. Runtime buffer-tail
+  `.length()` specifically needs an unbound size table (default buffer 25,
+  overlapping allocated descriptors); no fake remap is added. Swizzle/view/
+  dispatch/capture helpers are rejected too; dynamic helper offsets and
+  tessellation/capture options are not enabled. Runtime-tail indexing remains
+  supported and executes in Vulkan/Metal compute; Vulkan `.length()` still
+  compiles. Translator provenance advances to `truffle-cross=2`.
+- **Explicit resource authority:** RHI's `ShaderDesc::resourceBindingsComplete`
+  defaults false; package selection sets it only for `generated` variants.
+  Complete empty reflection means no resources; optional/empty low-level or
+  precompiled/native-override metadata does **not** imply that. Metal snapshots
+  the per-stage authority with reflection/remaps and skips genuinely absent
+  resources despite broad layout visibility. Existing native fallback remains.
+  No new TSP wire field/version or compiler/backend dependency is needed.
+- **Review regression evidence:** new Metal native graphics uses group 0,
+  uniform binding 0, real vertex stream 0 and `ShaderStageMask::all`. Vertex/group
+  binding in **both orders** reads all 256 pixels exactly `(64,64,32,255)` from
+  unchanged generated packages. Low-level native compute with empty resource
+  metadata retains real storage-buffer binding and specialized readback.
+  The new `.length()` unit regression was confirmed failing before the fix.
+- **Focused review validation:** existing Ninja Debug/SDK/warnings-as-errors
+  builds, `--parallel 4`; translator-on **7/7** portable unit/native, CLI
+  equivalence, package, Metal backend/conformance and Renderer–Metal tests pass.
+  Compiler-off **6/6** compiler/route/package, Metal and installed Shader/
+  Renderer/RHI consumers pass, with no optional compiler names in the installed
+  Shader consumer link graph. Previous full focused configuration evidence
+  below is the implementation baseline, not a repeated full matrix.
+  Metal binding snapshots/encoding remain one backend-owned lifecycle, and RHI
+  forwards semantic completeness without owning translation. The larger
+  backend/RHI files remain cohesive for these narrowly coupled changes.
 - #185/#186 are completed in PRs #194/#195/#196. This bounded compiler-route
   phase uses the existing `feat/shader-portable-targets` checkout, based on
   develop `b269e60bbea1572e51a7b15b1dfdd19b1edc112d`; no other checkout/worktree.

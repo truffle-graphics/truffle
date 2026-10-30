@@ -743,6 +743,8 @@ struct ShaderDesc {
     std::string entryPoint = "main";
     std::vector<std::byte> code;
     std::vector<ResourceBinding> reflection;
+    // Exhaustive stage resource list, including empty. False permits unreflected native bindings.
+    bool resourceBindingsComplete = false;
     std::vector<PushConstantRange> pushConstants;
     std::vector<ShaderSpecializationConstant> specializationConstants;
     std::vector<ShaderBindingMap> bindingMap;

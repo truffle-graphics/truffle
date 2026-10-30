@@ -33,6 +33,7 @@ int run() {
                 TRUFFLE_SHADER_CHECK(variant.target == route.target &&
                     variant.format == rhi::ShaderByteFormat::native_source && variant.entryPoint == "main");
                 if (route.target == rhi::ShaderTarget::metal_source) {
+                    TRUFFLE_SHADER_CHECK(result.compiler.revision.find("metal-no-auxiliary-bindings") != std::string::npos);
                     TRUFFLE_SHADER_CHECK(!rhi::ShaderPackage::load(result.package.bytes()).ok());
                     TRUFFLE_SHADER_CHECK(variant.nativeEntryPoint != "main");
                     request.allowExperimentalMetalGeneration = false;
@@ -71,6 +72,20 @@ int run() {
     }
     if (count == 0) return 0;
     TRUFFLE_SHADER_CHECK(count == 42);
+    auto runtimeBuffer = tests::portable_request(rhi::ShaderStage::compute, rhi::ShaderTarget::metal_source);
+    runtimeBuffer.source.text =
+        "#version 450\nlayout(local_size_x=1) in;\n"
+        "layout(set=0,binding=0,std430) buffer Data { uint values[]; } data;\n"
+        "void main(){data.values[0]=data.values.length();}\n";
+    const auto length = compiler.compile(runtimeBuffer);
+    TRUFFLE_SHADER_CHECK(!length.ok() && length.status().code == rhi::StatusCode::unsupported &&
+        length.status().message.find("buffer-size") != std::string::npos);
+    auto vulkanLength = runtimeBuffer;
+    vulkanLength.target = rhi::ShaderTarget::spirv;
+    TRUFFLE_SHADER_CHECK(compiler.compile(vulkanLength).ok());
+    runtimeBuffer.source.text.replace(runtimeBuffer.source.text.find("data.values.length()"),
+                                      std::string{"data.values.length()"}.size(), "7u");
+    TRUFFLE_SHADER_CHECK(compiler.compile(runtimeBuffer).ok());
     for (const auto target : {rhi::ShaderTarget::metal_source, rhi::ShaderTarget::glsl, rhi::ShaderTarget::glsl_es}) {
         auto array = tests::portable_request(rhi::ShaderStage::vertex, target);
         array.source.text = "#version 450\nlayout(set=0,binding=0) uniform U { vec4 value; } u[2];\n"

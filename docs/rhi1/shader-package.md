@@ -119,6 +119,16 @@ packages record both explicitly. Runtime selection uses the logical spelling
 and forwards the serialized native name to the backend without patching blobs.
 This evolving TSP draft retains `1.0`, without legacy readers.
 
+Generated variants promise exhaustive per-stage resource reflection. Runtime
+selection explicitly marks `ShaderDesc::resourceBindingsComplete`, so Metal
+does not bind layout-visible but absent stage resources through native fallback
+slots. Precompiled/native-override variants and direct descriptors retain
+optional metadata by default; empty reflection alone is not proof of no use.
+See [binding semantics](bindings-and-pipelines.md#layout-and-reflection-agreement).
+Generated MSL rejects runtime storage-buffer `.length()` and other reported
+auxiliary-resource requirements until RHI owns the required bindings; ordinary
+runtime-tail indexing remains supported.
+
 ## Runtime And Tool Evidence
 
 - Package creation is deterministic after canonical sorting.

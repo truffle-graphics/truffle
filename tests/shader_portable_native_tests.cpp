@@ -11,22 +11,33 @@ namespace {
 using namespace truffle;
 
 rhi::Shader load_shader(rhi::Device& device, shader::Compiler& compiler,
-                        rhi::ShaderTarget target, rhi::ShaderStage stage) {
-    auto compilation = tests::require(compiler.compile(tests::portable_request(stage, target)));
+                        const shader::CompileRequest& request) {
+    auto compilation = tests::require(compiler.compile(request));
     auto package = tests::require(rhi::ShaderPackage::load(compilation.package.bytes(),
         {.allowExperimentalMetalGeneration = true}));
-    return tests::require(device.create_shader(package, target, "main", stage));
+    return tests::require(device.create_shader(package, request.target, "main", request.stage));
 }
 
-void graphics(rhi::Device& device, shader::Compiler& compiler, rhi::ShaderTarget target) {
-    auto vertex = load_shader(device, compiler, target, rhi::ShaderStage::vertex);
-    auto fragment = load_shader(device, compiler, target, rhi::ShaderStage::fragment);
+void graphics(rhi::Device& device, shader::Compiler& compiler, rhi::ShaderTarget target,
+              bool broadVisibility = false) {
+    auto vertex = load_shader(device, compiler, tests::portable_request(rhi::ShaderStage::vertex, target));
+    auto request = tests::portable_request(rhi::ShaderStage::fragment, target);
+    if (broadVisibility) {
+        for (auto position = request.source.text.find("set=1,"); position != std::string::npos;
+             position = request.source.text.find("set=1,"))
+            request.source.text.replace(position, 6, "set=0,");
+        request.source.text.replace(request.source.text.find("binding=7"), 9, "binding=0");
+    }
+    auto fragment = load_shader(device, compiler, request);
+    const auto groupIndex = broadVisibility ? 0u : 1u;
+    const auto uniformBinding = broadVisibility ? 0u : 7u;
+    const auto visibility = broadVisibility ? rhi::ShaderStageMask::all : rhi::ShaderStageMask::fragment;
     auto groupLayout = tests::require(device.create_bind_group_layout({
-        .group = 1,
+        .group = groupIndex,
         .entries = {
-            {.binding = 5, .type = rhi::BindingType::sampled_texture, .visibility = rhi::ShaderStageMask::fragment},
-            {.binding = 6, .type = rhi::BindingType::sampler, .visibility = rhi::ShaderStageMask::fragment},
-            {.binding = 7, .type = rhi::BindingType::uniform_buffer, .visibility = rhi::ShaderStageMask::fragment,
+            {.binding = 5, .type = rhi::BindingType::sampled_texture, .visibility = visibility},
+            {.binding = 6, .type = rhi::BindingType::sampler, .visibility = visibility},
+            {.binding = uniformBinding, .type = rhi::BindingType::uniform_buffer, .visibility = visibility,
              .minimumBufferSize = 16}}}));
     auto layout = tests::require(device.create_pipeline_layout({.bindGroupLayouts = {&groupLayout}}));
     auto pipeline = tests::require(device.create_pipeline({
@@ -62,28 +73,33 @@ void graphics(rhi::Device& device, shader::Compiler& compiler, rhi::ShaderTarget
     auto group = tests::require(device.create_bind_group({
         .layout = &groupLayout, .arena = &arena,
         .entries = {{.binding = 5, .textureView = &view}, {.binding = 6, .sampler = &sampler},
-                    {.binding = 7, .buffer = &uniform, .size = 16}}}));
-    auto output = tests::make_color_target(device);
-    auto renderList = tests::require(pool.allocate());
-    tests::require(renderList.begin());
-    auto render = tests::require(renderList.begin_rendering({
-        .extent = {16, 16}, .colorAttachments = {{.texture = &output, .clear = {0, 0, 0, 1}}}}));
-    tests::require(render.bind_pipeline(pipeline));
-    tests::require(render.bind_vertex_buffer(0, vertices));
-    tests::require(render.bind_group(1, group));
-    tests::require(render.draw(3));
-    tests::require(render.end());
-    tests::require(renderList.end());
-    tests::submit_graphics(device, renderList);
-    tests::check_color(device, output, {std::byte{64}, std::byte{64}, std::byte{32}, std::byte{255}},
-                       std::string{rhi::shader_target_name(target)}.c_str());
+                    {.binding = uniformBinding, .buffer = &uniform, .size = 16}}}));
+    for (const auto groupFirst : {false, true}) {
+        auto output = tests::make_color_target(device);
+        auto renderList = tests::require(pool.allocate());
+        tests::require(renderList.begin());
+        auto render = tests::require(renderList.begin_rendering({
+            .extent = {16, 16}, .colorAttachments = {{.texture = &output, .clear = {0, 0, 0, 1}}}}));
+        tests::require(render.bind_pipeline(pipeline));
+        if (groupFirst) tests::require(render.bind_group(groupIndex, group));
+        tests::require(render.bind_vertex_buffer(0, vertices));
+        if (!groupFirst) tests::require(render.bind_group(groupIndex, group));
+        tests::require(render.draw(3));
+        tests::require(render.end());
+        tests::require(renderList.end());
+        tests::submit_graphics(device, renderList);
+        tests::check_color(device, output, {std::byte{64}, std::byte{64}, std::byte{32}, std::byte{255}},
+                           std::string{rhi::shader_target_name(target)}.c_str());
+    }
+    if (broadVisibility)
+        std::cout << "Metal broad visibility: exact pixels with group/vertex bindings in both orders\n";
 }
 
 void compute(rhi::Device& device, shader::Compiler& compiler, rhi::ShaderTarget target) {
     auto request = tests::portable_request(rhi::ShaderStage::compute, target);
     request.source.text.replace(request.source.text.find("local_size_x=2"), 14,
                                 "local_size_x=2,local_size_x_id=0");
-    request.source.text.replace(request.source.text.find("values[4]"), 9, "values[8]");
+    request.source.text.replace(request.source.text.find("values[4]"), 9, "values[]");
     request.source.text.replace(request.source.text.find("pushData.bias+increment+i"),
         std::string{"pushData.bias+increment+i"}.size(), "pushData.bias+increment+i+gl_WorkGroupSize.x*1000u");
     const auto compilation = tests::require(compiler.compile(request));
@@ -148,6 +164,7 @@ int run() {
         std::cout << "native adapter: " << adapter.info().name << '\n';
         auto device = tests::require(adapter.request_device());
         graphics(device, compiler, target);
+        if (target == rhi::ShaderTarget::metal_source) graphics(device, compiler, target, true);
         if (target != rhi::ShaderTarget::glsl) compute(device, compiler, target);
     }
     return 0;

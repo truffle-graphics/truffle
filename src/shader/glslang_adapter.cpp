@@ -192,8 +192,9 @@ rhi::Result<Compilation> compile_glslang(const CompileRequest& request,
 #if defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS)
     if (request.target != rhi::ShaderTarget::spirv) {
         result.compiler.revision += ";spirv-cross=" TRUFFLE_SPIRV_CROSS_REVISION
-            ";truffle-cross=1;msl=macos-2.1;glsl=410-core;essl=300-es;"
+            ";truffle-cross=2;msl=macos-2.1;glsl=410-core;essl=300-es;"
             "flat-scalar-resources;gl-fixup-clipspace;metal-vertex-reserve=16;"
+            "metal-no-auxiliary-bindings;"
             "cross-namespace=truffle_spirv_cross;cross-spv-namespace=truffle_spirv_cross_spv;cross-exceptions";
     }
 #endif

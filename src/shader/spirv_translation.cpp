@@ -85,7 +85,15 @@ rhi::Status metal(std::span<const unsigned int> words, const CompileRequest& req
         mapping.msl_buffer = 30;
         compiler.add_msl_resource_binding(mapping);
     }
-    payload(variant, compiler.compile());
+    const auto text = compiler.compile();
+    if (compiler.needs_buffer_size_buffer())
+        return unsupported("Metal runtime buffer length requires an auxiliary buffer-size binding "
+                           "outside the RHI contract");
+    if (compiler.needs_swizzle_buffer() || compiler.needs_view_mask_buffer() ||
+        compiler.needs_dispatch_base_buffer() || compiler.needs_output_buffer() ||
+        compiler.needs_patch_output_buffer() || compiler.needs_input_threadgroup_mem())
+        return unsupported("Metal auxiliary resource bindings are outside the RHI contract");
+    payload(variant, text);
     variant.nativeEntryPoint = compiler.get_cleansed_entry_point_name(
         request.entryPoint, execution_model(request.stage));
     return rhi::Status::success();
