@@ -1,12 +1,9 @@
 #include "truffle/rhi/shader_package.hpp"
 
-#if defined(TRUFFLE_SHADERC_HAS_GLSLANG)
-#include "glslang_compiler.hpp"
-#endif
+#include "truffle/shader/compiler.hpp"
 
 #include <algorithm>
 #include <cstddef>
-#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <iterator>
@@ -41,6 +38,8 @@ struct Arguments {
     std::string compilerVersion;
     std::string compilerRevision;
     std::string append;
+    std::vector<std::string> includeRoots;
+    std::vector<truffle::rhi::ShaderDefine> defines;
     bool compile = false;
 };
 
@@ -51,18 +50,21 @@ struct Arguments {
 void usage(std::ostream& output) {
     output
         << "Usage: truffle-shaderc --name NAME --target TARGET --stage STAGE "
-           "--input FILE --output FILE --source-hash SHA256 "
+           "--input FILE --output FILE.tsp "
            "--source-language LANGUAGE "
-           "--compiler-name NAME --compiler-version VERSION "
+           "[--source-hash SHA256] [--compiler-name NAME --compiler-version VERSION] "
            "[--compiler-revision REV] [--entry NAME] "
            "[--kind precompiled|native|generated] [--append PACKAGE] "
-           "[--compile]\n"
+           "[--compile [--include-root DIR]... [--define NAME[=VALUE]]...]\n"
         << "Targets: spirv, dxil, metallib, msl, wgsl, glsl, glsl-es\n"
         << "Stages: vertex, fragment, compute\n"
         << "Source languages: slang, hlsl, glsl, glsl-es, wgsl, msl, "
            "spirv, dxil, metallib, native\n"
-        << "The tool assembles deterministic packages from precompiled or "
-           "backend-native variants; it does not fetch compiler toolchains.\n";
+        << "Assemble Truffle Shader Packages (TSP) from prepared variants, or "
+           "compile through the optional shared Truffle::Shader adapter.\n"
+        << "Assembly requires source-hash/compiler-name/compiler-version. "
+           "Compilation computes source/dependency hashes and compiler identity; "
+           "a supplied source-hash is verified. No toolchains are fetched.\n";
 }
 
 [[nodiscard]] Result<Arguments> parse_arguments(int argc, char** argv) {
@@ -107,17 +109,29 @@ void usage(std::ostream& output) {
             result.compilerRevision = value;
         } else if (key == "--append") {
             result.append = value;
+        } else if (key == "--include-root") {
+            if (value.empty()) return invalid("include root must not be empty");
+            result.includeRoots.push_back(value);
+        } else if (key == "--define") {
+            const auto equals = value.find('=');
+            result.defines.push_back({value.substr(0, equals),
+                equals == std::string::npos ? "1" : value.substr(equals + 1)});
         } else {
             return invalid("unknown argument " + std::string{key});
         }
     }
     if (result.name.empty() || result.target.empty() || result.stage.empty() ||
         result.input.empty() || result.output.empty() ||
-        result.sourceHash.empty() || result.sourceLanguage.empty() ||
+        result.sourceLanguage.empty() ||
         (!result.compile &&
-         (result.compilerName.empty() || result.compilerVersion.empty()))) {
+         (result.sourceHash.empty() || result.compilerName.empty() || result.compilerVersion.empty()))) {
         return invalid("required package arguments are missing");
     }
+    if (!result.compile && (!result.includeRoots.empty() || !result.defines.empty()))
+        return invalid("include roots and defines require --compile");
+    if (result.compile && (!result.compilerName.empty() || !result.compilerVersion.empty() ||
+                           !result.compilerRevision.empty()))
+        return invalid("--compile derives compiler identity; do not override it");
     return result;
 }
 
@@ -250,11 +264,26 @@ int main(int argc, char** argv) {
         }
         const auto& desc = packageResult.value().desc();
         std::cout << desc.name << " variants=" << desc.variants.size()
-                  << " compilers=" << desc.compilers.size() << '\n';
+                  << " compilers=" << desc.compilers.size()
+                  << " sources=" << desc.sources.size()
+                  << " configurations=" << desc.permutations.size() << '\n';
         for (const auto& compiler : desc.compilers) {
             std::cout << "compiler=" << compiler.name
                       << " version=" << compiler.version
                       << " revision=" << compiler.revision << '\n';
+        }
+        for (const auto& source : desc.sources) {
+            std::cout << "source=" << source.path << " sha256=" << source.sha256 << '\n';
+        }
+        for (const auto& variant : desc.variants) {
+            std::cout << "target=" << rhi::shader_target_name(variant.target)
+                      << " entry=" << variant.entryPoint
+                      << " permutation=" << variant.permutation
+                      << " bindings=" << variant.reflection.bindings.size()
+                      << " interfaces=" << variant.reflection.interfaces.size()
+                      << " workgroup=" << variant.reflection.requiredWorkgroupSize.width << 'x'
+                      << variant.reflection.requiredWorkgroupSize.height << 'x'
+                      << variant.reflection.requiredWorkgroupSize.depth << '\n';
         }
         return 0;
     }
@@ -273,14 +302,12 @@ int main(int argc, char** argv) {
         rhi::shader_source_language_from_name(arguments.sourceLanguage);
     auto stageResult = parse_stage(arguments.stage);
     auto kindResult = parse_kind(arguments.kind);
-    auto codeResult = read_file(arguments.input);
     if (!targetResult.ok() || !languageResult.ok() || !stageResult.ok() ||
-        !kindResult.ok() || !codeResult.ok()) {
+        !kindResult.ok()) {
         const auto* status = !targetResult.ok()   ? &targetResult.status()
                              : !languageResult.ok() ? &languageResult.status()
                              : !stageResult.ok()    ? &stageResult.status()
-                             : !kindResult.ok()     ? &kindResult.status()
-                                                    : &codeResult.status();
+                                                    : &kindResult.status();
         std::cerr << status->message << '\n';
         return 2;
     }
@@ -313,76 +340,83 @@ int main(int argc, char** argv) {
     } else {
         desc.name = arguments.name;
     }
-    const rhi::ShaderSourceRecord source{
-        .path = arguments.input,
-        .language = languageResult.value(),
-        .sha256 = arguments.sourceHash,
-    };
-    const auto existingSource =
-        std::find_if(desc.sources.begin(), desc.sources.end(),
-                     [&](const auto& candidate) {
-                         return candidate.path == source.path;
-                     });
-    if (existingSource == desc.sources.end()) {
-        desc.sources.push_back(source);
-    } else if (*existingSource != source) {
-        std::cerr << "appended source provenance does not match\n";
-        return 2;
-    }
-    auto variantCode = std::move(codeResult).value();
-    auto compilerName = arguments.compilerName;
-    auto compilerVersion = arguments.compilerVersion;
-    auto compilerRevision = arguments.compilerRevision;
-    auto variantKind = kindResult.value();
-    std::string compilerDiagnostics;
+    ShaderPackageDesc addition;
+    addition.name = arguments.name;
     if (arguments.compile) {
-#if defined(TRUFFLE_SHADERC_HAS_GLSLANG)
-        std::string sourceText(variantCode.size(), '\0');
-        std::memcpy(sourceText.data(), variantCode.data(), variantCode.size());
-        auto compiled = shaderc::compile_glsl_to_spirv(
-            sourceText, stageResult.value(), arguments.entry,
-            languageResult.value() == rhi::ShaderSourceLanguage::glsl_es);
+        auto source = shader::read_source(arguments.input);
+        if (!source.ok()) {
+            std::cerr << source.status().message << '\n';
+            return 2;
+        }
+        shader::CompileRequest request;
+        request.name = arguments.name;
+        request.source = std::move(source).value();
+        request.stage = stageResult.value();
+        request.entryPoint = arguments.entry;
+        request.target = target;
+        request.language = languageResult.value();
+        request.includeRoots = arguments.includeRoots;
+        request.defines = arguments.defines;
+        shader::Compiler compiler;
+        auto compiled = compiler.compile(request);
         if (!compiled.ok()) {
             std::cerr << compiled.status().message << '\n';
             return 2;
         }
-        variantCode = std::move(compiled.value().spirv);
-        compilerName = "glslang";
-        compilerVersion = std::move(compiled.value().compilerVersion);
-        compilerRevision = std::move(compiled.value().compilerRevision);
-        compilerDiagnostics = std::move(compiled.value().diagnostics);
-        variantKind = rhi::ShaderVariantKind::generated;
-#else
-        std::cerr << "GLSL compilation support is not enabled; configure with "
-                     "TRUFFLE_SHADERC_ENABLE_GLSLANG=ON\n";
-        return 2;
-#endif
+        if (!arguments.sourceHash.empty()) {
+            const auto dependency = std::find_if(compiled.value().dependencies.begin(),
+                compiled.value().dependencies.end(),
+                [&](const auto& value) { return value.identity == request.source.identity; });
+            if (dependency == compiled.value().dependencies.end() ||
+                dependency->sha256 != arguments.sourceHash) {
+                std::cerr << "--source-hash does not match the compiled root source\n";
+                return 2;
+            }
+        }
+        addition = compiled.value().package.desc();
+        if (!compiled.value().diagnostics.empty())
+            std::cerr << compiled.value().diagnostics << '\n';
+    } else {
+        auto code = read_file(arguments.input);
+        if (!code.ok()) {
+            std::cerr << code.status().message << '\n';
+            return 2;
+        }
+        addition.sources.push_back({arguments.input, languageResult.value(), arguments.sourceHash});
+        addition.compilers.push_back({arguments.compilerName, arguments.compilerVersion, arguments.compilerRevision});
+        ShaderVariantDesc variant;
+        variant.target = target;
+        variant.format = format_for_target(target);
+        variant.kind = kindResult.value();
+        variant.stage = stageResult.value();
+        variant.entryPoint = arguments.entry;
+        variant.code = std::move(code).value();
+        addition.variants.push_back(std::move(variant));
     }
-    const rhi::ShaderCompilerRecord compiler{
-        .name = std::move(compilerName),
-        .version = std::move(compilerVersion),
-        .revision = std::move(compilerRevision),
-    };
-    if (std::find(desc.compilers.begin(), desc.compilers.end(), compiler) ==
-        desc.compilers.end()) {
-        desc.compilers.push_back(compiler);
+    for (const auto& source : addition.sources) {
+        const auto existing = std::find_if(desc.sources.begin(), desc.sources.end(),
+            [&](const auto& value) { return value.path == source.path; });
+        if (existing == desc.sources.end()) desc.sources.push_back(source);
+        else if (*existing != source) {
+            std::cerr << "appended source provenance does not match: " << source.path << '\n';
+            return 2;
+        }
     }
-    ShaderVariantDesc variant;
-    variant.target = target;
-    variant.format = format_for_target(target);
-    variant.kind = variantKind;
-    variant.stage = stageResult.value();
-    variant.entryPoint = arguments.entry;
-    variant.code = std::move(variantCode);
-    desc.variants.push_back(std::move(variant));
-    if (!compilerDiagnostics.empty()) {
-        desc.diagnostics.push_back({
-            .severity = rhi::ShaderDiagnosticSeverity::info,
-            .variant = arguments.target + ":" + arguments.stage + ":" +
-                       arguments.entry,
-            .message = std::move(compilerDiagnostics),
-        });
+    for (const auto& compiler : addition.compilers) {
+        if (std::find(desc.compilers.begin(), desc.compilers.end(), compiler) == desc.compilers.end())
+            desc.compilers.push_back(compiler);
     }
+    for (const auto& permutation : addition.permutations) {
+        const auto existing = std::find_if(desc.permutations.begin(), desc.permutations.end(),
+            [&](const auto& value) { return value.name == permutation.name; });
+        if (existing == desc.permutations.end()) desc.permutations.push_back(permutation);
+        else if (*existing != permutation) {
+            std::cerr << "appended configuration does not match\n";
+            return 2;
+        }
+    }
+    desc.variants.insert(desc.variants.end(), addition.variants.begin(), addition.variants.end());
+    desc.diagnostics.insert(desc.diagnostics.end(), addition.diagnostics.begin(), addition.diagnostics.end());
     auto packageResult = ShaderPackage::create(std::move(desc));
     if (!packageResult.ok()) {
         std::cerr << packageResult.status().message << '\n';

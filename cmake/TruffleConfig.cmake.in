@@ -2,5 +2,8 @@
 
 include(CMakeFindDependencyMacro)
 find_dependency(Threads)
+if(@TRUFFLE_SHADER_ENABLE_GLSLANG@)
+    find_dependency(glslang CONFIG)
+endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/TruffleTargets.cmake")
