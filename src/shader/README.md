@@ -159,31 +159,119 @@ The in-memory cache is instance-owned, unbounded until `clear_cache()`, and
 never stores failures. It is not a persistent content store.
 
 Compiler provenance preserves glslang's name/version; its revision records the
-pinned source SHA plus `truffle-glslang=2;vulkan=VERSION;spirv=VERSION`.
+pinned source SHA plus `truffle-glslang=3;vulkan=VERSION;spirv=VERSION`.
 The effective target therefore survives TSP serialization and shaderc inspection
 without changing the RHI/TSP schema. Both target options independently
 differentiate cache keys, even when generated instructions otherwise match.
 
 ## Reflection and limits
 
-The adapter reflects all linked resource declarations, including inactive
-ones, using glslang types/layout calculation. Supported resources are explicit
-set/binding uniform and storage buffers, separately bound images/textures and
-samplers, and fixed one-dimensional image/sampler descriptor arrays. Buffer
-minimum sizes come from glslang's block layout; storage access is preserved.
-32-bit scalar/vector location-based stage inputs/outputs and literal compute
-workgroups are reflected. `Compilation::interfaces` preserves both IO
-directions. Because TSP 1.0 has no IO direction field, its interface list
-contains vertex inputs and fragment outputs (pipeline edges); linked varyings
-remain in the compilation result. Binary schema and C++ package type do not
-change.
+The adapter emits SPIR-V first, with optimization disabled, then reflects the
+actual module's types, variables, names, member offsets, strides, decorations
+and scalar constant words. This includes inactive declarations retained in the
+emitted module, not only a live-uniform database. The private SPIR-V reflection
+reader is separate from glslang source resolution/compilation and can serve
+future SPIR-V-emitting adapters. No shader-text parsing or guessed layout is
+used.
 
-Unsupported language/target/stage, non-`main` GLSL entry points, combined
-image-samplers, subpass inputs, push constants, specialization constants
-(including specialized workgroup sizes), buffer descriptor arrays, unsized
-descriptor arrays, and complex/matrix/array/component-packed/indexed IO fail explicitly.
-No fake empty reflection is substituted. Other compiler routes remain #73
-followups. No native backend maturity is claimed by this CPU compilation API.
+| Baseline feature (#186) | Implemented contract / evidence |
+| --- | --- |
+| Push constants | One range per emitted block/stage, from lowest member offset to the last addressable byte; nonzero offsets, holes, arrays, nested structures and row/column-major matrix strides come from SPIR-V layout |
+| Scalar specialization | `bool`, signed/unsigned 32-bit integer, 32-bit float; exact `SpecId`, name, type and default bits (including false/negative values); native defaults and typed overrides |
+| Fixed descriptors | Uniform/storage buffer, separate image/texture and sampler arrays; multidimensional descriptor counts multiply in SPIR-V array order; minimum size is **per buffer element** |
+| Buffer layout/access | Explicit member offsets and nested array/matrix strides; readonly variable/member decorations; minimum bytes include one element of a runtime-sized **buffer tail**, not an unsized descriptor array |
+| Location IO | 32-bit scalars/vectors, matrices, fixed arrays and interface structures/blocks expand recursively to one scalar/vector leaf per occupied location; member locations and interpolation qualifiers are preserved |
+| Compute workgroups | Fixed positive extents; workgroup specialization remains a **required blocked part of #186**, not completed support |
+| Package/tool metadata | Existing representable reflection and provenance round-trip; shaderc compiles through the library and inspects bindings/counts/sizes/access, push ranges, specialization/default bits and pipeline-edge IO |
+
+Minimum bytes exclude unaddressed trailing alignment padding: a std140 float
+array of two elements needs 20 bytes (stride 16, last scalar ends at 20), not
+32. The native proof consumes a matrix push range `[16,60)` with column stride
+16 and no invented trailing padding. Runtime-sized buffer tails need their
+declared prefix plus the first element's addressable bytes. Specialization-
+dependent descriptor dimensions or buffer layouts fail rather than pretending
+their defaults are fixed.
+
+`Compilation::interfaces` retains **both directions** as sorted occupied
+locations. A matrix column becomes a vector, arrays repeat their element
+footprints, and structure members follow explicit member locations or the
+preceding member's footprint. Diagnostic names are emitted instance/member
+paths (`values[1].basis[0]`), not linkage identities; buffer names now use
+SPIR-V variable/instance names rather than glslang's block-type names.
+Separate names or aggregate spellings with identical location/type footprints
+therefore agree. Default interpolation is normalized to `smooth`; `flat`,
+`noperspective`, `centroid` and `sample` decorations are retained. For the
+Vulkan route, fragment inputs own interpolation; vertex-output interpolation
+does not impose a separate cross-stage equality rule. Existing Renderer
+linkage checks consume the expanded location/type leaves, not aggregate names.
+Cross-target **package** checks compare resource/constant/interface semantics,
+not diagnostic names, treat conventional 32-bit `floatN`/`intN`/`uintN` and
+`vecN`/`ivecN`/`uvecN` leaves as equal (N=2..4), and equate empty/default,
+`perspective` and explicit `smooth` interpolation. Original spellings still
+round-trip; unknown type/interpolation strings receive no guessed conversion.
+Types, counts, sizes, access, offsets, specialization
+defaults/types, locations and non-equivalent interpolation must still agree.
+
+### Remaining representational gates (issue #186 stays open)
+
+No RHI/TSP schema, product version or dependency boundary changes in this phase.
+The adapter identity changes to `truffle-glslang=3` to invalidate old cached
+reflection. Two required shared-contract decisions remain:
+
+1. **Workgroup specialization:** `ShaderReflection`/`ShaderDesc` carry only
+   fixed `requiredWorkgroupSize`/`preferredWorkgroupSize`. There is no mapping
+   from X/Y/Z to specialization IDs. RHI compute-pipeline creation validates
+   that fixed extent against device limits and retains it for dispatch metadata,
+   while Vulkan separately applies specialization overrides. Accepting a
+   specialized local size would make those checks/metadata false.
+   The proposed minimum fix is optional per-axis specialization IDs alongside
+   defaults, propagated through TSP, shader creation and pipeline normalization;
+   resolve overrides before limit checks and retain the resolved extent.
+   Workgroup `OpSpecConstantOp` expressions additionally need an explicit
+   expression policy, not guessed evaluation. This requires parent-coordinated
+   RHI/TSP design and serialization review before implementation.
+2. **Serialized directional IO:** TSP 1.0 has no IO direction field and rejects
+   duplicate `(stage, location)` records. Its interface list therefore still
+   represents vertex inputs and fragment outputs (pipeline edges); internal
+   vertex-output/fragment-input varyings remain only in `Compilation`.
+   Their direction cannot truthfully round-trip or be compared across target
+   variants in a prepared package. The proposed minimum fix is explicit
+   direction plus `(stage, direction, location)` keys and serialization,
+   retaining all supported stage IO. No fake mapping or schema bump is made here.
+
+Other real limits are explicit errors, not completion claims:
+
+- Combined image-samplers require one native combined descriptor, but
+  `ResourceBindingType`/`BindingType` model separate textures and samplers only;
+  splitting one binding would need a real contract/remapping design.
+- Subpass inputs need an input-attachment binding type and render-pass/input-
+  attachment contract. Texel buffers need a texel-buffer view/binding kind;
+  rectangle and other non-RHI texture dimensions are not mapped to 2D textures.
+- Unsized descriptor arrays need variable descriptor counts/runtime-array
+  allocation semantics; current `arrayCount` is fixed and nonzero.
+- Nonzero component/index packing needs component spans/dual-source indices
+  and matching validation; current interface keys have only a unique location.
+  Explicit component/index zero is harmless and accepted when no overlap exists.
+- Specialization/IO leaves and reflected buffer scalars outside the above
+  32-bit baseline, specialization-dependent reflected layouts, and unbounded
+  IO footprints are unsupported. Expanded IO is bounded to 4096 leaves.
+  Resource dimension/format and uniform-versus-readonly-storage distinctions
+  are not separate `ResourceBinding` fields; hosts must still supply an
+  appropriate typed RHI bind-group layout. This is not full upstream-language
+  reflection or native conformance.
+- Extended per-vertex/primitive/view/task IO and explicit-interpolation
+  decorations are rejected; a barycentric per-vertex array is not an ordinary
+  array occupying consecutive locations. Advanced stage contracts remain
+  separately deferred.
+
+Exact CPU fixtures cover offsets, row/column-major/nested layouts, access,
+counts, constants, IO expansion, representational errors and package
+round-trips. The Apple Silicon Vulkan/MoltenVK proof consumes the unmodified
+library package after serialization, derives counts/minimum sizes/push ranges
+from it, and checks exact readback for scalar defaults/overrides, matrix push
+offsets, uniform/readonly-storage/writable-storage buffer arrays and separate
+image/sampler arrays with validation active. It does not prove specialized
+workgroups or promote backend maturity. Other compiler routes remain #187-#193.
 
 ## Threads and lifetime
 

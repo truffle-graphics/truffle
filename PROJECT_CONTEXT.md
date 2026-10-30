@@ -166,8 +166,11 @@ Shared Shader mechanisms/tooling (#178/#180), native prepared-TSP Renderer
 execution (#179), and optional runtime compilation with safe rebuild adoption
 (#181) are completed foundations, not module-completion claims.
 **Complete Shader first (#73); Renderer feature work is paused.** The bounded
-first phase (#185) adds truthful route discovery and typed target settings.
-Remaining phases are baseline reflection (#186), portable native Metal/OpenGL
+first phase (#185, merged PR #194) adds truthful route discovery and typed target settings.
+Baseline reflection (#186) is active: representable push/constants/arrays/IO
+have focused implementation evidence; workgroup specialization and serialized
+directional IO need shared-contract decisions before completion.
+Remaining phases are portable native Metal/OpenGL
 generation (#187), MSL/Metal libraries (#188), HLSL (#189), Slang/native module
 imports (#190), WGSL (#191), shared composition/cache/rebuild/tool audit (#192),
 and final evidence/completion audit (#193). Use signed phased commits,

@@ -220,18 +220,35 @@ template <typename T, typename Read>
 
 [[nodiscard]] bool binding_equal(const ResourceBinding& lhs,
                                  const ResourceBinding& rhs) noexcept {
-    return lhs.name == rhs.name && lhs.stage == rhs.stage &&
+    return lhs.stage == rhs.stage &&
            lhs.type == rhs.type && lhs.group == rhs.group &&
            lhs.binding == rhs.binding && lhs.arrayCount == rhs.arrayCount &&
            lhs.minimumSize == rhs.minimumSize && lhs.readOnly == rhs.readOnly;
+}
+
+[[nodiscard]] std::string_view interface_type(std::string_view type) noexcept {
+    if (type == "float2") return "vec2";
+    if (type == "float3") return "vec3";
+    if (type == "float4") return "vec4";
+    if (type == "int2") return "ivec2";
+    if (type == "int3") return "ivec3";
+    if (type == "int4") return "ivec4";
+    if (type == "uint2") return "uvec2";
+    if (type == "uint3") return "uvec3";
+    if (type == "uint4") return "uvec4";
+    return type;
+}
+
+[[nodiscard]] std::string_view interface_interpolation(std::string_view value) noexcept {
+    return value.empty() || value == "perspective" ? std::string_view{"smooth"} : value;
 }
 
 [[nodiscard]] bool reflection_equal(const ShaderReflection& lhs,
                                     const ShaderReflection& rhs) noexcept {
     if (lhs.bindings.size() != rhs.bindings.size() ||
         lhs.pushConstants != rhs.pushConstants ||
-        lhs.specializationConstants != rhs.specializationConstants ||
-        lhs.interfaces != rhs.interfaces ||
+        lhs.specializationConstants.size() != rhs.specializationConstants.size() ||
+        lhs.interfaces.size() != rhs.interfaces.size() ||
         !extent_equal(lhs.requiredWorkgroupSize, rhs.requiredWorkgroupSize) ||
         !extent_equal(lhs.preferredWorkgroupSize,
                       rhs.preferredWorkgroupSize)) {
@@ -241,6 +258,20 @@ template <typename T, typename Read>
         if (!binding_equal(lhs.bindings[index], rhs.bindings[index])) {
             return false;
         }
+    }
+    for (std::size_t index = 0; index < lhs.specializationConstants.size(); ++index) {
+        const auto& a = lhs.specializationConstants[index];
+        const auto& b = rhs.specializationConstants[index];
+        if (a.id != b.id || a.type != b.type || a.defaultValueBits != b.defaultValueBits)
+            return false;
+    }
+    for (std::size_t index = 0; index < lhs.interfaces.size(); ++index) {
+        const auto& a = lhs.interfaces[index];
+        const auto& b = rhs.interfaces[index];
+        if (a.stage != b.stage || a.location != b.location ||
+            interface_type(a.type) != interface_type(b.type) ||
+            interface_interpolation(a.interpolation) != interface_interpolation(b.interpolation))
+            return false;
     }
     return true;
 }

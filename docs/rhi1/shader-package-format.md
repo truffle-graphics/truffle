@@ -45,6 +45,12 @@ Variant metadata records target, byte format, provenance kind, stage, entry
 point, permutation, logical bindings, push constants, specialization constants,
 interfaces, and required and preferred workgroup sizes. Blob bytes are outside
 the manifest and correspond by canonical variant index.
+The existing reflection layout can preserve push offsets/sizes, scalar
+specialization IDs/types/default bits, fixed descriptor counts and minimum
+buffer byte ranges, and expanded location IO. It cannot encode IO direction or
+per-axis workgroup specialization IDs. The #186 implementation does not change
+the schema or invent an encoding for those missing fields; see the
+[Shader reflection audit](../../src/shader/README.md#reflection-and-limits).
 
 ## Canonicalization And Compatibility
 

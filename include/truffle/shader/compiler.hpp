@@ -63,6 +63,9 @@ struct Dependency {
 };
 
 struct StageInterface {
+    // One occupied location per 32-bit scalar/vector leaf. Matrices, fixed
+    // arrays and blocks expand in location order; names are diagnostic paths,
+    // not linkage identities. Built-ins are excluded.
     bool input = true;
     rhi::ShaderInterfaceVariable variable;
 };

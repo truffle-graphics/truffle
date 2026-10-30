@@ -7,6 +7,10 @@ add_executable(truffle_shader_route_tests shader_route_tests.cpp)
 target_link_libraries(truffle_shader_route_tests PRIVATE truffle_shader)
 truffle_target_warnings(truffle_shader_route_tests)
 add_test(NAME truffle_shader_route_tests COMMAND truffle_shader_route_tests)
+add_executable(truffle_shader_reflection_tests shader_reflection_tests.cpp)
+target_link_libraries(truffle_shader_reflection_tests PRIVATE truffle_shader)
+truffle_target_warnings(truffle_shader_reflection_tests)
+add_test(NAME truffle_shader_reflection_tests COMMAND truffle_shader_reflection_tests)
 target_link_libraries(truffle_encom_tests PRIVATE truffle_encom)
 add_test(NAME truffle_encom_tests COMMAND truffle_encom_tests)
 
@@ -150,6 +154,22 @@ if(TRUFFLE_BUILD_BACKEND_VULKAN)
         endif()
     endif()
     if(TRUFFLE_SHADER_ENABLE_GLSLANG)
+        add_executable(truffle_shader_vulkan_reflection_tests shader_vulkan_reflection_tests.cpp)
+        target_link_libraries(truffle_shader_vulkan_reflection_tests
+                              PRIVATE truffle_backend_vulkan truffle_shader)
+        target_include_directories(truffle_shader_vulkan_reflection_tests
+                                   PRIVATE "${PROJECT_SOURCE_DIR}/src/backends/vulkan")
+        truffle_target_warnings(truffle_shader_vulkan_reflection_tests)
+        add_test(NAME truffle_shader_vulkan_reflection_tests
+                 COMMAND truffle_shader_vulkan_reflection_tests)
+        set_tests_properties(truffle_shader_vulkan_reflection_tests PROPERTIES
+                             LABELS "native-smoke;validation;shader"
+                             SKIP_RETURN_CODE 77
+                             FAIL_REGULAR_EXPRESSION "Validation (Error|Warning)")
+        if(APPLE AND _truffle_vulkan_loader_dir)
+            set_property(TEST truffle_shader_vulkan_reflection_tests APPEND PROPERTY ENVIRONMENT
+                "DYLD_FALLBACK_LIBRARY_PATH=${_truffle_vulkan_loader_dir}:/usr/local/lib:/usr/lib")
+        endif()
         add_executable(truffle_renderer_vulkan_source_tests renderer_vulkan_source_tests.cpp)
         target_link_libraries(truffle_renderer_vulkan_source_tests
                               PRIVATE truffle_backend_vulkan truffle_renderer)

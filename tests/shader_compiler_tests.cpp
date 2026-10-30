@@ -61,7 +61,7 @@ void main() { gl_Position = vec4(position * SCALE, 1); color = shade(params.tint
     check(first.value().compiler.name == "glslang" &&
           !first.value().compiler.version.empty() &&
           first.value().compiler.revision ==
-              "a8d28bd082bff18ffbe80996e922b012f915cf07;truffle-glslang=2;vulkan=1.1;spirv=1.3",
+              "a8d28bd082bff18ffbe80996e922b012f915cf07;truffle-glslang=3;vulkan=1.1;spirv=1.3",
           "Pinned compiler identity accompanies result and cache");
     request.defines[0].value = "3.0";
     auto configured = compiler.compile(request);
@@ -122,20 +122,24 @@ layout(constant_id=0) const uint N=2;
 layout(set=0,binding=0) buffer Data { uint value; } data;
 void main() { data.value=N; }
 )";
-    check(!compiler.compile(request).ok(), "Unsupported specialization rejected");
+    check(compiler.compile(request).ok(), "Scalar specialization supported");
     request.source.text = R"(#version 450
 layout(local_size_x=1) in;
 layout(push_constant) uniform Push { uint value; } pc;
 layout(set=0,binding=0) buffer Data { uint value; } data;
 void main() { data.value=pc.value; }
 )";
-    check(!compiler.compile(request).ok(), "Unsupported push constant rejected");
+    check(compiler.compile(request).ok(), "Push constant supported");
     request.source.text = R"(#version 450
 layout(local_size_x=1) in;
 layout(push_constant) uniform Push { uint value; } unusedPush;
 void main() {}
 )";
-    check(!compiler.compile(request).ok(), "Inactive unsupported declarations cannot hide from reflection");
+    auto inactivePush = compiler.compile(request);
+    check(inactivePush.ok() &&
+          inactivePush.value().package.desc().variants[0].reflection.pushConstants ==
+              std::vector<rhi::PushConstantRange>{{rhi::ShaderStage::compute, 0, 4}},
+          "Inactive emitted declarations retain push reflection");
     request.stage = rhi::ShaderStage::fragment;
     request.source = {"resource.frag", R"(#version 450
 layout(set=0,binding=1) uniform texture2D tex[2];

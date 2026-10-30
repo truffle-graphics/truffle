@@ -113,8 +113,10 @@ compose Truffle with one at its own application boundary.
 
 ## Current Focus
 
-Current focus is **Shader completion first** under #73, starting with route/
-target contracts (#185). The merged #178-#181 Shader/Renderer foundations are
+Current focus is **Shader completion first** under #73. Route/target contracts
+(#185, PR #194) are merged; baseline reflection (#186) is active, with
+workgroup-specialization/directional-IO contract gates still open.
+The merged #178-#181 Shader/Renderer foundations are
 not full module completion. Renderer feature work is paused; the remaining
 Shader phases (#186-#193) and their evidence gates are in
 [`docs/roadmap.md`](docs/roadmap.md). See the

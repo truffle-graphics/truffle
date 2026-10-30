@@ -22,7 +22,7 @@ if(TRUFFLE_SHADER_ENABLE_GLSLANG)
     if(TRUFFLE_INSTALL AND NOT BUILD_SHARED_LIBS)
         add_dependencies(truffle_shader OSDependent MachineIndependent GenericCodeGen)
     endif()
-    target_sources(truffle_shader PRIVATE glslang_adapter.cpp)
+    target_sources(truffle_shader PRIVATE glslang_adapter.cpp spirv_reflection.cpp)
     target_link_libraries(truffle_shader PRIVATE
         glslang::SPIRV glslang::glslang-default-resource-limits)
     target_compile_definitions(truffle_shader PRIVATE

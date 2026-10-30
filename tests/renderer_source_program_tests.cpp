@@ -175,5 +175,41 @@ void main() { gl_Position = position; tint = vec4(1); }
     TRUFFLE_CHECK(recovered.ok() && recovered.value().published);
     TRUFFLE_CHECK(cache.published(compiled)->id() != changedId);
     TRUFFLE_CHECK(cache.published(prepared)->id() == preparedId);
+
+    // Matrix/block spelling and plain arrays have the same location footprint.
+    renderer::SourceProgramRequest normalized;
+    normalized.vertex.source = {"normalized.vert", R"(#version 450
+layout(location=0) out Block { mat2x3 matrix; vec2 tail[2]; } outputData;
+void main() { gl_Position=vec4(0); outputData.matrix=mat2x3(1);
+              outputData.tail[0]=vec2(0); outputData.tail[1]=vec2(1); }
+)"};
+    normalized.fragment.source = {"normalized.frag", R"(#version 450
+layout(location=0) in vec3 renamed[2];
+layout(location=2) in mat2 tail;
+layout(location=0) out vec4 color;
+void main() { color=vec4(renamed[0]+vec3(tail[1],0),1); }
+)"};
+    renderer::SourceProgram linked(cache, 9, {});
+    TRUFFLE_CHECK(linked.rebuild(compiler, normalized).ok());
+    const auto normalizedId = cache.published(9)->id();
+    const auto rejectsNormalized = [&](const char* fragment) {
+        auto wrong = normalized;
+        wrong.fragment.source.text = fragment;
+        const auto result = linked.rebuild(compiler, wrong);
+        return !result.ok() && result.status().code == base::StatusCode::invalid_argument &&
+               cache.published(9)->id() == normalizedId;
+    };
+    TRUFFLE_CHECK(rejectsNormalized(R"(#version 450
+layout(location=0) in vec3 renamed[2];
+layout(location=2) in mat2x3 tail;
+layout(location=0) out vec4 color;
+void main() { color=vec4(renamed[0]+tail[1],1); }
+)"));
+    TRUFFLE_CHECK(rejectsNormalized(R"(#version 450
+layout(location=0) in vec3 renamed[2];
+layout(location=2) in vec2 tail[3];
+layout(location=0) out vec4 color;
+void main() { color=vec4(renamed[0]+vec3(tail[2],0),1); }
+)"));
     return 0;
 }

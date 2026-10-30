@@ -318,8 +318,8 @@ their own design issues.
   `truffle_asset_render` targets are decided later.
 
 The practical macOS RHI baseline and initial Shader/Renderer foundations
-(#178-#181) are implemented. Current work completes Shader first (#73, starting
-with #185); Renderer feature growth is paused. Existing Renderer regressions
+(#178-#181) are implemented. Current work completes Shader first (#73; #185 is
+merged and #186 reflection is active); Renderer feature growth is paused. Existing Renderer regressions
 may supply native Shader-output evidence. Engine and other higher-level
 modules remain later work.
 
