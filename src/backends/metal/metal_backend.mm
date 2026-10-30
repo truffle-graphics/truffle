@@ -17,6 +17,8 @@
 #include <mutex>
 #include <span>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace truffle::rhi {
 namespace detail {
@@ -1133,16 +1135,23 @@ struct MetalFormat {
     }
 }
 
-[[nodiscard]] MTLTextureUsage metal_texture_usage(TextureUsage usage) {
+[[nodiscard]] MTLTextureUsage metal_texture_usage(const TextureDesc& desc) {
+    const auto usage = desc.usage;
     MTLTextureUsage result = MTLTextureUsagePixelFormatView;
-    if (has_usage(usage, TextureUsage::sampled)) {
+    // Draw-based texture blits sample their single-sample copy source.
+    if (has_usage(usage, TextureUsage::sampled) ||
+        (has_usage(usage, TextureUsage::copy_source) && desc.sampleCount == 1)) {
         result |= MTLTextureUsageShaderRead;
     }
     if (has_usage(usage, TextureUsage::storage)) {
         result |= MTLTextureUsageShaderWrite;
     }
+    // Texture clear, resolve, and blit are encoded as render passes, so copy
+    // destinations and multisample textures must be renderable.
     if (has_usage(usage, TextureUsage::color_attachment) ||
-        has_usage(usage, TextureUsage::depth_stencil_attachment)) {
+        has_usage(usage, TextureUsage::depth_stencil_attachment) ||
+        has_usage(usage, TextureUsage::copy_destination) ||
+        desc.sampleCount > 1) {
         result |= MTLTextureUsageRenderTarget;
     }
     return result;
@@ -1183,7 +1192,7 @@ struct MetalFormat {
         descriptor.storageMode = desc.memory == MemoryDomain::device_local
                                      ? MTLStorageModePrivate
                                      : MTLStorageModeShared;
-        descriptor.usage = metal_texture_usage(desc.usage);
+        descriptor.usage = metal_texture_usage(desc);
         id<MTLTexture> texture = [device newTextureWithDescriptor:descriptor];
         [descriptor release];
         if (texture == nil) {
@@ -1274,6 +1283,11 @@ struct MetalFormat {
         return Status::failure(StatusCode::unsupported,
                                "private Metal textures require transfer upload");
     }
+    if (metal->texture.pixelFormat == MTLPixelFormatDepth32Float_Stencil8) {
+        return Status::failure(
+            StatusCode::unsupported,
+            "combined depth-stencil Metal textures require per-aspect transfers");
+    }
     const auto required = required_texture_bytes(*metal, region, layout);
     if (required == 0 || required > data.size()) {
         return Status::failure(StatusCode::invalid_argument,
@@ -1302,6 +1316,11 @@ struct MetalFormat {
         return Status::failure(StatusCode::unsupported,
                                "private Metal textures require transfer readback");
     }
+    if (metal->texture.pixelFormat == MTLPixelFormatDepth32Float_Stencil8) {
+        return Status::failure(
+            StatusCode::unsupported,
+            "combined depth-stencil Metal textures require per-aspect transfers");
+    }
     const auto required = required_texture_bytes(*metal, region, layout);
     if (required == 0 || required > data.size()) {
         return Status::failure(StatusCode::invalid_argument,
@@ -1327,6 +1346,28 @@ struct MetalFormat {
 
 [[nodiscard]] MTLSize metal_size(Extent3D extent) {
     return MTLSizeMake(extent.width, extent.height, extent.depth);
+}
+
+struct MetalCopyAspect {
+    MTLBlitOption options = MTLBlitOptionNone;
+    std::uint32_t bytesPerPixel = 0;
+    bool valid = false;
+};
+
+// Buffer copies of a combined depth-stencil texture move one aspect at a time
+// in its tightly packed layout: 4-byte depth or 1-byte stencil.
+[[nodiscard]] MetalCopyAspect metal_copy_aspect(
+    const MetalTextureResource& texture, TextureAspect aspect) {
+    if (texture.texture.pixelFormat == MTLPixelFormatDepth32Float_Stencil8) {
+        if (aspect == TextureAspect::depth) {
+            return {MTLBlitOptionDepthFromDepthStencil, 4, true};
+        }
+        if (aspect == TextureAspect::stencil) {
+            return {MTLBlitOptionStencilFromDepthStencil, 1, true};
+        }
+        return {};
+    }
+    return {MTLBlitOptionNone, texture.bytesPerPixel, true};
 }
 
 [[nodiscard]] Status encode_metal_transfer(id<MTLBlitCommandEncoder> encoder,
@@ -1367,9 +1408,16 @@ struct MetalFormat {
         if (!source || !destination) {
             break;
         }
+        const auto aspect = metal_copy_aspect(
+            *destination, transfer.bufferTexture.texture.subresource.aspect);
+        if (!aspect.valid) {
+            return Status::failure(
+                StatusCode::unsupported,
+                "Metal combined depth-stencil copies need one aspect");
+        }
         const auto rowBytes = transfer.bufferTexture.layout.bytesPerRow == 0
                                   ? transfer.bufferTexture.texture.extent.width *
-                                        destination->bytesPerPixel
+                                        aspect.bytesPerPixel
                                   : transfer.bufferTexture.layout.bytesPerRow;
         const auto rows = transfer.bufferTexture.layout.rowsPerImage == 0
                               ? transfer.bufferTexture.texture.extent.height
@@ -1383,7 +1431,8 @@ struct MetalFormat {
                       toTexture:destination->texture
                destinationSlice:transfer.bufferTexture.texture.subresource.arrayLayer
                destinationLevel:transfer.bufferTexture.texture.subresource.mipLevel
-              destinationOrigin:metal_origin(transfer.bufferTexture.texture.origin)];
+              destinationOrigin:metal_origin(transfer.bufferTexture.texture.origin)
+                        options:aspect.options];
         return Status::success();
     }
     case detail::NativeTransferKind::copy_texture_to_buffer: {
@@ -1394,9 +1443,16 @@ struct MetalFormat {
         if (!source || !destination) {
             break;
         }
+        const auto aspect = metal_copy_aspect(
+            *source, transfer.bufferTexture.texture.subresource.aspect);
+        if (!aspect.valid) {
+            return Status::failure(
+                StatusCode::unsupported,
+                "Metal combined depth-stencil copies need one aspect");
+        }
         const auto rowBytes = transfer.bufferTexture.layout.bytesPerRow == 0
                                   ? transfer.bufferTexture.texture.extent.width *
-                                        source->bytesPerPixel
+                                        aspect.bytesPerPixel
                                   : transfer.bufferTexture.layout.bytesPerRow;
         const auto rows = transfer.bufferTexture.layout.rowsPerImage == 0
                               ? transfer.bufferTexture.texture.extent.height
@@ -1410,7 +1466,8 @@ struct MetalFormat {
               destinationOffset:transfer.bufferTexture.bufferOffset +
                                 transfer.bufferTexture.layout.offset
          destinationBytesPerRow:rowBytes
-       destinationBytesPerImage:rowBytes * rows];
+       destinationBytesPerImage:rowBytes * rows
+                        options:aspect.options];
         return Status::success();
     }
     case detail::NativeTransferKind::copy_texture: {
@@ -1435,11 +1492,365 @@ struct MetalFormat {
     case detail::NativeTransferKind::clear_texture:
     case detail::NativeTransferKind::resolve_texture:
     case detail::NativeTransferKind::blit_texture:
-        return Status::failure(StatusCode::unsupported,
-                               "this Metal texture transfer is unsupported");
+        return Status::failure(StatusCode::invalid_state,
+                               "Metal render transfers need a render pass");
     }
     return Status::failure(StatusCode::invalid_argument,
                            "Metal transfer resources are invalid");
+}
+
+[[nodiscard]] bool metal_render_transfer(detail::NativeTransferKind kind) {
+    return kind == detail::NativeTransferKind::clear_texture ||
+           kind == detail::NativeTransferKind::resolve_texture ||
+           kind == detail::NativeTransferKind::blit_texture;
+}
+
+[[nodiscard]] Extent3D metal_mip_extent(const MetalTextureResource& texture,
+                                        std::uint32_t level) {
+    return {std::max<std::uint32_t>(1u, texture.desc.extent.width >> level),
+            std::max<std::uint32_t>(1u, texture.desc.extent.height >> level),
+            1u};
+}
+
+[[nodiscard]] bool metal_whole_subresource(const MetalTextureResource& texture,
+                                           const TextureRegion& region) {
+    const auto extent = metal_mip_extent(texture, region.subresource.mipLevel);
+    return region.origin.x == 0 && region.origin.y == 0 &&
+           region.origin.z == 0 && region.extent.width == extent.width &&
+           region.extent.height == extent.height;
+}
+
+[[nodiscard]] bool metal_depth_format(MTLPixelFormat format) {
+    return format == MTLPixelFormatDepth16Unorm ||
+           format == MTLPixelFormatDepth32Float ||
+           format == MTLPixelFormatDepth32Float_Stencil8;
+}
+
+[[nodiscard]] Status encode_metal_render_pass_transfer(
+    id<MTLCommandBuffer> command, MTLRenderPassDescriptor* pass) {
+    id<MTLRenderCommandEncoder> encoder =
+        [command renderCommandEncoderWithDescriptor:pass];
+    if (encoder == nil) {
+        return metal_failure(StatusCode::backend_error,
+                             "Metal transfer render pass creation failed");
+    }
+    [encoder endEncoding];
+    return Status::success();
+}
+
+// Clears are render passes with a clear load action, so only whole mip
+// levels are honest; partial regions are reported as unsupported.
+[[nodiscard]] Status encode_metal_clear(id<MTLCommandBuffer> command,
+                                        const detail::NativeTransfer& transfer) {
+    const auto texture =
+        std::static_pointer_cast<MetalTextureResource>(transfer.destination);
+    if (!texture || texture->texture == nil) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "Metal clear texture is invalid");
+    }
+    const auto& region = transfer.texture.destination;
+    if (!metal_whole_subresource(*texture, region)) {
+        return Status::failure(
+            StatusCode::unsupported,
+            "Metal texture clear supports whole subresources only");
+    }
+    const auto format = texture->texture.pixelFormat;
+    const auto level = region.subresource.mipLevel;
+    const auto aspect = region.subresource.aspect;
+    auto* pass = [MTLRenderPassDescriptor renderPassDescriptor];
+    if (!metal_depth_format(format)) {
+        auto* color = pass.colorAttachments[0];
+        color.texture = texture->texture;
+        color.level = level;
+        color.loadAction = MTLLoadActionClear;
+        color.storeAction = MTLStoreActionStore;
+        color.clearColor = MTLClearColorMake(
+            transfer.clear.color.r, transfer.clear.color.g,
+            transfer.clear.color.b, transfer.clear.color.a);
+        return encode_metal_render_pass_transfer(command, pass);
+    }
+    const bool hasStencil = format == MTLPixelFormatDepth32Float_Stencil8;
+    auto* depth = pass.depthAttachment;
+    depth.texture = texture->texture;
+    depth.level = level;
+    depth.storeAction = MTLStoreActionStore;
+    depth.loadAction = has_aspect(aspect, TextureAspect::depth)
+                           ? MTLLoadActionClear
+                           : MTLLoadActionLoad;
+    depth.clearDepth = transfer.clear.depth;
+    if (hasStencil) {
+        auto* stencil = pass.stencilAttachment;
+        stencil.texture = texture->texture;
+        stencil.level = level;
+        stencil.storeAction = MTLStoreActionStore;
+        stencil.loadAction = has_aspect(aspect, TextureAspect::stencil)
+                                 ? MTLLoadActionClear
+                                 : MTLLoadActionLoad;
+        stencil.clearStencil = transfer.clear.stencil;
+    }
+    return encode_metal_render_pass_transfer(command, pass);
+}
+
+// Resolves reuse the render-pass resolve path. Metal resolves whole
+// attachments, so offsets or partial extents are reported as unsupported.
+[[nodiscard]] Status encode_metal_resolve(
+    id<MTLCommandBuffer> command, const detail::NativeTransfer& transfer) {
+    const auto source =
+        std::static_pointer_cast<MetalTextureResource>(transfer.source);
+    const auto destination =
+        std::static_pointer_cast<MetalTextureResource>(transfer.destination);
+    if (!source || !destination) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "Metal resolve textures are invalid");
+    }
+    const auto& region = transfer.texture;
+    if (metal_depth_format(source->texture.pixelFormat) ||
+        region.source.subresource.aspect != TextureAspect::color ||
+        !metal_whole_subresource(*source, region.source) ||
+        !metal_whole_subresource(*destination, region.destination)) {
+        return Status::failure(
+            StatusCode::unsupported,
+            "Metal texture resolve supports whole color subresources only");
+    }
+    auto* pass = [MTLRenderPassDescriptor renderPassDescriptor];
+    auto* color = pass.colorAttachments[0];
+    color.texture = source->texture;
+    color.loadAction = MTLLoadActionLoad;
+    color.storeAction = MTLStoreActionStoreAndMultisampleResolve;
+    color.resolveTexture = destination->texture;
+    color.resolveLevel = region.destination.subresource.mipLevel;
+    return encode_metal_render_pass_transfer(command, pass);
+}
+
+constexpr const char* kMetalBlitSource = R"MSL(
+#include <metal_stdlib>
+using namespace metal;
+
+struct TruffleBlitParams {
+    float2 sourceOrigin;
+    float2 sourceExtent;
+    float2 sourceSize;
+    float2 destinationOrigin;
+    float2 destinationExtent;
+};
+
+struct TruffleBlitVertex {
+    float4 position [[position]];
+};
+
+vertex TruffleBlitVertex truffle_blit_vertex(uint vertexId [[vertex_id]]) {
+    const float2 corner = float2(float((vertexId << 1) & 2), float(vertexId & 2));
+    TruffleBlitVertex output;
+    output.position = float4(corner * 2.0 - 1.0, 0.0, 1.0);
+    return output;
+}
+
+fragment float4 truffle_blit_fragment(
+    TruffleBlitVertex input [[stage_in]],
+    texture2d<float> source [[texture(0)]],
+    sampler sourceSampler [[sampler(0)]],
+    constant TruffleBlitParams& params [[buffer(0)]]) {
+    const float2 relative =
+        (input.position.xy - params.destinationOrigin) / params.destinationExtent;
+    const float2 coordinate =
+        (params.sourceOrigin + relative * params.sourceExtent) / params.sourceSize;
+    return source.sample(sourceSampler, coordinate);
+}
+)MSL";
+
+struct MetalBlitParams {
+    float sourceOrigin[2];
+    float sourceExtent[2];
+    float sourceSize[2];
+    float destinationOrigin[2];
+    float destinationExtent[2];
+};
+
+struct MetalBlitCache {
+    std::mutex mutex;
+    id<MTLLibrary> library = nil;
+    id<MTLSamplerState> nearest = nil;
+    id<MTLSamplerState> linear = nil;
+    std::vector<std::pair<MTLPixelFormat, id<MTLRenderPipelineState>>> pipelines;
+};
+
+[[nodiscard]] MetalBlitCache& metal_blit_cache() {
+    // Intentionally immortal: cached Metal objects live for the process.
+    static auto* cache = new MetalBlitCache();
+    return *cache;
+}
+
+[[nodiscard]] Result<std::pair<id<MTLRenderPipelineState>, id<MTLSamplerState>>>
+metal_blit_state(MTLPixelFormat format, Filter filter) {
+    const auto device = system_device();
+    auto& cache = metal_blit_cache();
+    std::lock_guard lock(cache.mutex);
+    NSError* error = nil;
+    if (cache.library == nil) {
+        auto* source = [[NSString alloc] initWithUTF8String:kMetalBlitSource];
+        cache.library = [device newLibraryWithSource:source
+                                             options:nil
+                                               error:&error];
+        [source release];
+        if (cache.library == nil) {
+            return metal_failure(StatusCode::backend_error,
+                                 "Metal blit shader compilation failed",
+                                 error.code);
+        }
+        for (const auto mode : {MTLSamplerMinMagFilterNearest,
+                                MTLSamplerMinMagFilterLinear}) {
+            auto* descriptor = [[MTLSamplerDescriptor alloc] init];
+            descriptor.minFilter = mode;
+            descriptor.magFilter = mode;
+            descriptor.mipFilter = MTLSamplerMipFilterNotMipmapped;
+            descriptor.sAddressMode = MTLSamplerAddressModeClampToEdge;
+            descriptor.tAddressMode = MTLSamplerAddressModeClampToEdge;
+            auto sampler = [device newSamplerStateWithDescriptor:descriptor];
+            [descriptor release];
+            if (mode == MTLSamplerMinMagFilterNearest) {
+                cache.nearest = sampler;
+            } else {
+                cache.linear = sampler;
+            }
+        }
+        if (cache.nearest == nil || cache.linear == nil) {
+            return metal_failure(StatusCode::backend_error,
+                                 "Metal blit sampler creation failed");
+        }
+    }
+    const auto sampler =
+        filter == Filter::linear ? cache.linear : cache.nearest;
+    for (const auto& [cachedFormat, pipeline] : cache.pipelines) {
+        if (cachedFormat == format) {
+            return std::pair{pipeline, sampler};
+        }
+    }
+    id<MTLFunction> vertex =
+        [cache.library newFunctionWithName:@"truffle_blit_vertex"];
+    id<MTLFunction> fragment =
+        [cache.library newFunctionWithName:@"truffle_blit_fragment"];
+    auto* descriptor = [[MTLRenderPipelineDescriptor alloc] init];
+    descriptor.label = @"Truffle texture blit";
+    descriptor.vertexFunction = vertex;
+    descriptor.fragmentFunction = fragment;
+    descriptor.colorAttachments[0].pixelFormat = format;
+    id<MTLRenderPipelineState> pipeline =
+        [device newRenderPipelineStateWithDescriptor:descriptor error:&error];
+    [descriptor release];
+    [vertex release];
+    [fragment release];
+    if (pipeline == nil) {
+        return metal_failure(StatusCode::backend_error,
+                             "Metal blit pipeline creation failed",
+                             error.code);
+    }
+    cache.pipelines.emplace_back(format, pipeline);
+    return std::pair{pipeline, sampler};
+}
+
+// Blits draw a sampled source mip level into the destination region, which
+// scales and filters like a native graphics-API blit for color formats.
+[[nodiscard]] Status encode_metal_blit(id<MTLCommandBuffer> command,
+                                       const detail::NativeTransfer& transfer) {
+    const auto source =
+        std::static_pointer_cast<MetalTextureResource>(transfer.source);
+    const auto destination =
+        std::static_pointer_cast<MetalTextureResource>(transfer.destination);
+    if (!source || !destination) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "Metal blit textures are invalid");
+    }
+    const auto& region = transfer.blit;
+    const auto format = destination->texture.pixelFormat;
+    if (metal_depth_format(format) || source->desc.sampleCount != 1 ||
+        destination->desc.sampleCount != 1 ||
+        source->texture == destination->texture) {
+        return Status::failure(
+            StatusCode::unsupported,
+            "Metal texture blit supports distinct single-sample color textures");
+    }
+    if (region.filter == Filter::linear &&
+        format == MTLPixelFormatRGBA32Float &&
+        !system_device().supports32BitFloatFiltering) {
+        return Status::failure(
+            StatusCode::unsupported,
+            "this Metal device cannot linearly filter 32-bit float textures");
+    }
+    auto state = metal_blit_state(format, region.filter);
+    if (!state.ok()) {
+        return state.status();
+    }
+    const auto [pipeline, sampler] = state.value();
+    const auto sourceLevel = region.source.subresource.mipLevel;
+    id<MTLTexture> sourceView = [source->texture
+        newTextureViewWithPixelFormat:source->texture.pixelFormat
+                          textureType:MTLTextureType2D
+                               levels:NSMakeRange(sourceLevel, 1)
+                               slices:NSMakeRange(0, 1)];
+    if (sourceView == nil) {
+        return metal_failure(StatusCode::backend_error,
+                             "Metal blit source view creation failed");
+    }
+    const auto sourceSize = metal_mip_extent(*source, sourceLevel);
+    const MetalBlitParams params{
+        .sourceOrigin = {static_cast<float>(region.source.origin.x),
+                         static_cast<float>(region.source.origin.y)},
+        .sourceExtent = {static_cast<float>(region.source.extent.width),
+                         static_cast<float>(region.source.extent.height)},
+        .sourceSize = {static_cast<float>(sourceSize.width),
+                       static_cast<float>(sourceSize.height)},
+        .destinationOrigin = {static_cast<float>(region.destination.origin.x),
+                              static_cast<float>(region.destination.origin.y)},
+        .destinationExtent = {
+            static_cast<float>(region.destination.extent.width),
+            static_cast<float>(region.destination.extent.height)},
+    };
+    auto* pass = [MTLRenderPassDescriptor renderPassDescriptor];
+    auto* color = pass.colorAttachments[0];
+    color.texture = destination->texture;
+    color.level = region.destination.subresource.mipLevel;
+    color.loadAction = MTLLoadActionLoad;
+    color.storeAction = MTLStoreActionStore;
+    id<MTLRenderCommandEncoder> encoder =
+        [command renderCommandEncoderWithDescriptor:pass];
+    if (encoder == nil) {
+        [sourceView release];
+        return metal_failure(StatusCode::backend_error,
+                             "Metal blit render pass creation failed");
+    }
+    [encoder setRenderPipelineState:pipeline];
+    [encoder setViewport:MTLViewport{
+                             static_cast<double>(region.destination.origin.x),
+                             static_cast<double>(region.destination.origin.y),
+                             static_cast<double>(region.destination.extent.width),
+                             static_cast<double>(region.destination.extent.height),
+                             0.0, 1.0}];
+    [encoder setScissorRect:MTLScissorRect{region.destination.origin.x,
+                                           region.destination.origin.y,
+                                           region.destination.extent.width,
+                                           region.destination.extent.height}];
+    [encoder setFragmentTexture:sourceView atIndex:0];
+    [encoder setFragmentSamplerState:sampler atIndex:0];
+    [encoder setFragmentBytes:&params length:sizeof(params) atIndex:0];
+    [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+    [encoder endEncoding];
+    [sourceView release];
+    return Status::success();
+}
+
+[[nodiscard]] Status encode_metal_render_transfer(
+    id<MTLCommandBuffer> command, const detail::NativeTransfer& transfer) {
+    switch (transfer.kind) {
+    case detail::NativeTransferKind::clear_texture:
+        return encode_metal_clear(command, transfer);
+    case detail::NativeTransferKind::resolve_texture:
+        return encode_metal_resolve(command, transfer);
+    case detail::NativeTransferKind::blit_texture:
+        return encode_metal_blit(command, transfer);
+    default:
+        return Status::failure(StatusCode::invalid_argument,
+                               "Metal transfer is not a render transfer");
+    }
 }
 
 [[nodiscard]] NSUInteger metal_binding_index(
@@ -1739,6 +2150,14 @@ struct MetalFormat {
                     return fail(Status::failure(
                         StatusCode::invalid_state,
                         "Metal transfer commands cannot overlap an encoder"));
+                }
+                if (metal_render_transfer(encoded.transfer.kind)) {
+                    const auto status =
+                        encode_metal_render_transfer(command, encoded.transfer);
+                    if (!status.ok()) {
+                        return fail(status);
+                    }
+                    break;
                 }
                 id<MTLBlitCommandEncoder> blit =
                     [command blitCommandEncoder];
@@ -2253,10 +2672,10 @@ Result<Instance> create_metal_instance(const InstanceDesc& desc) {
                     .bufferFill = true,
                     .bufferTextureCopy = true,
                     .textureCopy = true,
-                    .textureClear = false,
-                    .textureResolve = false,
-                    .textureBlitNearest = false,
-                    .textureBlitLinear = false,
+                    .textureClear = true,
+                    .textureResolve = true,
+                    .textureBlitNearest = true,
+                    .textureBlitLinear = true,
                     .externalImport = false,
                     .externalExport = false,
                 },

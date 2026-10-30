@@ -101,9 +101,34 @@ setup, not immediate work. No issue labels or hosted workflows change.
   evidence stays private fault injection and is documented as such. Intel Macs
   are not a target (#171). No capability flag or
   `backend_support.cpp` row changed: Metal stays `native_smoke`.
-- Still open in #69: full advertised-feature conformance (queries,
-  texture clear/resolve/blit and other unsupported paths stay `unsupported`)
-  and a reviewed decision on closing.
+- Advertised-feature conformance followed in the next section.
+
+## Metal Advertised-Capability Conformance (#69)
+
+- Branch `feat/metal-conformance-audit`. Every advertised Metal capability,
+  format and limit now maps to a hardware test; the table lives in
+  `src/backends/metal/README.md`. New `truffle_metal_conformance_tests`
+  (labels `native-smoke;validation`) fills the gaps with readback: all eight
+  color and three depth formats, mips, stencil, blend, 16 vertex buffers,
+  16 viewports/scissors, eight color attachments, 256-byte push constants,
+  dynamic offsets, 2x8 bind groups, workgroup limits, mapping, sRGB view
+  reinterpretation, and rejection just past each limit.
+- The backend now implements texture clear (whole subresource, color and
+  depth/stencil aspects), multisample resolve (whole color subresources) and
+  nearest/linear color blits (a Truffle-owned fullscreen draw with
+  runtime-compiled MSL); partial clears/resolves and depth or multisample
+  blits return `unsupported`. `depth32f_stencil8` buffer-texture copies now
+  move one aspect via Metal blit options; combined-aspect copies and host
+  access return `unsupported` instead of failing validation.
+- Timestamp queries stay unadvertised: on the M3 Pro, counter sampling exists
+  only at encoder boundaries, empty encoders record no sample, and GPU-side
+  `resolveCounters` returned zeros. Occlusion queries remain unmapped.
+- `backend_support.cpp` records Metal macOS conformance evidence; maturity
+  stays `native_smoke` because the `conformant` gate also needs the shared
+  cross-backend suite, which Metal (MSL shaders) does not run yet.
+- Evidence (2026-10-30, Apple M3 Pro, macOS 27.0.1, Xcode 27.1): all 30
+  ctests pass with `MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1
+  METAL_DEVICE_WRAPPER_TYPE=1` and no validation messages.
 
 ## Vulkan macOS MoltenVK Lane (#56)
 

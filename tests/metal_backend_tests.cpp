@@ -130,8 +130,8 @@ int main() {
     assert(adapter.info().resources.bufferCopy);
     assert(adapter.info().resources.bufferTextureCopy);
     assert(adapter.info().resources.textureCopy);
-    assert(!adapter.info().resources.textureClear);
-    assert(!adapter.info().resources.textureResolve);
+    assert(adapter.info().resources.textureClear);
+    assert(adapter.info().resources.textureResolve);
     assert(!adapter.info().resources.externalImport);
     assert(adapter.info().bindings.ordinaryBindGroups);
     assert(adapter.info().bindings.descriptorArrays);

@@ -25,6 +25,7 @@ constexpr BackendEvidence gl_error_checked_smoke{
 constexpr BackendEvidence metal_smoke{
     .compiles = true,
     .nativeSmoke = true,
+    .conformance = true,
     .validation = true,
     .presentation = true,
 };
@@ -54,7 +55,7 @@ constexpr std::array support{
                            "strict contract interpreter; never a GPU adapter"},
     BackendPlatformSupport{BackendKind::metal, PlatformKind::macos,
                            BackendMaturity::native_smoke, true, metal_smoke,
-                           "native output, synchronization, and CAMetalLayer proof"},
+                           "capability readback, synchronization, CAMetalLayer proof"},
     BackendPlatformSupport{BackendKind::metal, PlatformKind::ios,
                            BackendMaturity::source_only, true, source_only,
                            "target identified; no device or simulator lane yet"},
