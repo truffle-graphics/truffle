@@ -9,8 +9,12 @@ rather than growing a historical transcript here.
 
 ## Current Focus
 
-Practical baseline for Metal (#69), Vulkan (macOS MoltenVK lane done in
-#56), and desktop OpenGL (#61, #63) on Apple Silicon macOS (#171), plus the shader-compiler routes they need (#73).
+The Apple Silicon macOS baseline is complete: Metal conformance audit (#69,
+PR #174), Vulkan via MoltenVK (#56, PR #170), and OpenGL 4.1 host-view
+presentation, fences and occlusion queries (#61/#63 macOS parts, PR #176);
+combined develop build passes 37/37 ctests. Open follow-ups: Metal queries
+(#175), MoltenVK packaging/iOS (#172), Linux/Windows parts of #61/#63, and the
+shader-compiler routes (#73).
 What follows (likely the Renderer) is undecided. Other backends/platforms,
 Phase 6 advanced features, and Phase 7 hardening are backlog listed in
 `docs/roadmap.md`; their issues stay open.
