@@ -73,10 +73,21 @@ public:
     const rhi::RenderPassDesc* explicit_desc() const noexcept { return explicitDesc_.get(); }
     std::span<const RenderBatch> batches() const noexcept { return batches_; }
 
+    // Recorded before this pass begins, in order. The caller states layouts:
+    // e.g. an earlier pass's color target moving to shader_read_only before
+    // this pass samples it. Resource usages order passes; they add no barriers.
+    void transition_before(const rhi::TextureBarrier& barrier) {
+        barriersBefore_.push_back(barrier);
+    }
+    std::span<const rhi::TextureBarrier> barriers_before() const noexcept {
+        return barriersBefore_;
+    }
+
 private:
     bool useSwapchain_ = false;
     std::unique_ptr<rhi::RenderPassDesc> explicitDesc_;
     std::vector<RenderBatch> batches_;
+    std::vector<rhi::TextureBarrier> barriersBefore_;
 };
 
 class FrameGraph {

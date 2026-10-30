@@ -16,8 +16,7 @@ Those data types and lighting model are not Renderer library contracts.
 Requires Apple Silicon macOS with a logged-in GUI session, a Metal device,
 the native MSL compiler/reflection runtime (macOS 26+), an installed Apple SDK,
 and the repository's initialized pinned dependencies. No offline Metal Toolchain
-or portable shader compiler is needed for this example. The example explicitly
-opts into the current Metal compiler route's experimental-generation gate.
+or portable shader compiler is needed for this example.
 
 From the repository root, using an existing suitable build directory or a new one:
 

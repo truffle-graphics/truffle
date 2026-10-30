@@ -181,12 +181,12 @@ std::span<const CompilerRoute> Compiler::routes() noexcept {
 #if defined(TRUFFLE_SHADER_HAS_METAL_COMPILER)
         static constexpr CompilerRoute nativeSource{
             rhi::ShaderSourceLanguage::msl, rhi::ShaderTarget::metal_source,
-            stages, {}, metal, {}, {}, true};
+            stages, {}, metal, {}, {}, false};
         if (detail::native_msl_available()) add(nativeSource);
 #if defined(TRUFFLE_SHADER_HAS_METALLIB_COMPILER)
         static constexpr CompilerRoute offlineLibrary{
             rhi::ShaderSourceLanguage::msl, rhi::ShaderTarget::metal_library,
-            stages, {}, metal, {}, {}, true};
+            stages, {}, metal, {}, {}, false};
         if (detail::native_msl_available() &&
             detail::offline_metallib_available()) {
             add(offlineLibrary);
@@ -253,6 +253,7 @@ rhi::Result<Compilation> Compiler::compile(const CompileRequest& request) {
     }
     if ((request.target == rhi::ShaderTarget::metal_source ||
          request.target == rhi::ShaderTarget::metal_library) &&
+        request.language != rhi::ShaderSourceLanguage::msl &&
         !request.allowExperimentalMetalGeneration) {
         return rhi::Status::failure(rhi::StatusCode::unsupported,
                                    "Generated Metal requires explicit experimental opt-in");

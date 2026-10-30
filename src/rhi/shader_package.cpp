@@ -545,6 +545,12 @@ template <typename T, typename Read>
         }
     }
 
+    // Native MSL authoring is not cross-compilation; mixed provenance stays gated.
+    const bool nativeMslProvenance =
+        !desc.sources.empty() &&
+        std::all_of(desc.sources.begin(), desc.sources.end(), [](const auto& source) {
+            return source.language == ShaderSourceLanguage::msl;
+        });
     for (auto& variant : desc.variants) {
         if (variant.nativeEntryPoint.empty()) variant.nativeEntryPoint = variant.entryPoint;
         if (variant.entryPoint.empty() || variant.code.empty() ||
@@ -561,7 +567,7 @@ template <typename T, typename Read>
         if (variant.kind == ShaderVariantKind::generated &&
             (variant.target == ShaderTarget::metal_source ||
              variant.target == ShaderTarget::metal_library) &&
-            !options.allowExperimentalMetalGeneration) {
+            !nativeMslProvenance && !options.allowExperimentalMetalGeneration) {
             return Status::failure(
                 StatusCode::unsupported,
                 "generated Metal shader variants are experimentally gated");

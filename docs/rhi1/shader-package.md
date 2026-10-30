@@ -108,8 +108,8 @@ separate capability-reported route. Native MSL source/reflection is enabled
 with `TRUFFLE_SHADER_ENABLE_METAL_COMPILER=ON` and requires the macOS 26+
 reflection API at runtime. Offline `metallib` output is a separate capability,
 enabled with `TRUFFLE_SHADER_ENABLE_METALLIB_COMPILER=ON` and the installed
-Apple Metal Toolchain. Both native targets require explicit experimental
-opt-in and an `interfaceDeclaration`; only observable Metal reflection is
+Apple Metal Toolchain. Both native targets require an `interfaceDeclaration`
+but no experimental opt-in (#215); only observable Metal reflection is
 compiler-validated, while unavailable IO/push/workgroup/default metadata stays
 an explicit caller assertion. Arbitrary user MSL includes are unsupported;
 compose reusable code through ordered source units.
@@ -124,7 +124,8 @@ mandatory shader language. Generated Metal and WGSL variants are rejected by
 default and require an explicit experimental package option. The CLI exposes
 `--allow-experimental-metal` and `--allow-experimental-wgsl` for the
 corresponding generated targets. Compiler request opt-ins do not implicitly opt
-future package loads in.
+future package loads in. Packages whose source provenance is entirely native
+MSL (#188) are not generated Metal and need no option (#215).
 
 The canonical manifest stores `entryPoint` as the logical selection/agreement
 key and `nativeEntryPoint` as the native function spelling. Different emitted
@@ -194,12 +195,12 @@ truffle-shaderc --compile --name native-material --target msl --stage vertex \
   --source-language msl --input shaders/native/root.metal --output native-msl.tsp \
   --source-unit shared/types.metal --source-unit shared/lighting.metal \
   --interface-from shaders/interface.tsp --define QUALITY=2 \
-  --msl-version 2.1 --allow-experimental-metal
+  --msl-version 2.1
 truffle-shaderc --compile --name native-material --target metallib --stage vertex \
   --source-language msl --input shaders/native/root.metal --output native.metallib.tsp \
   --source-unit shared/types.metal --source-unit shared/lighting.metal \
   --interface-from shaders/interface.tsp --define QUALITY=2 \
-  --msl-version 2.1 --allow-experimental-metal
+  --msl-version 2.1
 truffle-shaderc --inspect material-metal.tsp --allow-experimental-metal
 truffle-shaderc --compile --name material --target glsl --stage fragment \
   --source-language glsl --input shaders/material.frag --output material-gl41.tsp \

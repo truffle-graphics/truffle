@@ -388,6 +388,9 @@ Generated Metal remains experimental: set
 `request.allowExperimentalMetalGeneration = true` to compile, and
 `ShaderPackageOptions::allowExperimentalMetalGeneration = true` to load.
 Neither compiler discovery nor emission disables the package safety gate.
+Native MSL authoring is not generated Metal and needs no opt-in (#215): its
+routes are not `experimental`, and packages whose source provenance is
+entirely `msl` load without the option. Mixed-provenance packages stay gated.
 The RHI package's `entryPoint` is the logical selection/agreement identity;
 `nativeEntryPoint` records the actual emitted function (for example `main0`).
 When authoring a descriptor, an empty native name means the logical spelling;
@@ -531,7 +534,6 @@ request.stage = truffle::rhi::ShaderStage::vertex;
 request.entryPoint = "vertex_main";
 request.sourceUnits = {"shared/types.metal", "shared/lighting.metal"};
 request.interfaceDeclaration = typedReflection;
-request.allowExperimentalMetalGeneration = true;
 ```
 
 Shader resolves each requested source unit through the same resolver/include

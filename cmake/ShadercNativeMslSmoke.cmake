@@ -19,7 +19,6 @@ function(run_msl_cli target suffix interfacePackage shouldSucceed)
             --define TRUFFLE_MSL_CONFIG=1
             --interface-from "${TRUFFLE_SHADERC_TEST_DIR}/${interfacePackage}"
             --msl-version 2.1
-            --allow-experimental-metal
         RESULT_VARIABLE result
         OUTPUT_VARIABLE stdout
         ERROR_VARIABLE stderr)

@@ -47,6 +47,18 @@ Warnings-as-errors builds pass. The architecture guard checks 17 production
 targets, 25 dependency declarations and 104 public-header imports. No backend
 maturity, cross-platform claim or version bump is implied.
 
+## Pre-GUI Renderer Fixes (#215)
+
+The owner chose two Renderer fixes before starting the GUI module and authorized
+self-review and merging. Native MSL packages (every source MSL) no longer need
+`allowExperimentalMetalGeneration`; cross-compiled Metal stays gated, and the
+compiler marks native MSL routes non-experimental. `RenderPassNode::transition_before`
+records caller-stated texture transitions before a pass, enabling
+render-to-texture layers. Evidence: exact-pixel layer proofs on Metal (native MSL,
+validation) and Vulkan (validation layer; fails without the transition), plus
+Null contract and package tests. GUI, fonts, input and platform layers are not
+started; per-batch draw cost stays deferred.
+
 ## GUI Readiness (#213)
 
 The owner asked whether the minimum Renderer is ready for a GUI module and then
