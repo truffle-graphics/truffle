@@ -9,8 +9,10 @@ set(_include "${TRUFFLE_SHADERC_TEST_DIR}/include")
 set(_package "${TRUFFLE_SHADERC_TEST_DIR}/configured.tsp")
 file(WRITE "${_root}" "#version 450\n#include \"module.glsl\"\n"
     "layout(local_size_x=2) in;\n"
-    "layout(set=0,binding=0) buffer Output { uint values[]; } data;\n"
-    "void main(){ data.values[gl_GlobalInvocationID.x]=value(); }\n")
+    "layout(constant_id=7) const uint increment=9;\n"
+    "layout(push_constant) uniform Push { layout(offset=16) uint base; } pc;\n"
+    "layout(set=0,binding=0) buffer Output { uint values[]; } data[2];\n"
+    "void main(){ data[1].values[gl_GlobalInvocationID.x]=value()+increment+pc.base; }\n")
 file(WRITE "${TRUFFLE_SHADERC_TEST_DIR}/module.glsl"
     "#include <configuration.glsl>\nuint value(){ return uint(QUALITY)*FACTOR; }\n")
 file(WRITE "${_include}/configuration.glsl"
@@ -39,7 +41,10 @@ execute_process(COMMAND "${TRUFFLE_SHADERC}" --inspect "${_package}"
     RESULT_VARIABLE _result OUTPUT_VARIABLE _inspection)
 if(NOT _result EQUAL 0 OR NOT _inspection MATCHES "variants=2" OR
    NOT _inspection MATCHES "sources=3" OR NOT _inspection MATCHES "configurations=2" OR
-   NOT _inspection MATCHES "bindings=1")
+   NOT _inspection MATCHES "bindings=1" OR
+   NOT _inspection MATCHES "count=2 minimum-size=4 readonly=0" OR
+   NOT _inspection MATCHES "push-offset=16 size=4" OR
+   NOT _inspection MATCHES "specialization-id=7 name=increment type=2 default-bits=9")
     message(FATAL_ERROR "Configured append/inspection failed: ${_inspection}")
 endif()
 

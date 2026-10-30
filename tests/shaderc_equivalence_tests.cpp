@@ -34,5 +34,9 @@ int main(int argc, char** argv) {
     const auto& reflection = compilation.value().package.desc().variants.front().reflection;
     if (compilation.value().dependencies.size() != 3 || reflection.bindings.size() != 1 ||
         reflection.requiredWorkgroupSize != rhi::Extent3D{2, 1, 1}) return 5;
+    if (reflection.bindings[0].arrayCount != 2 || reflection.bindings[0].minimumSize != 4 ||
+        reflection.pushConstants != std::vector<rhi::PushConstantRange>{{rhi::ShaderStage::compute, 16, 4}} ||
+        reflection.specializationConstants != std::vector<rhi::ShaderSpecializationConstant>{
+            {7, "increment", rhi::ShaderValueType::uint32, 9}}) return 6;
     return 0;
 }

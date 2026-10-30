@@ -55,6 +55,26 @@ Reflection for variants with the same entry point, stage, and permutation must
 normalize to the same logical contract. Package creation fails if resource
 types, arrays, access, stage visibility, push-constant ranges, specialization
 constants, interfaces, or workgroup metadata do not agree.
+Diagnostic binding, constant and interface names are preserved but do not
+determine agreement; logical slots, scalar IDs/types/default bits and occupied
+locations/types/interpolation do. Conventional 32-bit `floatN`/`intN`/`uintN`
+and `vecN`/`ivecN`/`uvecN` leaves are equivalent for N=2..4; empty/default,
+`perspective` and explicit `smooth` interpolation agree. These comparisons
+preserve original metadata in serialization; unknown spellings are not guessed.
+A spelling difference must not hide an actual semantic mismatch.
+
+Shader's baseline reflection work (#186) populates the existing push ranges,
+scalar specialization records, fixed descriptor counts, per-buffer minimum
+addressable sizes/access and expanded 32-bit scalar/vector IO leaves directly
+from emitted SPIR-V. A buffer minimum does not include unused trailing alignment
+padding. Shaderc's inspection prints that metadata rather than re-reflecting
+source. See [the feature matrix and blockers](../../src/shader/README.md#reflection-and-limits).
+TSP 1.0 still records only pipeline-edge IO (vertex inputs and fragment
+outputs), not both directions/internal varying links; directional compilation
+metadata remains in Shader's `Compilation::interfaces`. It also has no
+axis-to-specialization-ID mapping for workgroup extents. Full serialized
+directional IO and safe workgroup specialization need parent-reviewed shared
+contract decisions under #186; neither is silently encoded or marked complete.
 
 The version 1.0 binary layout is defined in
 [the TSP format specification](shader-package-format.md). It uses a

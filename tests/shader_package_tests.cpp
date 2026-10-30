@@ -212,6 +212,72 @@ int main() {
     assert(!mismatch.ok());
     assert(mismatch.status().code == StatusCode::invalid_argument);
 
+    auto renamedDesc = package_desc();
+    auto& renamed = renamedDesc.variants[0].reflection;
+    for (auto& binding : renamed.bindings) binding.name = "renamed_" + binding.name;
+    for (auto& constant : renamed.specializationConstants) constant.name = "renamed_" + constant.name;
+    for (auto& variable : renamed.interfaces) variable.name = "renamed_" + variable.name;
+    auto renamedResult = ShaderPackage::create(renamedDesc);
+    assert(renamedResult.ok());
+    assert(ShaderPackage::load(renamedResult.value().bytes()).ok());
+    auto smoothDesc = renamedDesc;
+    for (auto& variant : smoothDesc.variants)
+        variant.reflection.interfaces[0].interpolation = "smooth";
+    smoothDesc.variants[0].reflection.interfaces[0].interpolation.clear();
+    assert(ShaderPackage::create(std::move(smoothDesc)).ok());
+    for (const auto& pair : {std::pair{"float2", "vec2"}, {"float3", "vec3"}, {"float4", "vec4"},
+                             {"int2", "ivec2"}, {"int3", "ivec3"}, {"int4", "ivec4"},
+                             {"uint2", "uvec2"}, {"uint3", "uvec3"}, {"uint4", "uvec4"}}) {
+        auto equivalent = renamedDesc;
+        for (auto& variant : equivalent.variants)
+            variant.reflection.interfaces[0].type = pair.first;
+        equivalent.variants[0].reflection.interfaces[0].type = pair.second;
+        equivalent.variants[0].reflection.interfaces[0].interpolation = "smooth";
+        assert(ShaderPackage::create(std::move(equivalent)).ok());
+    }
+    const auto rejectsReflection = [&](const ShaderReflection& reflection) {
+        auto desc = renamedDesc;
+        desc.variants[0].reflection = reflection;
+        assert(!ShaderPackage::create(std::move(desc)).ok());
+    };
+    auto badReflection = renamed;
+    badReflection.pushConstants[0].offset += 4;
+    rejectsReflection(badReflection);
+    badReflection = renamed;
+    badReflection.specializationConstants[0].defaultValueBits ^= 1;
+    rejectsReflection(badReflection);
+    badReflection = renamed;
+    badReflection.specializationConstants[0].type = ShaderValueType::float32;
+    rejectsReflection(badReflection);
+    badReflection = renamed;
+    badReflection.bindings[1].minimumSize += 4;
+    rejectsReflection(badReflection);
+    badReflection = renamed;
+    badReflection.bindings[0].readOnly = !badReflection.bindings[0].readOnly;
+    rejectsReflection(badReflection);
+    badReflection = renamed;
+    badReflection.interfaces[0].type = "uvec4";
+    rejectsReflection(badReflection);
+    badReflection = renamed;
+    badReflection.interfaces[0].interpolation = "flat";
+    rejectsReflection(badReflection);
+    badReflection = renamed;
+    ++badReflection.interfaces[0].location;
+    rejectsReflection(badReflection);
+    badReflection = renamed;
+    ++badReflection.specializationConstants[0].id;
+    rejectsReflection(badReflection);
+    auto resourceFree = renamedDesc;
+    for (auto& variant : resourceFree.variants) variant.reflection.bindings.clear();
+    resourceFree.remaps.clear();
+    assert(ShaderPackage::create(resourceFree).ok());
+    auto wrongFree = resourceFree;
+    wrongFree.variants[0].reflection.interfaces[0].type = "uvec4";
+    assert(!ShaderPackage::create(wrongFree).ok());
+    wrongFree = resourceFree;
+    ++wrongFree.variants[0].reflection.specializationConstants[0].defaultValueBits;
+    assert(!ShaderPackage::create(wrongFree).ok());
+
     std::vector<std::byte> corrupt{first.bytes().begin(), first.bytes().end()};
     corrupt.back() ^= std::byte{1};
     assert(!ShaderPackage::load(corrupt).ok());

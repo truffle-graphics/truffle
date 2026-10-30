@@ -318,9 +318,34 @@ int main(int argc, char** argv) {
                       << " permutation=" << variant.permutation
                       << " bindings=" << variant.reflection.bindings.size()
                       << " interfaces=" << variant.reflection.interfaces.size()
+                      << " push-ranges=" << variant.reflection.pushConstants.size()
+                      << " specializations=" << variant.reflection.specializationConstants.size()
                       << " workgroup=" << variant.reflection.requiredWorkgroupSize.width << 'x'
                       << variant.reflection.requiredWorkgroupSize.height << 'x'
                       << variant.reflection.requiredWorkgroupSize.depth << '\n';
+            for (const auto& binding : variant.reflection.bindings) {
+                std::cout << "binding=" << binding.group << ':' << binding.binding
+                          << " name=" << binding.name
+                          << " type=" << static_cast<unsigned>(binding.type)
+                          << " count=" << binding.arrayCount
+                          << " minimum-size=" << binding.minimumSize
+                          << " readonly=" << binding.readOnly
+                          << " stage=" << static_cast<unsigned>(binding.stage) << '\n';
+            }
+            for (const auto& range : variant.reflection.pushConstants) {
+                std::cout << "push-offset=" << range.offset << " size=" << range.size
+                          << " stage=" << static_cast<unsigned>(range.stage) << '\n';
+            }
+            for (const auto& constant : variant.reflection.specializationConstants) {
+                std::cout << "specialization-id=" << constant.id << " name=" << constant.name
+                          << " type=" << static_cast<unsigned>(constant.type)
+                          << " default-bits=" << constant.defaultValueBits << '\n';
+            }
+            for (const auto& value : variant.reflection.interfaces) {
+                std::cout << "location=" << value.location << " name=" << value.name
+                          << " type=" << value.type << " interpolation=" << value.interpolation
+                          << " stage=" << static_cast<unsigned>(value.stage) << '\n';
+            }
         }
         return 0;
     }

@@ -1,5 +1,6 @@
 #include "truffle/shader/compiler.hpp"
 #include "digest.hpp"
+#include "spirv_reflection.hpp"
 
 #include <glslang/Public/ShaderLang.h>
 #include <glslang/Public/ResourceLimits.h>
@@ -140,110 +141,6 @@ void field(std::string& output, std::string_view value) {
     output += value;
 }
 
-rhi::Status reflect(glslang::TProgram& program, EShLanguage nativeStage, rhi::ShaderStage stage,
-                    rhi::ShaderReflection& reflection, std::vector<StageInterface>& interfaces) {
-    if (!program.buildReflection(EShReflectionSeparateBuffers | EShReflectionAllBlockVariables |
-                                 EShReflectionIntermediateIO | EShReflectionAllIOVariables)) {
-        return unsupported("glslang could not reflect this shader interface");
-    }
-    const auto addBlock = [&](const glslang::TObjectReflection& block, bool storage) -> rhi::Status {
-        const auto& type = *block.getType();
-        const auto& q = type.getQualifier();
-        if (q.layoutPushConstant) {
-            return unsupported("Push-constant reflection is not supported by the initial GLSL adapter");
-        }
-        if (!q.hasBinding() || !q.hasSet() || type.isArray() || block.size <= 0) {
-            return unsupported("Buffer requires explicit set/binding, a known minimum size and no descriptor array: " + block.name);
-        }
-        reflection.bindings.push_back({
-            .name = block.name, .stage = stage, .type = rhi::ResourceBindingType::buffer,
-            .group = static_cast<std::uint32_t>(q.layoutSet), .binding = static_cast<std::uint32_t>(q.layoutBinding), .arrayCount = 1,
-            .minimumSize = static_cast<std::size_t>(block.size),
-            .readOnly = !storage || q.readonly});
-        return rhi::Status::success();
-    };
-    // Reflect linked declarations, including inactive resources that glslang
-    // still emits into SPIR-V, rather than only its live-uniform database.
-    auto* tree = program.getIntermediate(nativeStage)->getTreeRoot()->getAsAggregate();
-    for (auto* node : tree->getSequence()) {
-        auto* aggregate = node->getAsAggregate();
-        if (!aggregate || aggregate->getOp() != glslang::EOpLinkerObjects) continue;
-        for (auto* declaration : aggregate->getSequence()) {
-            auto* symbol = declaration->getAsSymbolNode();
-            if (!symbol) continue;
-            const auto& type = symbol->getType();
-            const auto& q = type.getQualifier();
-            const std::string name = symbol->getName().c_str();
-            if (q.storage != glslang::EvqUniform && q.storage != glslang::EvqBuffer) continue;
-            if (type.getBasicType() == glslang::EbtBlock) {
-                const glslang::TObjectReflection block{
-                    name, type, 0, 0, glslang::TIntermediate::getBlockSize(type), -1};
-                auto status = addBlock(block, q.storage == glslang::EvqBuffer);
-                if (!status.ok()) return status;
-                continue;
-            }
-            if (type.getBasicType() != glslang::EbtSampler || !q.hasBinding() ||
-                !q.hasSet() || type.isArrayOfArrays() || type.containsUnsizedArray()) {
-                return unsupported("Unsupported uniform reflection: " + name);
-            }
-            const auto& sampler = type.getSampler();
-            if (sampler.isCombined() || sampler.isSubpass()) {
-                return unsupported(
-                    "Combined samplers/subpass inputs are not representable by the initial adapter: " + name);
-            }
-            reflection.bindings.push_back({
-                .name = name, .stage = stage,
-                .type = sampler.isPureSampler() ? rhi::ResourceBindingType::sampler
-                                               : rhi::ResourceBindingType::texture,
-                .group = static_cast<std::uint32_t>(q.layoutSet),
-                .binding = static_cast<std::uint32_t>(q.layoutBinding),
-                .arrayCount = static_cast<std::uint32_t>(
-                    type.isArray() ? type.getOuterArraySize() : 1),
-                .minimumSize = 0, .readOnly = !sampler.isImage() || q.readonly});
-        }
-    }
-    if (program.getNumAtomicCounters() != 0) return unsupported("Atomic counter reflection is unsupported");
-    const auto addIO = [&](const glslang::TObjectReflection& io, bool input) -> rhi::Status {
-        const auto& type = *io.getType();
-        if (type.containsBuiltIn() || io.name.starts_with("gl_")) return rhi::Status::success();
-        const auto& q = type.getQualifier();
-        if (!q.hasLocation() || type.isArray() || type.isStruct() || type.isMatrix() ||
-            (type.getBasicType() != glslang::EbtFloat && type.getBasicType() != glslang::EbtInt &&
-             type.getBasicType() != glslang::EbtUint) ||
-            q.hasComponent() || q.hasIndex()) {
-            return unsupported("Interface requires a located 32-bit scalar/vector: " + io.name);
-        }
-        rhi::ShaderInterfaceVariable variable{
-            .stage = stage, .location = q.layoutLocation, .name = io.name,
-            .type = type.getVectorSize() == 1
-                ? (type.getBasicType() == glslang::EbtFloat ? "float" : type.getBasicType() == glslang::EbtInt ? "int" : "uint")
-                : std::string{type.getBasicType() == glslang::EbtFloat ? "vec" : type.getBasicType() == glslang::EbtInt ? "ivec" : "uvec"} + std::to_string(type.getVectorSize()),
-            .interpolation = q.flat ? "flat" : q.nopersp ? "noperspective" : "smooth"};
-        if (q.centroid) variable.interpolation = "centroid " + variable.interpolation;
-        if (q.sample) variable.interpolation = "sample " + variable.interpolation;
-        interfaces.push_back({input, variable});
-        // TSP 1.0 has no direction field: its interfaces describe pipeline edges.
-        if ((stage == rhi::ShaderStage::vertex && input) ||
-            (stage == rhi::ShaderStage::fragment && !input)) {
-            reflection.interfaces.push_back(std::move(variable));
-        }
-        return rhi::Status::success();
-    };
-    for (int i = 0; i < program.getNumPipeInputs(); ++i) {
-        auto status = addIO(program.getPipeInput(i), true);
-        if (!status.ok()) return status;
-    }
-    for (int i = 0; i < program.getNumPipeOutputs(); ++i) {
-        auto status = addIO(program.getPipeOutput(i), false);
-        if (!status.ok()) return status;
-    }
-    if (stage == rhi::ShaderStage::compute) {
-        reflection.requiredWorkgroupSize = {program.getLocalSize(0), program.getLocalSize(1), program.getLocalSize(2)};
-        reflection.preferredWorkgroupSize = reflection.requiredWorkgroupSize;
-    }
-    return rhi::Status::success();
-}
-
 } // namespace
 
 rhi::Result<Compilation> compile_glslang(const CompileRequest& request,
@@ -281,7 +178,7 @@ rhi::Result<Compilation> compile_glslang(const CompileRequest& request,
     result.vulkanTarget = request.vulkanTarget;
     result.compiler = {"glslang", std::to_string(version.major) + "." + std::to_string(version.minor) +
                                    "." + std::to_string(version.patch), TRUFFLE_GLSLANG_REVISION};
-    result.compiler.revision += ";truffle-glslang=2;vulkan=" +
+    result.compiler.revision += ";truffle-glslang=3;vulkan=" +
         std::string{vulkan_version_name(request.vulkanTarget.environment)} + ";spirv=" +
         std::string{spirv_version_name(request.vulkanTarget.spirv)};
     glslang::TShader shader{stage};
@@ -312,7 +209,7 @@ rhi::Result<Compilation> compile_glslang(const CompileRequest& request,
         includer.error.clear();
     }
     std::string key;
-    field(key, "Truffle GLSL adapter 2; default-resource-limits");
+    field(key, "Truffle GLSL adapter 3; default-resource-limits");
     field(key, result.compiler.version);
     field(key, result.compiler.revision);
     field(key, request.name);
@@ -354,8 +251,6 @@ rhi::Result<Compilation> compile_glslang(const CompileRequest& request,
     variant.kind = rhi::ShaderVariantKind::generated;
     variant.stage = request.stage;
     variant.entryPoint = request.entryPoint;
-    auto status = reflect(program, stage, request.stage, variant.reflection, result.interfaces);
-    if (!status.ok()) return status;
     std::vector<unsigned int> words;
     glslang::SpvOptions options;
     options.generateDebugInfo = request.generateDebugInfo;
@@ -363,14 +258,8 @@ rhi::Result<Compilation> compile_glslang(const CompileRequest& request,
     spv::SpvBuildLogger logger;
     glslang::GlslangToSpv(*program.getIntermediate(stage), words, &logger, &options);
     if (words.empty() || words[0] != 0x07230203) return invalid("glslang SPIR-V generation failed");
-    // Specialization constants (including local_size_*_id) need richer reflection.
-    for (std::size_t i = 5; i < words.size();) {
-        const auto count = words[i] >> 16;
-        const auto opcode = words[i] & 0xffff;
-        if (count == 0 || count > words.size() - i) return invalid("Malformed generated SPIR-V");
-        if (opcode >= 48 && opcode <= 52) return unsupported("Specialization constant reflection is unsupported");
-        i += count;
-    }
+    auto status = detail::reflect_spirv(words, request.stage, variant.reflection, result.interfaces);
+    if (!status.ok()) return status;
     variant.code.resize(words.size() * sizeof(unsigned int));
     std::memcpy(variant.code.data(), words.data(), variant.code.size());
     result.diagnostics = (bounded(shader.getInfoLog()) + bounded(program.getInfoLog()) +

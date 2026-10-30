@@ -31,11 +31,17 @@ integration (#181) are usable foundations, not module-completion claims.
 
 Shader completion proceeds through bounded, independently validated phases:
 
-1. **Route/target contracts (#185):** discover enabled source/target/stage
+1. **Route/target contracts (#185), done (PR #194):** discover enabled source/target/stage
    support, explicit validated Vulkan/SPIR-V settings, target-aware cache and
    provenance, and shaderc discovery. The implemented versus planned matrix
    is in [the Shader documentation](../src/shader/README.md).
-2. **Baseline reflection (#186):** constants, resources, and stage IO.
+2. **Baseline reflection (#186), active:** emitted-SPIR-V push ranges, scalar
+   specialization, fixed descriptor arrays and expanded matrix/array/block IO
+   have implementation and native consumption evidence. **Not complete:**
+   workgroup-specialization axis IDs and serialized directional/internal IO
+   require parent-reviewed RHI/TSP contract decisions. Exact mismatches and
+   proposed minimum fixes are in the Shader feature matrix; do not close #186
+   or promote the Shader module on this subset.
 3. **Portable native generation (#187):** native Metal/OpenGL outputs.
 4. **Native Metal inputs/libraries (#188), HLSL (#189), Slang and native module
    imports (#190), WGSL (#191):** optional compiler routes with their own
