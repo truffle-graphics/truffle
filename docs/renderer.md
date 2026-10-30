@@ -81,6 +81,11 @@ removes all registrations. Lookup then fails until registration.
 
 ## Batches and bindings
 
+Direction (ADR 0012, #204): per-object data, its interpretation, lights and
+materials are application-defined and matched to shader reflection; the fixed
+`ChannelKind` vocabulary and `components.hpp` are under review. See
+[ADR 0012](adr/0012-app-defined-render-data.md).
+
 Vertex/index/indirect buffers remain borrowed batch inputs. Native vertex input
 uses `RenderBatch::bindings`; the direct uniform lane is available for low-level
 uses, but is not a substitute for descriptor groups required by reflection.

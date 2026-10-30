@@ -5,7 +5,20 @@ This is the rolling execution handoff, not an implementation transcript.
 issues/Project own accepted work. Earlier phase details remain in their PRs,
 the support matrix and Git history.
 
-## Current Delivery: Shader Completion (#73, #193)
+## Current Delivery: Render Data Direction (#204)
+
+Shader is complete (below); the next step is a minimum Renderer. Before it
+starts, [ADR 0012](adr/0012-app-defined-render-data.md) records the accepted
+direction: fixed renderer concepts (mesh, buffer, texture, program, pass,
+view/camera, draw; optional Renderer camera helpers) stay fixed, while
+per-object data, its interpretation, lights and materials are
+application-defined, matched to Shader reflection and uploaded unchanged.
+ECS/scene types stay outside the Renderer. Documentation only; `ChannelKind`
+and `renderer/components.hpp` are unchanged and are review items. The minimum
+Renderer will be built quickly in this direction, then the owner will review
+and refactor its architecture. Minimum Renderer issues are not yet created.
+
+## Previous Delivery: Shader Completion (#73, #193)
 
 The agreed Shader baseline is implemented. Final acceptance is recorded in
 #193 and its reviewed merge-commit PR; reconcile that issue and parent #73
