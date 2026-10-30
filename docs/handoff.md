@@ -287,8 +287,11 @@ rather than growing a historical transcript here.
   test was excluded there because only narrow targets were built, not every
   library needed by install. The complete focused `build/shader-native` run
   passed 4/4 including installed-consumer smoke. Runtime-only Shader build
-  passed after helper extraction. Parent owns consolidated all-provider
-  validation after this branch merges current develop.
+  passed after helper extraction. Review-fix commit `b78b55d` is signed and
+  pushed to PR #201. `origin/develop` at
+  `990f7e679f41f1dc9d55c7d5a31e3acbbac87381` is already an ancestor of this
+  branch; no additional develop merge is pending. Parent owns consolidated
+  all-provider validation of the pushed review-fix head.
 - Parent owns review/merge/tracking; #188 remains active until accepted. No
   TSP version bump, migration, legacy reader, or Shader-module completion claim.
 
