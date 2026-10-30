@@ -34,19 +34,46 @@ Built when `OpenGL.framework` is found;
 `GL_SILENCE_DEPRECATION` is defined for this target only. Verified on Apple M3
 Pro, macOS 27.0.1, adapter `Apple M3 Pro (4.1 Metal - 91.7)`, by
 `truffle_opengl_tests` (buffers, textures, direct/expanded graphics, bindings,
-compute negatives) with exact readback. Validation on macOS is per-call
+compute negatives, synchronization and queries) with exact readback. Validation on macOS is per-call
 `glGetError` checking with zero errors required; no debug-message layer exists
 on macOS GL 4.1, so this is not equivalent to KHR_debug or a validation layer.
 
 GL 4.1 lacks immutable texture storage, so textures allocate each level (and
 cube face) with `glTexImage*`. Advertised: transfer, descriptor arrays,
-dynamic offsets, push constants, presentation; buffer/identity texture views, copies, fills,
+dynamic offsets, push constants, presentation; semaphores, fences and
+occlusion query pools; buffer/identity texture views, copies, fills,
 clears, resolve and blits; graphics, MRT, depth/stencil, 4x multisample and
 indirect draws whose first-instance word is zero. Unsupported and reported as
 such: compute and storage blocks, subresource texture views, nonzero base
 instance (direct, indexed or indirect; rejected at submit and covered by
 `verify_expanded_gl_graphics`), KHR_debug diagnostics, external resources,
-`mailbox` presentation.
+`mailbox` presentation, timestamp queries (Apple reports zero
+`GL_QUERY_COUNTER_BITS` for `GL_TIMESTAMP`) and pipeline-statistics queries
+(GL 4.6).
+
+### Synchronization, queries and context ownership
+
+- One instance owns one CGL context and one graphics queue. Every GL call
+  takes the context mutex and makes the context current on the calling thread,
+  so any thread may record and submit, but GL work is serialized; there is no
+  multi-queue or multi-context parallelism.
+- A submission ends with `glFenceSync` + `glClientWaitSync`, so it has
+  completed on the GPU before `submit` returns. RHI fences and semaphores are
+  host timeline values reached at submit; a wait on an unreached value honours
+  `waitTimeout`/`Fence::wait` timeouts and returns `timeout` without consuming
+  the command lists. A GL fence still unsignalled after 10 s is reported as
+  `device_lost` instead of blocking forever.
+- Occlusion query pools use `GL_SAMPLES_PASSED` and resolve exact 64-bit
+  sample counts into a buffer; resolving a query that never ended fails with
+  `invalid_state`. Timestamp and pipeline-statistics pools return
+  `unsupported`, and `timestamp_queries` is not advertised.
+- Presentation calls stay on the AppKit main thread (see above).
+
+`verify_gl_sync` proves deterministic fence and semaphore timeout/retry, exact
+full/scissored/empty occlusion counts, the unsupported pool types, the
+unended-query rejection, and four threads recording and submitting on one
+context with exact readback and zero GL errors. Linux EGL builds do not enable
+sync objects yet, so semaphores and query pools stay `unsupported` there.
 
 ### Presentation into a host-owned NSView
 
@@ -90,6 +117,7 @@ the copied bytes exactly.
 
 - Window presentation through EGL window surfaces on Linux and WGL on Windows
   (#61); macOS host-view presentation is done.
-- GL fences, queries and multi-context ownership evidence (#63).
+- GL sync objects and occlusion queries on Linux EGL and GLES (#63); macOS
+  fences, occlusion queries and context ownership are done.
 - Windows verification (roadmap Pending Verification). Intel Macs are not a
   target (#171).

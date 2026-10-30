@@ -34,25 +34,6 @@ struct PresentCaptureState {
     return state;
 }
 
-// Semaphores are host timeline values. The foundation waits for them before
-// native submission, and the single GL queue completes each submission
-// before its signals are published, so no GL object is needed per point.
-struct SemaphoreResource {
-    std::shared_ptr<Context> context;
-};
-
-[[nodiscard]] inline Result<std::shared_ptr<void>> create_semaphore(
-    const std::shared_ptr<void>& nativeContext, const SemaphoreDesc&) {
-    auto context = std::static_pointer_cast<Context>(nativeContext);
-    if (!context || !context_available(*context)) {
-        return Status::failure(StatusCode::device_lost,
-                               "the native GL context is unavailable");
-    }
-    auto semaphore = std::make_shared<SemaphoreResource>();
-    semaphore->context = std::move(context);
-    return std::static_pointer_cast<void>(std::move(semaphore));
-}
-
 [[nodiscard]] inline Status require_main_thread() {
     return cgl_view::on_main_thread()
                ? Status::success()
@@ -368,9 +349,11 @@ inline void capture_presented_pixels(Extent2D drawable) {
     glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
     auto error = glGetError();
     cgl_view::flush(*swapchain->presenter);
-    // The device context reuses the back buffer next frame; finish the blit
-    // read in this context first.
-    glFinish();
+    // The device context reuses the back buffer next frame; the blit read
+    // in this context must complete first.
+    if (auto status = wait_for_completion("GL presentation"); !status.ok()) {
+        return restore(status);
+    }
     if (error == GL_NO_ERROR) {
         error = glGetError();
     }

@@ -25,7 +25,8 @@ Active work is a practical baseline for three backends:
 2. **Vulkan** — portable backend; Linux and macOS (MoltenVK, #56) baselines
    are done. MoltenVK packaging and iOS-family lanes are deferred (#172).
 3. **OpenGL** (desktop) — surfaces/presentation (#61; macOS host-owned
-   `NSView` done) and synchronization, queries, and context ownership (#63). macOS OpenGL is deprecated and capped
+   `NSView` done) and synchronization, queries, and context ownership (#63;
+   macOS fences, occlusion queries and context ownership done). macOS OpenGL is deprecated and capped
    at 4.1, so features above 4.1 (such as compute) need another platform.
 4. Offline shader-compiler routes those backends need (#73).
 

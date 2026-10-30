@@ -29,9 +29,36 @@ setup, not immediate work. No issue labels or hosted workflows change.
 - #56's macOS lane is delivered (PR #170); its packaging, package isolation,
   iOS-family lanes and MoltenVK timestamp re-check move to deferred #172
   (sub-issue of #33), so #56 closes.
-- Next: macOS-supported GL fences/queries/context ownership (#63, branch
+- Next: review/merge the macOS GL presentation and sync PR (#61, #63, branch
   `feat/opengl-macos-present-sync`); Metal advertised-capability conformance
-  audit (#69). macOS GL host-view presentation (#61) is on the same branch.
+  audit (#69).
+
+## OpenGL macOS Sync, Queries And Context Ownership (#63)
+
+- Same branch as #61. `gl_sync.hpp` owns completion, semaphores and query
+  pools; `TRUFFLE_GL_HAS_SYNC_OBJECTS` is defined for CGL only, so Linux EGL
+  keeps semaphores/query pools `unsupported` until verified there.
+- Completion: submit and present end with `glFenceSync` +
+  `glClientWaitSync` (flush bit, 10 s bound); an unsignalled fence returns
+  `device_lost`, a wait failure `backend_validation_failed`. Without sync
+  objects it falls back to `glFinish`. RHI fences/semaphores stay host
+  timeline values reached at submit.
+- Queries: occlusion pools use `GL_SAMPLES_PASSED` and resolve exact uint64
+  counts with `glBufferSubData`; resolving an unended query is
+  `invalid_state`. Timestamp pools are `unsupported` (Apple reports zero
+  `GL_TIMESTAMP` counter bits; `GL_TIME_ELAPSED` exists but has no RHI query
+  type) and pipeline statistics are `unsupported` (GL 4.6).
+  `timestamp_queries` is not advertised; `timestampPeriodNanoseconds` is 0.
+- Context ownership: one CGL context and graphics queue per instance; every
+  GL call holds the context mutex and makes it current on the calling thread,
+  so any thread may record/submit but GL work is serialized. Presentation is
+  AppKit-main-thread only.
+- Evidence: `verify_gl_sync` in `truffle_opengl_tests` (fence 7/8 timeout,
+  semaphore 1 ns timeout leaves the list executable then retries, occlusion
+  counts 256/16/0 with an untouched leading word, unsupported pool types,
+  unended-query rejection, four threads x 24 submits with exact readback,
+  zero GL errors). Both GL ctests pass 10 repeated runs.
+- Not done: EGL/GLES sync objects and queries (verify on Linux), WGL.
 
 ## OpenGL macOS Host-View Presentation (#61)
 
@@ -41,12 +68,12 @@ setup, not immediate work. No issue labels or hosted workflows change.
   never creates windows.
 - Backend: `cgl_view.{hpp,mm}` is the only AppKit code (manual
   retain/release, AppKit NSOpenGL deprecations silenced in that file only).
-  `gl_present.hpp` implements surface/swapchain/acquire/resize/present and
-  host-value semaphores (the GL queue completes work before submit returns,
-  so semaphores are reached at submit). The swapchain owns one
+  `gl_present.hpp` implements surface/swapchain/acquire/resize/present
+  (host-value semaphores moved to `gl_sync.hpp` in #63). The swapchain owns one
   `NSOpenGLContext` sharing objects with the device CGL context and one
   back-buffer texture; present blits it with a Y flip (texture row 0 = window
-  top), checks `glGetError`, `flushBuffer`s and `glFinish`es, then restores
+  top), checks `glGetError`, `flushBuffer`s and waits for completion (a GL
+  fence since #63), then restores
   the device context. `bgra8_unorm` was added to the desktop GL format table
   (the SwapchainDesc default).
 - Contract: RGBA8/BGRA8; `fifo`/`immediate` (swap interval 1/0), `mailbox`
@@ -101,8 +128,8 @@ setup, not immediate work. No issue labels or hosted workflows change.
 - Architecture guard: 19 dependency declarations (+1 for the private
   `OpenGL.framework` link).
 - Still open: WGL/EGL window presentation (#61; macOS host-view
-  presentation is done above), GL fences, queries and context ownership
-  evidence (#63), Windows verification (roadmap pending list). Linux EGL is compile-safe by
+  presentation is done above), EGL/GLES sync objects and queries (#63;
+  macOS is done above), Windows verification (roadmap pending list). Linux EGL is compile-safe by
   inspection only on this run.
 
 ## Metal macOS Host Window (#69)

@@ -107,7 +107,10 @@ constexpr std::array support{
                            gl_error_checked_smoke,
                            "deprecated GL 4.1 core CGL resources, bindings, "
                            "and graphics with exact readback, presented into "
-                           "a host-owned NSView with resize; validation is "
+                           "a host-owned NSView with resize; GL fence-sync "
+                           "completion, semaphores, fences, and occlusion "
+                           "queries on one serialized context (no timestamp "
+                           "queries); validation is "
                            "per-call glGetError checking with zero errors "
                            "required (no debug-message layer exists on macOS "
                            "GL 4.1); no compute"},

@@ -33,7 +33,8 @@
 
 // EGL desktop contexts request GL 4.5 core. CGL is capped at GL 4.1 core,
 // which lacks compute, storage blocks, immutable storage, texture views,
-// base-instance draws, memory barriers and KHR_debug.
+// base-instance draws, memory barriers and KHR_debug. Sync objects and
+// occlusion queries (GL 3.2/3.3) are enabled only where verified: macOS.
 #if defined(TRUFFLE_GL_CONTEXT_EGL)
 #define TRUFFLE_GL_HAS_TEXTURE_STORAGE 1
 #define TRUFFLE_GL_HAS_DEBUG_OUTPUT 1
@@ -42,4 +43,7 @@
 #define TRUFFLE_GL_HAS_TEXTURE_VIEWS 1
 #define TRUFFLE_GL_HAS_BASE_INSTANCE 1
 #endif
+#endif
+#if defined(TRUFFLE_GL_CONTEXT_CGL)
+#define TRUFFLE_GL_HAS_SYNC_OBJECTS 1
 #endif

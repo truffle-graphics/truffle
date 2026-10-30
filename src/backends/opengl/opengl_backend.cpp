@@ -125,8 +125,11 @@ Result<Instance> create_opengl_instance(const InstanceDesc& desc) {
     config.createPipeline = &detail::gl_probe::create_pipeline;
     config.createComputePipeline = &detail::gl_probe::create_compute_pipeline;
     config.nativeSubmit = &detail::gl_probe::submit;
-#if defined(TRUFFLE_GL_CONTEXT_CGL)
+#if defined(TRUFFLE_GL_HAS_SYNC_OBJECTS)
     config.createSemaphore = &detail::gl_probe::create_semaphore;
+    config.createQueryPool = &detail::gl_probe::create_query_pool;
+#endif
+#if defined(TRUFFLE_GL_CONTEXT_CGL)
     config.createSurface = &detail::gl_probe::create_surface;
     config.createSwapchain = &detail::gl_probe::create_swapchain;
     config.acquireSwapchain = &detail::gl_probe::acquire_swapchain;

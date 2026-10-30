@@ -132,8 +132,17 @@ must create a new device and dependent objects.
 
 ## macOS OpenGL mapping
 
-- The GL queue is synchronous: a submit completes its GPU work before it
-  returns, so timeline semaphores are host values reached at submit.
+- The GL queue is synchronous: a submit ends with `glFenceSync` and
+  `glClientWaitSync`, so its GPU work completes before it returns, and
+  timeline semaphores and fences are host values reached at submit. A GL fence
+  unsignalled after 10 s returns `device_lost`.
+- One context per instance: every GL call holds the context mutex and makes
+  it current on the calling thread, so recording and submission may happen on
+  any thread but execute serially.
+- Occlusion pools map to `GL_SAMPLES_PASSED` queries and resolve exact 64-bit
+  counts with `glBufferSubData`; timestamp pools (Apple reports zero
+  `GL_TIMESTAMP` counter bits) and pipeline-statistics pools return
+  `unsupported`.
 - A `cocoa_view` surface retains a host-owned `NSView`; the host keeps the
   window, event loop and view configuration (set
   `wantsBestResolutionOpenGLSurface` for a Retina-sized drawable). The

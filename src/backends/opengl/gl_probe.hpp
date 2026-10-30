@@ -21,6 +21,7 @@
 
 #include "gl_graphics.hpp"
 #include "gl_program.hpp"
+#include "gl_sync.hpp"
 
 namespace truffle::rhi::detail::gl_probe {
 
@@ -1732,6 +1733,24 @@ struct Probe {
 #endif
             continue;
         }
+        if (command.kind == NativeCommandKind::write_timestamp ||
+            command.kind == NativeCommandKind::begin_occlusion_query ||
+            command.kind == NativeCommandKind::end_occlusion_query ||
+            command.kind == NativeCommandKind::resolve_queries) {
+#if defined(TRUFFLE_GL_HAS_SYNC_OBJECTS)
+            const auto destination =
+                std::static_pointer_cast<BufferResource>(command.secondaryObject);
+            if (auto status = execute_query(
+                    command, destination ? destination->name : 0);
+                !status.ok()) {
+                return fail(status);
+            }
+            continue;
+#else
+            return fail(Status::failure(StatusCode::unsupported,
+                                        "GL queries are not enabled here"));
+#endif
+        }
         if (command.kind == NativeCommandKind::begin_compute) {
 #if defined(TRUFFLE_GL_HAS_COMPUTE)
             if (renderActive || computeActive) {
@@ -2213,7 +2232,9 @@ struct Probe {
         return fail(Status::failure(StatusCode::invalid_state,
                                     "GL render encoder was not ended"));
     }
-    glFinish();
+    if (auto status = wait_for_completion("GL submission"); !status.ok()) {
+        return fail(status);
+    }
     const auto error = glGetError();
     cleanup();
     return error == GL_NO_ERROR
