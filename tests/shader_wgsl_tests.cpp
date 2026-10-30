@@ -26,7 +26,9 @@ int main() {
             const auto disabled = compiler.compile(request);
             TRUFFLE_SHADER_CHECK(!disabled.ok() && disabled.status().code == rhi::StatusCode::unsupported &&
                 (disabled.status().message.find("Shader compilers disabled") != std::string::npos ||
-                 disabled.status().message.find("No enabled Shader compiler route") != std::string::npos));
+             disabled.status().message.find("No enabled Shader compiler route") != std::string::npos ||
+             disabled.status().message.find("No enabled Shader source-compilation routes") !=
+                 std::string::npos));
             return 0;
         }
         for (const auto stage : {rhi::ShaderStage::vertex, rhi::ShaderStage::fragment, rhi::ShaderStage::compute}) {

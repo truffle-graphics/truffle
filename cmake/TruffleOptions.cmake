@@ -14,7 +14,11 @@ option(TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS
 option(TRUFFLE_SHADER_ENABLE_SPIRV_CROSS
        "Translate validated portable SPIR-V to Metal/GLSL/GLSL ES" OFF)
 option(TRUFFLE_SHADER_ENABLE_DXC
-       "Enable pinned in-process HLSL compilation with DXC" OFF)
+       "Enable the optional pinned DXC HLSL 2021 compiler adapter" OFF)
+option(TRUFFLE_SHADER_ENABLE_METAL_COMPILER
+       "Enable the optional in-process native MSL compiler/reflection adapter (Apple only)" OFF)
+option(TRUFFLE_SHADER_ENABLE_METALLIB_COMPILER
+       "Enable optional offline MSL-to-metallib compilation (Apple Metal Toolchain required)" OFF)
 option(TRUFFLE_BUILD_RHI_DOCTOR "Build the RHI backend/platform doctor tool" ${PROJECT_IS_TOP_LEVEL})
 
 option(TRUFFLE_BUILD_BACKEND_NULL    "Build the Truffle null validation backend" ON)

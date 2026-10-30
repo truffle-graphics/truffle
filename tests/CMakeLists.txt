@@ -57,6 +57,18 @@ add_test(NAME truffle_shader_compiler_tests COMMAND truffle_shader_compiler_test
 add_executable(truffle_shader_route_tests shader_route_tests.cpp)
 target_link_libraries(truffle_shader_route_tests PRIVATE truffle_shader)
 truffle_target_warnings(truffle_shader_route_tests)
+if(TRUFFLE_SHADER_ENABLE_METAL_COMPILER)
+    target_compile_definitions(truffle_shader_route_tests PRIVATE
+        TRUFFLE_TEST_METAL_COMPILER=1)
+endif()
+if(TRUFFLE_SHADER_ENABLE_METALLIB_COMPILER)
+    target_compile_definitions(truffle_shader_route_tests PRIVATE
+        TRUFFLE_TEST_METALLIB_COMPILER=1)
+endif()
+if(TRUFFLE_SHADER_ENABLE_DXC)
+    target_compile_definitions(truffle_shader_route_tests PRIVATE
+        TRUFFLE_TEST_DXC=1)
+endif()
 add_test(NAME truffle_shader_route_tests COMMAND truffle_shader_route_tests)
 add_executable(truffle_shader_hlsl_tests shader_hlsl_tests.cpp)
 target_link_libraries(truffle_shader_hlsl_tests PRIVATE truffle_shader)
@@ -119,10 +131,43 @@ add_executable(truffle_shader_reflection_tests shader_reflection_tests.cpp)
 target_link_libraries(truffle_shader_reflection_tests PRIVATE truffle_shader)
 truffle_target_warnings(truffle_shader_reflection_tests)
 add_test(NAME truffle_shader_reflection_tests COMMAND truffle_shader_reflection_tests)
-if(TRUFFLE_SHADER_ENABLE_GLSLANG)
+if(TRUFFLE_SHADER_ENABLE_GLSLANG OR TRUFFLE_SHADER_ENABLE_TINT OR
+   TRUFFLE_SHADER_ENABLE_DXC)
     target_compile_definitions(truffle_shader_reflection_tests PRIVATE TRUFFLE_TEST_SPIRV_REFLECTION=1)
     target_include_directories(truffle_shader_reflection_tests PRIVATE
-        "${PROJECT_SOURCE_DIR}/src/shader" "${PROJECT_SOURCE_DIR}/vendor/glslang")
+        "${PROJECT_SOURCE_DIR}/src/shader"
+        "${PROJECT_SOURCE_DIR}/vendor/spirv-headers/include")
+endif()
+
+if(APPLE AND TRUFFLE_SHADER_ENABLE_METAL_COMPILER AND
+   TRUFFLE_BUILD_BACKEND_METAL)
+    add_executable(truffle_shader_native_msl_tests
+        shader_native_msl_tests.cpp)
+    target_link_libraries(truffle_shader_native_msl_tests PRIVATE
+        truffle_shader truffle_backend_metal)
+    target_compile_definitions(truffle_shader_native_msl_tests PRIVATE
+        "TRUFFLE_NATIVE_MSL_FIXTURE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/fixtures/shader/native-msl\""
+        "TRUFFLE_NATIVE_MSL_TEST_OUTPUT_DIR=\"${PROJECT_BINARY_DIR}/shader-native-msl-smoke\"")
+    truffle_target_warnings(truffle_shader_native_msl_tests)
+    add_test(NAME truffle_shader_native_msl_tests
+        COMMAND truffle_shader_native_msl_tests)
+    set_tests_properties(truffle_shader_native_msl_tests PROPERTIES
+        LABELS "native-smoke;validation;shader"
+        FIXTURES_SETUP native_msl_interface_package
+        FAIL_REGULAR_EXPRESSION "Validation (Error|Warning)"
+        ENVIRONMENT "MTL_DEBUG_LAYER=1;MTL_SHADER_VALIDATION=1")
+    if(TRUFFLE_BUILD_SHADERC)
+        add_test(NAME truffle_shaderc_native_msl_smoke
+            COMMAND "${CMAKE_COMMAND}"
+                "-DTRUFFLE_SHADERC=$<TARGET_FILE:truffle-shaderc>"
+                "-DTRUFFLE_SHADERC_TEST_DIR=${PROJECT_BINARY_DIR}/shader-native-msl-smoke"
+                "-DTRUFFLE_NATIVE_MSL_FIXTURE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/shader/native-msl"
+                "-DTRUFFLE_EXPECT_METALLIB=$<BOOL:${TRUFFLE_SHADER_ENABLE_METALLIB_COMPILER}>"
+                -P "${PROJECT_SOURCE_DIR}/cmake/ShadercNativeMslSmoke.cmake")
+        set_tests_properties(truffle_shaderc_native_msl_smoke PROPERTIES
+            FIXTURES_REQUIRED native_msl_interface_package
+            LABELS "native-smoke;shader")
+    endif()
 endif()
 target_link_libraries(truffle_encom_tests PRIVATE truffle_encom)
 add_test(NAME truffle_encom_tests COMMAND truffle_encom_tests)
@@ -573,7 +618,7 @@ if(TRUFFLE_INSTALL)
             "-DTRUFFLE_BUILD_SHADERC=$<BOOL:${TRUFFLE_BUILD_SHADERC}>"
             "-DTRUFFLE_INSTALL_BINDIR=${CMAKE_INSTALL_BINDIR}"
             "-DTRUFFLE_INSTALL_LIBDIR=${CMAKE_INSTALL_LIBDIR}"
-            "-DTRUFFLE_EXPECT_COMPILER=$<OR:$<BOOL:${TRUFFLE_SHADER_ENABLE_GLSLANG}>,$<BOOL:${TRUFFLE_SHADER_ENABLE_DXC}>,$<BOOL:${TRUFFLE_SHADER_ENABLE_TINT}>,$<BOOL:${TRUFFLE_SHADER_ENABLE_SLANG}>>"
+            "-DTRUFFLE_EXPECT_COMPILER=$<OR:$<BOOL:${TRUFFLE_SHADER_ENABLE_GLSLANG}>,$<BOOL:${TRUFFLE_SHADER_ENABLE_DXC}>,$<BOOL:${TRUFFLE_SHADER_ENABLE_TINT}>,$<BOOL:${TRUFFLE_SHADER_ENABLE_SLANG}>,$<BOOL:${TRUFFLE_SHADER_ENABLE_METAL_COMPILER}>>"
             "-DTRUFFLE_CONFIG=$<CONFIG>"
             -P "${PROJECT_SOURCE_DIR}/cmake/ShaderInstallSmoke.cmake")
     add_test(

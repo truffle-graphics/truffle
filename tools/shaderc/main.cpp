@@ -7,7 +7,6 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
-#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -22,6 +21,7 @@ using truffle::rhi::ShaderStage;
 using truffle::rhi::ShaderTarget;
 using truffle::rhi::ShaderVariantDesc;
 using truffle::rhi::ShaderVariantKind;
+using truffle::rhi::ShaderReflection;
 using truffle::rhi::Status;
 using truffle::rhi::StatusCode;
 
@@ -39,10 +39,13 @@ struct Arguments {
     std::string compilerVersion;
     std::string compilerRevision;
     std::string append;
+    std::string interfacePackage;
     std::vector<std::string> includeRoots;
+    std::vector<std::string> sourceUnits;
     std::vector<truffle::rhi::ShaderDefine> defines;
     truffle::shader::VulkanTarget vulkanTarget;
-    truffle::shader::HlslShaderModel hlslShaderModel = truffle::shader::HlslShaderModel::v6_0;
+    truffle::shader::HlslShaderModel hlslShaderModel =
+        truffle::shader::HlslShaderModel::v6_0;
     bool hlslModelSpecified = false;
     bool targetSettings = false;
     bool compile = false;
@@ -55,6 +58,27 @@ struct Arguments {
     return Status::failure(StatusCode::invalid_argument, std::move(message));
 }
 
+bool same_reflection(const ShaderReflection& left,
+                     const ShaderReflection& right) {
+    const auto sameBindings = left.bindings.size() == right.bindings.size() &&
+        std::equal(left.bindings.begin(), left.bindings.end(),
+                   right.bindings.begin(), [](const auto& a, const auto& b) {
+                       return a.name == b.name && a.stage == b.stage &&
+                              a.type == b.type && a.group == b.group &&
+                              a.binding == b.binding &&
+                              a.arrayCount == b.arrayCount &&
+                              a.minimumSize == b.minimumSize &&
+                              a.readOnly == b.readOnly;
+                   });
+    return sameBindings &&
+           left.pushConstants == right.pushConstants &&
+           left.specializationConstants == right.specializationConstants &&
+           left.interfaces == right.interfaces &&
+           left.requiredWorkgroupSize == right.requiredWorkgroupSize &&
+           left.preferredWorkgroupSize == right.preferredWorkgroupSize &&
+           left.workgroupSpecializationIds == right.workgroupSpecializationIds;
+}
+
 void usage(std::ostream& output) {
     output
         << "Usage: truffle-shaderc --name NAME --target TARGET --stage STAGE "
@@ -64,6 +88,7 @@ void usage(std::ostream& output) {
            "[--compiler-revision REV] [--entry NAME] "
            "[--kind precompiled|native|generated] [--append PACKAGE] "
            "[--compile [--include-root DIR]... [--define NAME[=VALUE]]... "
+           "[--source-unit FILE]... [--interface-from PACKAGE] "
            "[--vulkan-version VERSION] [--spirv-version VERSION] "
            "[--hlsl-shader-model 6.0] "
            "[--msl-version 2.1|--glsl-version 410|--glsl-es-version 300] "
@@ -79,8 +104,14 @@ void usage(std::ostream& output) {
         << "Assembly requires source-hash/compiler-name/compiler-version. "
            "Compilation computes source/dependency hashes and compiler identity; "
            "a supplied source-hash is verified. No toolchains are fetched.\n"
-        << "--routes lists enabled source compilation, not package assembly "
-           "or native GPU support. Target versions default to Vulkan 1.1/SPIR-V 1.3.\n";
+        << "--routes lists source routes available in this process/runtime, "
+           "not package assembly or guaranteed request success. Native MSL "
+           "discovery probes Metal once and is cached for process lifetime. "
+           "GLSL defaults to Vulkan 1.1/SPIR-V 1.3; native MSL is macOS Metal 2.1.\n"
+        << "--hlsl-shader-model selects the exact HLSL target model.\n"
+        << "--source-unit composes an ordered MSL source unit before the root. "
+        << "--interface-from reuses typed reflection from a TSP variant with "
+        << "the requested stage/entry; matching permutations must agree.\n";
 }
 
 [[nodiscard]] Result<Arguments> parse_arguments(int argc, char** argv) {
@@ -136,6 +167,12 @@ void usage(std::ostream& output) {
         } else if (key == "--include-root") {
             if (value.empty()) return invalid("include root must not be empty");
             result.includeRoots.push_back(value);
+        } else if (key == "--source-unit") {
+            if (value.empty()) return invalid("source unit must not be empty");
+            result.sourceUnits.push_back(value);
+        } else if (key == "--interface-from") {
+            if (value.empty()) return invalid("interface package must not be empty");
+            result.interfacePackage = value;
         } else if (key == "--define") {
             const auto equals = value.find('=');
             result.defines.push_back({value.substr(0, equals),
@@ -157,7 +194,8 @@ void usage(std::ostream& output) {
         } else if (key == "--hlsl-shader-model") {
             result.targetSettings = true;
             result.hlslModelSpecified = true;
-            if (value != truffle::shader::hlsl_shader_model_name(result.hlslShaderModel))
+            if (value != truffle::shader::hlsl_shader_model_name(
+                             result.hlslShaderModel))
                 return invalid("unsupported HLSL shader model: " + value);
         } else if (key == "--msl-version" || key == "--glsl-version" || key == "--glsl-es-version") {
             result.targetSettings = true;
@@ -179,12 +217,18 @@ void usage(std::ostream& output) {
          (result.sourceHash.empty() || result.compilerName.empty() || result.compilerVersion.empty()))) {
         return invalid("required package arguments are missing");
     }
-    if (!result.nativeVersionTarget.empty() && result.nativeVersionTarget != result.target)
+    const bool nativeMetalTarget =
+        result.nativeVersionTarget == "msl" &&
+        (result.target == "msl" || result.target == "metallib");
+    if (!result.nativeVersionTarget.empty() && !nativeMetalTarget &&
+        result.nativeVersionTarget != result.target)
         return invalid("native version option disagrees with target");
     if (result.hlslModelSpecified && result.sourceLanguage != "hlsl")
         return invalid("HLSL shader model requires HLSL source");
-    if (!result.compile && (!result.includeRoots.empty() || !result.defines.empty() || result.targetSettings))
-        return invalid("include roots, defines and target settings require --compile");
+    if (!result.compile && (!result.includeRoots.empty() || !result.sourceUnits.empty() ||
+                            !result.interfacePackage.empty() || !result.defines.empty() ||
+                            result.targetSettings))
+        return invalid("include roots, source units, interface package, defines and target settings require --compile");
     if (result.compile && (!result.compilerName.empty() || !result.compilerVersion.empty() ||
                            !result.compilerRevision.empty()))
         return invalid("--compile derives compiler identity; do not override it");
@@ -308,24 +352,32 @@ int main(int argc, char** argv) {
         std::cout << "source-routes=" << routes.size() << '\n';
         for (const auto& route : routes) {
             for (const auto stage : route.stages) {
-                const auto print = [&](std::optional<shader::VulkanTarget> target) {
+                const auto print = [&](const shader::VulkanTarget* target) {
                     std::cout << "source=" << rhi::shader_source_language_name(route.language)
                               << " target=" << rhi::shader_target_name(route.target)
                               << " stage=" << (stage == ShaderStage::vertex ? "vertex" :
                                               stage == ShaderStage::fragment ? "fragment" : "compute");
-                    if (target)
-                        std::cout << " vulkan=" << shader::vulkan_version_name(target->environment)
-                                  << " spirv=" << shader::spirv_version_name(target->spirv);
+                    if (target != nullptr) {
+                        std::cout << " vulkan="
+                                  << shader::vulkan_version_name(target->environment)
+                                  << " spirv="
+                                  << shader::spirv_version_name(target->spirv);
+                    }
                     if (!route.metalTargets.empty()) std::cout << " msl=macos-2.1";
                     if (!route.glslTargets.empty()) std::cout << " glsl=410-core";
                     if (!route.glslEsTargets.empty()) std::cout << " glsl-es=300-es";
-                    for (const auto model : route.hlslShaderModels)
-                        std::cout << " hlsl-shader-model=" << shader::hlsl_shader_model_name(model);
+                    for (const auto model : route.hlslShaderModels) {
+                        std::cout << " hlsl-shader-model="
+                                  << shader::hlsl_shader_model_name(model);
+                    }
                     if (route.experimental) std::cout << " experimental";
                     std::cout << '\n';
                 };
-                if (route.vulkanTargets.empty()) print(std::nullopt);
-                else for (const auto target : route.vulkanTargets) print(target);
+                if (route.vulkanTargets.empty()) {
+                    print(nullptr);
+                } else {
+                    for (const auto target : route.vulkanTargets) print(&target);
+                }
             }
         }
         return 0;
@@ -481,9 +533,56 @@ int main(int argc, char** argv) {
         request.vulkanTarget = arguments.vulkanTarget;
         request.hlslShaderModel = arguments.hlslShaderModel;
         request.allowExperimentalMetalGeneration = arguments.experimentalMetal;
+        request.sourceUnits = arguments.sourceUnits;
         request.allowExperimentalWgslGeneration = arguments.experimentalWgsl;
         request.includeRoots = arguments.includeRoots;
         request.defines = arguments.defines;
+        if (!arguments.interfacePackage.empty()) {
+            auto interfaceBytes = read_file(arguments.interfacePackage);
+            if (!interfaceBytes.ok()) {
+                std::cerr << interfaceBytes.status().message << '\n';
+                return 2;
+            }
+            auto interfacePackage = rhi::ShaderPackage::load(
+                interfaceBytes.value(),
+                {.allowExperimentalMetalGeneration =
+                     arguments.experimentalMetal});
+            if (!interfacePackage.ok()) {
+                std::cerr << interfacePackage.status().message << '\n';
+                return 2;
+            }
+            const auto& variants = interfacePackage.value().desc().variants;
+            const ShaderVariantDesc* selected = nullptr;
+            const ShaderVariantDesc* onlyStageVariant = nullptr;
+            std::size_t stageVariantCount = 0;
+            for (const auto& variant : variants) {
+                if (variant.stage != stageResult.value()) continue;
+                ++stageVariantCount;
+                onlyStageVariant = &variant;
+                if (variant.entryPoint == arguments.entry) {
+                    if (selected != nullptr &&
+                        !same_reflection(selected->reflection,
+                                         variant.reflection)) {
+                        std::cerr
+                            << "--interface-from found matching stage/entry "
+                               "variants with differing interface declarations; "
+                               "use a package whose matching permutations share "
+                               "one ShaderReflection declaration\n";
+                        return 2;
+                    }
+                    selected = &variant;
+                }
+            }
+            if (selected == nullptr && stageVariantCount == 1) {
+                selected = onlyStageVariant;
+            }
+            if (selected == nullptr) {
+                std::cerr << "interface package must contain one unambiguous "
+                             "variant for the requested stage/entry\n";
+                return 2;
+            }
+            request.interfaceDeclaration = selected->reflection;
+        }
         shader::Compiler compiler;
         auto compiled = compiler.compile(request);
         if (!compiled.ok()) {

@@ -325,6 +325,21 @@ The [route/limit matrix](../src/shader/README.md#portable-native-generation-187)
 distinguishes native Apple Silicon graphics/compute proofs from GLES compiler
 validation. No backend implementation or Renderer feature is added.
 
+Native MSL authoring (#188) is a distinct optional Shader-owned route, not a
+portable-source translation and not a backend-owned compiler feature. Its
+typed `ShaderReflection` declaration is required: the private in-process Metal
+adapter validates fields exposed by the macOS 26+ function reflection API and
+keeps unobservable IO/push/workgroup/default metadata as explicit caller
+assertions. Reusable code is selected with an ordered `CompileRequest::sourceUnits`
+list resolved through Shader's existing source resolver and composed before
+the root; there is no new shader language, recursive MSL include resolver or
+custom parser. The built-in `<metal_stdlib>` include is allowed; arbitrary user
+includes are rejected. Optional offline `metal`/`metallib` output is a separate
+capability and is validated in-process before the toolchain produces a library.
+The RHI package contract/codec and draft TSP `1.0` remain unchanged; package
+consumption remains compiler-free and Shader still depends only on RHI/Base
+plus explicitly enabled private Apple APIs.
+
 See [the shader package contract](rhi1/shader-package.md).
 
 ## Planned Modules

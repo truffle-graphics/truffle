@@ -81,6 +81,15 @@ its route exists, and configure never downloads it. Runtime packages do not
 acquire the compiler toolchain. Runtime source compilation is an explicit
 optional feature; production packages prefer offline variants.
 
+Native MSL compilation is an Apple-platform-only optional capability enabled
+with `TRUFFLE_SHADER_ENABLE_METAL_COMPILER`; it links the SDK's Metal and
+Foundation frameworks privately and introduces no vendored source or license
+bundle. `TRUFFLE_SHADER_ENABLE_METALLIB_COMPILER` additionally requires the
+locally installed Apple Metal Toolchain (`xcrun metal` and `xcrun metallib`).
+These Apple components are neither downloaded nor redistributed by Truffle.
+Prepared TSP consumers and all-off Shader builds do not acquire either
+framework/toolchain dependency.
+
 | Dependency | Pin | Upstream and license | Consumer and update policy |
 |---|---|---|---|
 | Tint in Dawn | `46b4670bc67cb4f6d34f6ce6a46ba7e1d6059abf` (`chromium/7258`) | `dawn.googlesource.com/dawn`; BSD-3-Clause (`LICENSE`) | Private optional in-process WGSL reader/writer, SPIR-V reader/writer, inspector and native IR transforms. Dawn backends/browser/GUI/tests/tools and unrelated writers disabled; no source patches. Exact static link closure exported, not public Tint headers. |

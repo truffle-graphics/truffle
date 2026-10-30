@@ -6,24 +6,24 @@ canonical manifest plus target blobs and can be created, serialized, loaded,
 capability-checked, and selected without a compiler dependency.
 
 The independent `Truffle::Shader` library optionally compiles configured
-multi-file GLSL/GLSL ES or HLSL directly into an in-memory Truffle Shader Package
-(TSP, `.tsp`). It owns dependency tracking, supported reflection, compilation
+multi-file GLSL/GLSL ES into SPIR-V, and native MSL into source or an optional
+offline Metal library, directly into an in-memory Truffle Shader Package
+(TSP, `.tsp`). Native MSL requires a typed reflection declaration; shared
+ordered `sourceUnits` compose reusable chunks without adding a language or
+parser. Shader owns dependency tracking, supported reflection, compilation
 caching and explicit rebuild state; Renderer owns GPU object lifetimes and
 replacement. See [the Shader API](../../src/shader/README.md).
 
 `truffle-shaderc` is an optional host tool. Its dependency-free path assembles
 precompiled or backend-native variants. Its separately enabled pinned glslang
 route consumes the shared Shader library to compile GLSL and GLSL ES to SPIR-V.
-The independent pinned DXC route compiles HLSL 2021/SM 6.0 to SPIR-V and DXIL,
-with in-process output validation and native emitted-binary reflection.
 Portable outputs additionally use pinned optional SPIRV-Cross and real
 SPIRV-Tools validation inside Shader, producing macOS MSL 2.1, desktop GLSL
-410 core, or GLSL ES 300 source. These paths record authoring-language
+410 core, or GLSL ES 300 source. Both paths record authoring-language
 provenance, source SHA-256 values, and compiler identity. Generated modules
 default to Vulkan 1.1 and SPIR-V 1.3, matching the current native Vulkan lane.
 Explicit Vulkan 1.0/SPIR-V 1.0 and Vulkan 1.1/SPIR-V 1.0 configurations are
-also supported for GLSL; DXC supports the first pair but not Vulkan 1.1/SPIR-V 1.0.
-Additional configuration compilation evidence is not a new native
+also supported by Shader; their CPU compilation evidence is not a new native
 backend claim. The tool never fetches or discovers a compiler
 implicitly. Additional source-to-target compiler adapters must arrive with
 their pinned submodules and explicit enable flags.
@@ -31,8 +31,10 @@ their pinned submodules and explicit enable flags.
 ## Inputs And Variants
 
 The package can record Slang, HLSL, GLSL, GLSL ES, WGSL, and MSL authoring
-provenance; Shader compiles GLSL/GLSL ES/HLSL through Vulkan SPIR-V to the bounded
-native profiles above when their adapters are explicitly enabled.
+provenance. Shader provides bounded GLSL/GLSL ES routes through SPIR-V and
+HLSL routes to SPIR-V/DXIL, optional WGSL/Tint routes, and native MSL
+compilation when its Apple adapters are enabled; exact source/target
+combinations are listed in the route matrix.
 See the [implemented versus planned route matrix](../../src/shader/README.md#routes-and-target-configuration-73-185).
 Accepted prepared inputs are SPIR-V, DXIL, Metal libraries, and
 backend-native source variants.
@@ -102,17 +104,27 @@ guarantees begin with release, per the linked specification's compatibility poli
 
 Prepared packages remain compiler-free. Offline and on-demand runtime source
 compilation share the optional Shader library; native backend compilation is a
-separate capability-reported route.
+separate capability-reported route. Native MSL source/reflection is enabled
+with `TRUFFLE_SHADER_ENABLE_METAL_COMPILER=ON` and requires the macOS 26+
+reflection API at runtime. Offline `metallib` output is a separate capability,
+enabled with `TRUFFLE_SHADER_ENABLE_METALLIB_COMPILER=ON` and the installed
+Apple Metal Toolchain. Both native targets require explicit experimental
+opt-in and an `interfaceDeclaration`; only observable Metal reflection is
+compiler-validated, while unavailable IO/push/workgroup/default metadata stays
+an explicit caller assertion. Arbitrary user MSL includes are unsupported;
+compose reusable code through ordered source units.
 
-Planned #73 routes may use Slang and Tint;
-they are not currently integrated or advertised. Pinned glslang/DXC are linked only by explicitly
-enabled Shader adapters (`TRUFFLE_SHADER_ENABLE_GLSLANG` / `TRUFFLE_SHADER_ENABLE_DXC`) and never by RHI,
+The remaining #73 source route is Slang (#190); HLSL/DXC (#189) and WGSL/Tint
+(#191) are implemented as bounded routes, not an all-input/all-output cross
+product.
+Pinned glslang is linked only by the explicitly
+enabled Shader adapter (`TRUFFLE_SHADER_ENABLE_GLSLANG`) and never by RHI,
 backends or compiler-disabled Renderer consumers. Slang is one planned authoring route, not Truffle's
 mandatory shader language. Generated Metal and WGSL variants are rejected by
 default and require an explicit experimental package option. The CLI exposes
-`--allow-experimental-metal` for generated MSL compilation, assembly, append
-and inspection; WGSL remains gated without a CLI opt-in. The compiler request's
-Metal opt-in does not implicitly opt future package loads in.
+`--allow-experimental-metal` and `--allow-experimental-wgsl` for the
+corresponding generated targets. Compiler request opt-ins do not implicitly opt
+future package loads in.
 
 The canonical manifest stores `entryPoint` as the logical selection/agreement
 key and `nativeEntryPoint` as the native function spelling. Different emitted
@@ -128,9 +140,10 @@ does not bind layout-visible but absent stage resources through native fallback
 slots. Precompiled/native-override variants and direct descriptors retain
 optional metadata by default; empty reflection alone is not proof of no use.
 See [binding semantics](bindings-and-pipelines.md#layout-and-reflection-agreement).
-Generated MSL rejects runtime storage-buffer `.length()` and other reported
-auxiliary-resource requirements until RHI owns the required bindings; ordinary
-runtime-tail indexing remains supported.
+SPIRV-Cross-generated MSL rejects runtime storage-buffer `.length()` and other
+reported auxiliary-resource requirements until RHI owns the required bindings;
+ordinary runtime-tail indexing remains supported. Native MSL authoring has its
+own Metal-reflection checks and declaration assertions.
 
 ## Runtime And Tool Evidence
 
@@ -161,8 +174,7 @@ Recording a target blob does not by itself advance a backend maturity level.
 ## Tool Usage
 
 Build the package assembler with `TRUFFLE_BUILD_SHADERC=ON`. Independently
-enable GLSL source compilation with `TRUFFLE_SHADER_ENABLE_GLSLANG=ON`, or HLSL
-with `TRUFFLE_SHADER_ENABLE_DXC=ON` and `TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS=ON`; the default
+enable source compilation with `TRUFFLE_SHADER_ENABLE_GLSLANG=ON`; the default
 core Shader/RHI/Renderer configuration remains compiler-free, and runtime
 Shader clients can leave shaderc disabled.
 
@@ -172,15 +184,21 @@ truffle-shaderc --compile --name material --target spirv --stage fragment \
   --source-language glsl --input shaders/material.frag --output material.tsp \
   --include-root shaders/include --define USE_TEXTURE=1 --define QUALITY=2
 truffle-shaderc --inspect material.tsp
-truffle-shaderc --compile --name hlsl-material --target dxil --stage fragment \
-  --source-language hlsl --input shaders/material.hlsl --output material-dxil.tsp \
-  --entry fragmentMain --hlsl-shader-model 6.0 --include-root shaders/include \
-  --define USE_TEXTURE=1
 truffle-shaderc --compile --name legacy-target --target spirv --stage vertex \
   --source-language glsl --input shaders/triangle.vert --output triangle-vk10.tsp \
   --vulkan-version 1.0 --spirv-version 1.0
 truffle-shaderc --compile --name material --target msl --stage fragment \
   --source-language glsl --input shaders/material.frag --output material-metal.tsp \
+  --msl-version 2.1 --allow-experimental-metal
+truffle-shaderc --compile --name native-material --target msl --stage vertex \
+  --source-language msl --input shaders/native/root.metal --output native-msl.tsp \
+  --source-unit shared/types.metal --source-unit shared/lighting.metal \
+  --interface-from shaders/interface.tsp --define QUALITY=2 \
+  --msl-version 2.1 --allow-experimental-metal
+truffle-shaderc --compile --name native-material --target metallib --stage vertex \
+  --source-language msl --input shaders/native/root.metal --output native.metallib.tsp \
+  --source-unit shared/types.metal --source-unit shared/lighting.metal \
+  --interface-from shaders/interface.tsp --define QUALITY=2 \
   --msl-version 2.1 --allow-experimental-metal
 truffle-shaderc --inspect material-metal.tsp --allow-experimental-metal
 truffle-shaderc --compile --name material --target glsl --stage fragment \
@@ -200,11 +218,13 @@ reported by `--inspect`. There is no CLI-owned compiler selection policy.
 Native version flags are compilation-only, validate the selected target, and
 accept exactly the corresponding typed Shader profile. Discovery marks Metal
 experimental and lists only graphics stages for GL 410/ES 300.
-`--hlsl-shader-model 6.0` is compilation-only and requires HLSL source.
-DXIL discovery has no Vulkan intermediate; its profile is selected by shader
-model and stage. See the [HLSL reflection and include contract](../../src/shader/README.md#hlsl-and-dxc-189).
 
-Inspection prints native entry names and every binding remap. Append preserves
+Native MSL `--source-unit FILE` is repeatable and preserves order before the
+root source. It resolves through the ordinary source resolver/include roots;
+only `<metal_stdlib>` is accepted as a direct include, not arbitrary user
+includes. `--interface-from PACKAGE` selects the exact entry/stage declaration
+or the only variant for that stage. The metallib target additionally requires
+the optional Metal Toolchain-enabled build. Inspection prints native entry names and every binding remap. Append preserves
 translator-owned remaps and rejects conflicting global target/stage mappings.
 The [native generation limits and exact native evidence](../../src/shader/README.md#portable-native-generation-187)
 are narrower than upstream SPIRV-Cross feature coverage. GLES compiler validation
