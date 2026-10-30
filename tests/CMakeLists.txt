@@ -207,6 +207,10 @@ add_executable(truffle_renderer_view_tests renderer_view_tests.cpp)
 target_link_libraries(truffle_renderer_view_tests PRIVATE truffle_backend_null truffle_renderer)
 add_test(NAME truffle_renderer_view_tests COMMAND truffle_renderer_view_tests)
 
+add_executable(truffle_renderer_gui_primitives_tests renderer_gui_primitives_tests.cpp)
+target_link_libraries(truffle_renderer_gui_primitives_tests PRIVATE truffle_backend_null truffle_renderer)
+add_test(NAME truffle_renderer_gui_primitives_tests COMMAND truffle_renderer_gui_primitives_tests)
+
 if(APPLE AND TRUFFLE_SHADER_ENABLE_METAL_COMPILER AND TRUFFLE_BUILD_BACKEND_METAL)
     add_executable(truffle_renderer_scene_metal_tests
         renderer_scene_metal_tests.cpp ../examples/minimum_renderer/scene.cpp)
@@ -219,6 +223,17 @@ if(APPLE AND TRUFFLE_SHADER_ENABLE_METAL_COMPILER AND TRUFFLE_BUILD_BACKEND_META
     truffle_target_warnings(truffle_renderer_scene_metal_tests)
     add_test(NAME truffle_renderer_scene_metal_tests COMMAND truffle_renderer_scene_metal_tests)
     set_tests_properties(truffle_renderer_scene_metal_tests PROPERTIES
+        LABELS "native-smoke;validation;renderer" TIMEOUT 60
+        ENVIRONMENT "MTL_DEBUG_LAYER=1;MTL_SHADER_VALIDATION=1;METAL_DEVICE_WRAPPER_TYPE=1")
+
+    add_executable(truffle_renderer_gui_primitives_metal_tests
+        renderer_gui_primitives_metal_tests.cpp)
+    target_link_libraries(truffle_renderer_gui_primitives_metal_tests PRIVATE
+        truffle_renderer truffle_backend_metal)
+    truffle_target_warnings(truffle_renderer_gui_primitives_metal_tests)
+    add_test(NAME truffle_renderer_gui_primitives_metal_tests
+        COMMAND truffle_renderer_gui_primitives_metal_tests)
+    set_tests_properties(truffle_renderer_gui_primitives_metal_tests PROPERTIES
         LABELS "native-smoke;validation;renderer" TIMEOUT 60
         ENVIRONMENT "MTL_DEBUG_LAYER=1;MTL_SHADER_VALIDATION=1;METAL_DEVICE_WRAPPER_TYPE=1")
 endif()

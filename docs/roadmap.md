@@ -55,10 +55,11 @@ platform execution or backend conformance. The unreleased TSP draft remains
 The next accepted scope is the **minimum flexible Renderer (#206)**:
 app-defined vertex data and mesh uploads (#207, PR #210), optional camera/depth
 helpers and composed example lighting (#208, PR #211), and a host-owned Metal
-window with resize (#209). These are review-only stacked PRs above ADR PR #205;
-implementation evidence does not mean they have been accepted or merged.
-No GUI, asset/texture system, general materials, or later application phases
-are planned by this work. Reassess the next direction after the minimum
+window with resize (#209), above ADR PR #205, merged after owner-authorized
+self-review. GUI-readiness primitives (#213) add clip rectangles, sampled
+textures, streamed geometry and frame pacing so a GUI module can start above
+the Renderer. No GUI module, asset system, general materials, or later
+application phases are planned by this work. Reassess the next direction after the minimum
 Renderer. Delivery remains signed issue-scoped commits, immediate pushes and
 owner-reviewed PRs.
 The common compiled-result boundary remains the existing RHI ShaderPackage;

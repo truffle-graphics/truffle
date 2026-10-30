@@ -5,6 +5,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 namespace truffle::renderer {
@@ -126,6 +127,11 @@ struct RenderBatch {
     // The host keeps wrappers/arenas alive through render(); RHI retains recorded
     // resource payloads. Arena reset still follows RHI's in-flight rules.
     std::vector<BatchBindGroup> bindGroups;
+    // Optional clip rectangle in pass-attachment pixels (top-left origin). It is
+    // intersected with the pass extent; an empty intersection skips the draw.
+    // Requires a pipeline declaring rhi::DynamicState::scissor, which in turn
+    // receives the full pass extent for batches without a clip rectangle.
+    std::optional<rhi::ScissorRect> scissor;
 };
 
 } // namespace truffle::renderer

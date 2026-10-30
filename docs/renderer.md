@@ -180,6 +180,52 @@ previous batch's bindings cannot conceal an omitted required group. RHI handles
 target remapping; Renderer contains no backend-specific selection assumptions.
 Staging rejects unmatched reflection/layouts before publication.
 
+### GUI-readiness primitives (#213)
+
+These are the minimum mechanisms an immediate-mode or retained 2D layer (for
+example a later GUI module) needs. They add no widget, font, input or layout
+policy; vertex formats, atlas contents and shaders remain application-defined.
+
+- **Clip rectangles.** `RenderBatch::scissor` is an optional rectangle in
+  pass-attachment pixels (top-left origin), intersected with the pass extent.
+  An empty intersection skips the draw and counts
+  `RendererFrameStats::renderBatchesClipped`. It requires a program whose
+  `PipelineDesc::dynamicState` is exactly `DynamicState::scissor` (the only
+  dynamic state the cache accepts); unclipped batches on such a pipeline
+  receive the full pass extent. A clip on a static pipeline is rejected.
+- **Blending.** Alpha blending is ordinary `PipelineDesc::colorTargets[].blend`
+  state on the registered program; no Renderer feature is involved.
+- **Sampled textures.** `renderer::SampledTexture` (`texture.hpp`) uploads an
+  uncompressed 2D color texture (r8, rg8, rgba8/srgb, bgra8/srgb, rgba16f,
+  rgba32f) through a staging copy and waits for it; `update` replaces a
+  sub-rectangle (for example a growing glyph atlas). The texture is left
+  shader-readable; bind `view()` with an application sampler in an RHI bind
+  group.
+- **Streamed geometry.** `renderer::StreamBuffer` (`frame_stream.hpp`) copies
+  per-frame bytes (vertices, indices, uniforms) into per-slot upload buffers
+  and returns `BufferView`s for `RenderBatch` bindings or index buffers; slots
+  grow on demand. Sub-ranges of one buffer are expressed through view offsets.
+- **Frames in flight.** `renderer::FramePacer` paces slots over one fence.
+  `Renderer::render(graph, swapchain, pacer.signal())` signals the frame's
+  fence value at submission, and `RendererFrameStats::submitted` tells
+  `end_frame` whether to wait for it later:
+
+```cpp
+const auto slot = pacer.begin_frame().value();     // waits for this slot's last use
+stream.begin_frame(slot);
+batch.bindings[0] = stream.write(std::as_bytes(std::span{vertices})).value();
+batch.indexBuffer = stream.write(std::as_bytes(std::span{indices}), 4).value();
+batch.scissor = rhi::ScissorRect{x, y, width, height};
+auto status = renderer.render(graph, swapchain, pacer.signal());
+pacer.end_frame(renderer.last_frame_stats().submitted);
+```
+
+Null contract tests cover clipping, signals, pacing, stream alignment/growth
+and texture validation. A native Metal proof under API/shader validation
+checks every pixel of three paced frames: alpha blending over a clear color,
+atlas sampling, an atlas update after upload, clip rectangles (including a
+fully clipped batch), and rebuilt streamed geometry reusing a slot.
+
 ## Lifetimes, threading and limits
 
 The device outlives the cache and Renderer. All cache operations (including
@@ -193,8 +239,8 @@ must remain valid through `render`; arena reset and host resource reuse still
 follow RHI synchronization rules.
 
 This is the first independently usable prepared-program Renderer slice, not a
-complete rendering engine. Dynamic graphics-state batches and push-constant TSP
-programs are explicitly unsupported. Low-level owned shader callers must not
+complete rendering engine. Dynamic graphics state other than the scissor and
+push-constant TSP programs are explicitly unsupported. Low-level owned shader callers must not
 require push constants. Source includes, compilation, dependencies and caching
 compiled results belong to the Shader module, which Renderer uses directly;
 there is no intermediate adapter module. The default shaderless Renderer cache
