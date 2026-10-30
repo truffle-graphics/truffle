@@ -683,7 +683,7 @@ shared-ID native variant changes both X/Y together and writes exactly 16 values
 Native Metal prepared metadata proves default `2x2x1` and overridden `3x1x1`
 dispatch/function-constant agreement with exact `1220..1223` / `1310..1312`
 readback and untouched tails. This does not add a compiler route or promote
-backend maturity. Other compiler routes remain #187-#193.
+backend maturity. The remaining Shader-level audits are tracked by #192-#193.
 
 ## Threads and lifetime
 

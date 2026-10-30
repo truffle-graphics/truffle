@@ -57,9 +57,10 @@ Shader completion proceeds through bounded, independently validated phases:
    separate optional offline `metal`/`metallib` output. Validate declared
    observable interface fields and retain explicit assertions for unavailable
    reflection. See the [native MSL evidence and limits](../src/shader/README.md#native-msl-source-and-libraries-188).
-   **HLSL (#189), done (PR #199); WGSL/Tint (#191), done (PR #198)**.
-   Slang and native module imports (#190) remain optional compiler work and
-   require truthful validation and native evidence, not capability placeholders.
+   **HLSL (#189), done (PR #199); Slang (#190), done (PR #200); WGSL/Tint
+   (#191), done (PR #198)**. These routes retain their bounded optional
+   compiler contracts; Shader completion still requires the shared behavior
+   and final evidence audits below.
 5. **Shared behavior audit (#192):** composition, cache, rebuilding, and tools.
 6. **Completion audit (#193):** close #73 only after the required route,
    reflection, package-isolation, and native evidence gates are satisfied.

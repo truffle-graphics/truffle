@@ -251,11 +251,12 @@ rather than growing a historical transcript here.
   shared source-unit API
   without adding adapter-private duplicate guards; the gate in `Compiler::compile`
   is the only source-unit route policy.
-- Current merge integration tests passed: Tint + native MSL/API build,
-  route tests, WGSL tests, exact WGSL native Vulkan/Metal readback, exact MSL
-  source/metallib readback, and shaderc MSL smoke (5/5); portable GLSL route,
-  native and unit tests (3/3); compiler-off route/package/Renderer/WGSL
-  consumers (5/5). Separate runtime-only Metal source builds passed 2/2.
+- Post-#200 focused integration validation: MSL + Tint, portable targets, WGSL, native
+  MSL source/metallib, exact WGSL Vulkan/Metal readback, and shaderc MSL smoke
+  passed 8/8; compiler-off route/package/WGSL/Renderer consumers passed 6/6.
+  Portable GLSL route/native/unit tests (3/3) and runtime-only MSL source
+  builds (2/2) passed earlier in this branch. Parent owns the all-provider
+  coexistence build and reuses its existing DXC build.
 - Parent owns review/merge/tracking; #188 remains active until accepted. No
   TSP version bump, migration, legacy reader, or Shader-module completion claim.
 
