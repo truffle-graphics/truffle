@@ -1,3 +1,4 @@
 add_subdirectory(host_workspace)
 add_subdirectory(dense_diagnostics)
 add_subdirectory(prepared_renderer)
+add_subdirectory(shader_workflow)

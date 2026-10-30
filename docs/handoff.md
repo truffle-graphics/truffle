@@ -3,6 +3,37 @@
 Use this document as Truffle's rolling cross-machine handoff. Keep it useful to
 a human resuming work and to a fresh AI session reading the repository.
 
+## Shared Shader mechanism audit (#192, ready for integration review)
+
+- Added a runnable Shader-only workflow example with native GLSL transitive
+  includes, explicit requested configurations, cache reuse, compile/reflection
+  failure retention and recovery. It also builds independently against an
+  installed `Truffle::Shader`, without Renderer, backend, device or shaderc.
+- Its standalone installed-consumer build passes with warnings-as-errors
+  against the accumulated optional compiler package. This demonstrates actual
+  three-source composition and last-good retention, not GPU consumption.
+  A second build against a compiler-disabled install links successfully and
+  reports the unavailable GLSL route with a nonzero exit; it never simulates
+  compilation success.
+- Added direct native reflection/canonical-package failure regressions:
+  overlapping push ranges fail repeatedly without entering the cache or
+  replacing last-good, valid requests recover their cached package, and
+  last-good remains loadable after cache clearing and compiler destruction.
+  The updated compiler tests pass against the installed all-provider library.
+- Parent integrated glslang, DXC, Tint, Slang, SPIRV-Tools, Cross and native
+  MSL: 29 focused enabled checks and nine exact-source compiler-off checks
+  pass. Native MSL is accepted in merged PR #201; its `develop` merge
+  `f833cafffd56753e0b4d74be23f2607ca6afc2ea` is integrated here without
+  rebasing. The integrated in-tree example, native rebuild/package failure
+  contract, routes, CLI, direct Renderer consumer and installed consumer pass
+  seven focused checks. Eight compiler-disabled package/tool/consumer checks
+  also pass; the disabled example explicitly exits nonzero. Architecture
+  guards pass. Final completion #193 remains open.
+- No public API or architecture boundary changes. Shader still owns CPU-side
+  mechanisms; Renderer owns GPU publication and remains paused for features.
+  Merge the reviewed #192 PR and reconcile its issue/Project before final
+  audit #193. This phase changes tests/examples/documentation only.
+
 ## Native MSL parent acceptance (#188)
 
 - Parent reviewed the emitted-metallib reflection, pre-cache native dependency
@@ -13,9 +44,10 @@ a human resuming work and to a fresh AI session reading the repository.
   retain isolation. The route-smoke assertion now matches the explicit
   unavailable-route diagnostic; its corrected all-off branch was verified
   against the final compiler-disabled executable.
-- PR #201 still requires the parent's exact-head merge and issue/Project
-  reconciliation. Shared mechanisms #192 and final audit #193 remain open;
-  no Shader-complete or Renderer-resumption claim is made.
+- PR #201 is merged as `f833cafffd56753e0b4d74be23f2607ca6afc2ea`;
+  #188 is closed and its Project status is Done. Shared mechanisms #192 and
+  final audit #193 remain open; no Shader-complete or Renderer-resumption
+  claim is made.
 
 ## WGSL/Tint source routes — issue #191 (merged in PR #198)
 
