@@ -16,7 +16,18 @@ struct RendererFrameStats {
     std::uint32_t computeNodesExecuted = 0;
     std::uint32_t renderNodesExecuted = 0;
     std::uint32_t renderBatchesExecuted = 0;
+    std::uint32_t renderBatchesClipped = 0; // skipped: empty clip intersection
+    bool submitted = false; // graphics work reached the queue (signal included)
     bool presented = false;
+};
+
+// Optional completion signal for the frame's single graphics submission. The
+// fence reaches `value` when the GPU has finished the recorded work, including
+// when presentation itself later fails. Nothing is signaled if submission did
+// not happen (see RendererFrameStats::submitted).
+struct RenderSignal {
+    rhi::Fence* fence = nullptr;
+    std::uint64_t value = 0;
 };
 
 class Renderer {
@@ -29,7 +40,8 @@ public:
     // Render a full frame graph. Pass a swapchain for presentation-capable paths;
     // omit (or pass nullptr) for headless and null-backend testing.
     [[nodiscard]] base::Status render(const FrameGraph& graph,
-                                      rhi::Swapchain* swapchain = nullptr);
+                                      rhi::Swapchain* swapchain = nullptr,
+                                      RenderSignal signal = {});
 
     [[nodiscard]] const RendererFrameStats& last_frame_stats() const noexcept {
         return lastFrameStats_;

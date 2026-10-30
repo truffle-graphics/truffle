@@ -9,7 +9,9 @@
 #include "truffle/encom_renderer/encom_render_adapter.hpp"
 #include "truffle/renderer/data_layout.hpp"
 #include "truffle/renderer/depth_target.hpp"
+#include "truffle/renderer/frame_stream.hpp"
 #include "truffle/renderer/mesh.hpp"
+#include "truffle/renderer/texture.hpp"
 #include "truffle/renderer/view.hpp"
 
 #include <array>
@@ -91,6 +93,23 @@ int main() {
         std::cerr << dataStatus.message << ' ' << depthStatus.message << '\n';
         return 1;
     }
+
+    auto pacer = truffle::renderer::FramePacer::create(device);
+    auto streamed = truffle::renderer::StreamBuffer::create(device);
+    const std::array<std::byte, 4> texel{};
+    auto atlas = truffle::renderer::SampledTexture::upload(device, {
+        .extent = {1, 1}, .bytes = texel,
+    });
+    if (!pacer.ok() || !streamed.ok() || !atlas.ok()) {
+        std::cerr << "Renderer GUI primitives unavailable\n";
+        return 1;
+    }
+    const auto slot = pacer.value().begin_frame();
+    if (!slot.ok() || !streamed.value().begin_frame(slot.value()).ok() ||
+        !streamed.value().write(std::as_bytes(std::span{vertices})).ok()) {
+        return 1;
+    }
+    pacer.value().end_frame(false);
 
     auto ringResult = device.create_upload_ring(2, 256 * 1024);
     if (!ringResult.ok()) return 1;

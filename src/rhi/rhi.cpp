@@ -4335,6 +4335,12 @@ const PipelineReflection& Pipeline::reflection() const {
     return value->reflection;
 }
 
+DynamicState Pipeline::dynamic_state() const {
+    const auto value = detail::payload<detail::PipelinePayload>(
+        state_, detail::ObjectKind::pipeline);
+    return value ? value->desc.dynamicState : DynamicState::none;
+}
+
 const PipelineReflection& ComputePipeline::reflection() const {
     const auto value = detail::payload<detail::ComputePipelinePayload>(
         state_, detail::ObjectKind::compute_pipeline);

@@ -127,12 +127,14 @@ remains separately tracked; Shader completion does not promote backend
 maturity. The unreleased TSP draft retains `1.0` without compatibility
 scaffolding.
 
-The minimum flexible Renderer (#206) is implemented in review-only PRs:
+The minimum flexible Renderer (#206) is implemented:
 app-defined vertex/instance layouts and mesh uploads, optional camera/depth
 helpers, and a [host-owned Metal window example](examples/minimum_renderer/README.md)
 with composed application shaders, lighting and resize. Renderer owns no ECS
-schema or fixed transform/light/material model. GUI, assets/textures, a general
-material system and later application work remain outside this scope.
+schema or fixed transform/light/material model. GUI-readiness primitives add
+clip rectangles, sampled textures, streamed geometry and frame pacing. The GUI
+module, assets, a general material system and later application work are not
+started.
 [`docs/roadmap.md`](docs/roadmap.md) records the review and evidence boundaries.
 
 ## Build

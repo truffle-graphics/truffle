@@ -360,6 +360,8 @@ public:
     [[nodiscard]] bool valid() const noexcept;
     [[nodiscard]] ObjectId id() const noexcept;
     [[nodiscard]] const PipelineReflection& reflection() const;
+    // States the pipeline leaves to encoder commands; none for invalid pipelines.
+    [[nodiscard]] DynamicState dynamic_state() const;
 
 private:
     explicit Pipeline(std::unique_ptr<detail::ObjectState> state) noexcept;

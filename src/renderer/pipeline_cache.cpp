@@ -95,10 +95,12 @@ base::Status validate_state(const rhi::PipelineDesc& state) {
             base::StatusCode::invalid_argument,
             "Renderer: pipeline shader pointers must be null; supply owned shaders");
     }
-    if (state.dynamicState != rhi::DynamicState::none) {
+    // Scissor is the only dynamic state the Renderer records (per-batch clips).
+    if (state.dynamicState != rhi::DynamicState::none &&
+        state.dynamicState != rhi::DynamicState::scissor) {
         return base::Status::failure(
             base::StatusCode::unsupported,
-            "Renderer: batches currently support static graphics state only");
+            "Renderer: batches support only the dynamic scissor state");
     }
     return base::Status::success();
 }

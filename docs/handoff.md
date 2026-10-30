@@ -7,8 +7,8 @@ the support matrix and Git history.
 
 ## Current Delivery: Minimum Renderer (#206)
 
-Three owner-approved signed/pushed slices remain review-only PRs, never merged
-automatically: data/mesh #207, optional view/depth #208, host-window example
+Three owner-approved signed/pushed slices, merged after owner-authorized
+self-review: data/mesh #207, optional view/depth #208, host-window example
 #209. They stack on ADR PR #205. The minimum Renderer is the only accepted next
 scope; GUI and later applications are not planned here.
 
@@ -46,6 +46,20 @@ Mesh/layout/view/depth public headers and functions.
 Warnings-as-errors builds pass. The architecture guard checks 17 production
 targets, 25 dependency declarations and 104 public-header imports. No backend
 maturity, cross-platform claim or version bump is implied.
+
+## GUI Readiness (#213)
+
+The owner asked whether the minimum Renderer is ready for a GUI module and then
+authorized implementing the gaps, self-review and merging. Added: per-batch clip
+rectangles on dynamic-scissor programs, `SampledTexture` upload/update,
+`StreamBuffer` per-frame bytes and `FramePacer` frames-in-flight over a
+monotonic fence signaled by `Renderer::render`. Blending was already program
+state. `Pipeline::dynamic_state()` exposes the declared RHI state; the cache now
+accepts only the scissor dynamic state. GUI, fonts, input and platform layers
+are not started. Evidence: 51/51 native tests (including the new exact-pixel
+Metal proof under validation) and 41/41 compiler-off tests with the extended
+package consumer, all with warnings as errors. Multi-value fence pacing is
+verified on Metal.
 
 ## Render Data Direction (#204)
 

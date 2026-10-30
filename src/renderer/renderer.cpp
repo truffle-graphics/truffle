@@ -31,6 +31,21 @@ base::Status validate_render_batch_bindings(const RenderBatch& batch,
     return base::Status::success();
 }
 
+rhi::ScissorRect intersect(const rhi::ScissorRect& rect, rhi::Extent2D extent) {
+    const auto clampStart = [](std::int32_t start, std::uint32_t limit) {
+        return std::min<std::int64_t>(std::max<std::int64_t>(start, 0), limit);
+    };
+    const auto x0 = clampStart(rect.x, extent.width);
+    const auto y0 = clampStart(rect.y, extent.height);
+    const auto x1 = std::min<std::int64_t>(std::int64_t{rect.x} + rect.width, extent.width);
+    const auto y1 = std::min<std::int64_t>(std::int64_t{rect.y} + rect.height, extent.height);
+    if (x1 <= x0 || y1 <= y0) {
+        return {0, 0, 0, 0};
+    }
+    return {static_cast<std::int32_t>(x0), static_cast<std::int32_t>(y0),
+            static_cast<std::uint32_t>(x1 - x0), static_cast<std::uint32_t>(y1 - y0)};
+}
+
 } // namespace
 
 Renderer::Renderer(rhi::Device& device, IPipelineCache* cache)
@@ -41,8 +56,13 @@ Renderer::Renderer(rhi::Device& device, IPipelineCache* cache)
     }
 }
 
-base::Status Renderer::render(const FrameGraph& graph, rhi::Swapchain* swapchain) {
+base::Status Renderer::render(const FrameGraph& graph, rhi::Swapchain* swapchain,
+                              RenderSignal signal) {
     lastFrameStats_ = {};
+    if (signal.fence != nullptr && (!signal.fence->valid() || signal.value == 0)) {
+        return base::Status::failure(base::StatusCode::invalid_argument,
+                                     "Renderer: completion signal needs a valid fence and nonzero value");
+    }
     const auto order = graph.resolve_execution_order();
     if (!order.ok()) {
         return order.status();
@@ -150,8 +170,34 @@ base::Status Renderer::render(const FrameGraph& graph, rhi::Swapchain* swapchain
                 return base::Status::failure(base::StatusCode::invalid_state,
                                              "Renderer: cache returned an invalid pipeline");
             }
+            const bool dynamicScissor = rhi::has_dynamic_state(
+                pipeline->dynamic_state(), rhi::DynamicState::scissor);
+            rhi::ScissorRect clip{0, 0, pass.extent.width, pass.extent.height};
+            if (batch.scissor.has_value()) {
+                if (!dynamicScissor || pass.extent.width == 0 || pass.extent.height == 0) {
+                    return base::Status::failure(
+                        base::StatusCode::invalid_argument,
+                        "Renderer: batch clip rectangle requires a dynamic-scissor pipeline and a sized pass");
+                }
+                clip = intersect(*batch.scissor, pass.extent);
+                if (clip.width == 0 || clip.height == 0) {
+                    ++lastFrameStats_.renderBatchesClipped;
+                    continue;
+                }
+            }
             if (auto status = encoder.bind_pipeline(*pipeline); !status.ok()) {
                 return status;
+            }
+            if (dynamicScissor) {
+                if (clip.width == 0 || clip.height == 0) {
+                    return base::Status::failure(
+                        base::StatusCode::invalid_argument,
+                        "Renderer: dynamic-scissor pipeline requires a sized pass");
+                }
+                const std::array<rhi::ScissorRect, 1> scissors{clip};
+                if (auto status = encoder.set_scissors(0, scissors); !status.ok()) {
+                    return status;
+                }
             }
             if (auto status = validate_render_batch_bindings(batch, *pipeline);
                 !status.ok()) {
@@ -267,10 +313,13 @@ base::Status Renderer::render(const FrameGraph& graph, rhi::Swapchain* swapchain
             .signals = hasAcquiredImage
                            ? std::span<const rhi::SemaphoreSignal>{renderSignals}
                            : std::span<const rhi::SemaphoreSignal>{},
+            .signalFence = signal.fence,
+            .signalFenceValue = signal.value,
         });
         !status.ok()) {
         return status;
     }
+    lastFrameStats_.submitted = true;
     if (hasAcquiredImage) {
         const std::array<rhi::SemaphoreWait, 1> presentWaits{{
             {.semaphore = &rendered,
