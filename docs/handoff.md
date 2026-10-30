@@ -14,14 +14,38 @@ PR #174), Vulkan via MoltenVK (#56, PR #170), and OpenGL 4.1 host-view
 presentation, fences and occlusion queries (#61/#63 macOS parts, PR #176);
 combined develop build passes 37/37 ctests. Open follow-ups: Metal queries
 (#175), MoltenVK packaging/iOS (#172), Linux/Windows parts of #61/#63, and the
-shader-compiler routes (#73).
-What follows (likely the Renderer) is undecided. Other backends/platforms,
+remaining shader-compiler routes (#73).
+Current work is parallel shared Shader library/tooling (#178/#180) and native
+prepared-TSP Renderer execution (#179), followed by optional runtime
+compilation and safe rebuild adoption (#181). Both tracks use native Git
+worktrees. Prepared-package rendering does not require source compilers.
+Other backends/platforms,
 Phase 6 advanced features, and Phase 7 hardening are backlog listed in
 `docs/roadmap.md`; their issues stay open.
 Verification is local; other platforms go on the roadmap's pending
 verification list instead of blocking development.
 Issue #166 records this planning update; #165 tracks future self-hosted runner
 setup, not immediate work. No issue labels or hosted workflows change.
+
+## Shared Shader And Renderer Direction (#178-#181)
+
+- Agreed naming: Truffle Shader Package (TSP), `.tsp`, retaining the C++
+  type `truffle::rhi::ShaderPackage`.
+- Shader owns source composition/configuration, compilation, reflection,
+  dependencies, compilation caching, and rebuild mechanisms. Tools and runtime
+  clients share that implementation; no new shader language is planned.
+- Renderer owns GPU shader/pipeline resources, binding compatibility,
+  pipeline caching, and validated replacement. RHI/backends remain independent
+  of Shader, Renderer, and compiler toolchains.
+- Two contracts: prepared TSP results, plus optional source compilation/rebuild
+  requests and results. An in-memory package is sufficient; no disk roundtrip
+  is required.
+- Delivery is signed, issue-scoped commits with immediate pushes and
+  merge-commit PRs. Shader library/tooling and Renderer work are independently
+  implemented and validated; end-to-end integration follows both.
+- Architecture documentation records accepted direction. Native implementation
+  evidence for the new tracks is not yet claimed; #73 remains broader than the
+  initial GLSL route.
 
 ## Apple Silicon Scope And #56 Split (#171, #172)
 

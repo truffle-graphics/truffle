@@ -60,11 +60,13 @@ Current evidence is narrower than the old roadmap claimed:
   texture views. Native-smoke maturity is unchanged. These adapters report only the capabilities
   they implement. Remaining backend/platform WSI and presentation paths, and
   unadvertised resource gaps stay unsupported rather than simulated.
-- ShaderPackage 1.0 is a deterministic compiler-free runtime contract with a
+- Truffle Shader Package (TSP) 1.0 is a deterministic compiler-free runtime
+  contract (`truffle::rhi::ShaderPackage`, file extension `.tsp`) with a
   canonical manifest/blob container, cross-target reflection validation,
   capability gates, and native-override selection. Optional
-  `truffle-shaderc` assembles precompiled or native variants without fetching
-  or linking a compiler toolchain.
+  `truffle-shaderc` assembles precompiled or native variants without a compiler
+  toolchain, or explicitly enables pinned glslang for GLSL/GLSL ES to SPIR-V.
+  Shared library ownership of compilation is being implemented in #178/#180.
 - WebGPU and WebGL2 now have explicit source-only targets; WebGL2 contains an
   Emscripten browser-context path but has no browser execution evidence yet.
 - The public support table and `truffle-rhi-doctor` expose matrix maturity and
@@ -113,6 +115,16 @@ consumer selects concrete loading, upload, and backend behavior.
   deprecation, or migration scaffolding: no aliases, forwarding headers,
   shims, migration tables, or API compatibility helpers (#163). Revisit at the
   first release.
+- Shader mechanisms belong to an independently usable library: source
+  composition/includes/imports, compile-time configuration, compilation,
+  reflection, dependency tracking, caching, and rebuilding. Offline tools
+  and optional runtime compilation share that library. Renderer owns GPU
+  shader/pipeline resources, binding compatibility, and safe replacement;
+  RHI/backends do not depend on the Shader library. Prepared TSP consumers
+  remain compiler-free. Use existing shader languages, compile requested
+  combinations rather than every possible permutation, and keep source
+  rebuilding separate from publication of validated GPU programs
+  (#73, #178-#181; see `docs/architecture.md`).
 - Development is local-first under the decision in #131. Git Flow retains
   `master`, `develop`, feature/fix, release, and hotfix branches with normal
   merge commits. Hosted builds/releases are explicit manual opt-ins, not
@@ -146,9 +158,13 @@ consumer selects concrete loading, upload, and backend behavior.
 
 ## Next Meaningful Direction
 
-Bring Metal, Vulkan, and desktop OpenGL to a practical baseline on available
-local hardware. Verification on other platforms is recorded, not a blocker.
-The step after that (possibly the Renderer) is undecided.
+The practical Apple Silicon baseline is established for Metal, Vulkan via
+MoltenVK, and OpenGL 4.1 (see the support matrix and handoff for evidence).
+Develop shared Shader mechanisms/tooling (#178/#180) and native prepared-TSP
+Renderer execution (#179) in parallel, then integrate optional runtime
+compilation and safe rebuild adoption (#181). These are initial usable
+slices, not completion claims for every shader route or future Renderer
+feature. Verification on other platforms is recorded, not a blocker.
 Other backends/platforms, Phase 6 advanced features, and Phase 7 hardening are
 deferred backlog (see `docs/roadmap.md`), not abandoned. Promote no pair beyond
 its recorded evidence.
