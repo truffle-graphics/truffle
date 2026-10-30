@@ -114,6 +114,31 @@ producer remains responsible for their contents and GPU-generated range bounds.
 `validate_vertex_layout()` and `validate_batch_data()` are also available for
 producer-side validation.
 
+### Optional view and depth helpers (#208)
+
+`truffle/renderer/view.hpp` provides `perspective`, `orthographic`, `look_at`,
+`multiply` and a column-major `Matrix4`. They are optional math helpers, not an
+ECS camera component: supply your own matrix or view buffer instead. Conventions
+are right-handed, column vectors, view forward -Z, and projection depth [0,1].
+OpenGL-native [-1,1] projection requires an explicit shader/application mapping.
+Degenerate and nonfinite camera parameters return errors.
+
+`DepthTarget` (`truffle/renderer/depth_target.hpp`) owns a depth texture.
+`resize()` reuses an identical allocation or creates and transitions a new
+attachment on the device's graphics queue. Failed resize preserves the previous
+texture. Its device must outlive it; borrowed texture wrapper references are
+valid only until resize. GPU payload retention remains RHI-owned.
+
+The shared `examples/minimum_renderer/scene.*` application fixture demonstrates
+indexed mesh data, arbitrary per-instance center/scale/quaternion/albedo fields,
+an application-defined view/light uniform, and composed MSL transform/lighting
+units compiled through `SourceProgram`. None of those object or light types is
+part of the Renderer API. Native offscreen tests verify depth occlusion in both
+instance orders, per-instance properties, lighting changes, camera translation,
+perspective projection and target recreation using exact pixels.
+The example serializes updates with an explicit graphics completion fence;
+general multi-frame residency/upload optimization is not implemented here.
+
 Vertex/index/indirect buffers remain borrowed batch inputs. Native vertex input
 uses `RenderBatch::bindings`; the direct uniform lane is available for low-level
 uses, but is not a substitute for descriptor groups required by reflection.
