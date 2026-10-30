@@ -25,7 +25,8 @@ rhi::Texture target(rhi::Device& device, rhi::Extent2D extent) {
 }
 
 void check_pixels(rhi::Device& device, rhi::Texture& color,
-                  std::array<unsigned, 4> expected, const char* label) {
+                  std::array<unsigned, 4> expected, const char* label,
+                  bool centralSquare = false) {
     const auto extent = color.desc().extent;
     const std::size_t pitch = (static_cast<std::size_t>(extent.width) * 4 + 255) & ~std::size_t{255};
     auto output = tests::require(device.create_buffer({
@@ -51,8 +52,12 @@ void check_pixels(rhi::Device& device, rhi::Texture& color,
     tests::require(output.read(0, bytes));
     for (std::size_t y = 0; y < extent.height; ++y) {
         for (std::size_t x = 0; x < extent.width; ++x) {
+            const auto pixel = centralSquare &&
+                (x < extent.width / 4 || x >= 3 * extent.width / 4 ||
+                 y < extent.height / 4 || y >= 3 * extent.height / 4)
+                ? std::array<unsigned, 4>{0, 0, 0, 255} : expected;
             for (std::size_t channel = 0; channel < 4; ++channel) {
-                if (std::to_integer<unsigned>(bytes[y * pitch + x * 4 + channel]) != expected[channel]) {
+                if (std::to_integer<unsigned>(bytes[y * pitch + x * 4 + channel]) != pixel[channel]) {
                     throw std::runtime_error(std::string(label) + ": unexpected pixel at " +
                                               std::to_string(x) + "," + std::to_string(y));
                 }
@@ -97,7 +102,7 @@ int run() {
                 .depthStencilAttachment = {.texture = depth.texture()},
             },
             std::vector{scene.batch()}));
-        scene.render(graph);
+        tests::require(scene.render(graph));
         check_pixels(device, color, expected, label);
     };
     scene.set_objects(std::array{front, back});
@@ -133,6 +138,22 @@ int run() {
     view.viewProjection = tests::require(renderer::orthographic(2, 2, 0, 10));
     scene.set_view(view);
     draw({255, 0, 0, 255}, "recreated color and depth targets");
+    // Exercise the same cube geometry as the visible example against a spatial
+    // reference, not merely a successful draw counter.
+    scene.set_cube();
+    scene.set_objects(std::array{minimum_renderer::Object{
+        .centerScale = {0, 0, -2, 2}, .albedo = {1, 0, 0, 1},
+    }});
+    view.viewProjection = tests::require(renderer::orthographic(4, 4, 0, 10));
+    scene.set_view(view);
+    renderer::FrameGraph cubeGraph;
+    cubeGraph.add_node(std::make_unique<renderer::RenderPassNode>(
+        rhi::RenderPassDesc{
+            .extent = {32, 24}, .colorAttachments = {{.texture = &color}},
+            .depthStencilAttachment = {.texture = depth.texture()},
+        }, std::vector{scene.batch()}));
+    tests::require(scene.render(cubeGraph));
+    check_pixels(device, color, {255, 0, 0, 255}, "demo cube spatial reference", true);
     return 0;
 }
 

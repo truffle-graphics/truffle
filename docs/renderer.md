@@ -139,6 +139,24 @@ perspective projection and target recreation using exact pixels.
 The example serializes updates with an explicit graphics completion fence;
 general multi-frame residency/upload optimization is not implemented here.
 
+### Host-owned Metal window (#209)
+
+The [minimum Renderer application](../examples/minimum_renderer/README.md)
+draws rotating lit cubes without ECS or a GUI module. Cocoa windowing, backing
+pixel dimensions, resize policy and the event loop belong to that executable,
+not the Renderer library.
+
+`RenderPassNode(desc, batches, true)` uses an acquired swapchain image while
+preserving the description's optional depth attachment and color clear/load/store
+settings. Its extent comes from the swapchain; the explicit description may
+contain at most one color attachment with null texture/resolve pointers.
+The original boolean constructor still supports the existing validation-only
+headless path. An explicit swapchain description without a swapchain fails.
+
+The bounded native smoke presents 12 frames across three sizes with matching
+depth allocations. A shared offscreen proof checks exact pixels, including a
+spatial reference for the same cube geometry.
+
 Vertex/index/indirect buffers remain borrowed batch inputs. Native vertex input
 uses `RenderBatch::bindings`; the direct uniform lane is available for low-level
 uses, but is not a substitute for descriptor groups required by reflection.

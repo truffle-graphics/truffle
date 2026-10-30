@@ -52,8 +52,9 @@ public:
     void set_objects(std::span<const Object> objects);
     void set_view(const View& view);
     [[nodiscard]] truffle::renderer::RenderBatch batch();
-    void render(const truffle::renderer::FrameGraph& graph,
-                truffle::rhi::Swapchain* swapchain = nullptr);
+    [[nodiscard]] truffle::base::Status render(
+        const truffle::renderer::FrameGraph& graph,
+        truffle::rhi::Swapchain* swapchain = nullptr);
     [[nodiscard]] const truffle::renderer::RendererFrameStats& stats() const;
 
 private:

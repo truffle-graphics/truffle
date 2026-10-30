@@ -195,10 +195,16 @@ Native Metal/Vulkan/OpenGL 4.1 evidence is local to Apple Silicon; DXIL native
 Windows consumption, new Linux/GLES output checks and browser execution remain
 separately tracked, not simulated or blocking this baseline.
 
-After #193 acceptance, Renderer feature development can resume from
-`SourceProgram` and prepared-TSP consumption, without an adapter module.
-Materials, lighting, texture/asset management and further Renderer features
-are not implemented by Shader completion and need their own accepted scope.
+The accepted next scope is the minimum flexible Renderer (#206), following
+[ADR 0012](docs/adr/0012-app-defined-render-data.md): explicit app-defined data,
+mesh byte uploads (#207), optional camera/depth helpers and composed example
+lighting (#208), then a host-owned Metal window/resize example (#209).
+Implementation is delivered in stacked review-only PRs; neither these nor ADR
+PR #205 are automatically merged. Renderer remains independent of ECS and uses
+Shader directly. App-defined transforms, light/material semantics and buffer
+packing are not mandatory Renderer schemas. GUI, assets/textures, a general
+material system and later application work are outside this scope; reconsider
+the next step after this baseline rather than committing to further phases.
 Use signed issue-scoped phases, immediate pushes and reviewed merge-commit PRs.
 Other backends/platforms, Phase 6 advanced features, and Phase 7 hardening are
 deferred backlog (see `docs/roadmap.md`), not abandoned. Promote no pair beyond

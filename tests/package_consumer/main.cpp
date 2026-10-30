@@ -7,7 +7,13 @@
 #include "truffle/diagnostics/diagnostics.hpp"
 #include "truffle/rhi/null_backend.hpp"
 #include "truffle/encom_renderer/encom_render_adapter.hpp"
+#include "truffle/renderer/data_layout.hpp"
+#include "truffle/renderer/depth_target.hpp"
+#include "truffle/renderer/mesh.hpp"
+#include "truffle/renderer/view.hpp"
 
+#include <array>
+#include <iostream>
 #include <type_traits>
 #include <utility>
 
@@ -56,6 +62,35 @@ int main() {
     auto deviceResult = rhiAdapter.request_device();
     if (!deviceResult.ok()) return 1;
     auto device = std::move(deviceResult).value();
+
+    static_assert(!std::is_copy_constructible_v<truffle::renderer::Mesh>);
+    auto projection = truffle::renderer::perspective(1, 1, .1F, 10);
+    if (!projection.ok()) {
+        std::cerr << projection.status().message << '\n';
+        return 1;
+    }
+    const std::array<float, 12> vertices{-1, -1, 0, 1, 3, -1, 0, 1, -1, 3, 0, 1};
+    const std::array streams{
+        truffle::renderer::MeshStream{std::as_bytes(std::span{vertices}), 16},
+    };
+    auto gpuMesh = truffle::renderer::Mesh::upload(device, {
+        .streams = streams, .vertexCount = 3,
+    });
+    if (!gpuMesh.ok()) {
+        std::cerr << gpuMesh.status().message << '\n';
+        return 1;
+    }
+    const std::array<truffle::rhi::VertexBufferLayoutDesc, 1> layouts{{
+        {.stride = 16, .attributes = {{.location = 0}}},
+    }};
+    const auto dataStatus = truffle::renderer::validate_batch_data(
+        gpuMesh.value().batch(1), layouts);
+    truffle::renderer::DepthTarget depth(device);
+    const auto depthStatus = depth.resize({16, 16});
+    if (!dataStatus.ok() || !depthStatus.ok()) {
+        std::cerr << dataStatus.message << ' ' << depthStatus.message << '\n';
+        return 1;
+    }
 
     auto ringResult = device.create_upload_ring(2, 256 * 1024);
     if (!ringResult.ok()) return 1;

@@ -12,18 +12,17 @@ automatically: data/mesh #207, optional view/depth #208, host-window example
 #209. They stack on ADR PR #205. The minimum Renderer is the only accepted next
 scope; GUI and later applications are not planned here.
 
-#207 (PR #210) adds explicit, reflection-checked vertex layouts, owned immutable mesh byte
-uploads and batch-range validation. Renderer owns those mechanisms; Shader/RHI
+#207 (PR #210) adds explicit, reflection-checked vertex layouts, owned immutable
+mesh byte uploads and batch-range validation. Renderer owns those mechanisms; Shader/RHI
 retain their lower-layer responsibilities. ECS semantics, buffer-member packing
 and lighting remain application-owned. Separate mesh upload, layout validation,
 and orchestration files keep ownership cohesive. Nine focused Renderer, EnCom
 adapter and frame-graph tests pass with warnings-as-errors, including native
 Metal uploaded indexed-mesh exact 256-pixel proof under validation. The final
 native rerun also covers indexed indirect buffer binding and rejection of
-vertex-layout-changing replacement. Architecture guard and whitespace checks
-are required before publication.
+vertex-layout-changing replacement. Architecture guard and whitespace checks pass.
 
-#208 adds optional camera math and depth allocation/transition helpers. The
+#208 (PR #211) adds optional camera math and depth allocation/transition helpers. The
 shared minimum-renderer application fixture owns its vertex/instance/view/light
 types, composed MSL shader chunks and explicit completion fence. Renderer does
 not acquire those semantics. View/depth contract tests and the Metal offscreen
@@ -31,25 +30,40 @@ proof pass. The latter checks all pixels for occlusion in either instance
 order, app properties, light direction/intensity, quaternion interpretation,
 camera translation, perspective, and resized 32x24 targets under validation.
 
+#209 adds a real Cocoa/CAMetalLayer host example, two rotating lit cubes and
+swapchain-pass depth/clear preservation. The host owns window/input/backing
+size/resize/out-of-date recovery; Renderer owns no platform window policy.
+The smoke presents 12 frames with two actual drawable/depth resizes. The same
+cube geometry is checked against an exact spatial offscreen reference.
+Scene completion fencing also runs after recoverable presentation errors so
+CPU updates cannot race an earlier successful submission. Separate scene
+data/shading and native window-host files remain cohesive example owners.
+
+Final focused evidence: 12/12 native-enabled Renderer/EnCom/frame/window tests,
+plus 4/4 compiler-disabled data/view/source-program/prepared-Metal tests.
+The installed compiler-off package consumer also builds and runs with the new
+Mesh/layout/view/depth public headers and functions.
+Warnings-as-errors builds pass. The architecture guard checks 17 production
+targets, 25 dependency declarations and 104 public-header imports. No backend
+maturity, cross-platform claim or version bump is implied.
+
 ## Render Data Direction (#204)
 
-Shader is complete (below); the next step is a minimum Renderer. Before it
-starts, [ADR 0012](adr/0012-app-defined-render-data.md) records the accepted
+[ADR 0012](adr/0012-app-defined-render-data.md) records the accepted
 direction: fixed renderer concepts (mesh, buffer, texture, program, pass,
 view/camera, draw; optional Renderer camera helpers) stay fixed, while
 per-object data, its interpretation, lights and materials are
 application-defined, matched to Shader reflection and uploaded unchanged.
-ECS/scene types stay outside the Renderer. Documentation only; `ChannelKind`
-and `renderer/components.hpp` are unchanged and are review items. The minimum
-Renderer will be built quickly in this direction, then the owner will review
-and refactor its architecture. Minimum Renderer issues are not yet created.
+ECS/scene types stay outside the Renderer. The legacy `ChannelKind`
+and `renderer/components.hpp` remain unchanged for existing integrations; the
+new path does not require them. The owner will review the architecture after
+the minimum implementation, rather than committing to future phases.
 
 ## Previous Delivery: Shader Completion (#73, #193)
 
-The agreed Shader baseline is implemented. Final acceptance is recorded in
-#193 and its reviewed merge-commit PR; reconcile that issue and parent #73
-before resuming Renderer feature development. No Renderer feature is added by
-this delivery.
+The agreed Shader baseline is implemented and accepted. #193 and parent #73
+are closed/Project Done after PR #203 merged into develop. That delivery did
+not add Renderer features; the separately accepted work above now does.
 
 | Phase | Accepted delivery |
 | --- | --- |
@@ -62,7 +76,7 @@ this delivery.
 | Slang/native modules (#190) | PR #200, merge `990f7e679f41f1dc9d55c7d5a31e3acbbac87381` |
 | WGSL/Tint (#191) | PR #198, merge `f2079307fd2cd5432d465c083cc0c416e0b1ec5f` |
 | Shared composition/cache/rebuild/tool audit (#192) | PR #202, merge `0e1bcb9ffc9fd11797a31eee02f8abb2fb590e88` |
-| Final evidence/license/export/status audit (#193) | This delivery; no remaining accepted Shader implementation phase |
+| Final evidence/license/export/status audit (#193) | PR #203, merge `cf6836c2c1fb38097388b6e6b9d4ce7aabab58b2`; no remaining accepted Shader implementation phase |
 
 The [evidence-linked Shader matrix](../src/shader/README.md#completion-scope-and-evidence-73-193)
 defines supported routes, profile/API floors, experimental gates and reflection
@@ -83,7 +97,7 @@ not relabeled as implemented.
   disable library compilation; disabling all adapters leaves installed
   Shader/Renderer/RHI consumers compiler-free.
 - No custom shader language, mandatory watcher, hidden service, persistent
-  cache policy, material/asset system or new Renderer feature was introduced.
+  cache policy or material/asset system was introduced by Shader completion.
 - TSP remains an evolving unreleased `1.0` draft. No version bump, migration,
   compatibility alias or legacy reader is part of this work.
 
@@ -192,9 +206,10 @@ smoke runs do not establish native use of the newly added Shader outputs.
 
 ## Resume And Delivery Rules
 
-1. Verify #193/#73 acceptance and synchronized Project status. Then select a
-   focused Renderer issue; materials, lighting and texture/asset management
-   still require their own accepted scope.
+1. Review the minimum Renderer stack (#206-#209), beginning with ADR PR #205
+   then #210 and #211 and the host-window PR. Do not merge automatically.
+   The implementation and evidence are local Apple Silicon; architecture
+   review remains open. Do not start GUI or application phases without scope.
 2. Preserve native worktrees/branches/build assets; this audit authorizes no
    branch deletion or history rewriting. Use signed issue-scoped commits,
    immediate same-branch pushes and reviewed normal merge commits.

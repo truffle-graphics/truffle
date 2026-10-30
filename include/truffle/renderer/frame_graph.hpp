@@ -59,8 +59,11 @@ public:
     explicit RenderPassNode(bool useSwapchain, std::vector<RenderBatch> batches)
         : useSwapchain_(useSwapchain), batches_(std::move(batches)) {}
 
-    explicit RenderPassNode(rhi::RenderPassDesc desc, std::vector<RenderBatch> batches)
-        : useSwapchain_(false), explicitDesc_(std::make_unique<rhi::RenderPassDesc>(desc)), batches_(std::move(batches)) {}
+    // A swapchain pass may supply depth and color clear/load/store settings.
+    // Its color texture comes from acquisition and its extent from the swapchain.
+    explicit RenderPassNode(rhi::RenderPassDesc desc, std::vector<RenderBatch> batches,
+                            bool useSwapchain = false)
+        : useSwapchain_(useSwapchain), explicitDesc_(std::make_unique<rhi::RenderPassDesc>(desc)), batches_(std::move(batches)) {}
 
     [[nodiscard]] FrameGraphNodeKind kind() const noexcept override {
         return FrameGraphNodeKind::Render;

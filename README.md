@@ -125,9 +125,15 @@ for actual routes, experimental gates, reflection limits and native Apple
 Silicon Metal/Vulkan/OpenGL 4.1 results. Other-platform output verification
 remains separately tracked; Shader completion does not promote backend
 maturity. The unreleased TSP draft retains `1.0` without compatibility
-scaffolding. After #193 acceptance, Renderer development may resume from its
-existing direct Shader integration; no new material, lighting, texture or
-asset feature is implied. [`docs/roadmap.md`](docs/roadmap.md) records sequencing.
+scaffolding.
+
+The minimum flexible Renderer (#206) is implemented in review-only PRs:
+app-defined vertex/instance layouts and mesh uploads, optional camera/depth
+helpers, and a [host-owned Metal window example](examples/minimum_renderer/README.md)
+with composed application shaders, lighting and resize. Renderer owns no ECS
+schema or fixed transform/light/material model. GUI, assets/textures, a general
+material system and later application work remain outside this scope.
+[`docs/roadmap.md`](docs/roadmap.md) records the review and evidence boundaries.
 
 ## Build
 

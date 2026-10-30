@@ -52,11 +52,15 @@ does not mean all upstream-language constructs, cross-product conversions,
 platform execution or backend conformance. The unreleased TSP draft remains
 `1.0`, without compatibility readers or migration scaffolding.
 
-After #193 acceptance, Renderer development may resume from the existing
-prepared-TSP and `SourceProgram` paths. Materials, lighting, texture/asset
-management and other Renderer features still need their own accepted scope;
-they were not added by Shader completion. Delivery remains signed issue-scoped
-phases, immediate pushes and reviewed merge-commit PRs.
+The next accepted scope is the **minimum flexible Renderer (#206)**:
+app-defined vertex data and mesh uploads (#207, PR #210), optional camera/depth
+helpers and composed example lighting (#208, PR #211), and a host-owned Metal
+window with resize (#209). These are review-only stacked PRs above ADR PR #205;
+implementation evidence does not mean they have been accepted or merged.
+No GUI, asset/texture system, general materials, or later application phases
+are planned by this work. Reassess the next direction after the minimum
+Renderer. Delivery remains signed issue-scoped commits, immediate pushes and
+owner-reviewed PRs.
 The common compiled-result boundary remains the existing RHI ShaderPackage;
 runtime compilation uses the Shader request/result contract. There is no
 adapter module and no RHI → Shader dependency.

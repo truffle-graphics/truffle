@@ -94,7 +94,9 @@ base::Status validate_batch_data(
     if (auto status = validate_vertex_layout(buffers, {}); !status.ok()) {
         return status;
     }
-    if (batch.instanceCount == 0 || batch.vertexCount == 0) {
+    const bool indexed = batch.kind == DrawKind::Indexed || batch.kind == DrawKind::IndirectIndexed;
+    const bool indirect = batch.kind == DrawKind::Indirect || batch.kind == DrawKind::IndirectIndexed;
+    if (!indirect && (batch.instanceCount == 0 || batch.vertexCount == 0)) {
         return invalid("Renderer: draw counts must be nonzero");
     }
     for (const auto& view : batch.bindings) {
@@ -106,8 +108,6 @@ base::Status validate_batch_data(
         !valid_view(batch.uniformBuffer)) {
         return invalid("Renderer: index, indirect or uniform view is out of range");
     }
-    const bool indexed = batch.kind == DrawKind::Indexed || batch.kind == DrawKind::IndirectIndexed;
-    const bool indirect = batch.kind == DrawKind::Indirect || batch.kind == DrawKind::IndirectIndexed;
     if (batch.kind != DrawKind::Direct && batch.kind != DrawKind::Indexed && !indirect) {
         return invalid("Renderer: unknown draw kind");
     }

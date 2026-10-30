@@ -171,18 +171,43 @@ renderer::RenderBatch Scene::batch() {
     return result;
 }
 
-void Scene::render(const renderer::FrameGraph& graph, rhi::Swapchain* swapchain) {
-    require(renderer_.render(graph, swapchain));
-    auto pool = require(device_->create_command_pool(rhi::QueueKind::graphics));
-    auto marker = require(pool.allocate());
-    require(marker.begin());
-    require(marker.end());
-    auto fence = require(device_->create_fence());
-    auto queue = require(device_->queue(rhi::QueueKind::graphics));
+base::Status Scene::render(const renderer::FrameGraph& graph, rhi::Swapchain* swapchain) {
+    // Even a recoverable present failure can follow a successful submission.
+    const auto rendered = renderer_.render(graph, swapchain);
+    auto poolResult = device_->create_command_pool(rhi::QueueKind::graphics);
+    if (!poolResult.ok()) {
+        return poolResult.status();
+    }
+    auto pool = std::move(poolResult).value();
+    auto markerResult = pool.allocate();
+    if (!markerResult.ok()) {
+        return markerResult.status();
+    }
+    auto marker = std::move(markerResult).value();
+    if (auto status = marker.begin(); !status.ok()) {
+        return status;
+    }
+    if (auto status = marker.end(); !status.ok()) {
+        return status;
+    }
+    auto fence = device_->create_fence();
+    if (!fence.ok()) {
+        return fence.status();
+    }
+    auto queue = device_->queue(rhi::QueueKind::graphics);
+    if (!queue.ok()) {
+        return queue.status();
+    }
     const std::array<rhi::CommandList*, 1> lists{&marker};
-    require(queue.submit({.commandLists = lists, .signalFence = &fence,
-                          .signalFenceValue = 1}));
-    require(fence.wait(1, std::chrono::seconds(10)));
+    if (auto status = queue.value().submit({
+            .commandLists = lists, .signalFence = &fence.value(), .signalFenceValue = 1});
+        !status.ok()) {
+        return status;
+    }
+    if (auto status = fence.value().wait(1, std::chrono::seconds(10)); !status.ok()) {
+        return status;
+    }
+    return rendered;
 }
 
 const renderer::RendererFrameStats& Scene::stats() const {
