@@ -81,8 +81,8 @@ struct CompileRequest {
     GlslEsTarget glslEsTarget;
     // Explicit consent is required both to produce and to load generated MSL/WGSL.
     bool allowExperimentalMetalGeneration = false;
-    // Ordered extra source units, resolved before the root through resolver/includeRoots.
-    // Supported only for native MSL routes; other routes reject a non-empty list.
+    // Ordered extra source units for native MSL only. Compiler::compile rejects
+    // them for every other language before adapter discovery or source resolution.
     std::vector<std::string> sourceUnits;
     // Required for native MSL. Metal-observable fields are checked; remaining values
     // are explicit caller assertions because Metal does not expose them in reflection.

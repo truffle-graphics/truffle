@@ -71,8 +71,12 @@ one SPIR-V source adapter and `TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS`.
 The independent
 `TRUFFLE_SHADER_ENABLE_DXC` adapter compiles HLSL to SPIR-V/DXIL and requires
 SPIRV-Tools; portable HLSL output reuses the same Cross/glslang closure.
-Future routes may use Slang
-submodules, enabled individually. No compiler submodule is introduced before
+The independent native Slang route
+uses `TRUFFLE_SHADER_ENABLE_SLANG` plus SPIRV-Tools; its clean pinned source
+closure, Apache-2.0 WITH LLVM-exception license, source-only offline policy,
+install behavior and update checks are recorded in
+[native Slang](../shader-slang.md). Compiler dependencies are enabled
+individually. No compiler submodule is introduced before
 its route exists, and configure never downloads it. Runtime packages do not
 acquire the compiler toolchain. Runtime source compilation is an explicit
 optional feature; production packages prefer offline variants.

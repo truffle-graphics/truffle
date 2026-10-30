@@ -3,7 +3,7 @@
 Use this document as Truffle's rolling cross-machine handoff. Keep it useful to
 a human resuming work and to a fresh AI session reading the repository.
 
-## WGSL/Tint source routes — issue #191
+## WGSL/Tint source routes — issue #191 (merged in PR #198)
 
 - Integration update: HLSL PR #199 was merged in signed merge commit
   `53c4b39` without rebasing. WGSL PR #198 at
@@ -67,6 +67,141 @@ AI work that reaches a commit must update this handoff before that commit.
 Promote durable decisions into project context, architecture, roadmap, or ADRs
 rather than growing a historical transcript here.
 
+## Native Slang Modules (#190, Merged in PR #200)
+
+- **Owner/boundary:** optional in-process compilation remains in Shader; the
+  CLI uses that library. Native imports/includes and Slang component linking
+  compose reusable modules, emitting exactly one requested entry/configuration.
+  Canonical emitted-SPIR-V reflection remains RHI-owned metadata; TSP stays 1.0.
+  No Shader→backend/Renderer dependency or backend maturity promotion.
+- **Actual matrix:** vertex/fragment/compute → SPIR-V 1.3 / Vulkan 1.1 only,
+  independently validated with the existing pinned SPIRV-Tools. No Slang
+  Metal/GL/WGSL/DXIL or advanced-stage route is advertised. `sourceUnits` is the
+  agreed native-MSL-only field. `Compiler::compile` centrally rejects it for
+  every non-MSL language before adapter discovery/resolution, including Tint
+  WGSL/SPIR-V inputs and compiler-off requests; private duplicate guards are removed.
+- **Pins/source policy:** clean upstream Slang `v2026.12.1`,
+  `90b8e77eafdfa0aabbbc48f0e86f6cfbde4cb8f8`, Apache-2.0 WITH LLVM-exception.
+  Exact audited nested source pins/licenses and initialization commands are in
+  `docs/shader-slang.md`. Configure/build never acquire dependencies; no binary
+  SDK/system fallback or local upstream patch. Embedded core source/module and
+  direct SPIR-V need no LLVM/DXC/glslang/optimizer runtime plugins. The selected
+  upstream pin includes the optional-downstream-loading fix absent in the
+  initially audited 2025.10.1. Install exports only the source-built compiler
+  dylib and notices, not an upstream SDK.
+- **Sources/cache/failure:** immutable per-attempt source snapshots include
+  transitive native import/include identities and hashes. Fresh native sessions
+  resolve/link before cache lookup, so dependency/configuration/debug changes
+  cannot return stale success. Missing/cyclic imports, invalid source/entry,
+  unsupported targets and failed rebuilds preserve `last_good()`; failed CLI
+  compilation retains the previous output file. Native Slang diagnostics and
+  source-language semantics are not replaced with a custom parser.
+- **Native evidence, Apple M3 Pro/MoltenVK:** active Vulkan validation; native
+  vertex/fragment yields exactly 256 RGBA `(78,0,0,255)` pixels. Imported compute
+  `QUALITY=3/4` yields `307..314` / `407..414`, preserving the ninth sentinel.
+  Slang `SV_VertexID` subtracts BaseVertex and emits `DrawParameters`; canonical
+  reflection now explicitly rejects that unmodeled device capability.
+  Existing native `SV_VulkanVertexID` is used instead, with no backend feature
+  changes or silent source rewriting. Negative regression covers the rejection.
+- **Focused final implementation checks:** Release Ninja, explicit Xcode SDK,
+  warnings-as-errors and builds limited to `--parallel 2`. Combined GLSL+Slang
+  **16/16**, Slang-only/glslang-off **10/10**, compiler-off **11/11** pass after
+  the WGSL develop merge. Checks
+  include native proof, one emitted entry/all stages, multilevel imports/includes,
+  content/configuration invalidation, cycles/missing-source recovery, concurrent
+  compiler instances, CLI/library byte equality, and installed consumers.
+  Compiler-off installed Shader/prepared Renderer/RHI consumers have no optional
+  compiler closure. Architecture guard and `git diff --check` pass. Other hosts
+  and Slang output targets are not verified or claimed.
+- **Integration:** shared reflection uses canonical SPIRV-Headers rather than a
+  glslang-private include and is built for independently enabled adapters.
+  Headers license notices are retained even for glslang-only/validator-off installs.
+  Dispatch/discovery and test gates no longer assume glslang is the only adapter.
+  Slang uses no Cross outputs, so it adds no competing generated-GLSL validator
+  or translation provenance helper. Normal merge of develop
+  `f2079307fd2cd5432d465c083cc0c416e0b1ec5f` preserves independent DXC/Tint
+  routes/options, HLSL Shader Model fields, experimental WGSL gates and native
+  empty-intermediate CLI/consumer handling. Canonical reflection is compiled
+  once for any enabled SPIR-V adapter; Tint needs no glslang.
+  Slang now reuses `compiler_inputs.hpp` define/key helpers. MSL/Tint/GLSL and
+  compiler-off integration tests are recorded in the #188 handoff section.
+  The parent owns the all-provider coexistence build and will reuse its existing
+  DXC build; do not duplicate that compiler build. Shared rejection tests cover
+  all non-MSL languages in enabled/off builds.
+  WGSL's regression runs before its disabled-adapter check and additionally
+  covers every enabled stage and valid SPIR-V→WGSL inputs when Tint is enabled.
+  Local HLSL/WGSL tests exercise disabled-adapter paths, not new native proofs.
+  Enabled DXC/Tint checks use the parent's existing compiler builds.
+- **Installed-tool correction:** the shared-provider CLI runtime path now
+  covers DXC **or** Slang: macOS `@loader_path`, Linux/Unix `$ORIGIN`, calculated
+  between configured bin/lib directories (absolute library destinations remain
+  absolute). The install smoke executes the **installed** `--self-test` and
+  `--routes` with loader override paths unset, only when
+  `TRUFFLE_BUILD_SHADERC=ON`; explicit OFF skips stale installed executables.
+  Consumer package discovery also respects the configured library directory.
+  Existing Slang-only build verifies nested `tools/native/bin` and
+  `runtime/lib64`, with actual LC_RPATH
+  `@loader_path/../../../runtime/lib64` and successful installed execution.
+  Compiler-off `shaderc=OFF` regression retains a real stale installed tool and
+  proves it is skipped; default enabled/off installs are checked too.
+  No new DXC/Tint compiler source build or Linux execution claim. Parent reruns
+  DXC-only installed execution using its existing build.
+- **Next:** parent owns
+  independent review, merge, issue acceptance and any later route expansion.
+
+## HLSL Compilation (#189, Merged In PR #199)
+
+- **Owner/boundary:** Shader owns the optional in-process DXC adapter, native
+  include/define preprocessing, dependencies, caching, validation and emitted
+  reflection. shaderc is a client of that same API. Dependencies remain private
+  DXC/SPIRV-Tools and optional glslang/SPIRV-Cross above RHI/Base; native backends
+  are linked by tests only. No architectural boundary change, Renderer feature,
+  new language, subprocess runtime compiler, watcher, or TSP version change.
+- **Routes:** independently enabled `TRUFFLE_SHADER_ENABLE_DXC` supports HLSL
+  2021, Shader Model 6.0 vertex/fragment/compute, Vulkan 1.0/SPIR-V 1.0 and
+  Vulkan 1.1/SPIR-V 1.3, plus native DXIL without a Vulkan intermediate.
+  `HlslShaderModel`, request/route metadata and `--hlsl-shader-model 6.0` expose
+  that bounded contract. Unsupported profiles/configurations fail explicitly.
+  Optional portable emission reuses #187: experimental macOS MSL 2.1 for all
+  three stages, GL 410 core/ES 300 for vertex/fragment.
+- **Dependency audit:** official DXC `v1.9.2609`, exact revision
+  `01b62ad47db7dee3dd33f90e7339cf9e860b3f93`, built offline in an isolated
+  Release/Ninja child build. Exact nested DirectX-Headers/SPIRV-Headers/
+  SPIRV-Tools pins and root/nested licenses are recorded in
+  `docs/rhi1/dependencies.md`; no local patches or implicit downloads.
+  Official binaries do not cover Apple Silicon, so this host uses the supported
+  source build. Only `dxcompiler` is built; it links system C/C++ libraries.
+- **Composition/cache:** native DXC preprocessing runs before every lookup.
+  Its callback supplies searched candidate paths, not an original includer or
+  quote/system distinction; the shared resolver receives an empty includer and
+  `system=false`. Resolved content is frozen for the actual compile. Stable
+  identities, transitive content hashes, sorted defines, profiles, options,
+  compiler revision and optional translation provenance determine cache identity.
+  Native guards/macros remain compiler-owned; failed rebuilds retain the
+  previous published result and expose diagnostics.
+- **Reflection/validation:** SPIR-V uses the shared real validator/reflector.
+  DXIL uses DXC's real validator and emitted DXIL reflection plus checked PSV
+  signature metadata, never a second SPIR-V compilation. Fixtures prove
+  target-predefined macros can change bindings and malformed DXIL is rejected.
+  User DXIL IO is bounded to `TEXCOORDn` and fragment `SV_Targetn`; unsupported
+  register-class collisions, unbounded descriptors, typed buffers and
+  append/consume/counter resources fail rather than receiving invented remaps.
+  Structured/raw storage minima reflect native stride/four-byte access.
+- **Focused evidence, Apple Silicon:** final combined Release/warnings-as-errors
+  configuration passed 19/19, including HLSL stage/target/intermediate
+  configurations, CLI/library equality, dependencies, validation, reflection
+  and installed Shader/Renderer consumers. DXC-only passed 8/8 focused tests
+  without glslang/Cross. Compiler-off installed consumers have no optional
+  compiler libraries.
+- **Native evidence:** unchanged serialized HLSL packages render all 256 pixels
+  exactly RGBA `(64,128,255,255)` on Vulkan/MoltenVK, Metal and macOS GL 4.1.
+  Vulkan/Metal compute writes `107..110`, retaining four sentinel values.
+  Vulkan validation and Metal API/GPU validation are active. DXIL validation is
+  real on this host but is not Windows/D3D12 driver execution; GLES has compiler
+  validation, not native evidence.
+- HLSL #189 is merged; this MSL branch preserves its route, request, DXC/CMake
+  and shaderc integration. Parent owns acceptance and the remaining audits.
+
 ## Native MSL Inputs And Libraries (#188, Active)
 
 - Added optional `TRUFFLE_SHADER_ENABLE_METAL_COMPILER` in-process native MSL
@@ -111,10 +246,11 @@ rather than growing a historical transcript here.
   merge commit `53c4b39`; shared compiler dispatch rejects nonempty
   `sourceUnits` on DXC and every non-MSL route. The SPIR-V `DrawParameters`
   capability guard from Slang work is retained and covered by the shared
-  reflection test. Slang #200 is now accepted; final non-MSL develop is
-  `990f7e679f41f1dc9d55c7d5a31e3acbbac87381` and must be merged normally
-  before final delivery. Preserve its shared source-unit API without adding
-  adapter-private duplicate guards.
+  reflection test. Slang #200 is accepted; final non-MSL develop
+  `990f7e679f41f1dc9d55c7d5a31e3acbbac87381` is now merged. Preserve its
+  shared source-unit API
+  without adding adapter-private duplicate guards; the gate in `Compiler::compile`
+  is the only source-unit route policy.
 - Current merge integration tests passed: Tint + native MSL/API build,
   route tests, WGSL tests, exact WGSL native Vulkan/Metal readback, exact MSL
   source/metallib readback, and shaderc MSL smoke (5/5); portable GLSL route,

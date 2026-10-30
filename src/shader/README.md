@@ -16,7 +16,9 @@ then reports `unsupported`.
 
 Enable `TRUFFLE_SHADER_ENABLE_GLSLANG=ON` to use the pinned GLSL/GLSL ES to
 Vulkan SPIR-V adapter. This does **not** require building shaderc.
-With all compiler adapters off, `Compiler::routes()` is empty, `available()` is false and `compile()` returns
+Canonical SPIR-V reflection also requires pinned `vendor/spirv-headers`, even
+when optional SPIRV-Tools validation is disabled; its license notices are installed.
+With every compiler adapter off, `Compiler::routes()` is empty, `available()` is false and `compile()` returns
 `unsupported`; prepared Truffle Shader Packages (TSP, `.tsp`) still work through
 RHI and Renderer without linking a compiler. No language/compiler is fetched.
 An enabled install bundles glslang's static libraries and CMake package so
@@ -32,6 +34,9 @@ package consumers.
 `TRUFFLE_SHADER_ENABLE_DXC=ON` independently enables HLSL 2021 compilation to
 SPIR-V/DXIL and requires `TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS=ON`; the additional
 HLSL portable routes use the optional Cross/glslang closure.
+`TRUFFLE_SHADER_ENABLE_SLANG=ON` independently enables native Slang
+modules/imports to validated Vulkan 1.1 / SPIR-V 1.3, without glslang.
+See [native Slang configuration, pins, limits and tests](../../docs/shader-slang.md).
 
 `TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS=ON` adds real in-process SPIR-V validation.
 `TRUFFLE_SHADER_ENABLE_SPIRV_CROSS=ON` requires a SPIR-V source adapter and that validator,
@@ -73,6 +78,7 @@ requires explicit package safety consent.
 | GLSL or GLSL ES, vertex/fragment/compute | macOS MSL 2.1 source | glslang + SPIRV-Tools + SPIRV-Cross | Experimental explicit opt-in; generated graphics and compute execute on Apple M3 Pro |
 | GLSL or GLSL ES, vertex/fragment | GLSL 410 core (macOS OpenGL 4.1) | same three optional adapters | Generated resource-backed graphics executes on macOS 4.1; compute rejected |
 | GLSL or GLSL ES, vertex/fragment | GLSL ES 300 | same three optional adapters | Emission and real glslang parse/link validation; **no native GLES execution evidence** |
+| Slang, native modules/imports, vertex/fragment/compute | Vulkan 1.1 / SPIR-V 1.3 | pinned Slang + SPIRV-Tools | Native source/module/entry composition; only requested entry/configuration; see #190 documentation |
 | HLSL 2021, shader model 6.0, vertex/fragment/compute | Vulkan SPIR-V or DXIL | pinned DXC + SPIRV-Tools | In-process compile/validation and emitted-target reflection; Vulkan/MoltenVK graphics and compute execute on Apple M3 Pro |
 | HLSL, vertex/fragment/compute | Experimental macOS MSL 2.1 source | DXC + the portable adapters above | Generated graphics and compute execute on Apple M3 Pro |
 | HLSL, vertex/fragment | GLSL 410 core / GLSL ES 300 | same portable adapters | GL graphics executes on macOS 4.1; ES has real compiler validation, no native evidence |
@@ -82,8 +88,8 @@ requires explicit package safety consent.
 | WGSL, vertex/fragment/compute | macOS MSL 2.1 | Tint + SPIRV-Tools + SPIRV-Cross | Experimental opt-in; native resource-backed graphics and compute exact readback on Metal |
 | MSL, vertex/fragment/compute | macOS MSL 2.1 source | optional Apple Metal framework adapter | #188; requires macOS 26+ runtime reflection API and Metal device; exact M3 Pro graphics/compute readback |
 | MSL, vertex/fragment/compute | macOS metallib | optional Apple Metal framework adapter plus installed Metal Toolchain | #188; actual `metal`/`metallib` compile and exact M3 Pro graphics/compute readback |
-| Slang | Remaining outputs are route-specific | optional compiler adapters | Tracked #190; not an all-input/all-output cross product |
-| DXIL, backend-native source | None through Shader today | none needed for assembly | Prepared TSP inputs, **not** source-compilation routes |
+| Slang, vertex/fragment/compute | Vulkan 1.1 / SPIR-V 1.3 | pinned in-process Slang + SPIRV-Tools | Implemented in PR #200; native Vulkan/MoltenVK graphics and compute execute on Apple M3 Pro |
+| Backend-native source | No Shader source-compilation route | none needed for assembly | Prepared TSP inputs, **not** source-compilation routes |
 
 ### WGSL and Tint (#191)
 
@@ -103,7 +109,7 @@ WGSL is an existing shader language, not a Truffle composition language.
 The host can compose standard WGSL declarations/functions into `Source::text`
 and supply one stable `Source::identity`; its exact assembled bytes are the
 single dependency. Truffle invents no include/import/preprocessor directives.
-Nonempty `defines`, `includeRoots`, or `resolver` return typed `unsupported`
+Nonempty `sourceUnits`, `defines`, `includeRoots`, or `resolver` return typed `unsupported`
 before the compiler or resolver runs. Pipeline `override` declarations used by
 the selected entry also return `unsupported`, including overrides with defaults:
 there is no hidden macro substitution or claim of preserved specialization.
@@ -353,14 +359,14 @@ Metal API/GPU validation and Vulkan validation are enabled in that test.
 GLES native execution and higher native profiles remain future evidence, not
 claims established by successful compiler validation.
 
-The remaining #73 route matrix is **planned, not implemented or advertised**:
+The route adapters have bounded, independently reported contracts. HLSL/DXC
+(#189), Slang (#190), and WGSL/Tint (#191) are merged; native MSL (#188) is
+the current active phase. The remaining Shader-level audits are:
 
 | Input / mechanism | Intended output | Tracking / remaining gate |
 | --- | --- | --- |
-| Native MSL, optional Apple tooling | MSL / offline Metal library | #188; SDK audit, truthful interfaces/dependencies, native readback |
-| HLSL, optional DXC | SPIR-V / DXIL where compiler/host supports it | #189; profiles/reflection, native Vulkan and separately tracked Windows evidence |
-| Slang, native modules/imports | Supported SPIR-V first; other outputs gated | #190; compiler audit, imported dependencies, native output; experimental Metal/WebGPU not promoted by emission alone |
-| WGSL, optional Tint | WGSL input/output and supported conversions determined by compiler audit | #191; actual directions, language semantics, reflection and compiler validation; no WebGPU execution claim |
+| Shared behavior | Composition, cache/rebuild, compiler and CLI consistency | #192; verify across optional routes/providers |
+| Completion audit | Route, reflection, package isolation and native evidence | #193; close #73 only when all gates pass |
 
 These are not an all-input/all-output cross-product promise. Complete reflection, validated
 cross-target interfaces/remaps/specialization, reproducible optional compiler

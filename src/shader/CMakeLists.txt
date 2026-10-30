@@ -9,8 +9,13 @@ if(TRUFFLE_SHADER_ENABLE_METALLIB_COMPILER AND
 endif()
 
 function(truffle_shader_require_pin name revision)
-    if(NOT EXISTS "${PROJECT_SOURCE_DIR}/vendor/${name}/CMakeLists.txt")
-        message(FATAL_ERROR "Initialize pinned sources: git submodule update --init vendor/${name}")
+    if(name MATCHES "^slang/external/(.+)$")
+        set(recovery "git -C vendor/slang submodule update --init external/${CMAKE_MATCH_1}")
+    else()
+        set(recovery "git submodule update --init vendor/${name}")
+    endif()
+    if(NOT IS_DIRECTORY "${PROJECT_SOURCE_DIR}/vendor/${name}")
+        message(FATAL_ERROR "Initialize pinned sources: ${recovery}")
     endif()
     find_package(Git REQUIRED QUIET)
     execute_process(COMMAND "${GIT_EXECUTABLE}" -C "${PROJECT_SOURCE_DIR}/vendor/${name}" rev-parse HEAD
@@ -19,7 +24,7 @@ function(truffle_shader_require_pin name revision)
                     status --porcelain --untracked-files=no
                     RESULT_VARIABLE status_result OUTPUT_VARIABLE changes OUTPUT_STRIP_TRAILING_WHITESPACE)
     if(NOT result EQUAL 0 OR NOT status_result EQUAL 0 OR NOT actual STREQUAL revision OR changes)
-        message(FATAL_ERROR "Shader requires clean vendor/${name} at ${revision}; initialize the pinned submodule")
+        message(FATAL_ERROR "Shader requires clean vendor/${name} at ${revision}; initialize the pinned submodule: ${recovery}")
     endif()
 endfunction()
 
@@ -62,7 +67,8 @@ endif()
 if(TRUFFLE_SHADER_ENABLE_TINT AND NOT TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS)
     message(FATAL_ERROR "Tint requires TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS for canonical SPIR-V validation")
 endif()
-if(TRUFFLE_SHADER_ENABLE_GLSLANG OR TRUFFLE_SHADER_ENABLE_TINT OR TRUFFLE_SHADER_ENABLE_DXC)
+if(TRUFFLE_SHADER_ENABLE_GLSLANG OR TRUFFLE_SHADER_ENABLE_TINT OR
+   TRUFFLE_SHADER_ENABLE_DXC OR TRUFFLE_SHADER_ENABLE_SLANG)
     truffle_shader_require_pin(spirv-headers 29981f65241605e08b0ede4cfeb999fe3b723c6a)
     target_sources(truffle_shader PRIVATE spirv_reflection.cpp)
     target_include_directories(truffle_shader SYSTEM PRIVATE "${PROJECT_SOURCE_DIR}/vendor/spirv-headers/include")
@@ -86,10 +92,6 @@ if(TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS)
                 ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}")
         install(FILES "${PROJECT_SOURCE_DIR}/vendor/spirv-tools/LICENSE"
                 DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/Truffle/spirv-tools")
-        install(FILES "${PROJECT_SOURCE_DIR}/vendor/spirv-headers/LICENSE"
-                DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/Truffle/spirv-headers")
-        install(DIRECTORY "${PROJECT_SOURCE_DIR}/vendor/spirv-headers/LICENSES/"
-                DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/Truffle/spirv-headers")
     endif()
     target_sources(truffle_shader PRIVATE spirv_validation.cpp)
     target_link_libraries(truffle_shader PRIVATE SPIRV-Tools-static)
@@ -130,6 +132,12 @@ if(TRUFFLE_SHADER_ENABLE_SPIRV_CROSS)
     endif()
 endif()
 
+if(TRUFFLE_SHADER_ENABLE_SLANG)
+    if(NOT TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS)
+        message(FATAL_ERROR "Slang requires TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS for emitted SPIR-V validation")
+    endif()
+    include(TruffleSlang)
+endif()
 if(TRUFFLE_SHADER_ENABLE_DXC)
     if(NOT TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS)
         message(FATAL_ERROR "DXC routes require TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS")
@@ -144,6 +152,14 @@ if(TRUFFLE_SHADER_ENABLE_DXC)
     target_compile_definitions(truffle_shader PRIVATE
         TRUFFLE_SHADER_HAS_DXC=1
         TRUFFLE_DXC_REVISION="01b62ad47db7dee3dd33f90e7339cf9e860b3f93")
+endif()
+
+if(TRUFFLE_INSTALL AND (TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS OR TRUFFLE_SHADER_ENABLE_GLSLANG OR
+                       TRUFFLE_SHADER_ENABLE_DXC OR TRUFFLE_SHADER_ENABLE_SLANG OR TRUFFLE_SHADER_ENABLE_TINT))
+    install(FILES "${PROJECT_SOURCE_DIR}/vendor/spirv-headers/LICENSE"
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/Truffle/spirv-headers")
+    install(DIRECTORY "${PROJECT_SOURCE_DIR}/vendor/spirv-headers/LICENSES/"
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/Truffle/spirv-headers")
 endif()
 
 if(TRUFFLE_SHADER_ENABLE_GLSLANG)

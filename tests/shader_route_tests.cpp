@@ -88,6 +88,31 @@ int main() {
         rhi::ShaderTarget::spirv, rhi::ShaderTarget::dxil, rhi::ShaderTarget::metal_library,
         rhi::ShaderTarget::metal_source, rhi::ShaderTarget::wgsl, rhi::ShaderTarget::glsl,
         rhi::ShaderTarget::glsl_es, static_cast<rhi::ShaderTarget>(255)};
+    for (const auto language : languages) {
+        if (language == rhi::ShaderSourceLanguage::msl) continue;
+        auto sourceUnits = request;
+        sourceUnits.language = language;
+        sourceUnits.sourceUnits = {"must-not-resolve.source"};
+        sourceUnits.resolver = invalidRequest.resolver;
+        const auto result = compiler.compile(sourceUnits);
+        check(!result.ok() && result.status().code == rhi::StatusCode::unsupported &&
+                  result.status().message.find("sourceUnits") != std::string::npos,
+              "Non-MSL sourceUnits are rejected before adapter discovery/dispatch");
+        check(!resolved, "Rejected sourceUnits must not invoke source resolution");
+    }
+    if (std::none_of(routes.begin(), routes.end(), [](const auto& route) {
+            return route.language == rhi::ShaderSourceLanguage::msl &&
+                   route.target == rhi::ShaderTarget::metal_source;
+        })) {
+        auto nativeMsl = request;
+        nativeMsl.language = rhi::ShaderSourceLanguage::msl;
+        nativeMsl.target = rhi::ShaderTarget::metal_source;
+        nativeMsl.sourceUnits = {"native.metal"};
+        const auto result = compiler.compile(nativeMsl);
+        check(!result.ok() && result.status().code == rhi::StatusCode::unsupported &&
+                  result.status().message.find("sourceUnits") == std::string::npos,
+              "MSL sourceUnits bypass the shared rejection and retain truthful missing-route diagnostics");
+    }
     invalidRequest.stage = request.stage;
     for (const auto language : languages) {
         for (const auto target : targets) {

@@ -16,6 +16,9 @@
 [submodule "vendor/spirv-headers"]
 	path = vendor/spirv-headers
 	url = https://github.com/KhronosGroup/SPIRV-Headers.git
+[submodule "vendor/slang"]
+	path = vendor/slang
+	url = https://github.com/shader-slang/slang.git
 [submodule "vendor/dawn"]
 	path = vendor/dawn
 	url = https://dawn.googlesource.com/dawn

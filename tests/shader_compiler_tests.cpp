@@ -3,6 +3,7 @@
 #include "shader_test_utils.hpp"
 
 #include <cstdlib>
+#include <algorithm>
 #include <iostream>
 #include <map>
 #include <thread>

@@ -15,6 +15,10 @@ namespace truffle::shader {
 rhi::Result<Compilation> compile_glslang(const CompileRequest& request,
                                        std::vector<Compilation>& cache);
 #endif
+#if defined(TRUFFLE_SHADER_HAS_SLANG)
+rhi::Result<Compilation> compile_slang(const CompileRequest& request,
+                                     std::vector<Compilation>& cache);
+#endif
 #if defined(TRUFFLE_SHADER_HAS_TINT)
 rhi::Result<Compilation> compile_tint(const CompileRequest&, std::vector<Compilation>&);
 #endif
@@ -58,7 +62,8 @@ std::span<const CompilerRoute> Compiler::routes() noexcept {
         std::vector<CompilerRoute> result;
 #if defined(TRUFFLE_SHADER_HAS_GLSLANG) || defined(TRUFFLE_SHADER_HAS_DXC) || \
     defined(TRUFFLE_SHADER_HAS_METAL_COMPILER) || \
-    defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS) || defined(TRUFFLE_SHADER_HAS_TINT)
+    defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS) || defined(TRUFFLE_SHADER_HAS_TINT) || \
+    defined(TRUFFLE_SHADER_HAS_SLANG)
         static constexpr rhi::ShaderStage stages[]{
             rhi::ShaderStage::vertex, rhi::ShaderStage::fragment,
             rhi::ShaderStage::compute};
@@ -72,6 +77,10 @@ std::span<const CompilerRoute> Compiler::routes() noexcept {
         static constexpr VulkanTarget targets[]{
             {VulkanVersion::v1_0, SpirvVersion::v1_0},
             {VulkanVersion::v1_1, SpirvVersion::v1_0},
+            {VulkanVersion::v1_1, SpirvVersion::v1_3}};
+#endif
+#if defined(TRUFFLE_SHADER_HAS_SLANG)
+        static constexpr VulkanTarget slangTargets[]{
             {VulkanVersion::v1_1, SpirvVersion::v1_3}};
 #endif
 #if defined(TRUFFLE_SHADER_HAS_DXC)
@@ -95,7 +104,8 @@ std::span<const CompilerRoute> Compiler::routes() noexcept {
 #endif
 #if defined(TRUFFLE_SHADER_HAS_GLSLANG) || defined(TRUFFLE_SHADER_HAS_DXC) || \
     defined(TRUFFLE_SHADER_HAS_METAL_COMPILER) || \
-    defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS) || defined(TRUFFLE_SHADER_HAS_TINT)
+    defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS) || defined(TRUFFLE_SHADER_HAS_TINT) || \
+    defined(TRUFFLE_SHADER_HAS_SLANG)
         const auto add = [&](CompilerRoute route) {
             result.push_back(route);
         };
@@ -119,6 +129,10 @@ std::span<const CompilerRoute> Compiler::routes() noexcept {
         add({rhi::ShaderSourceLanguage::glsl_es, rhi::ShaderTarget::glsl_es,
              graphics, targets, {}, {}, es});
 #endif
+#endif
+#if defined(TRUFFLE_SHADER_HAS_SLANG)
+        add({rhi::ShaderSourceLanguage::slang, rhi::ShaderTarget::spirv,
+             stages, slangTargets});
 #endif
 #if defined(TRUFFLE_SHADER_HAS_TINT)
         add({rhi::ShaderSourceLanguage::wgsl, rhi::ShaderTarget::spirv,
@@ -194,7 +208,7 @@ rhi::Result<Compilation> Compiler::compile(const CompileRequest& request) {
     if (!request.sourceUnits.empty() && !nativeMslRequest) {
         return rhi::Status::failure(
             rhi::StatusCode::unsupported,
-            "Ordered source units are supported only by native MSL routes");
+            "CompileRequest::sourceUnits are supported only by native MSL routes");
     }
     if (request.interfaceDeclaration && !nativeMslRequest) {
         return rhi::Status::failure(
@@ -219,7 +233,7 @@ rhi::Result<Compilation> Compiler::compile(const CompileRequest& request) {
     const auto enabled = routes();
     if (enabled.empty()) {
         return rhi::Status::failure(rhi::StatusCode::unsupported,
-                                   "No enabled Shader source-compilation routes are available in this build/runtime; enable an optional compiler adapter such as TRUFFLE_SHADER_ENABLE_GLSLANG, TRUFFLE_SHADER_ENABLE_DXC or TRUFFLE_SHADER_ENABLE_TINT");
+                                   "No enabled Shader source-compilation routes are available in this build/runtime; enable an optional compiler adapter such as TRUFFLE_SHADER_ENABLE_GLSLANG, TRUFFLE_SHADER_ENABLE_DXC, TRUFFLE_SHADER_ENABLE_TINT or TRUFFLE_SHADER_ENABLE_SLANG");
     }
     const auto route = std::find_if(enabled.begin(), enabled.end(), [&](const auto& value) {
         return value.language == request.language && value.target == request.target;
@@ -287,11 +301,16 @@ rhi::Result<Compilation> Compiler::compile(const CompileRequest& request) {
     }
 #endif
 #if defined(TRUFFLE_SHADER_HAS_GLSLANG)
-    return compile_glslang(request, impl_->cache);
-#else
+    if (request.language == rhi::ShaderSourceLanguage::glsl ||
+        request.language == rhi::ShaderSourceLanguage::glsl_es)
+        return compile_glslang(request, impl_->cache);
+#endif
+#if defined(TRUFFLE_SHADER_HAS_SLANG)
+    if (request.language == rhi::ShaderSourceLanguage::slang)
+        return compile_slang(request, impl_->cache);
+#endif
     return rhi::Status::failure(rhi::StatusCode::unsupported,
                                "No enabled Shader compiler route");
-#endif
 }
 
 void Compiler::clear_cache() { impl_->cache.clear(); }

@@ -126,7 +126,7 @@ entry identities and binding remaps. The unreleased TSP draft retains its
 `1.0` identifiers without compatibility scaffolding.
 The merged #178-#181 Shader/Renderer foundations are
 not full module completion. Renderer feature work is paused; the remaining
-Shader phases (#187-#193) and their evidence gates are in
+Shader phases (#188, #192, and #193) and their evidence gates are in
 [`docs/roadmap.md`](docs/roadmap.md). See the
 [Shader API and implemented/planned route matrix](src/shader/README.md) for
 accepted sources, emitted targets, target versions, and native evidence.
@@ -154,6 +154,12 @@ to the dependency-free assembler with `-DTRUFFLE_BUILD_SHADERC=ON`, then enable
 the Shader module's glslang adapter explicitly with
 `-DTRUFFLE_SHADER_ENABLE_GLSLANG=ON`; the runtime RHI never gains a compiler
 dependency.
+Native Slang modules/imports can independently opt in with
+`-DTRUFFLE_SHADER_ENABLE_SLANG=ON -DTRUFFLE_SHADER_ENABLE_SPIRV_TOOLS=ON`;
+see [Slang's pinned source build and bounded target matrix](docs/shader-slang.md).
+HLSL compilation is independently enabled with
+`-DTRUFFLE_SHADER_ENABLE_DXC=ON -DTRUFFLE_SHADER_ENABLE_SPIRV_TOOLS=ON`;
+it uses pinned in-process DXC for SPIR-V and DXIL, without requiring glslang.
 Portable native outputs additionally require
 `-DTRUFFLE_SHADER_ENABLE_SPIRV_TOOLS=ON -DTRUFFLE_SHADER_ENABLE_SPIRV_CROSS=ON`.
 Explicitly prepare their pinned submodules first; configure never downloads.
