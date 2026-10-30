@@ -15,14 +15,81 @@ state build and link with every compiler adapter disabled; source compilation
 then reports `unsupported`.
 
 Enable `TRUFFLE_SHADER_ENABLE_GLSLANG=ON` to use the pinned GLSL/GLSL ES to
-Vulkan 1.1 / SPIR-V 1.3 adapter. This does **not** require building shaderc.
-With the option off, `Compiler::available()` is false and `compile()` returns
+Vulkan SPIR-V adapter. This does **not** require building shaderc.
+With the option off, `Compiler::routes()` is empty, `available()` is false and `compile()` returns
 `unsupported`; prepared Truffle Shader Packages (TSP, `.tsp`) still work through
 RHI and Renderer without linking a compiler. No language/compiler is fetched.
 An enabled install bundles glslang's static libraries and CMake package so
 installed `Truffle::Shader` consumers resolve its private static link closure.
 `Truffle::RHI` never links those libraries. Renderer can depend directly on the
 compiler-disabled Shader core without acquiring any compiler link dependency.
+
+## Routes and target configuration (#73, #185)
+
+`Compiler::routes()` describes only compiled-in source routes, not package
+assembly, all features of an upstream compiler, or live native device support.
+Each route lists its accepted language, emitted target, supported stages, and
+exact supported Vulkan/SPIR-V configurations; every listed stage/configuration
+combination is supported, subject to the reflection limits below.
+The borrowed read-only spans have process lifetime. `available()` is the
+convenience test for any source route, useful to compiler-optional clients.
+
+| Shader source acceptance | Emitted output | Enabled dependency | Status / verification |
+| --- | --- | --- | --- |
+| GLSL (core profile), vertex/fragment/compute | Vulkan SPIR-V | pinned glslang | Implemented; all reported configurations compile and emitted SPIR-V versions are checked |
+| GLSL ES (ES profile), vertex/fragment/compute | Vulkan SPIR-V | pinned glslang | Implemented; same configuration tests |
+| Slang, HLSL, WGSL, MSL | None through Shader today | none enabled | Planned #188-#191 under #73; no adapter or capability advertised |
+| SPIR-V, DXIL, Metal libraries, backend-native source | None through Shader today | none needed for assembly | Prepared TSP inputs, **not** source-compilation routes |
+
+Implemented typed `CompileRequest::vulkanTarget` configurations:
+
+| `VulkanVersion` environment | `SpirvVersion` emitted version |
+| --- | --- |
+| `v1_0` | `v1_0` |
+| `v1_1` | `v1_0` |
+| `v1_1` (default) | `v1_3` (default) |
+
+Vulkan is the target environment/profile, not an OpenGL SPIR-V environment.
+GLSL versus GLSL ES selects and validates the input profile; the source's
+`#version` controls its language version. This is not a promise to accept
+arbitrary valid GLSL features: unsupported reflected constructs fail explicitly.
+Unknown version enum values return `invalid_argument`; known but unsupported
+combinations (such as Vulkan 1.0/SPIR-V 1.3), languages, targets or stages return
+`unsupported`. These checks precede source resolution and compiler entry.
+With no compiler enabled, all valid source requests return `unsupported`.
+`Compilation::vulkanTarget` reports the effective configuration.
+
+```cpp
+const auto routes = truffle::shader::Compiler::routes();
+truffle::shader::CompileRequest request;
+request.vulkanTarget = {truffle::shader::VulkanVersion::v1_0,
+                        truffle::shader::SpirvVersion::v1_0};
+```
+
+Default Vulkan 1.1/SPIR-V 1.3 GLSL vertex/fragment output has native
+Vulkan/MoltenVK exact-readback evidence through Renderer's existing
+`SourceProgram` regression; GLSL ES compute output has existing native Vulkan
+package/dispatch evidence. The additional version configurations have CPU
+compilation/header/provenance tests, **not** new native execution evidence.
+Prepared MSL on Metal, HLSL/DXIL on D3D12, and GLSL/ES on GL-family backends
+are independent backend-native package paths, not Shader generation evidence.
+No backend maturity is promoted.
+
+The remaining #73 route matrix is **planned, not implemented or advertised**:
+
+| Input / mechanism | Intended output | Tracking / remaining gate |
+| --- | --- | --- |
+| Portable source via SPIR-V, optional SPIRV-Cross and validation | MSL, desktop GLSL (including macOS 4.1), GLSL ES | #187; target limits/remaps and native Metal/GL readback; GLES compiler validation separate from native evidence |
+| Native MSL, optional Apple tooling | MSL / offline Metal library | #188; SDK audit, truthful interfaces/dependencies, native readback |
+| HLSL, optional DXC | SPIR-V / DXIL where compiler/host supports it | #189; profiles/reflection, native Vulkan and separately tracked Windows evidence |
+| Slang, native modules/imports | Supported SPIR-V first; other outputs gated | #190; compiler audit, imported dependencies, native output; experimental Metal/WebGPU not promoted by emission alone |
+| WGSL, optional Tint | WGSL input/output and supported conversions determined by compiler audit | #191; actual directions, language semantics, reflection and compiler validation; no WebGPU execution claim |
+
+These are not an all-input/all-output cross-product promise. Complete reflection, validated
+cross-target interfaces/remaps/specialization, reproducible optional compiler
+packaging and per-route native conformance remain completion gates under #73
+(reflection #186, shared behavior #192, final evidence audit #193).
+The completed #178-#181 foundations are not full Shader-module completion.
 
 ## On-demand compilation and reload
 
@@ -81,7 +148,7 @@ the package's per-message limit without turning successful compilation into a
 packaging failure.
 
 Keys are SHA-256 over unambiguous length-framed effective inputs: adapter
-identity, pinned compiler version/revision, fixed target/environment/resources,
+identity, pinned compiler version/revision, effective target/environment and fixed resources,
 stage, language/profile, entry point, package name, debug option, normalized
 defines, ordered roots, preprocessed code, and every resolved identity/content.
 Comment-only dependency edits invalidate too. Resolver function addresses are
@@ -90,6 +157,12 @@ SHA-256 and is recorded in TSP provenance. The generated permutation name is a
 stable hash of sorted configuration defines (independent of source edits).
 The in-memory cache is instance-owned, unbounded until `clear_cache()`, and
 never stores failures. It is not a persistent content store.
+
+Compiler provenance preserves glslang's name/version; its revision records the
+pinned source SHA plus `truffle-glslang=2;vulkan=VERSION;spirv=VERSION`.
+The effective target therefore survives TSP serialization and shaderc inspection
+without changing the RHI/TSP schema. Both target options independently
+differentiate cache keys, even when generated instructions otherwise match.
 
 ## Reflection and limits
 

@@ -3,6 +3,10 @@ add_executable(truffle_shader_compiler_tests shader_compiler_tests.cpp)
 target_link_libraries(truffle_shader_compiler_tests PRIVATE truffle_shader)
 truffle_target_warnings(truffle_shader_compiler_tests)
 add_test(NAME truffle_shader_compiler_tests COMMAND truffle_shader_compiler_tests)
+add_executable(truffle_shader_route_tests shader_route_tests.cpp)
+target_link_libraries(truffle_shader_route_tests PRIVATE truffle_shader)
+truffle_target_warnings(truffle_shader_route_tests)
+add_test(NAME truffle_shader_route_tests COMMAND truffle_shader_route_tests)
 target_link_libraries(truffle_encom_tests PRIVATE truffle_encom)
 add_test(NAME truffle_encom_tests COMMAND truffle_encom_tests)
 
@@ -335,6 +339,12 @@ target_link_libraries(truffle_shader_package_tests PRIVATE truffle_backend_null)
 add_test(NAME truffle_shader_package_tests COMMAND truffle_shader_package_tests)
 
 if(TRUFFLE_BUILD_SHADERC)
+    add_test(NAME truffle_shaderc_routes
+        COMMAND "${CMAKE_COMMAND}"
+            "-DTRUFFLE_SHADERC=$<TARGET_FILE:truffle-shaderc>"
+            "-DTRUFFLE_EXPECT_COMPILER=$<BOOL:${TRUFFLE_SHADER_ENABLE_GLSLANG}>"
+            "-DTRUFFLE_SHADERC_TEST_DIR=${PROJECT_BINARY_DIR}/shaderc-routes"
+            -P "${PROJECT_SOURCE_DIR}/cmake/ShadercRoutesSmoke.cmake")
     add_test(NAME truffle_shaderc_self_test COMMAND truffle-shaderc --self-test)
     add_test(
         NAME truffle_shaderc_package_smoke

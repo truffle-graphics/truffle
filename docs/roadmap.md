@@ -24,25 +24,34 @@ Vulkan via MoltenVK (#56), and OpenGL 4.1 host-view presentation and
 synchronization (#61/#63 macOS parts). Other-platform verification remains
 non-blocking.
 
-The next work is parallel Shader and Renderer development:
+**Complete Shader first (#73); Renderer feature development is paused.**
+The merged Shader library (#178), shared Shader tools/TSP naming (#180),
+prepared-TSP Renderer execution (#179), and direct runtime compilation/rebuild
+integration (#181) are usable foundations, not module-completion claims.
 
-1. **Shader library (#178):** shared source composition/configuration,
-   optional offline/runtime compilation, reflection, dependencies, caching,
-   and rebuilding, initially using pinned GLSL/GLSL ES to SPIR-V.
-2. **Shader tools (#180):** clients of that library, with Truffle Shader
-   Package (TSP) naming and `.tsp` artifacts. This follows the library API.
-3. **Renderer (#179):** prepared-TSP GPU shader/pipeline ownership and real
-   frame-graph/batch execution. This runs independently of source compilation
-   and does not require EnCom or compiler dependencies.
-4. **Runtime integration (#181):** Renderer uses Shader directly (no adapter
-   module) for on-demand compilation and safe shader rebuild adoption, with
-   native output evidence.
+Shader completion proceeds through bounded, independently validated phases:
 
-The common compiled-result boundary is the existing RHI ShaderPackage;
-optional runtime compilation additionally uses the Shader request/result
-contract. Neither track waits for every compiler route in #73. Remaining
-languages/targets keep their tracking there. Real Renderer use of the RHI is
-expected to expose gaps, and fixing them is active work, not deferred work.
+1. **Route/target contracts (#185):** discover enabled source/target/stage
+   support, explicit validated Vulkan/SPIR-V settings, target-aware cache and
+   provenance, and shaderc discovery. The implemented versus planned matrix
+   is in [the Shader documentation](../src/shader/README.md).
+2. **Baseline reflection (#186):** constants, resources, and stage IO.
+3. **Portable native generation (#187):** native Metal/OpenGL outputs.
+4. **Native Metal inputs/libraries (#188), HLSL (#189), Slang and native module
+   imports (#190), WGSL (#191):** optional compiler routes with their own
+   validation and native evidence, not capability placeholders.
+5. **Shared behavior audit (#192):** composition, cache, rebuilding, and tools.
+6. **Completion audit (#193):** close #73 only after the required route,
+   reflection, package-isolation, and native evidence gates are satisfied.
+
+Delivery remains signed phased commits, immediate pushes, and reviewed
+merge-commit PRs. Each phase stays issue-scoped; #185 alone does not complete
+Shader. Renderer may supply existing regression/native Shader-output evidence
+and directly required correctness fixes only. Materials, lighting, texture/
+asset management, and other Renderer features wait until Shader completion.
+The common compiled-result boundary remains the existing RHI ShaderPackage;
+runtime compilation uses the Shader request/result contract. There is no
+adapter module and no RHI → Shader dependency.
 
 A practical baseline means resources, shaders, drawing and compute where
 supported, synchronization, presentation, and usable error handling. It does

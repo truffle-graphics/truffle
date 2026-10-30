@@ -16,15 +16,19 @@ precompiled or backend-native variants. Its separately enabled pinned glslang
 route consumes the shared Shader library to compile GLSL and GLSL ES to SPIR-V.
 Both paths record authoring-language
 provenance, source SHA-256 values, and compiler identity. Generated modules
-target Vulkan 1.1 and SPIR-V 1.3, matching the minimum runtime contract of the
-current native Vulkan lane. The tool never fetches or discovers a compiler
+default to Vulkan 1.1 and SPIR-V 1.3, matching the current native Vulkan lane.
+Explicit Vulkan 1.0/SPIR-V 1.0 and Vulkan 1.1/SPIR-V 1.0 configurations are
+also supported by Shader; their CPU compilation evidence is not a new native
+backend claim. The tool never fetches or discovers a compiler
 implicitly. Additional source-to-target compiler adapters must arrive with
 their pinned submodules and explicit enable flags.
 
 ## Inputs And Variants
 
-Recorded authoring routes are Slang, HLSL, GLSL, GLSL ES, WGSL, and MSL.
-Accepted precompiled routes are SPIR-V, DXIL, Metal libraries, and
+The package can record Slang, HLSL, GLSL, GLSL ES, WGSL, and MSL authoring
+provenance; only GLSL/GLSL ES to Vulkan SPIR-V is currently compiled by Shader.
+See the [implemented versus planned route matrix](../../src/shader/README.md#routes-and-target-configuration-73-185).
+Accepted prepared inputs are SPIR-V, DXIL, Metal libraries, and
 backend-native source variants.
 
 The DXIL target may carry HLSL source only as a `native_override`. A Direct3D
@@ -65,10 +69,10 @@ Prepared packages remain compiler-free. Offline and on-demand runtime source
 compilation share the optional Shader library; native backend compilation is a
 separate capability-reported route.
 
-Compilation routes may use pinned Slang, DXC, glslang, SPIR-V Tools,
-SPIRV-Cross, and Tint components. Glslang is linked only by the explicitly
+Planned #73 routes may use Slang, DXC, SPIR-V Tools, SPIRV-Cross and Tint;
+they are not currently integrated or advertised. Pinned glslang is linked only by the explicitly
 enabled Shader adapter (`TRUFFLE_SHADER_ENABLE_GLSLANG`) and never by RHI,
-backends or prepared-package Renderer consumers. Slang is one authoring route, not Truffle's
+backends or compiler-disabled Renderer consumers. Slang is one planned authoring route, not Truffle's
 mandatory shader language. Generated Metal and WGSL variants are rejected by
 default and require an explicit experimental package option; the CLI does not
 expose that opt-in.
@@ -107,11 +111,22 @@ core Shader/RHI/Renderer configuration remains compiler-free, and runtime
 Shader clients can leave shaderc disabled.
 
 ```sh
+truffle-shaderc --routes
 truffle-shaderc --compile --name material --target spirv --stage fragment \
   --source-language glsl --input shaders/material.frag --output material.tsp \
   --include-root shaders/include --define USE_TEXTURE=1 --define QUALITY=2
 truffle-shaderc --inspect material.tsp
+truffle-shaderc --compile --name legacy-target --target spirv --stage vertex \
+  --source-language glsl --input shaders/triangle.vert --output triangle-vk10.tsp \
+  --vulkan-version 1.0 --spirv-version 1.0
 ```
+
+`--routes` reports Shader's enabled source language/target/stage/configuration
+support (zero source routes when compilers are disabled), independently of
+the assembler's accepted target names. `--vulkan-version` and `--spirv-version`
+are compilation-only settings, validated by Shader, defaulting to 1.1/1.3.
+Both effective versions are recorded in compiler revision provenance and
+reported by `--inspect`. There is no CLI-owned compiler selection policy.
 
 Include roots and defines are repeatable and follow the shared library's
 resolution/configuration rules. `--define NAME` means `NAME=1`. Missing

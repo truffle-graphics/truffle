@@ -248,11 +248,6 @@ rhi::Status reflect(glslang::TProgram& program, EShLanguage nativeStage, rhi::Sh
 
 rhi::Result<Compilation> compile_glslang(const CompileRequest& request,
                                        std::vector<Compilation>& cache) {
-    if (request.target != rhi::ShaderTarget::spirv ||
-        (request.language != rhi::ShaderSourceLanguage::glsl &&
-         request.language != rhi::ShaderSourceLanguage::glsl_es)) {
-        return unsupported("Only GLSL/GLSL ES to Vulkan 1.1 SPIR-V 1.3 is supported");
-    }
     if (request.source.identity.empty() || request.source.text.empty() ||
         request.source.text.find('\0') != std::string::npos ||
         request.source.text.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()) ||
@@ -283,8 +278,12 @@ rhi::Result<Compilation> compile_glslang(const CompileRequest& request,
     glslang_version_t version{};
     glslang_get_version(&version);
     Compilation result;
+    result.vulkanTarget = request.vulkanTarget;
     result.compiler = {"glslang", std::to_string(version.major) + "." + std::to_string(version.minor) +
                                    "." + std::to_string(version.patch), TRUFFLE_GLSLANG_REVISION};
+    result.compiler.revision += ";truffle-glslang=2;vulkan=" +
+        std::string{vulkan_version_name(request.vulkanTarget.environment)} + ";spirv=" +
+        std::string{spirv_version_name(request.vulkanTarget.spirv)};
     glslang::TShader shader{stage};
     const char* text = request.source.text.c_str();
     const char* identity = request.source.identity.c_str();
@@ -294,8 +293,12 @@ rhi::Result<Compilation> compile_glslang(const CompileRequest& request,
     shader.setEntryPoint("main");
     const bool es = request.language == rhi::ShaderSourceLanguage::glsl_es;
     shader.setEnvInput(glslang::EShSourceGlsl, stage, glslang::EShClientVulkan, es ? 310 : 450);
-    shader.setEnvClient(glslang::EShClientVulkan, glslang::EShTargetVulkan_1_1);
-    shader.setEnvTarget(glslang::EShTargetSpv, glslang::EShTargetSpv_1_3);
+    shader.setEnvClient(glslang::EShClientVulkan,
+        request.vulkanTarget.environment == VulkanVersion::v1_0
+            ? glslang::EShTargetVulkan_1_0 : glslang::EShTargetVulkan_1_1);
+    shader.setEnvTarget(glslang::EShTargetSpv,
+        request.vulkanTarget.spirv == SpirvVersion::v1_0
+            ? glslang::EShTargetSpv_1_0 : glslang::EShTargetSpv_1_3);
     const auto messages = static_cast<EShMessages>(EShMsgSpvRules | EShMsgVulkanRules);
     Includer includer{request};
     std::string preprocessed;
@@ -309,7 +312,7 @@ rhi::Result<Compilation> compile_glslang(const CompileRequest& request,
         includer.error.clear();
     }
     std::string key;
-    field(key, "Truffle GLSL adapter 1; Vulkan1.1; SPIRV1.3; default-resource-limits");
+    field(key, "Truffle GLSL adapter 2; default-resource-limits");
     field(key, result.compiler.version);
     field(key, result.compiler.revision);
     field(key, request.name);

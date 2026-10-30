@@ -1,5 +1,6 @@
 #include "truffle/shader/compiler.hpp"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -18,21 +19,77 @@ struct Compiler::Impl {
 Compiler::Compiler() : impl_(std::make_unique<Impl>()) {}
 Compiler::~Compiler() = default;
 
-bool Compiler::available() noexcept {
+std::string_view vulkan_version_name(VulkanVersion version) noexcept {
+    switch (version) {
+    case VulkanVersion::v1_0: return "1.0";
+    case VulkanVersion::v1_1: return "1.1";
+    }
+    return {};
+}
+
+std::string_view spirv_version_name(SpirvVersion version) noexcept {
+    switch (version) {
+    case SpirvVersion::v1_0: return "1.0";
+    case SpirvVersion::v1_3: return "1.3";
+    }
+    return {};
+}
+
+std::span<const CompilerRoute> Compiler::routes() noexcept {
 #if defined(TRUFFLE_SHADER_HAS_GLSLANG)
-    return true;
+    static constexpr rhi::ShaderStage stages[]{
+        rhi::ShaderStage::vertex, rhi::ShaderStage::fragment, rhi::ShaderStage::compute};
+    static constexpr VulkanTarget targets[]{
+        {VulkanVersion::v1_0, SpirvVersion::v1_0},
+        {VulkanVersion::v1_1, SpirvVersion::v1_0},
+        {VulkanVersion::v1_1, SpirvVersion::v1_3}};
+    static constexpr CompilerRoute enabled[]{
+        {rhi::ShaderSourceLanguage::glsl, rhi::ShaderTarget::spirv, stages, targets},
+        {rhi::ShaderSourceLanguage::glsl_es, rhi::ShaderTarget::spirv, stages, targets}};
+    return enabled;
 #else
-    return false;
+    return {};
 #endif
 }
 
+bool Compiler::available() noexcept { return !routes().empty(); }
+
 rhi::Result<Compilation> Compiler::compile(const CompileRequest& request) {
+    if (vulkan_version_name(request.vulkanTarget.environment).empty() ||
+        spirv_version_name(request.vulkanTarget.spirv).empty()) {
+        return rhi::Status::failure(rhi::StatusCode::invalid_argument,
+                                   "Invalid Vulkan environment or SPIR-V version");
+    }
+    const auto enabled = routes();
+    if (enabled.empty()) {
+        return rhi::Status::failure(rhi::StatusCode::unsupported,
+                                   "Shader compiler disabled: enable TRUFFLE_SHADER_ENABLE_GLSLANG");
+    }
+    const auto route = std::find_if(enabled.begin(), enabled.end(), [&](const auto& value) {
+        return value.language == request.language && value.target == request.target;
+    });
+    if (route == enabled.end()) {
+        return rhi::Status::failure(rhi::StatusCode::unsupported,
+            "No enabled Shader compiler route: " +
+            std::string{rhi::shader_source_language_name(request.language)} + " -> " +
+            std::string{rhi::shader_target_name(request.target)});
+    }
+    if (std::find(route->stages.begin(), route->stages.end(), request.stage) == route->stages.end()) {
+        return rhi::Status::failure(rhi::StatusCode::unsupported,
+                                   "Shader stage not supported by the selected compiler route");
+    }
+    if (std::find(route->vulkanTargets.begin(), route->vulkanTargets.end(), request.vulkanTarget) ==
+        route->vulkanTargets.end()) {
+        return rhi::Status::failure(rhi::StatusCode::unsupported,
+            "Unsupported Vulkan/SPIR-V configuration: Vulkan " +
+            std::string{vulkan_version_name(request.vulkanTarget.environment)} + " / SPIR-V " +
+            std::string{spirv_version_name(request.vulkanTarget.spirv)});
+    }
 #if defined(TRUFFLE_SHADER_HAS_GLSLANG)
     return compile_glslang(request, impl_->cache);
 #else
-    (void)request;
     return rhi::Status::failure(rhi::StatusCode::unsupported,
-                               "Shader compiler disabled: enable TRUFFLE_SHADER_ENABLE_GLSLANG");
+                               "No enabled Shader compiler route");
 #endif
 }
 

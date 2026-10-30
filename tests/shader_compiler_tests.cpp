@@ -60,7 +60,8 @@ void main() { gl_Position = vec4(position * SCALE, 1); color = shade(params.tint
     check(second.value().cacheKey == first.value().cacheKey, "Deterministic key");
     check(first.value().compiler.name == "glslang" &&
           !first.value().compiler.version.empty() &&
-          first.value().compiler.revision == "a8d28bd082bff18ffbe80996e922b012f915cf07",
+          first.value().compiler.revision ==
+              "a8d28bd082bff18ffbe80996e922b012f915cf07;truffle-glslang=2;vulkan=1.1;spirv=1.3",
           "Pinned compiler identity accompanies result and cache");
     request.defines[0].value = "3.0";
     auto configured = compiler.compile(request);

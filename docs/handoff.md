@@ -7,6 +7,60 @@ AI work that reaches a commit must update this handoff before that commit.
 Promote durable decisions into project context, architecture, roadmap, or ADRs
 rather than growing a historical transcript here.
 
+## Shader Route And Target Contracts (#185)
+
+- Implemented in `truffle_shader`: `Compiler::routes()` reports only the two
+  enabled GLSL/GLSL ES → Vulkan SPIR-V routes, vertex/fragment/compute, with
+  three exact target configurations: Vulkan 1.0/SPIR-V 1.0, Vulkan 1.1/SPIR-V
+  1.0, and the unchanged default Vulkan 1.1/SPIR-V 1.3. Compiler-disabled
+  builds report no routes. `available()` remains an any-source-route
+  convenience, not a native device probe.
+- Typed `VulkanTarget` settings are checked before source resolution/compiler
+  entry. Invalid enum values return `invalid_argument`; unsupported routes,
+  stages and configurations return `unsupported`. Results expose the effective
+  target. Compiler revision provenance retains the pinned glslang SHA and adds
+  adapter identity/effective target versions; both options differentiate cache
+  keys and survive TSP serialization. RHI/TSP schema is unchanged.
+- Shaderc is a client: `--routes`, `--vulkan-version`, `--spirv-version`, and
+  existing `--inspect` expose the shared contract. Its duplicated hard-coded
+  language/target rejection was removed. Prepared assembly remains available
+  without any compiler and rejects compilation-only settings.
+- Ownership/cohesion reviewed: Shader core owns capability/configuration
+  validation; its private glslang adapter owns compilation/reflection and
+  target translation. Shaderc owns argument parsing/reporting, not route
+  policy. Dependencies remain Renderer → Shader → RHI → Base, with only
+  optional private compiler libraries under Shader. No backend, adapter module,
+  Renderer feature, watcher/service, or new shader language was added.
+- Focused local Apple Silicon validation uses the existing Ninja Debug builds,
+  SDK sysroot, warnings-as-errors and `--parallel 4`. Shaderc was enabled in
+  both build directories to exercise CLI-on/compiler-on and CLI-on/compiler-off:
+  - `ctest --test-dir build/renderer-shader -R
+    'truffle_shader|shaderc|truffle_renderer_(source_program|program|vulkan_source)_tests'
+    --output-on-failure`: 12/12 passed.
+  - `ctest --test-dir build/renderer-shader-off -R
+    'truffle_shader|shaderc|truffle_renderer_(source_program|program)_tests'
+    --output-on-failure`: 9/9 passed.
+  - Library and CLI cover all 18 language/stage/configuration combinations,
+    unsupported language/target combinations, invalid settings, exact emitted
+    SPIR-V header versions, independent target-option cache identity, repeated
+    hits, default equivalence, and persisted target provenance.
+  - Installed Shader/Renderer consumers pass in both builds. Disabled consumer
+    Ninja link commands contain Shader/RHI/Base (plus Renderer when requested)
+    only, with no compiler link dependencies.
+  - Existing Vulkan/MoltenVK `SourceProgram` regression passes with validation
+    and exact output through rebuild/cache/failure/recovery; no new native
+    evidence is claimed for the additional version configurations.
+  - Architecture guard and `git diff --check` pass. No dependencies installed,
+    full platform matrix or hosted workflows run.
+- **Next:** review this issue-scoped signed commit/PR before merge. Shader is
+  not complete: finish #186 reflection, #187 portable native outputs, #188
+  MSL/Metal libraries, #189 HLSL, #190 Slang/native imports, #191 WGSL, #192
+  shared behavior, and #193 final evidence audit under #73. Renderer features
+  (including materials, lighting, texture/asset management) remain paused;
+  existing Renderer use is limited to Shader regression/native-output evidence
+  and directly required fixes. Continue signed phased commits, immediate pushes
+  and reviewed merge-commit PR delivery.
+
 ## Renderer Source Programs (#181)
 
 - Renderer now links `truffle_shader` directly (Renderer → Shader → RHI →
