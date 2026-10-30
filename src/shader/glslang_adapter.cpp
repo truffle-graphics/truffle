@@ -1,6 +1,7 @@
 #include "truffle/shader/compiler.hpp"
 #include "digest.hpp"
 #include "spirv_reflection.hpp"
+#include "spirv_translation.hpp"
 
 #include <glslang/Public/ShaderLang.h>
 #include <glslang/Public/ResourceLimits.h>
@@ -178,9 +179,25 @@ rhi::Result<Compilation> compile_glslang(const CompileRequest& request,
     result.vulkanTarget = request.vulkanTarget;
     result.compiler = {"glslang", std::to_string(version.major) + "." + std::to_string(version.minor) +
                                    "." + std::to_string(version.patch), TRUFFLE_GLSLANG_REVISION};
-    result.compiler.revision += ";truffle-glslang=4;vulkan=" +
+    result.compiler.revision += ";truffle-glslang=5;vulkan=" +
         std::string{vulkan_version_name(request.vulkanTarget.environment)} + ";spirv=" +
         std::string{spirv_version_name(request.vulkanTarget.spirv)};
+    result.compiler.revision += ";target=" + std::string{rhi::shader_target_name(request.target)} +
+        ";debug=" + (request.generateDebugInfo ? "1" : "0") +
+        ";experimental-metal=" + (request.allowExperimentalMetalGeneration ? "1" : "0");
+#if defined(TRUFFLE_SHADER_HAS_SPIRV_TOOLS)
+    result.compiler.revision += ";spirv-tools=" TRUFFLE_SPIRV_TOOLS_REVISION
+                                ";spirv-headers=" TRUFFLE_SPIRV_HEADERS_REVISION;
+#endif
+#if defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS)
+    if (request.target != rhi::ShaderTarget::spirv) {
+        result.compiler.revision += ";spirv-cross=" TRUFFLE_SPIRV_CROSS_REVISION
+            ";truffle-cross=2;msl=macos-2.1;glsl=410-core;essl=300-es;"
+            "flat-scalar-resources;gl-fixup-clipspace;metal-vertex-reserve=16;"
+            "metal-no-auxiliary-bindings;"
+            "cross-namespace=truffle_spirv_cross;cross-spv-namespace=truffle_spirv_cross_spv;cross-exceptions";
+    }
+#endif
     glslang::TShader shader{stage};
     const char* text = request.source.text.c_str();
     const char* identity = request.source.identity.c_str();
@@ -218,6 +235,7 @@ rhi::Result<Compilation> compile_glslang(const CompileRequest& request,
     field(key, std::to_string(static_cast<int>(request.language)));
     field(key, std::to_string(static_cast<int>(request.target)));
     field(key, request.generateDebugInfo ? "debug" : "release");
+    field(key, request.allowExperimentalMetalGeneration ? "experimental-metal" : "stable");
     field(key, preamble);
     field(key, preprocessed);
     for (const auto& root : request.includeRoots) field(key, root);
@@ -260,11 +278,35 @@ rhi::Result<Compilation> compile_glslang(const CompileRequest& request,
     if (words.empty() || words[0] != 0x07230203) return invalid("glslang SPIR-V generation failed");
     auto status = detail::reflect_spirv(words, request.stage, variant.reflection);
     if (!status.ok()) return status;
+#if defined(TRUFFLE_SHADER_HAS_SPIRV_TOOLS)
+    const auto validation = detail::validate_spirv(words, request.vulkanTarget);
+    if (!validation.ok()) return validation;
+#endif
     variant.code.resize(words.size() * sizeof(unsigned int));
     std::memcpy(variant.code.data(), words.data(), variant.code.size());
     result.diagnostics = (bounded(shader.getInfoLog()) + bounded(program.getInfoLog()) +
                           logger.getAllMessages()).substr(0, 16384);
     rhi::ShaderPackageDesc desc;
+#if defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS)
+    if (request.target != rhi::ShaderTarget::spirv) {
+        auto translated = detail::translate_spirv(words, request, variant, desc.remaps);
+        if (!translated.ok()) return translated;
+        if (request.target == rhi::ShaderTarget::glsl || request.target == rhi::ShaderTarget::glsl_es) {
+            glslang::TShader generated{stage};
+            const char* generatedText = reinterpret_cast<const char*>(variant.code.data());
+            const int generatedLength = static_cast<int>(variant.code.size());
+            generated.setStringsWithLengths(&generatedText, &generatedLength, 1);
+            const bool outputEs = request.target == rhi::ShaderTarget::glsl_es;
+            if (!generated.parse(GetDefaultResources(), outputEs ? 300 : 410,
+                                 outputEs ? EEsProfile : ECoreProfile, false, false, EShMsgDefault))
+                return invalid("Generated GLSL validation failed: " + bounded(generated.getInfoLog()));
+            glslang::TProgram generatedProgram;
+            generatedProgram.addShader(&generated);
+            if (!generatedProgram.link(EShMsgDefault))
+                return invalid("Generated GLSL link validation failed: " + bounded(generatedProgram.getInfoLog()));
+        }
+    }
+#endif
     desc.name = request.name;
     desc.compilers.push_back(result.compiler);
     for (const auto& dependency : result.dependencies)
@@ -282,7 +324,8 @@ rhi::Result<Compilation> compile_glslang(const CompileRequest& request,
             result.diagnostics.substr(0, 4096)});
     }
     desc.variants.push_back(std::move(variant));
-    auto package = rhi::ShaderPackage::create(std::move(desc));
+    auto package = rhi::ShaderPackage::create(std::move(desc),
+        {.allowExperimentalMetalGeneration = request.allowExperimentalMetalGeneration});
     if (!package.ok()) return package.status();
     result.package = std::move(package).value();
     cache.push_back(result);

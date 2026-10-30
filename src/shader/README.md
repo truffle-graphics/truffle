@@ -24,6 +24,23 @@ installed `Truffle::Shader` consumers resolve its private static link closure.
 `Truffle::RHI` never links those libraries. Renderer can depend directly on the
 compiler-disabled Shader core without acquiring any compiler link dependency.
 
+`TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS=ON` adds real in-process SPIR-V validation.
+`TRUFFLE_SHADER_ENABLE_SPIRV_CROSS=ON` requires both glslang and that validator,
+and adds portable Metal/GLSL output. All are private, optional dependencies.
+Prepare sources explicitly before configuring (configure never downloads):
+
+```sh
+git submodule update --init vendor/glslang vendor/spirv-tools \
+  vendor/spirv-headers vendor/spirv-cross
+```
+
+Compiler-enabled configure requires clean checked-out sources at the documented
+pins, so compiler provenance cannot silently describe different source.
+SPIRV-Tools' validation library alone is built/exported; optimizer and CLI
+libraries are not part of Shader's install closure. SPIRV-Cross installs its
+core/GLSL/MSL static closure and CMake configs. Enabled installs include the
+new dependencies' license notices; all-off consumers require none of them.
+
 ## Routes and target configuration (#73, #185)
 
 `Compiler::routes()` describes only compiled-in source routes, not package
@@ -31,13 +48,20 @@ assembly, all features of an upstream compiler, or live native device support.
 Each route lists its accepted language, emitted target, supported stages, and
 exact supported Vulkan/SPIR-V configurations; every listed stage/configuration
 combination is supported, subject to the reflection limits below.
+Native routes also list typed `metalTargets`, `glslTargets`, or `glslEsTargets`.
+The Vulkan settings on these routes configure the **intermediate**, not the
+native output profile.
 The borrowed read-only spans have process lifetime. `available()` is the
 convenience test for any source route, useful to compiler-optional clients.
+`CompilerRoute::experimental` marks generated MSL's explicit safety requirement.
 
 | Shader source acceptance | Emitted output | Enabled dependency | Status / verification |
 | --- | --- | --- | --- |
 | GLSL (core profile), vertex/fragment/compute | Vulkan SPIR-V | pinned glslang | Implemented; all reported configurations compile and emitted SPIR-V versions are checked |
 | GLSL ES (ES profile), vertex/fragment/compute | Vulkan SPIR-V | pinned glslang | Implemented; same configuration tests |
+| GLSL or GLSL ES, vertex/fragment/compute | macOS MSL 2.1 source | glslang + SPIRV-Tools + SPIRV-Cross | Experimental explicit opt-in; generated graphics and compute execute on Apple M3 Pro |
+| GLSL or GLSL ES, vertex/fragment | GLSL 410 core (macOS OpenGL 4.1) | same three optional adapters | Generated resource-backed graphics executes on macOS 4.1; compute rejected |
+| GLSL or GLSL ES, vertex/fragment | GLSL ES 300 | same three optional adapters | Emission and real glslang parse/link validation; **no native GLES execution evidence** |
 | Slang, HLSL, WGSL, MSL | None through Shader today | none enabled | Planned #188-#191 under #73; no adapter or capability advertised |
 | SPIR-V, DXIL, Metal libraries, backend-native source | None through Shader today | none needed for assembly | Prepared TSP inputs, **not** source-compilation routes |
 
@@ -71,15 +95,92 @@ Vulkan/MoltenVK exact-readback evidence through Renderer's existing
 `SourceProgram` regression; GLSL ES compute output has existing native Vulkan
 package/dispatch evidence. The additional version configurations have CPU
 compilation/header/provenance tests, **not** new native execution evidence.
-Prepared MSL on Metal, HLSL/DXIL on D3D12, and GLSL/ES on GL-family backends
-are independent backend-native package paths, not Shader generation evidence.
+Prepared HLSL/DXIL on D3D12 and prepared GLSL ES on GLES remain independent
+backend-native paths, not additional Shader generation evidence.
 No backend maturity is promoted.
+
+### Portable native generation (#187)
+
+`CompileRequest::metalTarget = {MetalVersion::v2_1}`,
+`glslTarget = {GlslVersion::v410}`, and
+`glslEsTarget = {GlslEsVersion::v300}` are the exact supported native profiles,
+and their defaults. No arbitrary upstream target/version/stage is advertised.
+Set `request.target` to `metal_source`, `glsl`, or `glsl_es`. GLSL ES *input*
+uses Vulkan GLSL ES 310+ semantics; output ES 300 is a distinct conversion.
+MSL is macOS source only, not authoring MSL or producing a Metal library (#188).
+GL 410 and ES 300 do not advertise compute.
+
+Generated Metal remains experimental: set
+`request.allowExperimentalMetalGeneration = true` to compile, and
+`ShaderPackageOptions::allowExperimentalMetalGeneration = true` to load.
+Neither compiler discovery nor emission disables the package safety gate.
+The RHI package's `entryPoint` is the logical selection/agreement identity;
+`nativeEntryPoint` records the actual emitted function (for example `main0`).
+When authoring a descriptor, an empty native name means the logical spelling;
+canonical packages store it explicitly. `Device::create_shader(package, ...)`
+selects by logical name and forwards the native spelling. Serialized packages
+are loaded and consumed **without test-side metadata repairs**.
+
+The translator reuses emitted-SPIR-V canonical reflection, including full
+directional IO, scalar default bits, push ranges and workgroup axis IDs.
+Diagnostic resource names may change per target, but logical slots/types and
+entry identities still receive cross-target agreement checks. Both separate
+texture and sampler records survive GL combined sampling: both name the real
+combined uniform and map to its real texture unit. A sampler is never silently
+dropped or assigned an unrelated resource.
+
+Native-generation limits, distinct from SPIR-V reflection:
+
+- Descriptor resources must be scalar (no descriptor arrays yet). Metal uses
+  explicit flat buffers 16..29 (0..15 reserved for RHI vertex streams, 30 for
+  push data), textures 0..127 and samplers 0..15, rejecting excess slots.
+  Push constants map to buffer 30; function constants preserve logical IDs and
+  defaults, including direct workgroup axis specialization.
+- Metal runtime storage-buffer tails can be indexed, but querying their
+  `.length()` is `unsupported`: SPIRV-Cross requires an auxiliary buffer-size
+  table that RHI does not supply. Translation also rejects reported auxiliary
+  swizzle, view-mask, dispatch-base, captured-output/patch-output and input
+  threadgroup resources. Multiview, capture/tessellation, swizzling and
+  compiler-side dynamic-offset helpers are not enabled; dynamic offsets remain
+  native bind-group offsets. No helper slot or fake resource remap is published.
+- Generated package shaders explicitly carry complete per-stage resource
+  reflection into RHI. Metal skips layout-visible resources absent from that
+  stage, even with `ShaderStageMask::all`; it does not fall back into reserved
+  vertex-stream slots. Low-level/native shaders do not infer completeness from
+  empty reflection; their default binding convention remains available.
+- GL 410/ES 300 require one-to-one scalar texture/sampler pairing; many-to-one,
+  one-to-many, unpaired resources and synthesized samplers are explicit
+  `unsupported` results. A broader sampling graph needs a shared multi-use
+  native binding contract, not invented remaps.
+- GL emits core-profile code without required extensions, storage resources,
+  push constants or specialization constants. Unsupported extensions and
+  these constructs are rejected explicitly. Resources must be statically used
+  so linked native reflection can retain them. Internal IO must be scalar/vector
+  leaves; location-derived varying names handle different source-side names.
+- GL vertex emission converts Vulkan's 0..1 clip depth to -1..1. No hidden
+  Y-flip or language/target profile guessing is applied.
+
+Every native source is owned by the resulting `Compilation`/TSP, not a borrowed
+translator buffer. SPIR-V validation and translation run in process, never
+through subprocess tools. GL/ES emitted source is additionally parsed/linked
+with real glslang at the selected output profile before packaging.
+
+Evidence: all 42 native route/stage/intermediate-version combinations (two input
+profiles; three intermediate configurations; MSL three stages and GL/ES two)
+pass unit tests and byte-identical CLI/library comparison. Native default
+intermediate packages on Apple M3 Pro produce exactly 256 RGBA `(64,64,32,255)`
+pixels on Vulkan/MoltenVK, Metal and OpenGL 4.1 using one portable vertex/fragment
+fixture with texture, sampler and uniform bindings. Generated Vulkan and Metal
+compute consume push data, scalar defaults/overrides and local-size IDs; widths
+2/3 write exactly `2107..2110` / `3113..3118`, preserving sentinel tails.
+Metal API/GPU validation and Vulkan validation are enabled in that test.
+GLES native execution and higher native profiles remain future evidence, not
+claims established by successful compiler validation.
 
 The remaining #73 route matrix is **planned, not implemented or advertised**:
 
 | Input / mechanism | Intended output | Tracking / remaining gate |
 | --- | --- | --- |
-| Portable source via SPIR-V, optional SPIRV-Cross and validation | MSL, desktop GLSL (including macOS 4.1), GLSL ES | #187; target limits/remaps and native Metal/GL readback; GLES compiler validation separate from native evidence |
 | Native MSL, optional Apple tooling | MSL / offline Metal library | #188; SDK audit, truthful interfaces/dependencies, native readback |
 | HLSL, optional DXC | SPIR-V / DXIL where compiler/host supports it | #189; profiles/reflection, native Vulkan and separately tracked Windows evidence |
 | Slang, native modules/imports | Supported SPIR-V first; other outputs gated | #190; compiler audit, imported dependencies, native output; experimental Metal/WebGPU not promoted by emission alone |
@@ -88,7 +189,7 @@ The remaining #73 route matrix is **planned, not implemented or advertised**:
 These are not an all-input/all-output cross-product promise. Complete reflection, validated
 cross-target interfaces/remaps/specialization, reproducible optional compiler
 packaging and per-route native conformance remain completion gates under #73
-(reflection #186, shared behavior #192, final evidence audit #193).
+(baseline reflection #186 completed; shared behavior #192, final evidence audit #193).
 The completed #178-#181 foundations are not full Shader-module completion.
 
 ## On-demand compilation and reload
@@ -159,7 +260,10 @@ The in-memory cache is instance-owned, unbounded until `clear_cache()`, and
 never stores failures. It is not a persistent content store.
 
 Compiler provenance preserves glslang's name/version; its revision records the
-pinned source SHA plus `truffle-glslang=4;vulkan=VERSION;spirv=VERSION`.
+pinned source SHA plus `truffle-glslang=5;vulkan=VERSION;spirv=VERSION`,
+target, debug and experimental settings. When enabled it also records the exact
+SPIRV-Tools/Headers pins, and native outputs record the SPIRV-Cross pin plus
+adapter revision, output profiles, flat slot policy and clip conversion.
 The effective target therefore survives TSP serialization and shaderc inspection
 with the current development TSP metadata. Both target options independently
 differentiate cache keys, even when generated instructions otherwise match.
@@ -178,7 +282,7 @@ used.
 | --- | --- |
 | Push constants | One range per emitted block/stage, from lowest member offset to the last addressable byte; nonzero offsets, holes, arrays, nested structures and row/column-major matrix strides come from SPIR-V layout |
 | Scalar specialization | `bool`, signed/unsigned 32-bit integer, 32-bit float; exact `SpecId`, name, type and default bits (including false/negative values); native defaults and typed overrides |
-| Fixed descriptors | Uniform/storage buffer, separate image/texture and sampler arrays; multidimensional descriptor counts multiply in SPIR-V array order; minimum size is **per buffer element** |
+| Fixed descriptors | Single-dimensional uniform/storage buffer, separate image/texture and sampler arrays; minimum size is **per buffer element**. Nested descriptor arrays are rejected: Vulkan does not permit the emitted nested handle-array type (VUID 04655), even though glslang accepts that source. Arrays **inside** a buffer remain supported. |
 | Buffer layout/access | Explicit member offsets and nested array/matrix strides; readonly variable/member decorations; minimum bytes include one element of a runtime-sized **buffer tail**, not an unsized descriptor array |
 | Location IO | 32-bit scalars/vectors, matrices, fixed arrays and interface structures/blocks expand recursively to one scalar/vector leaf per occupied location; canonical stage/direction/location, member locations and interpolation survive full package round-trip |
 | Compute workgroups | Fixed positive dimensions and optional direct scalar specialization IDs per X/Y/Z axis, including ID zero/shared IDs; defaults/typed overrides resolve before explicit size comparisons, device limits and retained/native dispatch metadata |

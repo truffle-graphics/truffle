@@ -114,13 +114,16 @@ compose Truffle with one at its own application boundary.
 ## Current Focus
 
 Current focus is **Shader completion first** under #73. Route/target contracts
-(#185, PR #194) are merged; baseline reflection (#186) is active.
-Full directional-IO and per-axis workgroup-specialization contracts now have
-focused package/native evidence and await independent review. The unreleased
+(#185, PR #194) and baseline reflection (#186, PRs #195/#196) are completed.
+Portable native output (#187) is the current bounded review phase: optional
+SPIRV-Tools/SPIRV-Cross generate experimentally gated macOS MSL 2.1, GLSL 410
+and GLSL ES 300 with real logical/native entry identities and binding remaps.
+Generated resource-backed graphics agree exactly on Apple Silicon Vulkan,
+Metal and OpenGL 4.1; GLES has compiler validation, not native evidence. The unreleased
 TSP draft retains its `1.0` identifiers without compatibility scaffolding.
 The merged #178-#181 Shader/Renderer foundations are
 not full module completion. Renderer feature work is paused; the remaining
-Shader phases (#186-#193) and their evidence gates are in
+Shader phases (#187-#193) and their evidence gates are in
 [`docs/roadmap.md`](docs/roadmap.md). See the
 [Shader API and implemented/planned route matrix](src/shader/README.md) for
 accepted sources, emitted targets, target versions, and native evidence.
@@ -148,6 +151,11 @@ to the dependency-free assembler with `-DTRUFFLE_BUILD_SHADERC=ON`, then enable
 the Shader module's glslang adapter explicitly with
 `-DTRUFFLE_SHADER_ENABLE_GLSLANG=ON`; the runtime RHI never gains a compiler
 dependency.
+Portable native outputs additionally require
+`-DTRUFFLE_SHADER_ENABLE_SPIRV_TOOLS=ON -DTRUFFLE_SHADER_ENABLE_SPIRV_CROSS=ON`.
+Explicitly prepare their pinned submodules first; configure never downloads.
+See the [shared Shader target profiles and limits](src/shader/README.md#portable-native-generation-187)
+and [shaderc examples](docs/rhi1/shader-package.md#tool-usage).
 
 `truffle-rhi-doctor --strict --json <path>` records the declared matrix and the
 adapters that actually initialized on the current host. Strict mode fails when

@@ -3,10 +3,90 @@ target_link_libraries(truffle_shader PUBLIC truffle_rhi)
 truffle_configure_target(truffle_shader Shader)
 add_library(Truffle::Shader ALIAS truffle_shader)
 
-if(TRUFFLE_SHADER_ENABLE_GLSLANG)
-    if(NOT EXISTS "${PROJECT_SOURCE_DIR}/vendor/glslang/CMakeLists.txt")
-        message(FATAL_ERROR "Initialize the pinned vendor/glslang submodule")
+function(truffle_shader_require_pin name revision)
+    if(NOT EXISTS "${PROJECT_SOURCE_DIR}/vendor/${name}/CMakeLists.txt")
+        message(FATAL_ERROR "Initialize pinned sources: git submodule update --init vendor/${name}")
     endif()
+    find_package(Git REQUIRED QUIET)
+    execute_process(COMMAND "${GIT_EXECUTABLE}" -C "${PROJECT_SOURCE_DIR}/vendor/${name}" rev-parse HEAD
+                    RESULT_VARIABLE result OUTPUT_VARIABLE actual OUTPUT_STRIP_TRAILING_WHITESPACE)
+    execute_process(COMMAND "${GIT_EXECUTABLE}" -C "${PROJECT_SOURCE_DIR}/vendor/${name}"
+                    status --porcelain --untracked-files=no
+                    RESULT_VARIABLE status_result OUTPUT_VARIABLE changes OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT result EQUAL 0 OR NOT status_result EQUAL 0 OR NOT actual STREQUAL revision OR changes)
+        message(FATAL_ERROR "Shader requires clean vendor/${name} at ${revision}; initialize the pinned submodule")
+    endif()
+endfunction()
+
+if(TRUFFLE_SHADER_ENABLE_SPIRV_CROSS AND
+   (NOT TRUFFLE_SHADER_ENABLE_GLSLANG OR NOT TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS))
+    message(FATAL_ERROR "SPIRV-Cross routes require TRUFFLE_SHADER_ENABLE_GLSLANG and TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS")
+endif()
+if(TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS)
+    truffle_shader_require_pin(spirv-tools b707790a898e44038547df54580022fc1cf89c3d)
+    truffle_shader_require_pin(spirv-headers 29981f65241605e08b0ede4cfeb999fe3b723c6a)
+    set(SPIRV-Headers_SOURCE_DIR "${PROJECT_SOURCE_DIR}/vendor/spirv-headers")
+    set(SPIRV_SKIP_TESTS ON CACHE BOOL "" FORCE)
+    set(SPIRV_SKIP_EXECUTABLES ON CACHE BOOL "" FORCE)
+    set(SPIRV_WERROR OFF CACHE BOOL "" FORCE)
+    set(SPIRV_TOOLS_BUILD_STATIC ON CACHE BOOL "" FORCE)
+    set(SPIRV_TOOLS_USE_MIMALLOC OFF CACHE BOOL "" FORCE)
+    set(SPIRV_TOOLS_USE_MIMALLOC_IN_STATIC_BUILD OFF CACHE BOOL "" FORCE)
+    # Export only the validation library used by Shader, not optimizer/linker tools.
+    set(SKIP_SPIRV_TOOLS_INSTALL ON CACHE BOOL "" FORCE)
+    add_subdirectory("${PROJECT_SOURCE_DIR}/vendor/spirv-tools"
+                     "${PROJECT_BINARY_DIR}/dependencies/spirv-tools" EXCLUDE_FROM_ALL)
+    if(TRUFFLE_INSTALL)
+        install(TARGETS SPIRV-Tools-static EXPORT TruffleTargets
+                ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}")
+        install(FILES "${PROJECT_SOURCE_DIR}/vendor/spirv-tools/LICENSE"
+                DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/Truffle/spirv-tools")
+        install(FILES "${PROJECT_SOURCE_DIR}/vendor/spirv-headers/LICENSE"
+                DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/Truffle/spirv-headers")
+        install(DIRECTORY "${PROJECT_SOURCE_DIR}/vendor/spirv-headers/LICENSES/"
+                DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/Truffle/spirv-headers")
+    endif()
+    target_sources(truffle_shader PRIVATE spirv_validation.cpp)
+    target_link_libraries(truffle_shader PRIVATE SPIRV-Tools-static)
+    target_compile_definitions(truffle_shader PRIVATE
+        TRUFFLE_SHADER_HAS_SPIRV_TOOLS=1
+        TRUFFLE_SPIRV_TOOLS_REVISION="b707790a898e44038547df54580022fc1cf89c3d"
+        TRUFFLE_SPIRV_HEADERS_REVISION="29981f65241605e08b0ede4cfeb999fe3b723c6a")
+endif()
+if(TRUFFLE_SHADER_ENABLE_SPIRV_CROSS)
+    truffle_shader_require_pin(spirv-cross 1a6169566c73d3da552748fc372fe2bbb856e46e)
+    foreach(option CLI ENABLE_TESTS ENABLE_HLSL ENABLE_CPP ENABLE_REFLECT ENABLE_C_API ENABLE_UTIL)
+        set(SPIRV_CROSS_${option} OFF CACHE BOOL "" FORCE)
+    endforeach()
+    set(SPIRV_CROSS_STATIC ON CACHE BOOL "" FORCE)
+    set(SPIRV_CROSS_SHARED OFF CACHE BOOL "" FORCE)
+    set(SPIRV_CROSS_EXCEPTIONS_TO_ASSERTIONS OFF CACHE BOOL "" FORCE)
+    set(SPIRV_CROSS_NAMESPACE_OVERRIDE truffle_spirv_cross CACHE STRING "" FORCE)
+    set(SPIRV_CROSS_SPV_HEADER_NAMESPACE_OVERRIDE truffle_spirv_cross_spv CACHE STRING "" FORCE)
+    set(SPIRV_CROSS_ENABLE_GLSL ON CACHE BOOL "" FORCE)
+    set(SPIRV_CROSS_ENABLE_MSL ON CACHE BOOL "" FORCE)
+    if(TRUFFLE_INSTALL)
+        set(SPIRV_CROSS_SKIP_INSTALL OFF CACHE BOOL "" FORCE)
+    else()
+        set(SPIRV_CROSS_SKIP_INSTALL ON CACHE BOOL "" FORCE)
+    endif()
+    add_subdirectory("${PROJECT_SOURCE_DIR}/vendor/spirv-cross"
+                     "${PROJECT_BINARY_DIR}/dependencies/spirv-cross")
+    target_sources(truffle_shader PRIVATE spirv_translation.cpp)
+    target_link_libraries(truffle_shader PRIVATE spirv-cross-msl spirv-cross-glsl)
+    target_compile_definitions(truffle_shader PRIVATE
+        TRUFFLE_SHADER_HAS_SPIRV_CROSS=1
+        TRUFFLE_SPIRV_CROSS_REVISION="1a6169566c73d3da552748fc372fe2bbb856e46e")
+    if(TRUFFLE_INSTALL)
+        install(FILES "${PROJECT_SOURCE_DIR}/vendor/spirv-cross/LICENSE"
+                DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/Truffle/spirv-cross")
+        install(DIRECTORY "${PROJECT_SOURCE_DIR}/vendor/spirv-cross/LICENSES/"
+                DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/Truffle/spirv-cross")
+    endif()
+endif()
+
+if(TRUFFLE_SHADER_ENABLE_GLSLANG)
+    truffle_shader_require_pin(glslang a8d28bd082bff18ffbe80996e922b012f915cf07)
     set(BUILD_EXTERNAL OFF CACHE BOOL "" FORCE)
     set(ENABLE_GLSLANG_BINARIES OFF CACHE BOOL "" FORCE)
     set(ENABLE_HLSL OFF CACHE BOOL "" FORCE)

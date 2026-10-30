@@ -46,6 +46,13 @@ point, permutation, logical bindings, push constants, specialization constants,
 interfaces, and required and preferred workgroup sizes. Blob bytes are outside
 the manifest and correspond by canonical variant index.
 
+Entry metadata encodes logical `entryPoint`, then `nativeEntryPoint`, then
+permutation (three strings). Logical selection and cross-target agreement do
+not depend on native function spelling. Canonicalization expands an empty
+descriptor native name to the logical spelling; the encoded native name is
+always explicit. RHI forwards that exact spelling to native creation.
+This #187 draft extension retains schema `1.0`, without a legacy reader.
+
 Reflection vectors encode bindings, push ranges, scalar specializations, then
 **all** located stage IO, including internal varyings. Each IO record encodes
 `u8 stage`, `u8 direction` (`0=input`, `1=output`), `u32 location`, then name,

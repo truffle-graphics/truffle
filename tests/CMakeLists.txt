@@ -7,6 +7,31 @@ add_executable(truffle_shader_route_tests shader_route_tests.cpp)
 target_link_libraries(truffle_shader_route_tests PRIVATE truffle_shader)
 truffle_target_warnings(truffle_shader_route_tests)
 add_test(NAME truffle_shader_route_tests COMMAND truffle_shader_route_tests)
+add_executable(truffle_shader_portable_tests shader_portable_tests.cpp)
+target_link_libraries(truffle_shader_portable_tests PRIVATE truffle_shader)
+truffle_target_warnings(truffle_shader_portable_tests)
+add_test(NAME truffle_shader_portable_tests COMMAND truffle_shader_portable_tests)
+if(TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS)
+    add_executable(truffle_shader_spirv_validation_tests shader_spirv_validation_tests.cpp)
+    target_include_directories(truffle_shader_spirv_validation_tests PRIVATE "${PROJECT_SOURCE_DIR}/src/shader")
+    target_link_libraries(truffle_shader_spirv_validation_tests PRIVATE truffle_shader)
+    truffle_target_warnings(truffle_shader_spirv_validation_tests)
+    add_test(NAME truffle_shader_spirv_validation_tests COMMAND truffle_shader_spirv_validation_tests)
+endif()
+if(APPLE AND TRUFFLE_SHADER_ENABLE_SPIRV_CROSS AND TRUFFLE_BUILD_BACKEND_VULKAN AND
+   TRUFFLE_BUILD_BACKEND_METAL AND TRUFFLE_BUILD_BACKEND_OPENGL)
+    add_executable(truffle_shader_portable_native_tests shader_portable_native_tests.cpp)
+    target_link_libraries(truffle_shader_portable_native_tests PRIVATE
+        truffle_shader truffle_backend_vulkan truffle_backend_metal truffle_backend_opengl)
+    target_include_directories(truffle_shader_portable_native_tests PRIVATE
+        "${PROJECT_SOURCE_DIR}/src/backends/vulkan")
+    truffle_target_warnings(truffle_shader_portable_native_tests)
+    add_test(NAME truffle_shader_portable_native_tests COMMAND truffle_shader_portable_native_tests)
+    set_tests_properties(truffle_shader_portable_native_tests PROPERTIES
+        LABELS "native-smoke;validation;shader"
+        FAIL_REGULAR_EXPRESSION "Validation (Error|Warning)"
+        ENVIRONMENT "MTL_DEBUG_LAYER=1;MTL_SHADER_VALIDATION=1")
+endif()
 add_executable(truffle_shader_reflection_tests shader_reflection_tests.cpp)
 target_link_libraries(truffle_shader_reflection_tests PRIVATE truffle_shader)
 truffle_target_warnings(truffle_shader_reflection_tests)
@@ -156,6 +181,10 @@ if(TRUFFLE_BUILD_BACKEND_VULKAN)
                                    "${TRUFFLE_VULKAN_HOST_LOADER}" DIRECTORY)
             set_property(TEST truffle_vulkan_tests APPEND PROPERTY ENVIRONMENT
                 "DYLD_FALLBACK_LIBRARY_PATH=${_truffle_vulkan_loader_dir}:/usr/local/lib:/usr/lib")
+            if(TARGET truffle_shader_portable_native_tests)
+                set_property(TEST truffle_shader_portable_native_tests APPEND PROPERTY ENVIRONMENT
+                    "DYLD_FALLBACK_LIBRARY_PATH=${_truffle_vulkan_loader_dir}:/usr/local/lib:/usr/lib")
+            endif()
         endif()
     endif()
     if(TRUFFLE_SHADER_ENABLE_GLSLANG)
@@ -364,6 +393,16 @@ target_link_libraries(truffle_shader_package_tests PRIVATE truffle_backend_null)
 add_test(NAME truffle_shader_package_tests COMMAND truffle_shader_package_tests)
 
 if(TRUFFLE_BUILD_SHADERC)
+    if(TRUFFLE_SHADER_ENABLE_SPIRV_CROSS)
+        add_executable(truffle_shader_portable_equivalence_tests shader_portable_equivalence_tests.cpp)
+        target_link_libraries(truffle_shader_portable_equivalence_tests PRIVATE truffle_shader)
+        truffle_target_warnings(truffle_shader_portable_equivalence_tests)
+        add_test(NAME truffle_shaderc_portable_smoke COMMAND "${CMAKE_COMMAND}"
+            "-DTRUFFLE_SHADERC=$<TARGET_FILE:truffle-shaderc>"
+            "-DTRUFFLE_SHADER_EQUIVALENCE=$<TARGET_FILE:truffle_shader_portable_equivalence_tests>"
+            "-DTRUFFLE_SHADERC_TEST_DIR=${PROJECT_BINARY_DIR}/shaderc-portable-smoke"
+            -P "${PROJECT_SOURCE_DIR}/cmake/ShadercPortableSmoke.cmake")
+    endif()
     add_test(NAME truffle_shaderc_routes
         COMMAND "${CMAKE_COMMAND}"
             "-DTRUFFLE_SHADERC=$<TARGET_FILE:truffle-shaderc>"

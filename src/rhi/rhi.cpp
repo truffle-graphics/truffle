@@ -3804,9 +3804,10 @@ Result<Shader> Device::create_shader(const ShaderPackage& package,
         ShaderDesc desc;
         desc.stage = variant->stage;
         desc.format = variant->format;
-        desc.entryPoint = variant->entryPoint;
+        desc.entryPoint = variant->nativeEntryPoint;
         desc.code = variant->code;
         desc.reflection = variant->reflection.bindings;
+        desc.resourceBindingsComplete = variant->kind == ShaderVariantKind::generated;
         desc.pushConstants = variant->reflection.pushConstants;
         desc.specializationConstants =
             variant->reflection.specializationConstants;

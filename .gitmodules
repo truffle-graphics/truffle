@@ -7,3 +7,12 @@
 [submodule "vendor/glslang"]
 	path = vendor/glslang
 	url = https://github.com/KhronosGroup/glslang.git
+[submodule "vendor/spirv-cross"]
+	path = vendor/spirv-cross
+	url = https://github.com/KhronosGroup/SPIRV-Cross.git
+[submodule "vendor/spirv-tools"]
+	path = vendor/spirv-tools
+	url = https://github.com/KhronosGroup/SPIRV-Tools.git
+[submodule "vendor/spirv-headers"]
+	path = vendor/spirv-headers
+	url = https://github.com/KhronosGroup/SPIRV-Headers.git

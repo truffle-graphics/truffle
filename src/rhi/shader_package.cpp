@@ -546,6 +546,7 @@ template <typename T, typename Read>
     }
 
     for (auto& variant : desc.variants) {
+        if (variant.nativeEntryPoint.empty()) variant.nativeEntryPoint = variant.entryPoint;
         if (variant.entryPoint.empty() || variant.code.empty() ||
             !format_matches_target(variant)) {
             return invalid("shader variant descriptor is invalid");
@@ -772,6 +773,7 @@ void write_reflection(Writer& writer, const ShaderReflection& value) {
                      write_enum(output, variant.kind);
                      write_enum(output, variant.stage);
                      output.string(variant.entryPoint);
+                     output.string(variant.nativeEntryPoint);
                      output.string(variant.permutation);
                      write_reflection(output, variant.reflection);
                  });
@@ -843,6 +845,7 @@ void write_reflection(Writer& writer, const ShaderReflection& value) {
                                   read_enum(input, variant.stage,
                                             ShaderStage::compute) &&
                                   input.string(variant.entryPoint) &&
+                                  input.string(variant.nativeEntryPoint) &&
                                   input.string(variant.permutation) &&
                                   read_reflection(input, variant.reflection);
                        }) &&

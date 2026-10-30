@@ -22,6 +22,22 @@ using SourceResolver = std::function<rhi::Result<Source>(
 
 enum class VulkanVersion { v1_0, v1_1 };
 enum class SpirvVersion { v1_0, v1_3 };
+enum class MetalVersion { v2_1 };
+enum class GlslVersion { v410 };
+enum class GlslEsVersion { v300 };
+
+struct MetalTarget {
+    MetalVersion version = MetalVersion::v2_1;
+    bool operator==(const MetalTarget&) const = default;
+};
+struct GlslTarget {
+    GlslVersion version = GlslVersion::v410;
+    bool operator==(const GlslTarget&) const = default;
+};
+struct GlslEsTarget {
+    GlslEsVersion version = GlslEsVersion::v300;
+    bool operator==(const GlslEsTarget&) const = default;
+};
 
 struct VulkanTarget {
     VulkanVersion environment = VulkanVersion::v1_1;
@@ -37,6 +53,10 @@ struct CompilerRoute {
     rhi::ShaderTarget target;
     std::span<const rhi::ShaderStage> stages;
     std::span<const VulkanTarget> vulkanTargets;
+    std::span<const MetalTarget> metalTargets{};
+    std::span<const GlslTarget> glslTargets{};
+    std::span<const GlslEsTarget> glslEsTargets{};
+    bool experimental = false;
 };
 
 // Unknown enum values have no name.
@@ -51,6 +71,11 @@ struct CompileRequest {
     rhi::ShaderSourceLanguage language = rhi::ShaderSourceLanguage::glsl;
     rhi::ShaderTarget target = rhi::ShaderTarget::spirv;
     VulkanTarget vulkanTarget;
+    MetalTarget metalTarget;
+    GlslTarget glslTarget;
+    GlslEsTarget glslEsTarget;
+    // Explicit consent is required both to produce and to load generated MSL.
+    bool allowExperimentalMetalGeneration = false;
     std::vector<std::string> includeRoots;
     SourceResolver resolver;
     std::vector<rhi::ShaderDefine> defines;

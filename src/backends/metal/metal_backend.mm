@@ -100,15 +100,25 @@ struct MetalShaderResource {
     ShaderDesc desc;
 };
 
+struct MetalShaderBindings {
+    explicit MetalShaderBindings(const ShaderDesc& shader)
+        : mappings(shader.bindingMap), resources(shader.reflection),
+          complete(shader.resourceBindingsComplete) {}
+
+    std::vector<ShaderBindingMap> mappings;
+    std::vector<ResourceBinding> resources;
+    bool complete = false;
+};
+
 struct MetalPipelineResource {
     MetalPipelineResource(id<MTLRenderPipelineState> pipelineValue,
                           id<MTLDepthStencilState> depthStencilValue,
                           PipelineDesc descValue,
-                          std::vector<ShaderBindingMap> vertexMapValue,
-                          std::vector<ShaderBindingMap> fragmentMapValue)
+                          const ShaderDesc& vertexShader,
+                          const ShaderDesc& fragmentShader)
         : pipeline(pipelineValue), depthStencil(depthStencilValue),
-          desc(std::move(descValue)), vertexMap(std::move(vertexMapValue)),
-          fragmentMap(std::move(fragmentMapValue)) {
+          desc(std::move(descValue)), vertexBindings(vertexShader),
+          fragmentBindings(fragmentShader) {
         desc.vertexShader = nullptr;
         desc.fragmentShader = nullptr;
         desc.layout = nullptr;
@@ -124,16 +134,16 @@ struct MetalPipelineResource {
     id<MTLRenderPipelineState> pipeline = nil;
     id<MTLDepthStencilState> depthStencil = nil;
     PipelineDesc desc;
-    std::vector<ShaderBindingMap> vertexMap;
-    std::vector<ShaderBindingMap> fragmentMap;
+    MetalShaderBindings vertexBindings;
+    MetalShaderBindings fragmentBindings;
 };
 
 struct MetalComputePipelineResource {
     MetalComputePipelineResource(id<MTLComputePipelineState> pipelineValue,
                                  ComputePipelineDesc descValue,
-                                 std::vector<ShaderBindingMap> bindingMapValue)
+                                 const ShaderDesc& shader)
         : pipeline(pipelineValue), desc(std::move(descValue)),
-          bindingMap(std::move(bindingMapValue)) {
+          bindings(shader) {
         desc.computeShader = nullptr;
         desc.layout = nullptr;
         desc.cache = nullptr;
@@ -145,7 +155,7 @@ struct MetalComputePipelineResource {
 
     id<MTLComputePipelineState> pipeline = nil;
     ComputePipelineDesc desc;
-    std::vector<ShaderBindingMap> bindingMap;
+    MetalShaderBindings bindings;
 };
 
 struct MetalSemaphoreResource {
@@ -1089,8 +1099,7 @@ struct MetalFormat {
         }
         return std::static_pointer_cast<void>(
             std::make_shared<MetalPipelineResource>(
-                pipeline, depthStencil, desc, vertex->desc.bindingMap,
-                fragment->desc.bindingMap));
+                pipeline, depthStencil, desc, vertex->desc, fragment->desc));
     }
 }
 
@@ -1131,7 +1140,7 @@ struct MetalFormat {
         }
         return std::static_pointer_cast<void>(
             std::make_shared<MetalComputePipelineResource>(
-                pipeline, desc, shader->desc.bindingMap));
+                pipeline, desc, shader->desc));
     }
 }
 
@@ -1853,6 +1862,18 @@ metal_blit_state(MTLPixelFormat format, Filter filter) {
     }
 }
 
+[[nodiscard]] bool metal_uses_binding(
+    const MetalShaderBindings& shader,
+    const detail::NativeBindingResource& binding) {
+    return !shader.complete ||
+           std::any_of(shader.resources.begin(), shader.resources.end(),
+                       [&](const ResourceBinding& resource) {
+                           return resource.group == binding.group &&
+                                  resource.binding == binding.binding &&
+                                  binding.arrayElement < resource.arrayCount;
+                       });
+}
+
 [[nodiscard]] NSUInteger metal_binding_index(
     std::span<const ShaderBindingMap> mappings,
     const detail::NativeBindingResource& binding) {
@@ -1876,11 +1897,11 @@ metal_blit_state(MTLPixelFormat format, Filter filter) {
     std::span<const detail::NativeBindingResource> bindings) {
     for (const auto& binding : bindings) {
         const auto bind_stage = [&](ShaderStageMask stage,
-                                    std::span<const ShaderBindingMap> mappings) {
-            if (!has_stage(binding.visibility, stage)) {
+                                    const MetalShaderBindings& shader) {
+            if (!has_stage(binding.visibility, stage) || !metal_uses_binding(shader, binding)) {
                 return Status::success();
             }
-            const auto index = metal_binding_index(mappings, binding);
+            const auto index = metal_binding_index(shader.mappings, binding);
             switch (binding.type) {
             case BindingType::uniform_buffer:
             case BindingType::storage_buffer: {
@@ -1935,12 +1956,12 @@ metal_blit_state(MTLPixelFormat format, Filter filter) {
             return Status::success();
         };
         if (auto status = bind_stage(ShaderStageMask::vertex,
-                                     pipeline.vertexMap);
+                                     pipeline.vertexBindings);
             !status.ok()) {
             return status;
         }
         if (auto status = bind_stage(ShaderStageMask::fragment,
-                                     pipeline.fragmentMap);
+                                     pipeline.fragmentBindings);
             !status.ok()) {
             return status;
         }
@@ -1953,10 +1974,11 @@ metal_blit_state(MTLPixelFormat format, Filter filter) {
     const MetalComputePipelineResource& pipeline,
     std::span<const detail::NativeBindingResource> bindings) {
     for (const auto& binding : bindings) {
-        if (!has_stage(binding.visibility, ShaderStageMask::compute)) {
+        if (!has_stage(binding.visibility, ShaderStageMask::compute) ||
+            !metal_uses_binding(pipeline.bindings, binding)) {
             continue;
         }
-        const auto index = metal_binding_index(pipeline.bindingMap, binding);
+        const auto index = metal_binding_index(pipeline.bindings.mappings, binding);
         switch (binding.type) {
         case BindingType::uniform_buffer:
         case BindingType::storage_buffer: {

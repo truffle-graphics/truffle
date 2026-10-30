@@ -14,7 +14,9 @@ replacement. See [the Shader API](../../src/shader/README.md).
 `truffle-shaderc` is an optional host tool. Its dependency-free path assembles
 precompiled or backend-native variants. Its separately enabled pinned glslang
 route consumes the shared Shader library to compile GLSL and GLSL ES to SPIR-V.
-Both paths record authoring-language
+Portable outputs additionally use pinned optional SPIRV-Cross and real
+SPIRV-Tools validation inside Shader, producing macOS MSL 2.1, desktop GLSL
+410 core, or GLSL ES 300 source. Both paths record authoring-language
 provenance, source SHA-256 values, and compiler identity. Generated modules
 default to Vulkan 1.1 and SPIR-V 1.3, matching the current native Vulkan lane.
 Explicit Vulkan 1.0/SPIR-V 1.0 and Vulkan 1.1/SPIR-V 1.0 configurations are
@@ -26,7 +28,8 @@ their pinned submodules and explicit enable flags.
 ## Inputs And Variants
 
 The package can record Slang, HLSL, GLSL, GLSL ES, WGSL, and MSL authoring
-provenance; only GLSL/GLSL ES to Vulkan SPIR-V is currently compiled by Shader.
+provenance; Shader compiles GLSL/GLSL ES through Vulkan SPIR-V to the bounded
+native profiles above when their adapters are explicitly enabled.
 See the [implemented versus planned route matrix](../../src/shader/README.md#routes-and-target-configuration-73-185).
 Accepted prepared inputs are SPIR-V, DXIL, Metal libraries, and
 backend-native source variants.
@@ -43,6 +46,7 @@ variant for the same target, stage, entry point, and permutation.
 Every package records:
 
 - entry points and stages;
+- logical entry identity plus the exact native entry spelling;
 - permutations, defines, and specialization constants;
 - required RHI capabilities;
 - logical binding layouts and per-target remapping;
@@ -97,13 +101,33 @@ Prepared packages remain compiler-free. Offline and on-demand runtime source
 compilation share the optional Shader library; native backend compilation is a
 separate capability-reported route.
 
-Planned #73 routes may use Slang, DXC, SPIR-V Tools, SPIRV-Cross and Tint;
+Planned #73 routes may use Slang, DXC and Tint;
 they are not currently integrated or advertised. Pinned glslang is linked only by the explicitly
 enabled Shader adapter (`TRUFFLE_SHADER_ENABLE_GLSLANG`) and never by RHI,
 backends or compiler-disabled Renderer consumers. Slang is one planned authoring route, not Truffle's
 mandatory shader language. Generated Metal and WGSL variants are rejected by
-default and require an explicit experimental package option; the CLI does not
-expose that opt-in.
+default and require an explicit experimental package option. The CLI exposes
+`--allow-experimental-metal` for generated MSL compilation, assembly, append
+and inspection; WGSL remains gated without a CLI opt-in. The compiler request's
+Metal opt-in does not implicitly opt future package loads in.
+
+The canonical manifest stores `entryPoint` as the logical selection/agreement
+key and `nativeEntryPoint` as the native function spelling. Different emitted
+entry names do not evade cross-target reflection agreement. An empty native
+name in a freshly authored descriptor means the logical spelling; canonical
+packages record both explicitly. Runtime selection uses the logical spelling
+and forwards the serialized native name to the backend without patching blobs.
+This evolving TSP draft retains `1.0`, without legacy readers.
+
+Generated variants promise exhaustive per-stage resource reflection. Runtime
+selection explicitly marks `ShaderDesc::resourceBindingsComplete`, so Metal
+does not bind layout-visible but absent stage resources through native fallback
+slots. Precompiled/native-override variants and direct descriptors retain
+optional metadata by default; empty reflection alone is not proof of no use.
+See [binding semantics](bindings-and-pipelines.md#layout-and-reflection-agreement).
+Generated MSL rejects runtime storage-buffer `.length()` and other reported
+auxiliary-resource requirements until RHI owns the required bindings; ordinary
+runtime-tail indexing remains supported.
 
 ## Runtime And Tool Evidence
 
@@ -147,6 +171,16 @@ truffle-shaderc --inspect material.tsp
 truffle-shaderc --compile --name legacy-target --target spirv --stage vertex \
   --source-language glsl --input shaders/triangle.vert --output triangle-vk10.tsp \
   --vulkan-version 1.0 --spirv-version 1.0
+truffle-shaderc --compile --name material --target msl --stage fragment \
+  --source-language glsl --input shaders/material.frag --output material-metal.tsp \
+  --msl-version 2.1 --allow-experimental-metal
+truffle-shaderc --inspect material-metal.tsp --allow-experimental-metal
+truffle-shaderc --compile --name material --target glsl --stage fragment \
+  --source-language glsl --input shaders/material.frag --output material-gl41.tsp \
+  --glsl-version 410
+truffle-shaderc --compile --name material --target glsl-es --stage fragment \
+  --source-language glsl --input shaders/material.frag --output material-es30.tsp \
+  --glsl-es-version 300
 ```
 
 `--routes` reports Shader's enabled source language/target/stage/configuration
@@ -155,6 +189,15 @@ the assembler's accepted target names. `--vulkan-version` and `--spirv-version`
 are compilation-only settings, validated by Shader, defaulting to 1.1/1.3.
 Both effective versions are recorded in compiler revision provenance and
 reported by `--inspect`. There is no CLI-owned compiler selection policy.
+Native version flags are compilation-only, validate the selected target, and
+accept exactly the corresponding typed Shader profile. Discovery marks Metal
+experimental and lists only graphics stages for GL 410/ES 300.
+
+Inspection prints native entry names and every binding remap. Append preserves
+translator-owned remaps and rejects conflicting global target/stage mappings.
+The [native generation limits and exact native evidence](../../src/shader/README.md#portable-native-generation-187)
+are narrower than upstream SPIRV-Cross feature coverage. GLES compiler validation
+does not claim native GLES execution, nor does this phase complete Shader.
 
 Include roots and defines are repeatable and follow the shared library's
 resolution/configuration rules. `--define NAME` means `NAME=1`. Missing

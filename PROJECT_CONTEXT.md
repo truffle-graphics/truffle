@@ -66,6 +66,10 @@ Current evidence is narrower than the old roadmap claimed:
   capability gates, and native-override selection. Optional
   `truffle-shaderc` assembles precompiled or native variants without a compiler
   toolchain, or explicitly enables pinned glslang for GLSL/GLSL ES to SPIR-V.
+  Optional SPIRV-Tools validation and SPIRV-Cross add bounded portable macOS
+  MSL 2.1, GLSL 410 core and GLSL ES 300 generation (#187). Generated MSL remains
+  experimental; exact generated resource-backed graphics agree on Vulkan/
+  MoltenVK, Metal and macOS GL 4.1. GLES has compiler validation only.
   The Shader library (#178/#180) owns compilation; Renderer consumes its
   in-memory results directly through `renderer::SourceProgram` (#181).
 - WebGPU and WebGL2 now have explicit source-only targets; WebGL2 contains an
@@ -169,14 +173,15 @@ execution (#179), and optional runtime compilation with safe rebuild adoption
 (#181) are completed foundations, not module-completion claims.
 **Complete Shader first (#73); Renderer feature work is paused.** The bounded
 first phase (#185, merged PR #194) adds truthful route discovery and typed target settings.
-Baseline reflection (#186) is active: representable push/constants/arrays/IO
+Baseline reflection (#186) is completed (PRs #195/#196): representable push/constants/arrays/IO
 have focused implementation evidence (merged PR #195). The approved RHI/TSP
 extension now serializes canonical full directional IO and direct per-axis
 workgroup specialization; typed resolution precedes limits/native/dispatch
-metadata. Native Vulkan and Metal exact readback pass. This signed phase awaits
-independent review; #186 stays open, and the Shader module is not complete.
-Remaining phases are portable native Metal/OpenGL
-generation (#187), MSL/Metal libraries (#188), HLSL (#189), Slang/native module
+metadata. Native Vulkan and Metal exact readback pass. Portable native
+Metal/OpenGL generation (#187) is the active, bounded review phase: pinned
+optional translation/validation, target limits, true native remaps and logical/
+native entry identities retain evolving TSP `1.0`. Shader is not complete.
+Remaining phases are MSL/Metal libraries (#188), HLSL (#189), Slang/native module
 imports (#190), WGSL (#191), shared composition/cache/rebuild/tool audit (#192),
 and final evidence/completion audit (#193). Use signed phased commits,
 immediate pushes, and reviewed PR merge commits. Existing Renderer regressions

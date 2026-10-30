@@ -24,7 +24,7 @@ int main() {
     request.source = {"route.glsl", "#version 450\nvoid main(){ gl_Position=vec4(0); }\n"};
     const auto routes = shader::Compiler::routes();
     check(shader::Compiler::available() == !routes.empty(), "Availability means any enabled source route");
-    check(routes.empty() || routes.size() == 2, "Only the two implemented source languages are advertised");
+    check(routes.empty() || routes.size() == 2 || routes.size() == 8, "Only implemented source routes are advertised");
 
     auto invalidRequest = request;
     bool resolved = false;
@@ -81,6 +81,7 @@ int main() {
     }
     std::set<std::string> keys;
     for (const auto& route : routes) {
+        if (route.target != rhi::ShaderTarget::spirv) continue;
         check(route.target == rhi::ShaderTarget::spirv &&
               (route.language == rhi::ShaderSourceLanguage::glsl ||
                route.language == rhi::ShaderSourceLanguage::glsl_es),
@@ -134,7 +135,7 @@ int main() {
                 const auto provenance = ";vulkan=" +
                     std::string{shader::vulkan_version_name(configuration.environment)} +
                     ";spirv=" + std::string{shader::spirv_version_name(configuration.spirv)};
-                check(compilation.compiler.revision.ends_with(provenance), "Compiler provenance includes effective target");
+                check(compilation.compiler.revision.find(provenance) != std::string::npos, "Compiler provenance includes effective target");
                 auto loaded = rhi::ShaderPackage::load(compilation.package.bytes());
                 check(loaded.ok() && loaded.value().desc().compilers.front() == compilation.compiler,
                       "Target provenance persists in serialized TSP");

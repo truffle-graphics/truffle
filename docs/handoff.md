@@ -7,11 +7,122 @@ AI work that reaches a commit must update this handoff before that commit.
 Promote durable decisions into project context, architecture, roadmap, or ADRs
 rather than growing a historical transcript here.
 
-## Shader Reflection Contracts (#186, Awaiting Independent Review)
+## Portable Shader Targets (#187, Ready For Parent Review)
+
+- **Independent review fixes on PR #197:** MSL translation now checks all seven
+  upstream auxiliary-resource feedback APIs **after** compilation and rejects
+  unsupported helper contracts before publishing source. Runtime buffer-tail
+  `.length()` specifically needs an unbound size table (default buffer 25,
+  overlapping allocated descriptors); no fake remap is added. Swizzle/view/
+  dispatch/capture helpers are rejected too; dynamic helper offsets and
+  tessellation/capture options are not enabled. Runtime-tail indexing remains
+  supported and executes in Vulkan/Metal compute; Vulkan `.length()` still
+  compiles. Translator provenance advances to `truffle-cross=2`.
+- **Explicit resource authority:** RHI's `ShaderDesc::resourceBindingsComplete`
+  defaults false; package selection sets it only for `generated` variants.
+  Complete empty reflection means no resources; optional/empty low-level or
+  precompiled/native-override metadata does **not** imply that. Metal snapshots
+  the per-stage authority with reflection/remaps and skips genuinely absent
+  resources despite broad layout visibility. Existing native fallback remains.
+  No new TSP wire field/version or compiler/backend dependency is needed.
+- **Review regression evidence:** new Metal native graphics uses group 0,
+  uniform binding 0, real vertex stream 0 and `ShaderStageMask::all`. Vertex/group
+  binding in **both orders** reads all 256 pixels exactly `(64,64,32,255)` from
+  unchanged generated packages. Low-level native compute with empty resource
+  metadata retains real storage-buffer binding and specialized readback.
+  The new `.length()` unit regression was confirmed failing before the fix.
+- **Focused review validation:** existing Ninja Debug/SDK/warnings-as-errors
+  builds, `--parallel 4`; translator-on **7/7** portable unit/native, CLI
+  equivalence, package, Metal backend/conformance and Renderer–Metal tests pass.
+  Compiler-off **6/6** compiler/route/package, Metal and installed Shader/
+  Renderer/RHI consumers pass, with no optional compiler names in the installed
+  Shader consumer link graph. Previous full focused configuration evidence
+  below is the implementation baseline, not a repeated full matrix.
+  Metal binding snapshots/encoding remain one backend-owned lifecycle, and RHI
+  forwards semantic completeness without owning translation. The larger
+  backend/RHI files remain cohesive for these narrowly coupled changes.
+- #185/#186 are completed in PRs #194/#195/#196. This bounded compiler-route
+  phase uses the existing `feat/shader-portable-targets` checkout, based on
+  develop `b269e60bbea1572e51a7b15b1dfdd19b1edc112d`; no other checkout/worktree.
+  Parent owns review, merge and tracker acceptance. Shader is **not complete**;
+  Renderer feature development remains paused; #188-#193 remain outstanding.
+- **Owner/boundary:** Shader owns optional in-process validation/translation,
+  shared source/include/define/cache/rebuild orchestration and output ownership.
+  RHI owns canonical package semantics and logical/native entry lookup. Shader
+  links only RHI/Base plus private optional toolchains; tests alone link native
+  backends. No Shader→backend/Renderer or RHI→Shader dependency.
+- **Profiles:** GLSL and Vulkan GLSL ES input → SPIR-V, experimental macOS MSL
+  2.1 source, GLSL 410 core, or GLSL ES 300. Native routes use the same three
+  Vulkan/SPIR-V intermediate configurations. Metal has vertex/fragment/compute;
+  GL 410/ES 300 have vertex/fragment only. Unknown profiles/stages and unsupported
+  features fail explicitly before claiming success. No native MSL authoring or
+  metallib output (#188), HLSL/Slang/WGSL route or higher GLES profile is claimed.
+- **Pins/audit:** SPIRV-Cross SDK `1.4.350.1` at
+  `1a6169566c73d3da552748fc372fe2bbb856e46e` (Apache-2.0 plus bundled notices);
+  SPIRV-Tools `v2026.3` at `b707790a898e44038547df54580022fc1cf89c3d`
+  (Apache-2.0), paired Headers `29981f65241605e08b0ede4cfeb999fe3b723c6a`
+  (Khronos MIT-style plus bundled notices), selected from glslang's known-good
+  pair. Audited C++ validation, remap, combined-sampler and cleansed-entry APIs.
+  Cross uses upstream private C++/SPIR-V namespace overrides to prevent header/
+  symbol collisions, retains diagnostic exceptions, and adds no optional allocator.
+  No local patches. Source preparation was explicit; configure never fetches.
+  Clean pins are checked to prevent inaccurate compiler provenance. Install
+  exports only the validator static closure plus Cross core/GLSL/MSL configs,
+  preserving license texts. See dependency policy for updates/offline builds.
+- **Package semantics:** `entryPoint` remains logical selection/agreement;
+  `nativeEntryPoint` is explicitly serialized and forwarded unchanged to native
+  lookup. Thus Metal's `main0` still agrees logically with SPIR-V/GL `main`.
+  Draft TSP stays `1.0`; there are no old readers or migrations. Metal generation
+  still requires explicit request **and load** opt-ins; shaderc exposes that
+  consent without bypassing package validation. WGSL gating is unchanged.
+- **Remaps/limits:** real MSL slots reserve 0..15 for vertex streams and 30 for
+  push data. GL retains both logical texture/sampler bindings and maps them to
+  the same actual combined uniform/unit; no binding is dropped. Native descriptor
+  arrays and storage images are rejected. GL requires statically used resources,
+  one-to-one scalar texture/sampler pairs and scalar/vector internal IO; storage,
+  push/specialization lowering and extension-only constructs are explicitly
+  unsupported in these core profiles. A broader sampling graph needs a shared
+  multi-use native binding contract, not fabricated remaps.
+- **Coupled correction:** real validation exposed previously accepted nested
+  descriptor-array SPIR-V as invalid Vulkan (UniformConstant VUID 04655).
+  Reject those shapes in shared reflection even when the validator is disabled;
+  retain supported one-dimensional descriptor arrays and nested **buffer data**
+  arrays. Positive/negative fixtures and feature docs now reflect that truth.
+- **Native evidence, Apple M3 Pro:** unchanged serialized generated packages,
+  same portable vertex/fragment source, real texture/sampler/uniform bindings:
+  Vulkan/MoltenVK, Metal and OpenGL 4.1 each read exactly 256 RGBA
+  `(64,64,32,255)` pixels. Generated Vulkan and Metal compute exercise push data,
+  scalar constants and direct local-size IDs; widths 2/3 write `2107..2110` /
+  `3113..3118`, leaving sentinel tails untouched. Metal API/GPU validation and
+  Vulkan validation are enabled; macOS GL performs native per-call error checks.
+  GLES gets real generated-source glslang parse/link validation, **not native
+  execution evidence**; higher profiles remain future work.
+- **Focused validation:** Ninja Debug, explicit Xcode SDK sysroot,
+  warnings-as-errors and `--parallel 4`; no hosted workflows or installed tools.
+  - Translator-on `build/shader-portable`: **18/18** Shader/native/CLI/install and package
+    consumers pass with the same focused selector below, including all 42 native route/stage/intermediate profile
+    configurations and byte-identical CLI/library packages, invalid SPIR-V,
+    source/target failures, cache/rebuild preservation, and logical agreement
+    with changed native entry names. Native invocation uses
+    `ctest --test-dir build/shader-portable -R '^truffle_shader_portable_native_tests$' --output-on-failure -V`.
+  - glslang-only `build/renderer-shader`: **15/15** pass with
+    `ctest --test-dir build/renderer-shader -R 'truffle_shader|truffle_renderer_(source_program|program)_tests|truffle_package_consumer' --output-on-failure --parallel 4`.
+  - All-off `build/renderer-shader-off`: **13/13** pass with the same selector
+    plus `|^truffle_metal_tests$`. Installed Shader/prepared Renderer/RHI
+    consumers link no glslang, SPIRV-Tools or SPIRV-Cross libraries (link commands
+    checked). Assembly and inspection remain available with all compilers off.
+  - Architecture guard and `git diff --check` pass. Cohesion: validation and
+    translation are separate private Shader helpers; glslang orchestrates their
+    calls without owning their internals. Package codec/agreement/selection
+    stays in RHI. No unrelated backend or Renderer feature grew.
+- **Next:** parent independently reviews/accepts this signed issue-scoped PR and
+  its explicit limits, owns merge/tracking, then sequences #188-#193. Do not
+  merge, close issues, change Project states or delete this branch here.
+
+## Shader Reflection Contracts (#186, Completed In PR #196)
 
 - #185 is done in PR #194. The first representable reflection phase is merged
-  in PR #195 (`8e4c72f`). This continuation uses the same main checkout on
-  `feat/shader-reflection-contracts`; no sibling worktree or new checkout.
+  in PR #195 (`8e4c72f`); canonical IO/workgroup contracts are merged in PR #196.
 - Both shared-contract extensions were approved in
   [#186 comment 6527097946](https://github.com/truffle-graphics/truffle/issues/186#issuecomment-6527097946).
   TSP is an unreleased development draft: update contracts/codec/fixtures/
@@ -73,8 +184,8 @@ rather than growing a historical transcript here.
     metadata validation/resolution is private and separate from the large RHI
     dispatch file; package codec/agreement stays in RHI; emitted decoding stays
     in Shader. Informational length-review signals do not imply a new framework.
-- **Next:** parent independently reviews this signed issue-scoped PR and owns
-  merge/tracking. Leave #186 open until acceptance; #187-#193 remain outstanding.
+- **Status:** completed by parent acceptance in PR #196; #187 is now the active
+  review phase above and #188-#193 remain outstanding.
   Shader overall is not complete and Renderer features remain paused.
   Combined samplers, subpass/texel-buffer bindings, unsized/specialized
   descriptor layouts, component/index packing, extended IO and advanced stages
@@ -127,7 +238,7 @@ rather than growing a historical transcript here.
   - Architecture guard and `git diff --check` pass. No dependencies installed,
     full platform matrix or hosted workflows run.
 - **Status:** merged in PR #194. Shader is
-  not complete: review #186 reflection contracts, then #187 portable native outputs, #188
+  not complete: #186 reflection contracts are merged; review #187 portable native outputs, then #188
   MSL/Metal libraries, #189 HLSL, #190 Slang/native imports, #191 WGSL, #192
   shared behavior, and #193 final evidence audit under #73. Renderer features
   (including materials, lighting, texture/asset management) remain paused;

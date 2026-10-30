@@ -50,6 +50,19 @@ push-constant, workgroup, and logical-remap data into `ShaderDesc`. Package and
 direct shader creation therefore reach the same validation and native pipeline
 path.
 
+`ShaderDesc::resourceBindingsComplete` explicitly distinguishes exhaustive
+per-stage resource reflection (including an empty list) from optional/partial
+native metadata. It defaults to `false` for direct, precompiled and native-
+override shaders. Package selection sets it to `true` for `generated` variants;
+that variant kind therefore promises exhaustive resource metadata, without
+adding another TSP wire field. Metal graphics/compute pipelines retain that
+stage-local authority and skip resources absent from a complete list, regardless
+of broader layout visibility. Reflected resources still use explicit remaps or
+the normal native convention. With incomplete metadata, Metal retains its
+`group * 8 + binding + arrayElement` fallback; an empty list alone never disables
+legitimate native bindings. Generated buffers use slots 16..29 rather than
+overwriting vertex streams 0..15.
+
 ## Graphics State And Commands
 
 `PipelineDesc` owns the complete fixed graphics state for the implemented
