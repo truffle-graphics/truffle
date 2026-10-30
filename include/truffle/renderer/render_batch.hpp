@@ -107,6 +107,9 @@ struct RenderBatch {
     InstanceLayout layout;
     std::uint32_t  instanceCount = 0;
     std::uint32_t  vertexCount   = 3;
+    // Indexed draws: producer's vertex range bound (Mesh sets it automatically).
+    // Zero leaves arbitrary GPU-resident index contents under producer ownership.
+    std::uint32_t  vertexElementCount = 0;
     BufferView     bindings[kMaxBindings]{};
     DrawKind       kind        = DrawKind::Direct;
     MaterialId     material    = 0;

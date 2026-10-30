@@ -1,6 +1,7 @@
 #include "renderer_native_test_utils.hpp"
 #include "test_support.hpp"
 #include "truffle/rhi/metal_backend.hpp"
+#include "truffle/renderer/mesh.hpp"
 
 #include <fstream>
 #include <iterator>
@@ -249,6 +250,44 @@ int run() {
     TRUFFLE_CHECK(!renderer.render(tests::color_graph(target, batch)).ok());
     batch.material = material;
     render(green, "recovery after missing resources/material");
+    auto meshProgram = program_desc(package, "green_fragment");
+    meshProgram.vertex.entryPoint = "attribute_vertex";
+    meshProgram.pipeline.vertexBuffers = {{
+        .stride = 16, .attributes = {{.location = 0}},
+    }};
+    tests::require(programs.register_program(19, meshProgram));
+    const std::array positions{
+        std::array{-1.0F, -1.0F, 0.0F, 1.0F},
+        std::array{3.0F, -1.0F, 0.0F, 1.0F},
+        std::array{-1.0F, 3.0F, 0.0F, 1.0F},
+    };
+    const std::array streams{
+        renderer::MeshStream{std::as_bytes(std::span{positions}), 16},
+    };
+    const std::array<std::uint32_t, 3> indices{0, 1, 2};
+    auto mesh = tests::require(renderer::Mesh::upload(device, {
+        .streams = streams, .vertexCount = 3,
+        .indices = std::as_bytes(std::span{indices}),
+    }));
+    batch = mesh.batch(19);
+    render(green, "uploaded indexed mesh with application-defined layout");
+    auto validBatch = batch;
+    batch.bindings[0].size = 16;
+    TRUFFLE_CHECK(!renderer.render(tests::color_graph(target, batch)).ok());
+    batch = validBatch;
+    render(green, "mesh recovery after rejected byte range");
+    const std::array<std::uint32_t, 5> arguments{3, 1, 0, 0, 0};
+    auto indirect = tests::require(device.create_buffer({
+        .size = sizeof(arguments), .usage = rhi::BufferUsage::indirect,
+        .memory = rhi::MemoryDomain::upload,
+    }));
+    tests::require(indirect.write(0, std::as_bytes(std::span{arguments})));
+    batch.kind = renderer::DrawKind::IndirectIndexed;
+    batch.indirectBuffer = {&indirect, 0, sizeof(arguments)};
+    render(green, "indexed indirect mesh binds its index buffer");
+    auto incompatibleMesh = meshProgram;
+    incompatibleMesh.pipeline.vertexBuffers[0].stride = 32;
+    TRUFFLE_CHECK(!programs.register_program(19, incompatibleMesh).ok());
     return 0;
 }
 

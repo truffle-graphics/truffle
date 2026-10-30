@@ -128,6 +128,9 @@ base::Status Renderer::render(const FrameGraph& graph, rhi::Swapchain* swapchain
         ++lastFrameStats_.renderNodesExecuted;
 
         for (const auto& batch : render->batches()) {
+            if (auto status = cache_->validate_batch(batch); !status.ok()) {
+                return status;
+            }
             auto pipelineResult = cache_->get_or_create(
                 batch.layout, batch.material, batch.variantHash);
             if (!pipelineResult.ok()) {
@@ -173,6 +176,13 @@ base::Status Renderer::render(const FrameGraph& graph, rhi::Swapchain* swapchain
             }
 
             base::Status status;
+            if (batch.kind == DrawKind::IndirectIndexed) {
+                status = encoder.bind_index_buffer(
+                    *batch.indexBuffer.buffer, batch.indexBuffer.offset, batch.indexFormat);
+                if (!status.ok()) {
+                    return status;
+                }
+            }
             if ((batch.kind == DrawKind::Indirect ||
                  batch.kind == DrawKind::IndirectIndexed) &&
                 batch.indirectBuffer.buffer != nullptr) {

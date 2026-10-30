@@ -42,11 +42,18 @@ them is optional; an application may supply its own view data instead.
 What each object carries, and what it means, belongs to the application:
 
 1. The application declares a data layout: named fields with formats, offsets
-   and stride (for example "64 bytes: float4 position, float4 rotation
-   quaternion, float scale, float4 color").
+   and stride, including explicit padding (for example position, rotation
+   quaternion, scale and color in an application-chosen structure).
 2. The shader declares what it reads; Shader reflection reports it.
-3. The Renderer matches the declared layout to reflection by name, validates
-   formats, sizes and alignment, and uploads the bytes unchanged.
+3. The Renderer matches the declared layout to reflection, validates formats,
+   sizes and alignment, and uploads the bytes unchanged.
+
+Implementation clarification (#207): portable vertex interfaces use explicit
+locations and resources use group/binding numbers. Reflected names are
+diagnostic paths, not stable binding identities. Current reflection does not
+describe arbitrary members inside uniform/storage buffers; their packing is an
+explicit application-shader contract, not inferred by Renderer. Future richer
+reflection must not introduce semantic conversions.
 
 No mandatory conversion to a Renderer-defined `Transform` or similar type.
 
