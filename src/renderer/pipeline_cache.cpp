@@ -1,4 +1,5 @@
 #include "truffle/renderer/pipeline_cache.hpp"
+#include "truffle/renderer/data_layout.hpp"
 
 #include <algorithm>
 #include <new>
@@ -63,6 +64,31 @@ bool same_bindings(const rhi::Pipeline& first, const rhi::Pipeline& second) {
            });
 }
 
+bool same_vertex_layouts(
+    const std::vector<rhi::VertexBufferLayoutDesc>& first,
+    const std::vector<rhi::VertexBufferLayoutDesc>& second) {
+    if (first.size() != second.size()) {
+        return false;
+    }
+    for (std::size_t index = 0; index < first.size(); ++index) {
+        const auto& a = first[index];
+        const auto& b = second[index];
+        if (a.stride != b.stride || a.stepMode != b.stepMode ||
+            a.attributes.size() != b.attributes.size()) {
+            return false;
+        }
+        for (std::size_t attribute = 0; attribute < a.attributes.size(); ++attribute) {
+            const auto& lhs = a.attributes[attribute];
+            const auto& rhs = b.attributes[attribute];
+            if (lhs.location != rhs.location || lhs.format != rhs.format ||
+                lhs.offset != rhs.offset) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 base::Status validate_state(const rhi::PipelineDesc& state) {
     if (state.vertexShader != nullptr || state.fragmentShader != nullptr) {
         return base::Status::failure(
@@ -78,6 +104,10 @@ base::Status validate_state(const rhi::PipelineDesc& state) {
 }
 
 } // namespace
+
+base::Status IPipelineCache::validate_batch(const RenderBatch& batch) const {
+    return validate_batch_data(batch, {});
+}
 
 NullPipelineCache::NullPipelineCache(rhi::Device& device) : device_(&device) {}
 
@@ -148,6 +178,13 @@ base::Result<StagedProgram> PipelineCache::stage_program(const ProgramDesc& desc
                 base::StatusCode::unsupported,
                 "Renderer: push-constant batches are not implemented");
         }
+        if (selection->stage == rhi::ShaderStage::vertex) {
+            if (auto status = validate_vertex_layout(
+                    desc.pipeline.vertexBuffers, variant.value()->reflection.interfaces);
+                !status.ok()) {
+                return status;
+            }
+        }
     }
     auto vertex = device_->create_shader(*desc.vertex.package, desc.vertex.target,
                                         desc.vertex.entryPoint, desc.vertex.stage,
@@ -168,6 +205,9 @@ base::Result<StagedProgram> PipelineCache::stage_program(const ProgramDesc& desc
 base::Result<StagedProgram> PipelineCache::stage_shaders(
     ShaderBinding shaders, const rhi::PipelineDesc& state) {
     if (auto status = validate_state(state); !status.ok()) {
+        return status;
+    }
+    if (auto status = validate_vertex_layout(state.vertexBuffers, {}); !status.ok()) {
         return status;
     }
     if (!shaders.vertexShader.valid() || !shaders.fragmentShader.valid() ||
@@ -196,6 +236,7 @@ base::Result<StagedProgram> PipelineCache::stage_shaders(
         }
         program.depthStencilFormat_ = state.depthStencil.format;
         program.sampleCount_ = state.multisample.sampleCount;
+        program.vertexBuffers_ = state.vertexBuffers;
         return program;
     } catch (const std::bad_alloc&) {
         return base::Status::failure(base::StatusCode::out_of_memory,
@@ -216,6 +257,7 @@ base::Status PipelineCache::commit_program(
          found->second->colorFormats_ != program.colorFormats_ ||
          found->second->depthStencilFormat_ != program.depthStencilFormat_ ||
          found->second->sampleCount_ != program.sampleCount_ ||
+         !same_vertex_layouts(found->second->vertexBuffers_, program.vertexBuffers_) ||
          !same_bindings(found->second->pipeline_, program.pipeline_))) {
         return base::Status::failure(
             base::StatusCode::invalid_argument,
@@ -303,5 +345,14 @@ void PipelineCache::invalidate(MaterialId material) {
 }
 
 void PipelineCache::invalidate_all() { programs_.clear(); }
+
+base::Status PipelineCache::validate_batch(const RenderBatch& batch) const {
+    const auto found = programs_.find({batch.material, batch.variantHash});
+    if (found == programs_.end()) {
+        return base::Status::failure(base::StatusCode::invalid_argument,
+                                     "Renderer: batch program is not registered");
+    }
+    return validate_batch_data(batch, found->second->vertexBuffers_);
+}
 
 } // namespace truffle::renderer

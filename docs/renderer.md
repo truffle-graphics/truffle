@@ -86,6 +86,34 @@ materials are application-defined and matched to shader reflection; the fixed
 `ChannelKind` vocabulary and `components.hpp` are under review. See
 [ADR 0012](adr/0012-app-defined-render-data.md).
 
+### Application-defined vertex data and meshes (#207)
+
+Use `ProgramDesc::pipeline.vertexBuffers` to describe your byte layout with
+explicit attribute locations, scalar/vector formats, offsets, stride and
+vertex/instance step mode. No `ChannelKind` is required. Prepared package
+registration checks reflected vertex inputs against these locations and exact
+types. Names are diagnostic, not portable binding identities; resource bindings
+use group/binding numbers. Renderer does not reflect or guess fields inside
+uniform/storage buffers: their packing remains an explicit app-shader contract.
+
+`Mesh::upload()` (`truffle/renderer/mesh.hpp`) accepts vertex byte streams and
+optional uint16/uint32 index bytes. It checks stream sizes and CPU index bounds,
+then writes those exact bytes into owned upload-domain GPU buffers. There is no
+asset parser, per-field conversion, or device-local staging optimization.
+`mesh.batch(program, variant)` borrows the final Mesh object's buffer wrappers;
+keep it alive and unmoved through `render()`. Layouts stay in the registered
+program; the mesh does not assign property semantics.
+
+Batch views have explicit nonzero byte lengths. The registered pipeline's
+vertex/instance layouts determine required stream ranges before recording a
+draw. Missing index/indirect resources fail instead of falling back to a
+different draw kind. `vertexCount` remains the draw count (index count for an
+indexed batch); `vertexElementCount` optionally declares the vertex range bound
+and is filled by Mesh. For caller-owned GPU indices and indirect arguments, the
+producer remains responsible for their contents and GPU-generated range bounds.
+`validate_vertex_layout()` and `validate_batch_data()` are also available for
+producer-side validation.
+
 Vertex/index/indirect buffers remain borrowed batch inputs. Native vertex input
 uses `RenderBatch::bindings`; the direct uniform lane is available for low-level
 uses, but is not a substitute for descriptor groups required by reflection.

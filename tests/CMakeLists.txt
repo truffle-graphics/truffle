@@ -199,6 +199,10 @@ add_executable(truffle_renderer_program_tests renderer_program_tests.cpp)
 target_link_libraries(truffle_renderer_program_tests PRIVATE truffle_backend_null truffle_renderer)
 add_test(NAME truffle_renderer_program_tests COMMAND truffle_renderer_program_tests)
 
+add_executable(truffle_renderer_data_tests renderer_data_tests.cpp)
+target_link_libraries(truffle_renderer_data_tests PRIVATE truffle_backend_null truffle_renderer)
+add_test(NAME truffle_renderer_data_tests COMMAND truffle_renderer_data_tests)
+
 # Runs with and without a compiler adapter; disabled builds prove `unsupported`.
 add_executable(truffle_renderer_source_program_tests renderer_source_program_tests.cpp)
 target_link_libraries(truffle_renderer_source_program_tests PRIVATE truffle_backend_null truffle_renderer)

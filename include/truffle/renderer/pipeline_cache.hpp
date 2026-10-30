@@ -52,6 +52,7 @@ private:
     std::vector<rhi::TextureFormat> colorFormats_;
     rhi::TextureFormat depthStencilFormat_ = rhi::TextureFormat::unknown;
     std::uint32_t sampleCount_ = 1;
+    std::vector<rhi::VertexBufferLayoutDesc> vertexBuffers_;
     friend class PipelineCache;
 };
 
@@ -67,6 +68,7 @@ public:
         std::size_t variantHash = 0) = 0;
     virtual void invalidate(MaterialId material) = 0;
     virtual void invalidate_all() = 0;
+    [[nodiscard]] virtual base::Status validate_batch(const RenderBatch& batch) const;
 };
 
 // Explicit validation-only cache: shaderless pipelines are not native programs.
@@ -125,6 +127,7 @@ public:
     // Removes complete programs; subsequent lookup fails until registration.
     void invalidate(MaterialId material) override;
     void invalidate_all() override;
+    [[nodiscard]] base::Status validate_batch(const RenderBatch& batch) const override;
 
 private:
     struct CacheKey {

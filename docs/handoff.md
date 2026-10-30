@@ -5,7 +5,25 @@ This is the rolling execution handoff, not an implementation transcript.
 issues/Project own accepted work. Earlier phase details remain in their PRs,
 the support matrix and Git history.
 
-## Current Delivery: Render Data Direction (#204)
+## Current Delivery: Minimum Renderer (#206)
+
+Three owner-approved signed/pushed slices remain review-only PRs, never merged
+automatically: data/mesh #207, optional view/depth #208, host-window example
+#209. They stack on ADR PR #205. The minimum Renderer is the only accepted next
+scope; GUI and later applications are not planned here.
+
+#207 adds explicit, reflection-checked vertex layouts, owned immutable mesh byte
+uploads and batch-range validation. Renderer owns those mechanisms; Shader/RHI
+retain their lower-layer responsibilities. ECS semantics, buffer-member packing
+and lighting remain application-owned. Separate mesh upload, layout validation,
+and orchestration files keep ownership cohesive. Nine focused Renderer, EnCom
+adapter and frame-graph tests pass with warnings-as-errors, including native
+Metal uploaded indexed-mesh exact 256-pixel proof under validation. The final
+native rerun also covers indexed indirect buffer binding and rejection of
+vertex-layout-changing replacement. Architecture guard and whitespace checks
+are required before publication.
+
+## Render Data Direction (#204)
 
 Shader is complete (below); the next step is a minimum Renderer. Before it
 starts, [ADR 0012](adr/0012-app-defined-render-data.md) records the accepted
