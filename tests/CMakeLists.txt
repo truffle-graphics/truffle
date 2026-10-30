@@ -1,4 +1,33 @@
 add_executable(truffle_encom_tests encom_contract_tests.cpp)
+if(TRUFFLE_SHADER_ENABLE_SLANG)
+    add_executable(truffle_shader_slang_tests shader_slang_tests.cpp)
+    target_link_libraries(truffle_shader_slang_tests PRIVATE truffle_shader)
+    target_compile_definitions(truffle_shader_slang_tests PRIVATE
+        TRUFFLE_SLANG_FIXTURES="${PROJECT_SOURCE_DIR}/tests/fixtures/slang")
+    truffle_target_warnings(truffle_shader_slang_tests)
+    add_test(NAME truffle_shader_slang_tests COMMAND truffle_shader_slang_tests)
+    if(TRUFFLE_BUILD_SHADERC)
+        add_test(NAME truffle_shaderc_slang_modules COMMAND "${CMAKE_COMMAND}"
+            "-DTRUFFLE_SHADERC=$<TARGET_FILE:truffle-shaderc>"
+            "-DTRUFFLE_SLANG_TEST=$<TARGET_FILE:truffle_shader_slang_tests>"
+            "-DTRUFFLE_SLANG_FIXTURES=${PROJECT_SOURCE_DIR}/tests/fixtures/slang"
+            "-DTRUFFLE_SHADERC_TEST_DIR=${PROJECT_BINARY_DIR}/shaderc-slang"
+            -P "${PROJECT_SOURCE_DIR}/cmake/ShadercSlangSmoke.cmake")
+    endif()
+endif()
+if(TRUFFLE_SHADER_ENABLE_SLANG AND TRUFFLE_BUILD_BACKEND_VULKAN)
+    add_executable(truffle_shader_slang_vulkan_tests shader_slang_vulkan_tests.cpp)
+    target_link_libraries(truffle_shader_slang_vulkan_tests PRIVATE truffle_shader truffle_backend_vulkan)
+    target_include_directories(truffle_shader_slang_vulkan_tests PRIVATE "${PROJECT_SOURCE_DIR}/src/backends/vulkan")
+    target_compile_definitions(truffle_shader_slang_vulkan_tests PRIVATE
+        TRUFFLE_SLANG_FIXTURES="${PROJECT_SOURCE_DIR}/tests/fixtures/slang")
+    truffle_target_warnings(truffle_shader_slang_vulkan_tests)
+    add_test(NAME truffle_shader_slang_vulkan_tests COMMAND truffle_shader_slang_vulkan_tests)
+    set_tests_properties(truffle_shader_slang_vulkan_tests PROPERTIES
+        SKIP_RETURN_CODE 77 LABELS "native-smoke;validation;shader"
+        FAIL_REGULAR_EXPRESSION "Validation (Error|Warning)"
+        ENVIRONMENT "DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib:/usr/local/lib:/usr/lib")
+endif()
 add_executable(truffle_shader_compiler_tests shader_compiler_tests.cpp)
 target_link_libraries(truffle_shader_compiler_tests PRIVATE truffle_shader)
 truffle_target_warnings(truffle_shader_compiler_tests)
@@ -458,7 +487,7 @@ if(TRUFFLE_INSTALL)
             "-DTRUFFLE_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
             "-DTRUFFLE_OSX_SYSROOT=${CMAKE_OSX_SYSROOT}"
             "-DTRUFFLE_EXECUTABLE_SUFFIX=${CMAKE_EXECUTABLE_SUFFIX}"
-            "-DTRUFFLE_EXPECT_COMPILER=$<BOOL:${TRUFFLE_SHADER_ENABLE_GLSLANG}>"
+            "-DTRUFFLE_EXPECT_COMPILER=$<OR:$<BOOL:${TRUFFLE_SHADER_ENABLE_GLSLANG}>,$<BOOL:${TRUFFLE_SHADER_ENABLE_SLANG}>>"
             "-DTRUFFLE_CONFIG=$<CONFIG>"
             -P "${PROJECT_SOURCE_DIR}/cmake/ShaderInstallSmoke.cmake")
     add_test(

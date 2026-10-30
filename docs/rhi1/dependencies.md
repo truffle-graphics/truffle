@@ -66,7 +66,11 @@ precompiled or backend-native variants without a compiler library. Its first
 source route is enabled independently with `TRUFFLE_SHADER_ENABLE_GLSLANG` and
 compiles GLSL or GLSL ES to SPIR-V using the pinned `vendor/glslang` source.
 Portable native routes use `TRUFFLE_SHADER_ENABLE_SPIRV_CROSS`, requiring
-glslang and `TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS`. Future routes may use Slang, DXC, and Tint
+glslang and `TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS`. The independent native Slang route
+uses `TRUFFLE_SHADER_ENABLE_SLANG` plus SPIRV-Tools; its clean pinned source
+closure, Apache-2.0 WITH LLVM-exception license, source-only offline policy,
+install behavior and update checks are recorded in
+[native Slang](../shader-slang.md). Future routes may use DXC and Tint
 submodules, enabled individually. No compiler submodule is introduced before
 its route exists, and configure never downloads it. Runtime packages do not
 acquire the compiler toolchain. Runtime source compilation is an explicit

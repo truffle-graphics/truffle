@@ -292,6 +292,13 @@ reuses pinned glslang for GLSL/GLSL ES to SPIR-V; this does not claim that every
 language/target in #73 is implemented. Compiler-free package consumption and
 assembly remain supported.
 
+The Slang adapter (#190) uses native module/import lookup and module/entry
+component linking in-process, emitting only the requested SPIR-V entry and
+configuration. Every attempt resolves a fresh transitive content snapshot
+before a cache hit; shared canonical emitted-SPIR-V reflection remains the only
+reflection model. See [native Slang](shader-slang.md). This adds a private
+optional compiler dependency, not an architectural boundary change.
+
 Shader's public capability query describes only enabled source routes and
 their stages/target configurations (#185). Shader validates those settings
 before invoking an optional private compiler and includes effective targets in

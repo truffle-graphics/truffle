@@ -151,6 +151,9 @@ to the dependency-free assembler with `-DTRUFFLE_BUILD_SHADERC=ON`, then enable
 the Shader module's glslang adapter explicitly with
 `-DTRUFFLE_SHADER_ENABLE_GLSLANG=ON`; the runtime RHI never gains a compiler
 dependency.
+Native Slang modules/imports can independently opt in with
+`-DTRUFFLE_SHADER_ENABLE_SLANG=ON -DTRUFFLE_SHADER_ENABLE_SPIRV_TOOLS=ON`;
+see [Slang's pinned source build and bounded target matrix](docs/shader-slang.md).
 Portable native outputs additionally require
 `-DTRUFFLE_SHADER_ENABLE_SPIRV_TOOLS=ON -DTRUFFLE_SHADER_ENABLE_SPIRV_CROSS=ON`.
 Explicitly prepare their pinned submodules first; configure never downloads.

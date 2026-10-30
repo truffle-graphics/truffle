@@ -16,13 +16,17 @@ then reports `unsupported`.
 
 Enable `TRUFFLE_SHADER_ENABLE_GLSLANG=ON` to use the pinned GLSL/GLSL ES to
 Vulkan SPIR-V adapter. This does **not** require building shaderc.
-With the option off, `Compiler::routes()` is empty, `available()` is false and `compile()` returns
+With every compiler adapter off, `Compiler::routes()` is empty, `available()` is false and `compile()` returns
 `unsupported`; prepared Truffle Shader Packages (TSP, `.tsp`) still work through
 RHI and Renderer without linking a compiler. No language/compiler is fetched.
 An enabled install bundles glslang's static libraries and CMake package so
 installed `Truffle::Shader` consumers resolve its private static link closure.
 `Truffle::RHI` never links those libraries. Renderer can depend directly on the
 compiler-disabled Shader core without acquiring any compiler link dependency.
+
+`TRUFFLE_SHADER_ENABLE_SLANG=ON` independently enables native Slang
+modules/imports to validated Vulkan 1.1 / SPIR-V 1.3, without glslang.
+See [native Slang configuration, pins, limits and tests](../../docs/shader-slang.md).
 
 `TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS=ON` adds real in-process SPIR-V validation.
 `TRUFFLE_SHADER_ENABLE_SPIRV_CROSS=ON` requires both glslang and that validator,
@@ -62,7 +66,8 @@ convenience test for any source route, useful to compiler-optional clients.
 | GLSL or GLSL ES, vertex/fragment/compute | macOS MSL 2.1 source | glslang + SPIRV-Tools + SPIRV-Cross | Experimental explicit opt-in; generated graphics and compute execute on Apple M3 Pro |
 | GLSL or GLSL ES, vertex/fragment | GLSL 410 core (macOS OpenGL 4.1) | same three optional adapters | Generated resource-backed graphics executes on macOS 4.1; compute rejected |
 | GLSL or GLSL ES, vertex/fragment | GLSL ES 300 | same three optional adapters | Emission and real glslang parse/link validation; **no native GLES execution evidence** |
-| Slang, HLSL, WGSL, MSL | None through Shader today | none enabled | Planned #188-#191 under #73; no adapter or capability advertised |
+| Slang, native modules/imports, vertex/fragment/compute | Vulkan 1.1 / SPIR-V 1.3 | pinned Slang + SPIRV-Tools | Native source/module/entry composition; only requested entry/configuration; see #190 documentation |
+| HLSL, WGSL, MSL | None through Shader today | none enabled | Planned #188/#189/#191 under #73; no adapter or capability advertised |
 | SPIR-V, DXIL, Metal libraries, backend-native source | None through Shader today | none needed for assembly | Prepared TSP inputs, **not** source-compilation routes |
 
 Implemented typed `CompileRequest::vulkanTarget` configurations:
@@ -183,7 +188,7 @@ The remaining #73 route matrix is **planned, not implemented or advertised**:
 | --- | --- | --- |
 | Native MSL, optional Apple tooling | MSL / offline Metal library | #188; SDK audit, truthful interfaces/dependencies, native readback |
 | HLSL, optional DXC | SPIR-V / DXIL where compiler/host supports it | #189; profiles/reflection, native Vulkan and separately tracked Windows evidence |
-| Slang, native modules/imports | Supported SPIR-V first; other outputs gated | #190; compiler audit, imported dependencies, native output; experimental Metal/WebGPU not promoted by emission alone |
+| Slang, native modules/imports | Vulkan 1.1 / SPIR-V 1.3; other outputs unsupported | #190; pinned source/compiler audit, transitive content, requested entry/configuration, canonical reflection; see [route details](../../docs/shader-slang.md) |
 | WGSL, optional Tint | WGSL input/output and supported conversions determined by compiler audit | #191; actual directions, language semantics, reflection and compiler validation; no WebGPU execution claim |
 
 These are not an all-input/all-output cross-product promise. Complete reflection, validated

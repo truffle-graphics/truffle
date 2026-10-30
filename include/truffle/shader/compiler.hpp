@@ -77,6 +77,9 @@ struct CompileRequest {
     // Explicit consent is required both to produce and to load generated MSL.
     bool allowExperimentalMetalGeneration = false;
     std::vector<std::string> includeRoots;
+    // Ordered extra source units for native MSL only. Other routes reject them;
+    // Slang composes modules through its native import syntax instead.
+    std::vector<std::string> sourceUnits;
     SourceResolver resolver;
     std::vector<rhi::ShaderDefine> defines;
     bool generateDebugInfo = false;

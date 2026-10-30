@@ -72,6 +72,12 @@ Current evidence is narrower than the old roadmap claimed:
   MoltenVK, Metal and macOS GL 4.1. GLES has compiler validation only.
   The Shader library (#178/#180) owns compilation; Renderer consumes its
   in-memory results directly through `renderer::SourceProgram` (#181).
+- The optional native Slang adapter (#190) uses pinned source Slang 2026.12.1,
+  native imports and component linking, fresh transitive content snapshots,
+  canonical SPIR-V reflection and independent validation. It emits only the
+  requested vertex/fragment/compute entry/configuration to Vulkan 1.1 /
+  SPIR-V 1.3 without glslang. See `docs/shader-slang.md`; no Slang portable-native
+  output or backend maturity promotion is implied.
 - WebGPU and WebGL2 now have explicit source-only targets; WebGL2 contains an
   Emscripten browser-context path but has no browser execution evidence yet.
 - The public support table and `truffle-rhi-doctor` expose matrix maturity and

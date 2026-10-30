@@ -11,6 +11,10 @@ namespace truffle::shader {
 rhi::Result<Compilation> compile_glslang(const CompileRequest& request,
                                        std::vector<Compilation>& cache);
 #endif
+#if defined(TRUFFLE_SHADER_HAS_SLANG)
+rhi::Result<Compilation> compile_slang(const CompileRequest& request,
+                                     std::vector<Compilation>& cache);
+#endif
 
 struct Compiler::Impl {
     std::vector<Compilation> cache;
@@ -36,13 +40,18 @@ std::string_view spirv_version_name(SpirvVersion version) noexcept {
 }
 
 std::span<const CompilerRoute> Compiler::routes() noexcept {
-#if defined(TRUFFLE_SHADER_HAS_GLSLANG)
+#if defined(TRUFFLE_SHADER_HAS_GLSLANG) || defined(TRUFFLE_SHADER_HAS_SLANG)
     static constexpr rhi::ShaderStage stages[]{
         rhi::ShaderStage::vertex, rhi::ShaderStage::fragment, rhi::ShaderStage::compute};
+#if defined(TRUFFLE_SHADER_HAS_GLSLANG)
     static constexpr VulkanTarget targets[]{
         {VulkanVersion::v1_0, SpirvVersion::v1_0},
         {VulkanVersion::v1_1, SpirvVersion::v1_0},
         {VulkanVersion::v1_1, SpirvVersion::v1_3}};
+#endif
+#if defined(TRUFFLE_SHADER_HAS_SLANG)
+    static constexpr VulkanTarget slangTargets[]{{VulkanVersion::v1_1, SpirvVersion::v1_3}};
+#endif
 #if defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS)
     static constexpr rhi::ShaderStage graphics[]{rhi::ShaderStage::vertex, rhi::ShaderStage::fragment};
     static constexpr MetalTarget metal[]{{}};
@@ -50,8 +59,13 @@ std::span<const CompilerRoute> Compiler::routes() noexcept {
     static constexpr GlslEsTarget es[]{{}};
 #endif
     static constexpr CompilerRoute enabled[]{
+#if defined(TRUFFLE_SHADER_HAS_GLSLANG)
         {rhi::ShaderSourceLanguage::glsl, rhi::ShaderTarget::spirv, stages, targets},
         {rhi::ShaderSourceLanguage::glsl_es, rhi::ShaderTarget::spirv, stages, targets},
+#endif
+#if defined(TRUFFLE_SHADER_HAS_SLANG)
+        {rhi::ShaderSourceLanguage::slang, rhi::ShaderTarget::spirv, stages, slangTargets},
+#endif
 #if defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS)
         {rhi::ShaderSourceLanguage::glsl, rhi::ShaderTarget::metal_source, stages, targets, metal, {}, {}, true},
         {rhi::ShaderSourceLanguage::glsl_es, rhi::ShaderTarget::metal_source, stages, targets, metal, {}, {}, true},
@@ -78,7 +92,7 @@ rhi::Result<Compilation> Compiler::compile(const CompileRequest& request) {
     const auto enabled = routes();
     if (enabled.empty()) {
         return rhi::Status::failure(rhi::StatusCode::unsupported,
-                                   "Shader compiler disabled: enable TRUFFLE_SHADER_ENABLE_GLSLANG");
+                                   "Shader compiler disabled: enable an optional adapter (TRUFFLE_SHADER_ENABLE_GLSLANG or TRUFFLE_SHADER_ENABLE_SLANG)");
     }
     const auto route = std::find_if(enabled.begin(), enabled.end(), [&](const auto& value) {
         return value.language == request.language && value.target == request.target;
@@ -112,11 +126,16 @@ rhi::Result<Compilation> Compiler::compile(const CompileRequest& request) {
             std::string{spirv_version_name(request.vulkanTarget.spirv)});
     }
 #if defined(TRUFFLE_SHADER_HAS_GLSLANG)
-    return compile_glslang(request, impl_->cache);
-#else
+    if (request.language == rhi::ShaderSourceLanguage::glsl ||
+        request.language == rhi::ShaderSourceLanguage::glsl_es)
+        return compile_glslang(request, impl_->cache);
+#endif
+#if defined(TRUFFLE_SHADER_HAS_SLANG)
+    if (request.language == rhi::ShaderSourceLanguage::slang)
+        return compile_slang(request, impl_->cache);
+#endif
     return rhi::Status::failure(rhi::StatusCode::unsupported,
                                "No enabled Shader compiler route");
-#endif
 }
 
 void Compiler::clear_cache() { impl_->cache.clear(); }
