@@ -19,7 +19,7 @@ DIRECT_DEPENDENCIES = {
     "truffle_encom": {"truffle_base"},
     "truffle_rhi": {"truffle_base"},
     "truffle_shader": {"truffle_rhi"},
-    "truffle_renderer": {"truffle_rhi"},
+    "truffle_renderer": {"truffle_shader", "truffle_rhi"},
     "truffle_asset_render": {"truffle_assets", "truffle_renderer"},
     "truffle_encom_renderer": {"truffle_encom", "truffle_renderer"},
     "truffle_diagnostics": {

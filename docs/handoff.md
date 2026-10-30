@@ -7,6 +7,43 @@ AI work that reaches a commit must update this handoff before that commit.
 Promote durable decisions into project context, architecture, roadmap, or ADRs
 rather than growing a historical transcript here.
 
+## Shader Tools And TSP Delivery (#180)
+
+- `truffle-shaderc` now calls the same `Truffle::Shader` adapter as runtime
+  clients; CLI-owned compiler implementation and compiler-specific CLI option
+  are removed. Enable `TRUFFLE_SHADER_ENABLE_GLSLANG` independently of
+  `TRUFFLE_BUILD_SHADERC`. Assembly still works with all compilers disabled.
+- Repeated `--include-root DIR` and `--define NAME[=VALUE]` configure source
+  compilation. Compilation computes real dependency hashes/compiler identity;
+  optional `--source-hash` verifies the root. Inspection shows dependencies,
+  configuration names and reflected resource/IO/workgroup counts. Generated
+  CLI and library packages are tested byte-for-byte equal. Compiled variants
+  can be appended without enumerating other configurations.
+- Shader package documentation, native fixture paths and presets now use the
+  Truffle Shader Package (TSP, `.tsp`) name and shared-library option. The C++
+  `truffle::rhi::ShaderPackage` type and binary schema are unchanged.
+- User-directed layering is Renderer → Shader → RHI → Base, with no adapter or
+  integration module. The guard now permits Renderer → Shader. Core Shader
+  types/configuration/dependency records/cache/rebuild state link without
+  glslang and return `unsupported` for source compilation; Renderer files were
+  not changed in this track.
+- Local Apple Silicon Ninja Debug / warnings-as-errors verification:
+  `ctest --test-dir build/shader -R 'truffle_vulkan_tests|truffle_shader|shaderc'
+  --output-on-failure` passes 8/8, including configured positive/negative CLI,
+  actual installed static Shader consumers, existing package/assembly tests,
+  and existing native Vulkan/MoltenVK graphics/compute/readback/presentation
+  consuming shared-compiler `.tsp` outputs. No backend maturity is promoted.
+  The compiler-disabled build's `truffle_shader|shaderc` selector passes 5/5,
+  including installed core/Renderer/RHI consumers and explicit disabled errors.
+  Both builds use the macOS SDK sysroot and `--parallel 4`.
+- `python3 tools/check_architecture.py --report` passes. Compiler-disabled
+  installed Shader/Renderer/RHI links have no glslang dependency. The
+  compiler-enabled install bundles glslang exports and its static link closure;
+  compiler-only runtime clients were also checked with shaderc disabled.
+  No hosted work ran. Parent-owned global docs need the shared option/module
+  description; the old flag in the Vulkan README's example also needs the
+  shared option. #181 still owns Renderer publication and native runtime reload.
+
 ## Shader Library (#178)
 
 - Added independently linkable `truffle_shader` / `Truffle::Shader`, public
@@ -34,8 +71,8 @@ rather than growing a historical transcript here.
   concurrently, with one serialized glslang process lifetime. No file watcher
   or GPU hot-reload publication is owned here. Native Vulkan/Renderer adoption
   remains the separately tracked integration slice (#181), not a new maturity
-  claim. Next: #180 makes shaderc a thin shared-library client and completes
-  TSP naming; broader compiler routes remain #73 followups.
+  claim. #180 now makes shaderc a thin shared-library client and completes
+  TSP naming (above); broader compiler routes remain #73 followups.
 
 ## Current Focus
 

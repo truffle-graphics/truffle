@@ -169,33 +169,37 @@ rhi::Status reflect(glslang::TProgram& program, EShLanguage nativeStage, rhi::Sh
         auto* aggregate = node->getAsAggregate();
         if (!aggregate || aggregate->getOp() != glslang::EOpLinkerObjects) continue;
         for (auto* declaration : aggregate->getSequence()) {
-        auto* symbol = declaration->getAsSymbolNode();
-        if (!symbol) continue;
-        const auto& type = symbol->getType();
-        const auto& q = type.getQualifier();
-        const std::string name = symbol->getName().c_str();
-        if (q.storage != glslang::EvqUniform && q.storage != glslang::EvqBuffer) continue;
-        if (type.getBasicType() == glslang::EbtBlock) {
-            const glslang::TObjectReflection block{name, type, 0, 0,
-                glslang::TIntermediate::getBlockSize(type), -1};
-            auto status = addBlock(block, q.storage == glslang::EvqBuffer);
-            if (!status.ok()) return status;
-            continue;
-        }
-        if (type.getBasicType() != glslang::EbtSampler || !q.hasBinding() || !q.hasSet() ||
-            type.isArrayOfArrays() || type.containsUnsizedArray()) {
-            return unsupported("Unsupported uniform reflection: " + name);
-        }
-        const auto& sampler = type.getSampler();
-        if (sampler.isCombined() || sampler.isSubpass()) {
-            return unsupported("Combined samplers/subpass inputs are not representable by the initial adapter: " + name);
-        }
-        reflection.bindings.push_back({
-            .name = name, .stage = stage,
-            .type = sampler.isPureSampler() ? rhi::ResourceBindingType::sampler : rhi::ResourceBindingType::texture,
-            .group = static_cast<std::uint32_t>(q.layoutSet), .binding = static_cast<std::uint32_t>(q.layoutBinding),
-            .arrayCount = static_cast<std::uint32_t>(type.isArray() ? type.getOuterArraySize() : 1),
-            .minimumSize = 0, .readOnly = !sampler.isImage() || q.readonly});
+            auto* symbol = declaration->getAsSymbolNode();
+            if (!symbol) continue;
+            const auto& type = symbol->getType();
+            const auto& q = type.getQualifier();
+            const std::string name = symbol->getName().c_str();
+            if (q.storage != glslang::EvqUniform && q.storage != glslang::EvqBuffer) continue;
+            if (type.getBasicType() == glslang::EbtBlock) {
+                const glslang::TObjectReflection block{
+                    name, type, 0, 0, glslang::TIntermediate::getBlockSize(type), -1};
+                auto status = addBlock(block, q.storage == glslang::EvqBuffer);
+                if (!status.ok()) return status;
+                continue;
+            }
+            if (type.getBasicType() != glslang::EbtSampler || !q.hasBinding() ||
+                !q.hasSet() || type.isArrayOfArrays() || type.containsUnsizedArray()) {
+                return unsupported("Unsupported uniform reflection: " + name);
+            }
+            const auto& sampler = type.getSampler();
+            if (sampler.isCombined() || sampler.isSubpass()) {
+                return unsupported(
+                    "Combined samplers/subpass inputs are not representable by the initial adapter: " + name);
+            }
+            reflection.bindings.push_back({
+                .name = name, .stage = stage,
+                .type = sampler.isPureSampler() ? rhi::ResourceBindingType::sampler
+                                               : rhi::ResourceBindingType::texture,
+                .group = static_cast<std::uint32_t>(q.layoutSet),
+                .binding = static_cast<std::uint32_t>(q.layoutBinding),
+                .arrayCount = static_cast<std::uint32_t>(
+                    type.isArray() ? type.getOuterArraySize() : 1),
+                .minimumSize = 0, .readOnly = !sampler.isImage() || q.readonly});
         }
     }
     if (program.getNumAtomicCounters() != 0) return unsupported("Atomic counter reflection is unsupported");
@@ -206,7 +210,7 @@ rhi::Status reflect(glslang::TProgram& program, EShLanguage nativeStage, rhi::Sh
         if (!q.hasLocation() || type.isArray() || type.isStruct() || type.isMatrix() ||
             (type.getBasicType() != glslang::EbtFloat && type.getBasicType() != glslang::EbtInt &&
              type.getBasicType() != glslang::EbtUint) ||
-            q.layoutComponent != glslang::TQualifier::layoutComponentEnd) {
+            q.hasComponent() || q.hasIndex()) {
             return unsupported("Interface requires a located 32-bit scalar/vector: " + io.name);
         }
         rhi::ShaderInterfaceVariable variable{
@@ -366,7 +370,8 @@ rhi::Result<Compilation> compile_glslang(const CompileRequest& request,
     }
     variant.code.resize(words.size() * sizeof(unsigned int));
     std::memcpy(variant.code.data(), words.data(), variant.code.size());
-    result.diagnostics = bounded(shader.getInfoLog()) + bounded(program.getInfoLog()) + logger.getAllMessages().substr(0, 16384);
+    result.diagnostics = (bounded(shader.getInfoLog()) + bounded(program.getInfoLog()) +
+                          logger.getAllMessages()).substr(0, 16384);
     rhi::ShaderPackageDesc desc;
     desc.name = request.name;
     desc.compilers.push_back(result.compiler);
@@ -375,6 +380,14 @@ rhi::Result<Compilation> compile_glslang(const CompileRequest& request,
     if (!defines.empty()) {
         variant.permutation = detail::sha256(preamble);
         desc.permutations.push_back({variant.permutation, defines, {}});
+    }
+    if (!result.diagnostics.empty()) {
+        desc.diagnostics.push_back({
+            rhi::ShaderDiagnosticSeverity::info,
+            std::string{rhi::shader_target_name(request.target)} + ":" +
+                std::to_string(static_cast<int>(request.stage)) + ":" +
+                request.entryPoint + ":" + variant.permutation,
+            result.diagnostics});
     }
     desc.variants.push_back(std::move(variant));
     auto package = rhi::ShaderPackage::create(std::move(desc));

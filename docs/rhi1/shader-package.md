@@ -1,6 +1,7 @@
-# RHI 1 Shader Package Contract
+# RHI 1 Truffle Shader Package Contract
 
-`ShaderPackage` is the format-neutral runtime shader contract. It owns a
+Truffle Shader Package (TSP, `.tsp`), C++ `truffle::rhi::ShaderPackage`, is the
+format-neutral runtime shader contract. It owns a
 canonical manifest plus target blobs and can be created, serialized, loaded,
 capability-checked, and selected without a compiler dependency.
 
@@ -12,7 +13,8 @@ replacement. See [the Shader API](../../src/shader/README.md).
 
 `truffle-shaderc` is an optional host tool. Its dependency-free path assembles
 precompiled or backend-native variants. Its separately enabled pinned glslang
-route compiles GLSL and GLSL ES to SPIR-V. Both paths record authoring-language
+route consumes the shared Shader library to compile GLSL and GLSL ES to SPIR-V.
+Both paths record authoring-language
 provenance, source SHA-256 values, and compiler identity. Generated modules
 target Vulkan 1.1 and SPIR-V 1.3, matching the minimum runtime contract of the
 current native Vulkan lane. The tool never fetches or discovers a compiler
@@ -51,7 +53,7 @@ types, arrays, access, stage visibility, push-constant ranges, specialization
 constants, interfaces, or workgroup metadata do not agree.
 
 The version 1.0 binary layout is defined in
-[the ShaderPackage format specification](shader-package-format.md). It uses a
+[the TSP format specification](shader-package-format.md). It uses a
 fixed little-endian header, a canonical manifest, ordered target blobs, and
 per-section integrity hashes. Load rejects incompatible versions, invalid enum
 values, excessive counts or sizes, corrupt hashes, non-canonical ordering, and
@@ -90,9 +92,34 @@ expose that opt-in.
   remains separately gated.
 - `truffle-shaderc` self-test and file-based assemble/inspect smoke tests run in
   CI when `TRUFFLE_BUILD_SHADERC=ON`.
-- With `TRUFFLE_SHADERC_ENABLE_GLSLANG=ON`, CI compiles a representative shader
+- With `TRUFFLE_SHADER_ENABLE_GLSLANG=ON`, local tests compile a representative shader
   twice to prove deterministic SPIR-V packages and requires invalid GLSL to
   return bounded compiler diagnostics.
 
 Native execution on each additional backend remains its own evidence gate.
 Recording a target blob does not by itself advance a backend maturity level.
+
+## Tool Usage
+
+Build the package assembler with `TRUFFLE_BUILD_SHADERC=ON`. Independently
+enable source compilation with `TRUFFLE_SHADER_ENABLE_GLSLANG=ON`; the default
+core Shader/RHI/Renderer configuration remains compiler-free, and runtime
+Shader clients can leave shaderc disabled.
+
+```sh
+truffle-shaderc --compile --name material --target spirv --stage fragment \
+  --source-language glsl --input shaders/material.frag --output material.tsp \
+  --include-root shaders/include --define USE_TEXTURE=1 --define QUALITY=2
+truffle-shaderc --inspect material.tsp
+```
+
+Include roots and defines are repeatable and follow the shared library's
+resolution/configuration rules. `--define NAME` means `NAME=1`. Missing
+dependencies, malformed/duplicate defines, unsupported reflection and invalid
+source produce nonzero exit status and diagnostics. Compilation calculates
+real root/transitive source SHA-256 values and the compiler identity; optional
+`--source-hash` verifies the root hash rather than supplying false provenance.
+Prepared assembly still requires `--source-hash`, `--compiler-name` and
+`--compiler-version`. `--append existing.tsp` merges prepared or compiled
+variants with matching package name and source provenance. Every configuration
+is compiled only when requested, not by enumerating a permutation matrix.

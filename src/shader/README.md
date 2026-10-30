@@ -7,6 +7,12 @@ on RHI/Base and an explicitly enabled private compiler adapter. Renderer owns
 GPU objects and safe publication; this module has no backend, Renderer, EnCom,
 watcher, application, or tool dependency.
 
+The accepted module direction is Renderer → Shader → RHI → Base. There is no
+adapter/integration module between Renderer and Shader. The core Shader target,
+public types, configuration, dependency records, cache ownership, and rebuild
+state build and link with every compiler adapter disabled; source compilation
+then reports `unsupported`.
+
 Enable `TRUFFLE_SHADER_ENABLE_GLSLANG=ON` to use the pinned GLSL/GLSL ES to
 Vulkan 1.1 / SPIR-V 1.3 adapter. This does **not** require building shaderc.
 With the option off, `Compiler::available()` is false and `compile()` returns
@@ -14,7 +20,8 @@ With the option off, `Compiler::available()` is false and `compile()` returns
 RHI and Renderer without linking a compiler. No language/compiler is fetched.
 An enabled install bundles glslang's static libraries and CMake package so
 installed `Truffle::Shader` consumers resolve its private static link closure.
-`Truffle::RHI` and `Truffle::Renderer` do not link those libraries.
+`Truffle::RHI` never links those libraries. Renderer can depend directly on the
+compiler-disabled Shader core without acquiring any compiler link dependency.
 
 ## On-demand compilation and reload
 
@@ -91,7 +98,7 @@ change.
 Unsupported language/target/stage, non-`main` GLSL entry points, combined
 image-samplers, subpass inputs, push constants, specialization constants
 (including specialized workgroup sizes), buffer descriptor arrays, unsized
-descriptor arrays, and complex/matrix/array/component-packed IO fail explicitly.
+descriptor arrays, and complex/matrix/array/component-packed/indexed IO fail explicitly.
 No fake empty reflection is substituted. Other compiler routes remain #73
 followups. No native backend maturity is claimed by this CPU compilation API.
 

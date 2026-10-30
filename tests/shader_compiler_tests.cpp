@@ -19,6 +19,9 @@ int main() {
     using namespace truffle;
     check(shader::detail::sha256("") == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "SHA-256 empty vector");
     check(shader::detail::sha256("abc") == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", "SHA-256 abc vector");
+    check(shader::detail::sha256("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq") ==
+          "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1",
+          "SHA-256 multi-block vector");
     shader::Compiler compiler;
     shader::CompileRequest request;
     request.source = {"main.vert", R"(#version 450
@@ -148,6 +151,11 @@ layout(location=0) out vec4 color;
 void main() { color=texture(tex,vec2(0)); }
 )";
     check(!compiler.compile(request).ok(), "Combined sampler explicitly rejected");
+    request.source.text = R"(#version 450
+layout(location=0,index=1) out vec4 color;
+void main() { color=vec4(1); }
+)";
+    check(!compiler.compile(request).ok(), "Dual-source indexed IO explicitly rejected");
     request.stage = rhi::ShaderStage::compute;
     request.language = rhi::ShaderSourceLanguage::glsl_es;
     request.source = {"work.es", "#version 310 es\nlayout(local_size_x=2) in;\nvoid main() {}\n"};
@@ -165,4 +173,12 @@ void main() { color=texture(tex,vec2(0)); }
     std::thread a{concurrent}, b{concurrent};
     a.join();
     b.join();
+    shader::CompileRequest warning;
+    warning.source = {"warning.vert",
+        "#version 450\n#extension GL_TRUFFLE_missing_extension : warn\n"
+        "void main(){ gl_Position=vec4(0); }\n"};
+    auto warned = compiler.compile(warning);
+    check(warned.ok() && !warned.value().diagnostics.empty() &&
+          !warned.value().package.desc().diagnostics.empty(),
+          "Successful compiler diagnostics retained in result and TSP");
 }

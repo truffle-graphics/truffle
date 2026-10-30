@@ -5,8 +5,6 @@ option(TRUFFLE_WARNINGS_AS_ERRORS "Treat Truffle target warnings as errors" OFF)
 option(TRUFFLE_BUILD_SHADERC "Build the optional truffle-shaderc package tool" OFF)
 option(TRUFFLE_SHADER_ENABLE_GLSLANG
        "Enable the shared GLSL/GLSL ES to SPIR-V compiler adapter" OFF)
-option(TRUFFLE_SHADERC_ENABLE_GLSLANG
-       "Enable the pinned offline GLSL/GLSL ES to SPIR-V compiler route" OFF)
 option(TRUFFLE_BUILD_RHI_DOCTOR "Build the RHI backend/platform doctor tool" ${PROJECT_IS_TOP_LEVEL})
 
 option(TRUFFLE_BUILD_BACKEND_NULL    "Build the Truffle null validation backend" ON)

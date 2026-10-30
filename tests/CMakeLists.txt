@@ -85,14 +85,14 @@ if(TRUFFLE_BUILD_BACKEND_VULKAN)
     target_link_libraries(truffle_vulkan_tests PRIVATE truffle_backend_vulkan)
     target_include_directories(truffle_vulkan_tests
                                PRIVATE "${PROJECT_SOURCE_DIR}/src/backends/vulkan")
-    if(TRUFFLE_BUILD_SHADERC AND TRUFFLE_SHADERC_ENABLE_GLSLANG)
+    if(TRUFFLE_BUILD_SHADERC AND TRUFFLE_SHADER_ENABLE_GLSLANG)
         target_compile_definitions(truffle_vulkan_tests PRIVATE
-            "TRUFFLE_VULKAN_SHADER_PACKAGE_PATH=\"${PROJECT_BINARY_DIR}/shaderc-glslang-smoke/triangle-a.truffle-shader\""
-            "TRUFFLE_VULKAN_FRAGMENT_PACKAGE_PATH=\"${PROJECT_BINARY_DIR}/shaderc-glslang-smoke/triangle-fragment.truffle-shader\""
-            "TRUFFLE_VULKAN_MRT_FRAGMENT_PACKAGE_PATH=\"${PROJECT_BINARY_DIR}/shaderc-glslang-smoke/mrt-fragment.truffle-shader\""
-            "TRUFFLE_VULKAN_COMPUTE_COLOR_FRAGMENT_PACKAGE_PATH=\"${PROJECT_BINARY_DIR}/shaderc-glslang-smoke/compute-color-fragment.truffle-shader\""
-            "TRUFFLE_VULKAN_TEXTURED_FRAGMENT_PACKAGE_PATH=\"${PROJECT_BINARY_DIR}/shaderc-glslang-smoke/textured-fragment.truffle-shader\""
-            "TRUFFLE_VULKAN_COMPUTE_PACKAGE_PATH=\"${PROJECT_BINARY_DIR}/shaderc-glslang-smoke/work-es.truffle-shader\"")
+            "TRUFFLE_VULKAN_SHADER_PACKAGE_PATH=\"${PROJECT_BINARY_DIR}/shaderc-glslang-smoke/triangle-a.tsp\""
+            "TRUFFLE_VULKAN_FRAGMENT_PACKAGE_PATH=\"${PROJECT_BINARY_DIR}/shaderc-glslang-smoke/triangle-fragment.tsp\""
+            "TRUFFLE_VULKAN_MRT_FRAGMENT_PACKAGE_PATH=\"${PROJECT_BINARY_DIR}/shaderc-glslang-smoke/mrt-fragment.tsp\""
+            "TRUFFLE_VULKAN_COMPUTE_COLOR_FRAGMENT_PACKAGE_PATH=\"${PROJECT_BINARY_DIR}/shaderc-glslang-smoke/compute-color-fragment.tsp\""
+            "TRUFFLE_VULKAN_TEXTURED_FRAGMENT_PACKAGE_PATH=\"${PROJECT_BINARY_DIR}/shaderc-glslang-smoke/textured-fragment.tsp\""
+            "TRUFFLE_VULKAN_COMPUTE_PACKAGE_PATH=\"${PROJECT_BINARY_DIR}/shaderc-glslang-smoke/work-es.tsp\"")
     endif()
     add_test(NAME truffle_vulkan_tests COMMAND truffle_vulkan_tests)
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID)
@@ -300,8 +300,18 @@ if(TRUFFLE_BUILD_SHADERC)
             "${CMAKE_COMMAND}"
             "-DTRUFFLE_SHADERC=$<TARGET_FILE:truffle-shaderc>"
             "-DTRUFFLE_SHADERC_TEST_DIR=${PROJECT_BINARY_DIR}/shaderc-smoke"
+            "-DTRUFFLE_EXPECT_COMPILER=$<BOOL:${TRUFFLE_SHADER_ENABLE_GLSLANG}>"
             -P "${PROJECT_SOURCE_DIR}/cmake/ShadercSmoke.cmake")
-    if(TRUFFLE_SHADERC_ENABLE_GLSLANG)
+    if(TRUFFLE_SHADER_ENABLE_GLSLANG)
+        add_executable(truffle_shaderc_equivalence_tests shaderc_equivalence_tests.cpp)
+        target_link_libraries(truffle_shaderc_equivalence_tests PRIVATE truffle_shader)
+        truffle_target_warnings(truffle_shaderc_equivalence_tests)
+        add_test(NAME truffle_shaderc_configured_smoke
+            COMMAND ${CMAKE_COMMAND}
+                "-DTRUFFLE_SHADERC=$<TARGET_FILE:truffle-shaderc>"
+                "-DTRUFFLE_SHADER_EQUIVALENCE=$<TARGET_FILE:truffle_shaderc_equivalence_tests>"
+                "-DTRUFFLE_SHADERC_TEST_DIR=${PROJECT_BINARY_DIR}/shaderc-configured-smoke"
+                -P "${PROJECT_SOURCE_DIR}/cmake/ShadercConfiguredSmoke.cmake")
         add_test(
             NAME truffle_shaderc_glslang_smoke
             COMMAND ${CMAKE_COMMAND}
@@ -322,6 +332,19 @@ target_link_libraries(truffle_performance_sanity_tests PRIVATE truffle_backend_n
 add_test(NAME truffle_performance_sanity_tests COMMAND truffle_performance_sanity_tests)
 
 if(TRUFFLE_INSTALL)
+    add_test(NAME truffle_shader_installed_consumer
+        COMMAND "${CMAKE_COMMAND}"
+            "-DTRUFFLE_BINARY_DIR=${PROJECT_BINARY_DIR}"
+            "-DTRUFFLE_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+            "-DTRUFFLE_INSTALL_PREFIX=${PROJECT_BINARY_DIR}/shader-install-test/install"
+            "-DTRUFFLE_CONSUMER_BUILD_DIR=${PROJECT_BINARY_DIR}/shader-install-test/consumer"
+            "-DTRUFFLE_CMAKE_GENERATOR=${CMAKE_GENERATOR}"
+            "-DTRUFFLE_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
+            "-DTRUFFLE_OSX_SYSROOT=${CMAKE_OSX_SYSROOT}"
+            "-DTRUFFLE_EXECUTABLE_SUFFIX=${CMAKE_EXECUTABLE_SUFFIX}"
+            "-DTRUFFLE_EXPECT_COMPILER=$<BOOL:${TRUFFLE_SHADER_ENABLE_GLSLANG}>"
+            "-DTRUFFLE_CONFIG=$<CONFIG>"
+            -P "${PROJECT_SOURCE_DIR}/cmake/ShaderInstallSmoke.cmake")
     add_test(
         NAME truffle_package_consumer
         COMMAND
