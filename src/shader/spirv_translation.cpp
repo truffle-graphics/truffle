@@ -11,6 +11,15 @@ namespace spirv_cross = SPIRV_CROSS_NAMESPACE;
 namespace spv = SPIRV_CROSS_SPV_HEADER_NAMESPACE;
 
 namespace truffle::shader::detail {
+
+std::string translation_provenance() {
+    return ";spirv-cross=" TRUFFLE_SPIRV_CROSS_REVISION
+        ";truffle-cross=2;msl=macos-2.1;glsl=410-core;essl=300-es;"
+        "flat-scalar-resources;gl-fixup-clipspace;metal-vertex-reserve=16;"
+        "metal-no-auxiliary-bindings;"
+        "cross-namespace=truffle_spirv_cross;cross-spv-namespace=truffle_spirv_cross_spv;cross-exceptions";
+}
+
 namespace {
 
 rhi::Status unsupported(std::string message) {

@@ -1,5 +1,6 @@
 #include "truffle/shader/compiler.hpp"
 #include "digest.hpp"
+#include "compiler_inputs.hpp"
 #include "spirv_reflection.hpp"
 #include "spirv_translation.hpp"
 
@@ -44,6 +45,32 @@ struct Process {
         if (initialized) glslang::FinalizeProcess();
     }
 };
+
+Process& glslang_process() {
+    static Process process;
+    return process;
+}
+
+rhi::Status validate_generated_glsl_unlocked(const CompileRequest& request,
+                                             std::span<const std::byte> code) {
+    if (code.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+        return invalid("Generated GLSL is too large");
+    const auto stage = request.stage == rhi::ShaderStage::vertex ? EShLangVertex :
+                       request.stage == rhi::ShaderStage::fragment ? EShLangFragment : EShLangCompute;
+    glslang::TShader generated{stage};
+    const char* text = reinterpret_cast<const char*>(code.data());
+    const int length = static_cast<int>(code.size());
+    generated.setStringsWithLengths(&text, &length, 1);
+    const bool es = request.target == rhi::ShaderTarget::glsl_es;
+    if (!generated.parse(GetDefaultResources(), es ? 300 : 410,
+                         es ? EEsProfile : ECoreProfile, false, false, EShMsgDefault))
+        return invalid("Generated GLSL validation failed: " + bounded(generated.getInfoLog()));
+    glslang::TProgram program;
+    program.addShader(&generated);
+    if (!program.link(EShMsgDefault))
+        return invalid("Generated GLSL link validation failed: " + bounded(program.getInfoLog()));
+    return rhi::Status::success();
+}
 
 class Includer final : public glslang::TShader::Includer {
 public:
@@ -129,20 +156,17 @@ private:
     bool frozen_ = false;
 };
 
-bool identifier(std::string_view value) {
-    if (value.empty() || !(std::isalpha(static_cast<unsigned char>(value.front())) || value.front() == '_'))
-        return false;
-    return std::all_of(value.begin(), value.end(), [](unsigned char c) {
-        return std::isalnum(c) || c == '_';
-    });
-}
-
-void field(std::string& output, std::string_view value) {
-    output += std::to_string(value.size()) + ":";
-    output += value;
-}
+using detail::field;
 
 } // namespace
+
+rhi::Status detail::validate_generated_glsl(const CompileRequest& request,
+                                            std::span<const std::byte> code) {
+    auto& process = glslang_process();
+    const std::lock_guard lock{process.mutex};
+    if (!process.initialized) return unsupported("glslang initialization failed");
+    return validate_generated_glsl_unlocked(request, code);
+}
 
 rhi::Result<Compilation> compile_glslang(const CompileRequest& request,
                                        std::vector<Compilation>& cache) {
@@ -159,18 +183,15 @@ rhi::Result<Compilation> compile_glslang(const CompileRequest& request,
     case rhi::ShaderStage::compute: stage = EShLangCompute; break;
     default: return unsupported("Unsupported shader stage");
     }
-    auto defines = request.defines;
-    std::sort(defines.begin(), defines.end(), [](const auto& a, const auto& b) { return a.name < b.name; });
+    auto normalized = detail::normalized_defines(request.defines);
+    if (!normalized.ok()) return normalized.status();
+    const auto defines = std::move(normalized).value();
     std::string preamble = "#extension GL_GOOGLE_include_directive : enable\n";
     for (std::size_t i = 0; i < defines.size(); ++i) {
         const auto& define = defines[i];
-        if (!identifier(define.name) || define.value.find_first_of("\r\n\0", 0, 3) != std::string::npos ||
-            (i && defines[i-1].name == define.name)) {
-            return invalid("Invalid/duplicate shader define: " + define.name);
-        }
         preamble += "#define " + define.name + " " + define.value + "\n";
     }
-    static Process process;
+    auto& process = glslang_process();
     const std::lock_guard lock{process.mutex};
     if (!process.initialized) return unsupported("glslang initialization failed");
     glslang_version_t version{};
@@ -191,11 +212,7 @@ rhi::Result<Compilation> compile_glslang(const CompileRequest& request,
 #endif
 #if defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS)
     if (request.target != rhi::ShaderTarget::spirv) {
-        result.compiler.revision += ";spirv-cross=" TRUFFLE_SPIRV_CROSS_REVISION
-            ";truffle-cross=2;msl=macos-2.1;glsl=410-core;essl=300-es;"
-            "flat-scalar-resources;gl-fixup-clipspace;metal-vertex-reserve=16;"
-            "metal-no-auxiliary-bindings;"
-            "cross-namespace=truffle_spirv_cross;cross-spv-namespace=truffle_spirv_cross_spv;cross-exceptions";
+        result.compiler.revision += detail::translation_provenance();
     }
 #endif
     glslang::TShader shader{stage};
@@ -292,18 +309,8 @@ rhi::Result<Compilation> compile_glslang(const CompileRequest& request,
         auto translated = detail::translate_spirv(words, request, variant, desc.remaps);
         if (!translated.ok()) return translated;
         if (request.target == rhi::ShaderTarget::glsl || request.target == rhi::ShaderTarget::glsl_es) {
-            glslang::TShader generated{stage};
-            const char* generatedText = reinterpret_cast<const char*>(variant.code.data());
-            const int generatedLength = static_cast<int>(variant.code.size());
-            generated.setStringsWithLengths(&generatedText, &generatedLength, 1);
-            const bool outputEs = request.target == rhi::ShaderTarget::glsl_es;
-            if (!generated.parse(GetDefaultResources(), outputEs ? 300 : 410,
-                                 outputEs ? EEsProfile : ECoreProfile, false, false, EShMsgDefault))
-                return invalid("Generated GLSL validation failed: " + bounded(generated.getInfoLog()));
-            glslang::TProgram generatedProgram;
-            generatedProgram.addShader(&generated);
-            if (!generatedProgram.link(EShMsgDefault))
-                return invalid("Generated GLSL link validation failed: " + bounded(generatedProgram.getInfoLog()));
+            const auto validation = validate_generated_glsl_unlocked(request, variant.code);
+            if (!validation.ok()) return validation;
         }
     }
 #endif

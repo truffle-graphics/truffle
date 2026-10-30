@@ -10,5 +10,19 @@ if(@TRUFFLE_SHADER_ENABLE_SPIRV_CROSS@)
     find_dependency(spirv_cross_glsl CONFIG)
     find_dependency(spirv_cross_msl CONFIG)
 endif()
+if(@TRUFFLE_SHADER_ENABLE_DXC@ AND NOT TARGET Truffle::DXC)
+    add_library(Truffle::DXC SHARED IMPORTED)
+    if(WIN32)
+        set_target_properties(Truffle::DXC PROPERTIES
+            IMPORTED_LOCATION "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_BINDIR@/dxcompiler.dll"
+            IMPORTED_IMPLIB "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@/dxcompiler.lib")
+    elseif(APPLE)
+        set_property(TARGET Truffle::DXC PROPERTY IMPORTED_LOCATION
+            "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@/libdxcompiler.dylib")
+    else()
+        set_property(TARGET Truffle::DXC PROPERTY IMPORTED_LOCATION
+            "${PACKAGE_PREFIX_DIR}/@CMAKE_INSTALL_LIBDIR@/libdxcompiler.so")
+    endif()
+endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/TruffleTargets.cmake")
