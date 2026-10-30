@@ -3,16 +3,31 @@
 Use this document as Truffle's rolling cross-machine handoff. Keep it useful to
 a human resuming work and to a fresh AI session reading the repository.
 
+## Native MSL parent acceptance (#188)
+
+- Parent reviewed the emitted-metallib reflection, pre-cache native dependency
+  validation, process isolation/cleanup, push access and CLI declaration fixes.
+  The accumulated all-provider warning-clean build passes 29 focused
+  Shader/tool/native/installed-consumer and coupled Metal checks.
+- Compiler-disabled package, rebuild, route and installed-consumer checks
+  retain isolation. The route-smoke assertion now matches the explicit
+  unavailable-route diagnostic; its corrected all-off branch was verified
+  against the final compiler-disabled executable.
+- PR #201 still requires the parent's exact-head merge and issue/Project
+  reconciliation. Shared mechanisms #192 and final audit #193 remain open;
+  no Shader-complete or Renderer-resumption claim is made.
+
 ## WGSL/Tint source routes — issue #191 (merged in PR #198)
 
-- Integration update: normally merged `origin/develop` at
-  `5852204c9f49c933c6a6fbbd6e1b3b560ac93bac` (HLSL PR #199) into this
-  branch without rebasing. Shared routes/API/CLI retain HLSL shader-model
-  fields, DXIL routes with no Vulkan intermediate, native output gates and
-  all WGSL routes. Tint reuses `compiler_inputs.hpp` key-field encoding and
-  `translation_provenance()`; shared GLSL validation remains used by GLSL/HLSL
-  outputs (Tint exposes no GLSL output route). Canonical SPIRV-Headers
-  reflection is compiled once for any enabled SPIR-V adapter.
+- Integration update: HLSL PR #199 was merged in signed merge commit
+  `53c4b39` without rebasing. WGSL PR #198 at
+  `f2079307fd2cd5432d465c083cc0c416e0b1ec5f` is reconciled here. Shared
+  routes/API/CLI retain HLSL shader-model fields, DXIL routes with no Vulkan
+  intermediate, native output gates and all Tint routes. `Compiler::compile`
+  centrally accepts `sourceUnits` only for native MSL and rejects it before
+  dispatch on all other languages/adapters. Tint reuses `compiler_inputs.hpp`
+  key-field encoding and `translation_provenance()`; canonical SPIRV-Headers
+  reflection is included once for any enabled SPIR-V adapter.
 - Integration verification reused the existing compiler builds: Tint-only
   with glslang OFF passed 12 focused tests; GLSL/Tint enabled integration
   passed the same 12, including native exact Vulkan/Metal output, real
@@ -66,7 +81,7 @@ AI work that reaches a commit must update this handoff before that commit.
 Promote durable decisions into project context, architecture, roadmap, or ADRs
 rather than growing a historical transcript here.
 
-## Native Slang Modules (#190, Ready For Integration Review)
+## Native Slang Modules (#190, Merged in PR #200)
 
 - **Owner/boundary:** optional in-process compilation remains in Shader; the
   CLI uses that library. Native imports/includes and Slang component linking
@@ -122,9 +137,11 @@ rather than growing a historical transcript here.
   routes/options, HLSL Shader Model fields, experimental WGSL gates and native
   empty-intermediate CLI/consumer handling. Canonical reflection is compiled
   once for any enabled SPIR-V adapter; Tint needs no glslang.
-  Slang now reuses `compiler_inputs.hpp` define/key helpers. Only existing
-  affected Slang/GLSL/off builds are revalidated; no second DXC or Tint build.
-  Shared rejection tests cover all non-MSL languages in enabled/off builds.
+  Slang now reuses `compiler_inputs.hpp` define/key helpers. MSL/Tint/GLSL and
+  compiler-off integration tests are recorded in the #188 handoff section.
+  The parent owns the all-provider coexistence build and will reuse its existing
+  DXC build; do not duplicate that compiler build. Shared rejection tests cover
+  all non-MSL languages in enabled/off builds.
   WGSL's regression runs before its disabled-adapter check and additionally
   covers every enabled stage and valid SPIR-V→WGSL inputs when Tint is enabled.
   Local HLSL/WGSL tests exercise disabled-adapter paths, not new native proofs.
@@ -185,34 +202,130 @@ rather than growing a historical transcript here.
   append/consume/counter resources fail rather than receiving invented remaps.
   Structured/raw storage minima reflect native stride/four-byte access.
 - **Focused evidence, Apple Silicon:** final combined Release/warnings-as-errors
-  configuration passes **19/19** with
-  `ctest --test-dir build/shader-hlsl -R 'truffle_shader|truffle_renderer_source_program_tests' --output-on-failure --parallel 2`.
-  This includes all 23 HLSL stage/target/intermediate configurations with
-  byte-identical CLI/library packages, transitive/guarded includes, defines,
-  dependency invalidation, failed rebuild retention, reflection, real validation,
-  existing GLSL/portable regressions and installed Shader/Renderer consumers.
-  DXC-only passes **8/8** focused tests and separately installed consumers without
-  glslang/Cross. Compiler-off installed Shader/Renderer consumers pass; their
-  link commands contain no optional compiler libraries.
+  configuration passed 19/19, including HLSL stage/target/intermediate
+  configurations, CLI/library equality, dependencies, validation, reflection
+  and installed Shader/Renderer consumers. DXC-only passed 8/8 focused tests
+  without glslang/Cross. Compiler-off installed consumers have no optional
+  compiler libraries.
 - **Native evidence:** unchanged serialized HLSL packages render all 256 pixels
   exactly RGBA `(64,128,255,255)` on Vulkan/MoltenVK, Metal and macOS GL 4.1.
-  Vulkan/Metal compute writes `107..110`, retaining four `0xdeadbeef` tail values.
+  Vulkan/Metal compute writes `107..110`, retaining four sentinel values.
   Vulkan validation and Metal API/GPU validation are active. DXIL validation is
   real on this host but is not Windows/D3D12 driver execution; GLES has compiler
-  validation, not native evidence. Other-host validation remains separately
-  tracked and is not required to pretend D3D12 runs on this Mac.
-- **Cohesion:** the adapter coordinates compilation/package/cache lifecycle;
-  DXIL validation/reflection and COM ownership are separate private helpers.
-  Shared define/key normalization and existing generated-GLSL validation/Cross
-  provenance are reused rather than copied. Architecture and whitespace guards
-  pass. One issue-scoped signed commit/paired push is the approved delivery unit.
-- **Next:** review and integrate #189, then reconcile the independently developed
-  native MSL (#188), Slang (#190), WGSL (#191), shared-mechanism audit (#192) and
-  final completion audit (#193). Shader is not complete; Renderer features stay
-  paused. Source-unit contracts introduced by #188 must reject unsupported
-  adapters explicitly during integration.
+  validation, not native evidence.
+- HLSL #189 is merged; this MSL branch preserves its route, request, DXC/CMake
+  and shaderc integration. Parent owns acceptance and the remaining audits.
 
-## Portable Shader Targets (#187, Merged Baseline)
+## Native MSL Inputs And Libraries (#188, Active)
+
+- Added optional `TRUFFLE_SHADER_ENABLE_METAL_COMPILER` in-process native MSL
+  route and the separate `TRUFFLE_SHADER_ENABLE_METALLIB_COMPILER` offline
+  `metal`/`metallib` route. Both are off by default; the latter requires the
+  former and an installed Apple Metal Toolchain. Shader remains independent of
+  Metal backend and Renderer; optional frameworks/tool discovery are private.
+- Native requests require typed `CompileRequest::interfaceDeclaration`
+  (`rhi::ShaderReflection`). macOS 26+ `MTLFunction`/`MTLFunctionReflection`
+  validates function stage, vertex attribute name/location/type, resource
+  names/kind/access/count/index and buffer data size, push-buffer capacity, and
+  function-constant identity/type/required status. Metal-unobservable fields
+  (logical binding slots, fragment IO/output interpolation, push layout,
+  specialization defaults and workgroup contract) remain caller assertions.
+  Unsupported argument buffers, unrepresented kinds and texture/resource forms
+  fail rather than being parsed or guessed.
+- `CompileRequest::sourceUnits` is an explicit ordered list of reusable source
+  files resolved on every attempt with the existing resolver/include roots,
+  assembled before the root as one Metal translation unit with `#line` names.
+  No new shader syntax or MSL parser is introduced. Metal owns macro processing;
+  `<metal_stdlib>` is the only supported include, and arbitrary user includes
+  are rejected. Shared compiler dispatch explicitly rejects this field on
+  non-MSL routes. shaderc exposes repeatable `--source-unit FILE` and
+  `--interface-from PACKAGE`.
+- Source order, requested/resolved identities, full content, defines, include
+  roots, target/profile, typed declaration and compiler identity/version are
+  cache inputs. Dependencies are resolved on each attempt and failures preserve
+  last-good rebuild results. TSP codec/schema remains unchanged at unreleased
+  `1.0`.
+- Installed local toolchain: macOS 27.0.1, Xcode 27.2, Metal 32023.922
+  (`metalfe-32023.922.4`), matching `metallib`; offline AIR target
+  `air64-apple-macos13.0`. Runtime reflection route requires macOS 26+ and a
+  Metal device. This is a local toolchain observation, not an older-OS or
+  cross-machine promise.
+- On Apple M3 Pro with Metal API/GPU validation: composed source and offline
+  metallib both produced exact 256-pixel RGBA `(64,64,32,255)` graphics
+  readback and compute `10,12,14,16` (declared default) / `15,18,21,24`
+  (override). Focused native/route/CLI tests pass; shaderc smoke compiles both
+  source and metallib through `--source-unit` and `--interface-from`.
+- MSL implementation commit `173f2249ea96c032e63996a2ae2e535119a6aeb5` is
+  signed and pushed. HLSL/DXC route/request/CMake/CLI integration is in signed
+  merge commit `53c4b39`; shared compiler dispatch rejects nonempty
+  `sourceUnits` on DXC and every non-MSL route. The SPIR-V `DrawParameters`
+  capability guard from Slang work is retained and covered by the shared
+  reflection test. Slang #200 is accepted; final non-MSL develop
+  `990f7e679f41f1dc9d55c7d5a31e3acbbac87381` is now merged. Preserve its
+  shared source-unit API
+  without adding adapter-private duplicate guards; the gate in `Compiler::compile`
+  is the only source-unit route policy.
+- Post-#200 focused integration validation: MSL + Tint, portable targets, WGSL, native
+  MSL source/metallib, exact WGSL Vulkan/Metal readback, and shaderc MSL smoke
+  passed 8/8; compiler-off route/package/WGSL/Renderer consumers passed 6/6.
+  Portable GLSL route/native/unit tests (3/3) and runtime-only MSL source
+  builds (2/2) passed earlier in this branch. Parent owns the all-provider
+  coexistence build and reuses its existing DXC build.
+- **PR #201 review fixes:** the offline route now loads and reflects the exact
+  emitted metallib before package publication, verifies that artifact against
+  the declaration, and uses its remaps. The linker preserves Metal's reflection
+  list; a target-macro regression rejects source/offline metadata divergence.
+  Push-data `buffer(30)` must be read-only. Source checks ignore comments and
+  strings, handle continued/comment-separated directives, allow only
+  `<metal_stdlib>`, and reject user includes/imports; offline compilation also
+  uses Metal's native dependency output and rejects dependencies outside the
+  installed Metal Toolchain.
+- Offline process management moved into the private Shader-only
+  `metal_offline_toolchain` helper because tool discovery, depfile validation,
+  concurrent process/pipe lifecycle, and error/reaping behavior form a distinct
+  implementation boundary. It uses Darwin close-by-default spawn handling,
+  checks every spawn action, reports pipe I/O failures, and retries `waitpid`
+  on `EINTR`; concurrent offline compiles are covered.
+  `metal_adapter.mm` remains the cohesive native MSL request owner (source
+  assembly, native compile/reflection, declaration checks, and publication all
+  share one request lifecycle); only the distinct offline toolchain/process
+  implementation was extracted.
+- Integration regressions now keep the GLSL route matrix running, compile a
+  real declared MSL input in the installed consumer, and reject ambiguous
+  `shaderc --interface-from` matches unless canonical declarations agree.
+  Route documentation now records the macOS 26+ Metal/device probe and
+  process-lifetime discovery cache.
+- Review-fix validation: focused AppleClang warnings-as-errors build of the
+  Shader, native MSL tests, route tests, and shaderc succeeded. Native MSL,
+  route, and CLI smoke tests passed 3/3 in that build; the installed-consumer
+  test was excluded there because only narrow targets were built, not every
+  library needed by install. The complete focused `build/shader-native` run
+  passed 4/4 including installed-consumer smoke. Runtime-only Shader build
+  passed after helper extraction. Review-fix commit `b78b55d` is signed and
+  pushed to PR #201. `origin/develop` at
+  `990f7e679f41f1dc9d55c7d5a31e3acbbac87381` is already an ancestor of this
+  branch; no additional develop merge is pending. Parent owns consolidated
+  all-provider validation of the pushed review-fix head.
+- **Follow-up review fixes:** offline Metal's native dependency scan now runs
+  for every request before cache lookup; offline requests rely on that
+  authoritative dependency list rather than the runtime source guard. The
+  source guard now removes phase-two line splices and recognizes `%:`. A
+  controlled `__has_include` regression first caches the no-header result, then
+  creates a test-owned header reached through a spliced directive and verifies
+  the now-active external dependency is rejected instead of returning stale
+  success. Spawn-action and attribute cleanup track successful initialization
+  independently. The writable-push test clears unrelated specialization
+  declarations, and the compiler-off installed consumer again rejects any
+  unexpected discovered route.
+- Follow-up validation: native MSL, route, and shaderc smoke tests pass 3/3 in
+  the warnings-as-errors build; the strict compiler-off installed consumer
+  passes 1/1. Parent's consolidated all-provider warnings-as-errors run passed
+  6/6 at the previous review-fix head `c92e81c`; parent owns the next
+  consolidated check after this follow-up push.
+- Parent owns review/merge/tracking; #188 remains active until accepted. No
+  TSP version bump, migration, legacy reader, or Shader-module completion claim.
+
+## Portable Shader Targets (#187, Ready For Parent Review)
 
 - **Independent review fixes on PR #197:** MSL translation now checks all seven
   upstream auxiliary-resource feedback APIs **after** compilation and rejects

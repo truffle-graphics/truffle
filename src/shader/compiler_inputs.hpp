@@ -4,12 +4,19 @@
 
 #include <algorithm>
 #include <cctype>
+#include <type_traits>
 
 namespace truffle::shader::detail {
 
 inline void field(std::string& output, std::string_view value) {
     output += std::to_string(value.size()) + ":";
     output += value;
+}
+
+template <typename Value>
+    requires std::is_integral_v<Value>
+inline void field(std::string& output, Value value) {
+    field(output, std::to_string(value));
 }
 
 inline rhi::Result<std::vector<rhi::ShaderDefine>> normalized_defines(

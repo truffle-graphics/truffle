@@ -83,9 +83,11 @@ public:
             const auto args = words.subspan(i + 1, count - 1);
             switch (op) {
             case spv::Op::OpCapability:
-                if (args.empty()) return unsupported("Malformed SPIR-V capability instruction");
+                if (args.empty())
+                    return unsupported("Malformed SPIR-V capability instruction");
                 if (args[0] == static_cast<Word>(spv::Capability::DrawParameters))
-                    return unsupported("SPIR-V DrawParameters requires a device feature not modeled by RHI");
+                    return unsupported(
+                        "SPIR-V DrawParameters requires a device feature not modeled by RHI");
                 break;
             case spv::Op::OpName: names[args[0]] = text(args.subspan(1)); break;
             case spv::Op::OpMemberName:

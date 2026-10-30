@@ -3,6 +3,11 @@ target_link_libraries(truffle_shader PUBLIC truffle_rhi)
 truffle_configure_target(truffle_shader Shader)
 add_library(Truffle::Shader ALIAS truffle_shader)
 
+if(TRUFFLE_SHADER_ENABLE_METALLIB_COMPILER AND
+   NOT TRUFFLE_SHADER_ENABLE_METAL_COMPILER)
+    message(FATAL_ERROR "TRUFFLE_SHADER_ENABLE_METALLIB_COMPILER requires TRUFFLE_SHADER_ENABLE_METAL_COMPILER")
+endif()
+
 function(truffle_shader_require_pin name revision)
     if(name MATCHES "^slang/external/(.+)$")
         set(recovery "git -C vendor/slang submodule update --init external/${CMAKE_MATCH_1}")
@@ -22,6 +27,35 @@ function(truffle_shader_require_pin name revision)
         message(FATAL_ERROR "Shader requires clean vendor/${name} at ${revision}; initialize the pinned submodule: ${recovery}")
     endif()
 endfunction()
+
+if(TRUFFLE_SHADER_ENABLE_METAL_COMPILER)
+    find_library(TRUFFLE_METAL_FRAMEWORK Metal REQUIRED)
+    find_library(TRUFFLE_FOUNDATION_FRAMEWORK Foundation REQUIRED)
+    target_sources(truffle_shader PRIVATE
+        metal_adapter.mm metal_offline_toolchain.cpp)
+    target_link_libraries(truffle_shader PRIVATE
+        "${TRUFFLE_METAL_FRAMEWORK}" "${TRUFFLE_FOUNDATION_FRAMEWORK}")
+    target_compile_definitions(truffle_shader PRIVATE
+        TRUFFLE_SHADER_HAS_METAL_COMPILER=1)
+endif()
+
+if(TRUFFLE_SHADER_ENABLE_METALLIB_COMPILER)
+    find_program(TRUFFLE_XCRUN_EXECUTABLE xcrun REQUIRED)
+    execute_process(COMMAND "${TRUFFLE_XCRUN_EXECUTABLE}" --find metal
+        RESULT_VARIABLE metal_result OUTPUT_VARIABLE metal_path
+        OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    execute_process(COMMAND "${TRUFFLE_XCRUN_EXECUTABLE}" --find metallib
+        RESULT_VARIABLE metallib_result OUTPUT_VARIABLE metallib_path
+        OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    if(NOT metal_result EQUAL 0 OR NOT metallib_result EQUAL 0 OR
+       NOT EXISTS "${metal_path}" OR NOT EXISTS "${metallib_path}")
+        message(FATAL_ERROR
+            "TRUFFLE_SHADER_ENABLE_METALLIB_COMPILER requires the installed Apple Metal Toolchain (xcrun metal and metallib)")
+    endif()
+    target_compile_definitions(truffle_shader PRIVATE
+        TRUFFLE_SHADER_HAS_METALLIB_COMPILER=1
+        TRUFFLE_XCRUN_EXECUTABLE="${TRUFFLE_XCRUN_EXECUTABLE}")
+endif()
 
 if(TRUFFLE_SHADER_ENABLE_SPIRV_CROSS AND
    (NOT (TRUFFLE_SHADER_ENABLE_GLSLANG OR TRUFFLE_SHADER_ENABLE_TINT OR TRUFFLE_SHADER_ENABLE_DXC) OR NOT TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS))

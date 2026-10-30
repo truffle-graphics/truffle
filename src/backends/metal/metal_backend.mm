@@ -455,9 +455,15 @@ struct MetalSwapchainResource {
                 return Status::failure(StatusCode::invalid_argument,
                                        "Metal shader source is not valid UTF-8");
             }
+            auto* options = desc.resourceBindingsComplete
+                ? [[MTLCompileOptions alloc] init] : nil;
+            if (options != nil) {
+                options.languageVersion = MTLLanguageVersion2_1;
+            }
             library = [device newLibraryWithSource:source
-                                           options:nil
+                                           options:options
                                              error:&error];
+            [options release];
             [source release];
         } else {
             const auto data = dispatch_data_create(
@@ -516,12 +522,41 @@ struct MetalSwapchainResource {
                     return constant.id == value.id;
                 });
         });
-    if (!hasValue) {
+    if (!hasValue && shader->desc.specializationConstants.empty()) {
         [shader->function retain];
         return shader->function;
     }
     @autoreleasepool {
         auto* constants = [[MTLFunctionConstantValues alloc] init];
+        for (const auto& constant : shader->desc.specializationConstants) {
+            switch (constant.type) {
+            case ShaderValueType::boolean: {
+                const bool typed = constant.defaultValueBits != 0;
+                [constants setConstantValue:&typed
+                                       type:MTLDataTypeBool
+                                    atIndex:constant.id];
+                break;
+            }
+            case ShaderValueType::sint32: {
+                const auto typed =
+                    static_cast<std::int32_t>(constant.defaultValueBits);
+                [constants setConstantValue:&typed
+                                       type:MTLDataTypeInt
+                                    atIndex:constant.id];
+                break;
+            }
+            case ShaderValueType::uint32:
+                [constants setConstantValue:&constant.defaultValueBits
+                                       type:MTLDataTypeUInt
+                                    atIndex:constant.id];
+                break;
+            case ShaderValueType::float32:
+                [constants setConstantValue:&constant.defaultValueBits
+                                       type:MTLDataTypeFloat
+                                    atIndex:constant.id];
+                break;
+            }
+        }
         for (const auto& value : values) {
             const auto reflected = std::find_if(
                 shader->desc.specializationConstants.begin(),

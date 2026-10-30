@@ -6,7 +6,7 @@
 #include <iostream>
 #if defined(TRUFFLE_TEST_SPIRV_REFLECTION)
 #include "spirv_reflection.hpp"
-#include <SPIRV/spirv.hpp11>
+#include <spirv/unified1/spirv.hpp11>
 #include <cstring>
 #endif
 
@@ -366,10 +366,27 @@ layout(set=0,binding=0) buffer Data { uint values[count]; } data;
 void main() {}
 )", "minimum size");
 }
+
+#if defined(TRUFFLE_TEST_SPIRV_REFLECTION)
+void unsupported_spirv_capabilities() {
+    const std::array<unsigned int, 7> drawParameters{
+        spv::MagicNumber, 0x00010300u, 0, 1, 0,
+        (2u << 16) | static_cast<unsigned int>(spv::Op::OpCapability),
+        static_cast<unsigned int>(spv::Capability::DrawParameters)};
+    rhi::ShaderReflection reflection;
+    const auto status = shader::detail::reflect_spirv(
+        drawParameters, rhi::ShaderStage::vertex, reflection);
+    TRUFFLE_CHECK(!status.ok() && status.code == rhi::StatusCode::unsupported);
+    TRUFFLE_CHECK(status.message.find("DrawParameters") != std::string::npos);
+}
+#endif
 }
 
 int main() {
     try {
+#if defined(TRUFFLE_TEST_SPIRV_REFLECTION)
+        unsupported_spirv_capabilities();
+#endif
         if (!truffle::tests::shader_route_enabled()) return 0;
         truffle::shader::Compiler compiler;
         constants_and_resources(compiler);

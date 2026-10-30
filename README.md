@@ -115,15 +115,18 @@ compose Truffle with one at its own application boundary.
 
 Current focus is **Shader completion first** under #73. Route/target contracts
 (#185, PR #194) and baseline reflection (#186, PRs #195/#196) are completed.
-Portable native output (#187) is the current bounded review phase: optional
-SPIRV-Tools/SPIRV-Cross generate experimentally gated macOS MSL 2.1, GLSL 410
-and GLSL ES 300 with real logical/native entry identities and binding remaps.
-Generated resource-backed graphics agree exactly on Apple Silicon Vulkan,
-Metal and OpenGL 4.1; GLES has compiler validation, not native evidence. The unreleased
-TSP draft retains its `1.0` identifiers without compatibility scaffolding.
+Native MSL authoring and offline Metal libraries (#188) are the current bounded
+phase: optional in-process Metal reflection, ordered source-unit composition,
+typed interface validation and a separate installed-toolchain metallib route.
+Composed native source and metallib each pass exact Apple M3 Pro graphics and
+compute readback; see the Shader matrix for macOS/API floors and declaration
+limits. Portable native output (#187) separately provides experimentally gated
+GLSL/GLSL ES-to-MSL 2.1, GLSL 410 and GLSL ES 300 with real logical/native
+entry identities and binding remaps. The unreleased TSP draft retains its
+`1.0` identifiers without compatibility scaffolding.
 The merged #178-#181 Shader/Renderer foundations are
 not full module completion. Renderer feature work is paused; the remaining
-Shader phases (#187-#193) and their evidence gates are in
+Shader phases (#188, #192, and #193) and their evidence gates are in
 [`docs/roadmap.md`](docs/roadmap.md). See the
 [Shader API and implemented/planned route matrix](src/shader/README.md) for
 accepted sources, emitted targets, target versions, and native evidence.
@@ -160,8 +163,12 @@ it uses pinned in-process DXC for SPIR-V and DXIL, without requiring glslang.
 Portable native outputs additionally require
 `-DTRUFFLE_SHADER_ENABLE_SPIRV_TOOLS=ON -DTRUFFLE_SHADER_ENABLE_SPIRV_CROSS=ON`.
 Explicitly prepare their pinned submodules first; configure never downloads.
-See the [HLSL dependency preparation and limits](src/shader/README.md#hlsl-and-dxc-189),
-the [shared native profiles and limits](src/shader/README.md#portable-native-generation-187)
+Native MSL source/reflection is independently enabled with
+`-DTRUFFLE_SHADER_ENABLE_METAL_COMPILER=ON` on Apple. Offline `metallib` output
+additionally needs `-DTRUFFLE_SHADER_ENABLE_METALLIB_COMPILER=ON` and the
+installed Xcode Metal Toolchain. These flags are disabled by default; prepared
+package consumers do not link the compiler.
+See the [native MSL and portable Shader target profiles and limits](src/shader/README.md#native-msl-source-and-libraries-188)
 and [shaderc examples](docs/rhi1/shader-package.md#tool-usage).
 
 Optional WGSL compilation uses pinned in-process Tint with

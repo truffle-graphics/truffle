@@ -4,6 +4,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -80,11 +81,14 @@ struct CompileRequest {
     GlslEsTarget glslEsTarget;
     // Explicit consent is required both to produce and to load generated MSL/WGSL.
     bool allowExperimentalMetalGeneration = false;
-    bool allowExperimentalWgslGeneration = false;
-    std::vector<std::string> includeRoots;
     // Ordered extra source units for native MSL only. Compiler::compile rejects
     // them for every other language before adapter discovery or source resolution.
     std::vector<std::string> sourceUnits;
+    // Required for native MSL. Metal-observable fields are checked; remaining values
+    // are explicit caller assertions because Metal does not expose them in reflection.
+    std::optional<rhi::ShaderReflection> interfaceDeclaration;
+    bool allowExperimentalWgslGeneration = false;
+    std::vector<std::string> includeRoots;
     SourceResolver resolver;
     std::vector<rhi::ShaderDefine> defines;
     bool generateDebugInfo = false;
@@ -125,7 +129,9 @@ public:
     [[nodiscard]] rhi::Result<Compilation> compile(const CompileRequest& request);
     void clear_cache();
     [[nodiscard]] static std::span<const CompilerRoute> routes() noexcept;
-    // Whether any source-compilation route is built in; not a native GPU probe.
+    // Whether any route is discoverable in this process/runtime. Native MSL
+    // discovery probes Metal availability once; this does not guarantee a
+    // particular request compiles.
     [[nodiscard]] static bool available() noexcept;
 
 private:
