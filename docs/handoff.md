@@ -122,7 +122,8 @@ setup, not immediate work. No issue labels or hosted workflows change.
   access return `unsupported` instead of failing validation.
 - Timestamp queries stay unadvertised: on the M3 Pro, counter sampling exists
   only at encoder boundaries, empty encoders record no sample, and GPU-side
-  `resolveCounters` returned zeros. Occlusion queries remain unmapped.
+  `resolveCounters` returned zeros. Occlusion queries remain unmapped. Both
+  are tracked in #175.
 - `backend_support.cpp` records Metal macOS conformance evidence; maturity
   stays `native_smoke` because the `conformant` gate also needs the shared
   cross-backend suite, which Metal (MSL shaders) does not run yet.

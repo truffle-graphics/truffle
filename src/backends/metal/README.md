@@ -72,7 +72,7 @@ Known limits of the advertised features:
   only at encoder boundaries, empty encoders record no sample, and GPU-side
   `resolveCounters` returned zeros, so a standalone `write_timestamp` plus GPU
   `resolve_queries` cannot be implemented honestly. Occlusion queries have no
-  native mapping yet.
+  native mapping yet. Both are tracked in #175.
 
 ## Device loss
 
