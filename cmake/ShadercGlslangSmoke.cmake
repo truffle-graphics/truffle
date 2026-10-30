@@ -4,8 +4,8 @@ endif()
 
 file(MAKE_DIRECTORY "${TRUFFLE_SHADERC_TEST_DIR}")
 set(_vertex "${TRUFFLE_SHADERC_TEST_DIR}/triangle.vert")
-set(_package_a "${TRUFFLE_SHADERC_TEST_DIR}/triangle-a.truffle-shader")
-set(_package_b "${TRUFFLE_SHADERC_TEST_DIR}/triangle-b.truffle-shader")
+set(_package_a "${TRUFFLE_SHADERC_TEST_DIR}/triangle-a.tsp")
+set(_package_b "${TRUFFLE_SHADERC_TEST_DIR}/triangle-b.tsp")
 file(WRITE "${_vertex}"
     "#version 450\n"
     "layout(location = 0) out vec3 color;\n"
@@ -55,7 +55,7 @@ endif()
 
 set(_fragment "${TRUFFLE_SHADERC_TEST_DIR}/triangle.frag")
 set(_fragment_package
-    "${TRUFFLE_SHADERC_TEST_DIR}/triangle-fragment.truffle-shader")
+    "${TRUFFLE_SHADERC_TEST_DIR}/triangle-fragment.tsp")
 file(WRITE "${_fragment}"
     "#version 450\n"
     "layout(location = 0) out vec4 outputColor;\n"
@@ -82,7 +82,7 @@ endif()
 
 set(_mrt_fragment "${TRUFFLE_SHADERC_TEST_DIR}/mrt.frag")
 set(_mrt_fragment_package
-    "${TRUFFLE_SHADERC_TEST_DIR}/mrt-fragment.truffle-shader")
+    "${TRUFFLE_SHADERC_TEST_DIR}/mrt-fragment.tsp")
 file(WRITE "${_mrt_fragment}"
     "#version 450\n"
     "layout(location = 0) out vec4 firstColor;\n"
@@ -114,7 +114,7 @@ endif()
 set(_compute_color_fragment
     "${TRUFFLE_SHADERC_TEST_DIR}/compute-color.frag")
 set(_compute_color_fragment_package
-    "${TRUFFLE_SHADERC_TEST_DIR}/compute-color-fragment.truffle-shader")
+    "${TRUFFLE_SHADERC_TEST_DIR}/compute-color-fragment.tsp")
 file(WRITE "${_compute_color_fragment}"
     "#version 450\n"
     "layout(set = 0, binding = 0, std430) readonly buffer Input { uint values[]; } inputData;\n"
@@ -146,7 +146,7 @@ endif()
 
 set(_textured_fragment "${TRUFFLE_SHADERC_TEST_DIR}/textured.frag")
 set(_textured_fragment_package
-    "${TRUFFLE_SHADERC_TEST_DIR}/textured-fragment.truffle-shader")
+    "${TRUFFLE_SHADERC_TEST_DIR}/textured-fragment.tsp")
 file(WRITE "${_textured_fragment}"
     "#version 450\n"
     "layout(set = 0, binding = 0) uniform texture2D sourceTexture;\n"
@@ -186,7 +186,7 @@ if(NOT _inspect_result EQUAL 0 OR
 endif()
 
 set(_compute_es "${TRUFFLE_SHADERC_TEST_DIR}/work.comp")
-set(_compute_es_package "${TRUFFLE_SHADERC_TEST_DIR}/work-es.truffle-shader")
+set(_compute_es_package "${TRUFFLE_SHADERC_TEST_DIR}/work-es.tsp")
 file(WRITE "${_compute_es}"
     "#version 310 es\n"
     "layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;\n"
@@ -224,7 +224,7 @@ execute_process(
         --target spirv
         --stage vertex
         --input "${_invalid}"
-        --output "${TRUFFLE_SHADERC_TEST_DIR}/invalid.truffle-shader"
+        --output "${TRUFFLE_SHADERC_TEST_DIR}/invalid.tsp"
         --source-hash "${_invalid_hash}"
         --source-language glsl
     RESULT_VARIABLE _invalid_result
@@ -234,3 +234,28 @@ if(_invalid_result EQUAL 0 OR NOT _invalid_error MATCHES "glslang")
     message(FATAL_ERROR
         "invalid GLSL did not return compiler diagnostics: ${_invalid_output}${_invalid_error}")
 endif()
+
+set(_warnings "${TRUFFLE_SHADERC_TEST_DIR}/many-warnings.vert")
+set(_warnings_package "${TRUFFLE_SHADERC_TEST_DIR}/many-warnings.tsp")
+file(WRITE "${_warnings}" "#version 450\n")
+foreach(_index RANGE 0 99)
+    file(APPEND "${_warnings}"
+        "#extension GL_TRUFFLE_missing_extension_${_index} : warn\n")
+endforeach()
+file(APPEND "${_warnings}" "void main(){ gl_Position=vec4(0); }\n")
+execute_process(
+    COMMAND "${TRUFFLE_SHADERC}" --compile --name many-warnings --target spirv
+        --stage vertex --source-language glsl --input "${_warnings}"
+        --output "${_warnings_package}"
+    RESULT_VARIABLE _warnings_result
+    OUTPUT_VARIABLE _warnings_output
+    ERROR_VARIABLE _warnings_error)
+string(LENGTH "${_warnings_error}" _warnings_length)
+if(NOT _warnings_result EQUAL 0 OR _warnings_length LESS_EQUAL 4096)
+    message(FATAL_ERROR
+        "warning-heavy GLSL must compile and retain diagnostics beyond 4 KiB: "
+        "${_warnings_output}${_warnings_error}")
+endif()
+execute_process(
+    COMMAND "${TRUFFLE_SHADERC}" --inspect "${_warnings_package}"
+    COMMAND_ERROR_IS_FATAL ANY)

@@ -5,7 +5,7 @@ endif()
 file(MAKE_DIRECTORY "${TRUFFLE_SHADERC_TEST_DIR}")
 set(_input "${TRUFFLE_SHADERC_TEST_DIR}/fixture.spv")
 set(_dxil_input "${TRUFFLE_SHADERC_TEST_DIR}/fixture.dxil")
-set(_package "${TRUFFLE_SHADERC_TEST_DIR}/fixture.truffle-shader")
+set(_package "${TRUFFLE_SHADERC_TEST_DIR}/fixture.tsp")
 file(WRITE "${_input}" "SPVFIXTURE")
 file(WRITE "${_dxil_input}" "DXILFIXTURE")
 
@@ -61,4 +61,17 @@ if(NOT _inspect_result EQUAL 0 OR
    NOT _inspect_output MATCHES "smoke variants=2")
     message(FATAL_ERROR
         "truffle-shaderc inspection failed: ${_inspect_output}${_inspect_error}")
+endif()
+
+if(DEFINED TRUFFLE_EXPECT_COMPILER AND NOT TRUFFLE_EXPECT_COMPILER)
+    set(_source "${TRUFFLE_SHADERC_TEST_DIR}/disabled.vert")
+    file(WRITE "${_source}" "#version 450\nvoid main(){ gl_Position=vec4(0); }\n")
+    execute_process(COMMAND "${TRUFFLE_SHADERC}"
+        --compile --name disabled --target spirv --stage vertex
+        --source-language glsl --input "${_source}"
+        --output "${TRUFFLE_SHADERC_TEST_DIR}/disabled.tsp"
+        RESULT_VARIABLE _result ERROR_VARIABLE _error)
+    if(_result EQUAL 0 OR NOT _error MATCHES "TRUFFLE_SHADER_ENABLE_GLSLANG")
+        message(FATAL_ERROR "Disabled compilation did not fail explicitly: ${_error}")
+    endif()
 endif()

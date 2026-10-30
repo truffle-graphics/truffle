@@ -91,6 +91,12 @@ struct BufferView {
     std::size_t   size   = 0;
 };
 
+struct BatchBindGroup {
+    std::uint32_t group = 0;
+    rhi::BindGroup* bindings = nullptr;
+    std::vector<std::uint32_t> dynamicOffsets;
+};
+
 // ---------------------------------------------------------------------------
 // RenderBatch — universal renderer input; produced by all three data lanes
 // ---------------------------------------------------------------------------
@@ -104,7 +110,7 @@ struct RenderBatch {
     BufferView     bindings[kMaxBindings]{};
     DrawKind       kind        = DrawKind::Direct;
     MaterialId     material    = 0;
-    std::size_t    variantHash = 0; // shader macro variant mutation key
+    std::size_t    variantHash = 0; // exact registered program/configuration slot
     rhi::IndexFormat indexFormat = rhi::IndexFormat::uint32; // for DrawKind::Indexed
 
     // Optional: index buffer for DrawKind::Indexed
@@ -113,6 +119,10 @@ struct RenderBatch {
     BufferView indirectBuffer;
     // Optional: per-batch uniform/constant data (VS + FS params)
     BufferView uniformBuffer;
+    // Reflected resources use RHI descriptor groups, separate from vertex input.
+    // The host keeps wrappers/arenas alive through render(); RHI retains recorded
+    // resource payloads. Arena reset still follows RHI's in-flight rules.
+    std::vector<BatchBindGroup> bindGroups;
 };
 
 } // namespace truffle::renderer

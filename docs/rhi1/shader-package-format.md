@@ -1,6 +1,7 @@
-# ShaderPackage 1.0 Binary Format
+# Truffle Shader Package 1.0 Binary Format
 
-ShaderPackage uses one deterministic little-endian container. Integers have
+Truffle Shader Package (TSP, `.tsp`; C++ `truffle::rhi::ShaderPackage`) uses one
+deterministic little-endian container. Integers have
 fixed widths; strings are a 32-bit byte length followed by UTF-8 bytes; vectors
 are a 32-bit element count followed by elements. Runtime limits are 256 MiB per
 package, 1 MiB per string, and 65,535 records per vector.
@@ -23,7 +24,9 @@ The canonical manifest follows the header. Each variant then contributes one
 blob record in canonical variant order: `u64 size`, `u64 FNV-1a hash`, and the
 blob bytes. No padding or trailing data is permitted. The integrity hashes
 detect accidental corruption; source provenance separately records caller-
-provided SHA-256 values and is not a package-signing mechanism.
+provided SHA-256 values (or Shader-compiler-computed dependency hashes) and is
+not a package-signing mechanism. The product name/extension does not change
+the magic, schema, enum values, or C++ type.
 
 ## Manifest Order
 

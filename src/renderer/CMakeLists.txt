@@ -1,4 +1,4 @@
-add_library(truffle_renderer STATIC renderer.cpp transform_compute_pass.cpp)
+add_library(truffle_renderer STATIC renderer.cpp pipeline_cache.cpp transform_compute_pass.cpp)
 target_link_libraries(truffle_renderer PUBLIC truffle_rhi)
 truffle_configure_target(truffle_renderer Renderer)
 add_library(Truffle::Renderer ALIAS truffle_renderer)

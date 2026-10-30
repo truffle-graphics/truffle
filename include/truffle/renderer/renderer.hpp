@@ -23,8 +23,9 @@ class Renderer {
 public:
     explicit Renderer(rhi::Device& device, IPipelineCache* cache = nullptr);
 
-    // Render batches. Pass a swapchain for presentation-capable paths;
-    // omit (or pass nullptr) for headless and null-backend testing.
+    // The device/cache outlive Renderer. Recording and cache mutation belong to
+    // one host thread; do not stage/commit concurrently with render().
+    // The default cache is shaderless and intended only for Null validation.
     // Render a full frame graph. Pass a swapchain for presentation-capable paths;
     // omit (or pass nullptr) for headless and null-backend testing.
     [[nodiscard]] base::Status render(const FrameGraph& graph,

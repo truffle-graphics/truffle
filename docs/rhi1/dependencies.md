@@ -63,7 +63,7 @@ as an unused framework.
 
 The optional dependency-free `truffle-shaderc` assembly target consumes
 precompiled or backend-native variants without a compiler library. Its first
-source route is enabled independently with `TRUFFLE_SHADERC_ENABLE_GLSLANG` and
+source route is enabled independently with `TRUFFLE_SHADER_ENABLE_GLSLANG` and
 compiles GLSL or GLSL ES to SPIR-V using the pinned `vendor/glslang` source.
 Future routes may use pinned Slang, DXC, SPIR-V Tools, SPIRV-Cross, and Tint
 submodules, enabled individually. No compiler submodule is introduced before
@@ -73,7 +73,7 @@ optional feature; production packages prefer offline variants.
 
 | Dependency | Pin | Upstream and license | Consumer and update policy |
 |---|---|---|---|
-| glslang | `16.5.0` / `a8d28bd082bff18ffbe80996e922b012f915cf07` | `KhronosGroup/glslang`; upstream `LICENSE.txt` contains BSD-2-Clause, BSD-3-Clause, MIT, and Apache-2.0 notices. | Private to `truffle-shaderc` when its GLSL route is enabled. No local patches. Update by reviewing release notes and licenses, advancing the submodule, then running deterministic compile, invalid-source, package, and native Vulkan consumers. |
+| glslang | `16.5.0` / `a8d28bd082bff18ffbe80996e922b012f915cf07` | `KhronosGroup/glslang`; upstream `LICENSE.txt` contains BSD-2-Clause, BSD-3-Clause, MIT, and Apache-2.0 notices. | Private to `Truffle::Shader` when its adapter is enabled; shaderc and optional runtime clients share it. Static installs include its exported link closure; adapter-disabled prepared-package RHI/Renderer consumers remain compiler-free. No local patches. Update by reviewing release notes and licenses, advancing the submodule, then running deterministic compile, invalid-source, package/install, and native Vulkan consumers. |
 
 ### Validation and tests
 
