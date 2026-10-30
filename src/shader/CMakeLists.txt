@@ -24,8 +24,21 @@ function(truffle_shader_require_pin name revision)
 endfunction()
 
 if(TRUFFLE_SHADER_ENABLE_SPIRV_CROSS AND
-   (NOT TRUFFLE_SHADER_ENABLE_GLSLANG OR NOT TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS))
-    message(FATAL_ERROR "SPIRV-Cross routes require TRUFFLE_SHADER_ENABLE_GLSLANG and TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS")
+   (NOT (TRUFFLE_SHADER_ENABLE_GLSLANG OR TRUFFLE_SHADER_ENABLE_TINT OR TRUFFLE_SHADER_ENABLE_DXC) OR NOT TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS))
+    message(FATAL_ERROR "SPIRV-Cross routes require a SPIR-V source adapter and TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS")
+endif()
+if(TRUFFLE_SHADER_ENABLE_DXC AND TRUFFLE_SHADER_ENABLE_SPIRV_CROSS AND
+   NOT TRUFFLE_SHADER_ENABLE_GLSLANG)
+    message(FATAL_ERROR "Portable HLSL routes require TRUFFLE_SHADER_ENABLE_GLSLANG to validate generated GLSL")
+endif()
+if(TRUFFLE_SHADER_ENABLE_TINT AND NOT TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS)
+    message(FATAL_ERROR "Tint requires TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS for canonical SPIR-V validation")
+endif()
+if(TRUFFLE_SHADER_ENABLE_GLSLANG OR TRUFFLE_SHADER_ENABLE_TINT OR
+   TRUFFLE_SHADER_ENABLE_DXC OR TRUFFLE_SHADER_ENABLE_SLANG)
+    truffle_shader_require_pin(spirv-headers 29981f65241605e08b0ede4cfeb999fe3b723c6a)
+    target_sources(truffle_shader PRIVATE spirv_reflection.cpp)
+    target_include_directories(truffle_shader SYSTEM PRIVATE "${PROJECT_SOURCE_DIR}/vendor/spirv-headers/include")
 endif()
 if(TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS)
     truffle_shader_require_pin(spirv-tools b707790a898e44038547df54580022fc1cf89c3d)
@@ -108,13 +121,8 @@ if(TRUFFLE_SHADER_ENABLE_DXC)
         TRUFFLE_DXC_REVISION="01b62ad47db7dee3dd33f90e7339cf9e860b3f93")
 endif()
 
-if(TRUFFLE_SHADER_ENABLE_GLSLANG OR TRUFFLE_SHADER_ENABLE_DXC OR TRUFFLE_SHADER_ENABLE_SLANG)
-    truffle_shader_require_pin(spirv-headers 29981f65241605e08b0ede4cfeb999fe3b723c6a)
-    target_sources(truffle_shader PRIVATE spirv_reflection.cpp)
-    target_include_directories(truffle_shader PRIVATE "${PROJECT_SOURCE_DIR}/vendor/spirv-headers/include")
-endif()
 if(TRUFFLE_INSTALL AND (TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS OR TRUFFLE_SHADER_ENABLE_GLSLANG OR
-                       TRUFFLE_SHADER_ENABLE_DXC OR TRUFFLE_SHADER_ENABLE_SLANG))
+                       TRUFFLE_SHADER_ENABLE_DXC OR TRUFFLE_SHADER_ENABLE_SLANG OR TRUFFLE_SHADER_ENABLE_TINT))
     install(FILES "${PROJECT_SOURCE_DIR}/vendor/spirv-headers/LICENSE"
             DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/Truffle/spirv-headers")
     install(DIRECTORY "${PROJECT_SOURCE_DIR}/vendor/spirv-headers/LICENSES/"
@@ -144,4 +152,8 @@ if(TRUFFLE_SHADER_ENABLE_GLSLANG)
     target_compile_definitions(truffle_shader PRIVATE
         TRUFFLE_SHADER_HAS_GLSLANG=1
         TRUFFLE_GLSLANG_REVISION="a8d28bd082bff18ffbe80996e922b012f915cf07")
+endif()
+
+if(TRUFFLE_SHADER_ENABLE_TINT)
+    include("${CMAKE_CURRENT_SOURCE_DIR}/tint.cmake")
 endif()

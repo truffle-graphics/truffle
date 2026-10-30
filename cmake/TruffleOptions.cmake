@@ -7,6 +7,8 @@ option(TRUFFLE_SHADER_ENABLE_GLSLANG
        "Enable the shared GLSL/GLSL ES to SPIR-V compiler adapter" OFF)
 option(TRUFFLE_SHADER_ENABLE_SLANG
        "Enable native Slang modules to validated SPIR-V" OFF)
+option(TRUFFLE_SHADER_ENABLE_TINT
+       "Enable pinned in-process Tint WGSL compilation and validation" OFF)
 option(TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS
        "Validate emitted SPIR-V with pinned SPIRV-Tools" OFF)
 option(TRUFFLE_SHADER_ENABLE_SPIRV_CROSS

@@ -78,11 +78,12 @@ struct CompileRequest {
     MetalTarget metalTarget;
     GlslTarget glslTarget;
     GlslEsTarget glslEsTarget;
-    // Explicit consent is required both to produce and to load generated MSL.
+    // Explicit consent is required both to produce and to load generated MSL/WGSL.
     bool allowExperimentalMetalGeneration = false;
+    bool allowExperimentalWgslGeneration = false;
     std::vector<std::string> includeRoots;
-    // Ordered extra source units for native MSL only. Other routes reject them;
-    // Slang composes modules through its native import syntax instead.
+    // Ordered extra source units for native MSL only. Compiler::compile rejects
+    // them for every other language before adapter discovery or source resolution.
     std::vector<std::string> sourceUnits;
     SourceResolver resolver;
     std::vector<rhi::ShaderDefine> defines;

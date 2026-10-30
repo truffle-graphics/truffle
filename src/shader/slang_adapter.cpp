@@ -193,8 +193,6 @@ struct Process {
 } // namespace
 
 rhi::Result<Compilation> compile_slang(const CompileRequest& request, std::vector<Compilation>& cache) {
-    if (!request.sourceUnits.empty())
-        return rhi::Status::failure(rhi::StatusCode::unsupported, "Slang uses native imports, not sourceUnits");
     if (request.name.empty() || request.name.find('\0') != std::string::npos ||
         request.source.identity.empty() || request.source.identity.find('\0') != std::string::npos ||
         request.source.text.empty() ||

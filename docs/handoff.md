@@ -3,6 +3,65 @@
 Use this document as Truffle's rolling cross-machine handoff. Keep it useful to
 a human resuming work and to a fresh AI session reading the repository.
 
+## WGSL/Tint source routes — issue #191 (merged in PR #198)
+
+- Integration update: normally merged `origin/develop` at
+  `5852204c9f49c933c6a6fbbd6e1b3b560ac93bac` (HLSL PR #199) into this
+  branch without rebasing. Shared routes/API/CLI retain HLSL shader-model
+  fields, DXIL routes with no Vulkan intermediate, native output gates and
+  all WGSL routes. Tint reuses `compiler_inputs.hpp` key-field encoding and
+  `translation_provenance()`; shared GLSL validation remains used by GLSL/HLSL
+  outputs (Tint exposes no GLSL output route). Canonical SPIRV-Headers
+  reflection is compiled once for any enabled SPIR-V adapter.
+- Integration verification reused the existing compiler builds: Tint-only
+  with glslang OFF passed 12 focused tests; GLSL/Tint enabled integration
+  passed the same 12, including native exact Vulkan/Metal output, real
+  glslang-intermediate→WGSL conversion, CLI/library equality and installed
+  consumers. Warnings-as-errors remains enabled. DXC stayed OFF in these
+  WGSL builds: no second DXC source build or new HLSL execution claim.
+  Seven focused compiler-off route/CLI/Renderer/installed-consumer integration
+  checks also passed. HLSL's previously merged evidence remains with PR #199.
+- Implemented in the dedicated `feat/shader-wgsl` branch: pinned optional real
+  in-process Tint (Dawn `46b4670bc67cb4f6d34f6ce6a46ba7e1d6059abf`,
+  BSD-3-Clause) and Dawn's pinned Abseil
+  `04dc59d2c83238cb1fcb49083e5e416643a899ce` (Apache-2.0). No configure
+  downloads, source patches, system fallback, Dawn/WebGPU/browser/GUI runtime,
+  tests, compiler executable or irrelevant writer build.
+- Real advertised vertex/fragment/compute routes: WGSL→Vulkan 1.1/SPIR-V 1.3,
+  WGSL→WGSL, SPIR-V→WGSL and (with existing Cross) WGSL→macOS MSL 2.1.
+  WGSL output is experimentally gated in compile/load/CLI, reparsed by Tint,
+  and recompiled in tests. No direct source-language-to-WGSL claim beyond
+  WGSL and the explicit SPIR-V intermediate route.
+- Canonical emitted-SPIR-V reflection, source identity/hash, pinned compiler
+  provenance and cache/rebuild contracts are reused. Native entry/stage
+  selection uses Tint IR transforms. WGSL has no preprocessor/imports:
+  defines/include roots/resolver, debug-info requests and selected pipeline
+  overrides receive typed rejection, never silent substitution or omission.
+  Host-composed ordinary WGSL functions/constants are supported as one
+  exact-byte dependency; no new shader language.
+- Existing pinned Tools/Headers compile and validate Tint's real reader/writer.
+  Tint's reader legitimately requires Tools optimizer internals; the used
+  optimizer static closure is exported only with Tint. Exact pair differences
+  from Dawn DEPS and update risks are documented in the dependency policy.
+  Used Tint/Abseil static archives are exported privately without public Tint
+  headers; all-off installed prepared consumers have no compiler link closure.
+- Native Apple M3 Pro evidence: active Vulkan validation/MoltenVK and enabled
+  Metal API/GPU validation each read back all 256 resource-backed triangle
+  pixels as RGBA `(64,64,32,255)` and all four compute words as
+  `(12,13,14,15)`. Tint's automatic point-size output is disabled explicitly:
+  otherwise triangle MSL fails native pipeline creation. No point-topology,
+  WebGPU execution or backend maturity promotion is claimed.
+- Focused local evidence covers Tint-only builds (glslang OFF), combined
+  glslang/Tint builds, emitted WGSL and SPIR-V import, exact canonical
+  graphics/compute bindings/IO, invalid source/entry/stage/options,
+  source-edit cache/failure/recovery, CLI/library exact package equality,
+  experimental loading, enabled installation/static consumers, and
+  compiler-off route/package/Renderer/prepared-consumer isolation.
+- Delivery is a signed issue-scoped commit and immediate feature-branch push,
+  then a PR into `develop`; parent owns review/acceptance/merge. Do not close
+  #191 or merge independently. Shader-first remains in effect; Renderer
+  feature work stays paused. TSP remains unreleased draft 1.0.
+
 AI work that reaches a commit must update this handoff before that commit.
 Promote durable decisions into project context, architecture, roadmap, or ADRs
 rather than growing a historical transcript here.
@@ -17,7 +76,9 @@ rather than growing a historical transcript here.
 - **Actual matrix:** vertex/fragment/compute → SPIR-V 1.3 / Vulkan 1.1 only,
   independently validated with the existing pinned SPIRV-Tools. No Slang
   Metal/GL/WGSL/DXIL or advanced-stage route is advertised. `sourceUnits` is the
-  agreed native-MSL-only field and is explicitly rejected by Slang/glslang/DXC.
+  agreed native-MSL-only field. `Compiler::compile` centrally rejects it for
+  every non-MSL language before adapter discovery/resolution, including Tint
+  WGSL/SPIR-V inputs and compiler-off requests; private duplicate guards are removed.
 - **Pins/source policy:** clean upstream Slang `v2026.12.1`,
   `90b8e77eafdfa0aabbbc48f0e86f6cfbde4cb8f8`, Apache-2.0 WITH LLVM-exception.
   Exact audited nested source pins/licenses and initialization commands are in
@@ -43,8 +104,8 @@ rather than growing a historical transcript here.
   changes or silent source rewriting. Negative regression covers the rejection.
 - **Focused final implementation checks:** Release Ninja, explicit Xcode SDK,
   warnings-as-errors and builds limited to `--parallel 2`. Combined GLSL+Slang
-  **15/15**, Slang-only/glslang-off **9/9**, compiler-off **10/10** pass after
-  the develop merge. Checks
+  **16/16**, Slang-only/glslang-off **10/10**, compiler-off **11/11** pass after
+  the WGSL develop merge. Checks
   include native proof, one emitted entry/all stages, multilevel imports/includes,
   content/configuration invalidation, cycles/missing-source recovery, concurrent
   compiler instances, CLI/library byte equality, and installed consumers.
@@ -57,13 +118,32 @@ rather than growing a historical transcript here.
   Dispatch/discovery and test gates no longer assume glslang is the only adapter.
   Slang uses no Cross outputs, so it adds no competing generated-GLSL validator
   or translation provenance helper. Normal merge of develop
-  `5852204c9f49c933c6a6fbbd6e1b3b560ac93bac` preserves independent DXC routes,
-  HLSL Shader Model fields and native empty-intermediate CLI/consumer handling.
+  `f2079307fd2cd5432d465c083cc0c416e0b1ec5f` preserves independent DXC/Tint
+  routes/options, HLSL Shader Model fields, experimental WGSL gates and native
+  empty-intermediate CLI/consumer handling. Canonical reflection is compiled
+  once for any enabled SPIR-V adapter; Tint needs no glslang.
   Slang now reuses `compiler_inputs.hpp` define/key helpers. Only existing
-  affected Slang/GLSL/off builds are revalidated; no second DXC build.
-  HLSL tests exercise their disabled-adapter path here, not a second native
-  HLSL proof. The added DXC `sourceUnits` negative regression is for the parent's
-  existing DXC-enabled build. Parent owns
+  affected Slang/GLSL/off builds are revalidated; no second DXC or Tint build.
+  Shared rejection tests cover all non-MSL languages in enabled/off builds.
+  WGSL's regression runs before its disabled-adapter check and additionally
+  covers every enabled stage and valid SPIR-V→WGSL inputs when Tint is enabled.
+  Local HLSL/WGSL tests exercise disabled-adapter paths, not new native proofs.
+  Enabled DXC/Tint checks use the parent's existing compiler builds.
+- **Installed-tool correction:** the shared-provider CLI runtime path now
+  covers DXC **or** Slang: macOS `@loader_path`, Linux/Unix `$ORIGIN`, calculated
+  between configured bin/lib directories (absolute library destinations remain
+  absolute). The install smoke executes the **installed** `--self-test` and
+  `--routes` with loader override paths unset, only when
+  `TRUFFLE_BUILD_SHADERC=ON`; explicit OFF skips stale installed executables.
+  Consumer package discovery also respects the configured library directory.
+  Existing Slang-only build verifies nested `tools/native/bin` and
+  `runtime/lib64`, with actual LC_RPATH
+  `@loader_path/../../../runtime/lib64` and successful installed execution.
+  Compiler-off `shaderc=OFF` regression retains a real stale installed tool and
+  proves it is skipped; default enabled/off installs are checked too.
+  No new DXC/Tint compiler source build or Linux execution claim. Parent reruns
+  DXC-only installed execution using its existing build.
+- **Next:** parent owns
   independent review, merge, issue acceptance and any later route expansion.
 
 ## HLSL Compilation (#189, Merged In PR #199)

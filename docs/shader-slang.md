@@ -32,7 +32,8 @@ Slang still semantically checks imported modules (including their declarations);
 this is not a promise to ignore syntax errors in unused declarations.
 
 Use native imports to compose reusable source modules, not `sourceUnits`
-(which is reserved for native MSL and explicitly rejected here). This adapter
+(which is reserved for native MSL and rejected for all other languages by
+`Compiler::compile`, before adapter discovery or source resolution). This adapter
 supports source modules, not pre-serialized `.slang-module` artifacts, which
 could obscure their original source dependency closure. Generic/extern
 specialization APIs are not exposed; ordinary language-level composition and
@@ -148,8 +149,13 @@ RGBA(78,0,0,255) pixels, then imported compute code for `QUALITY=3/4`, checking
 eight exact output words and an untouched sentinel.
 No Renderer feature work is involved. Compiler-off installed Shader/Renderer/RHI
 consumers must still resolve without compiler libraries/package requirements.
-After normally merging the HLSL baseline, focused combined GLSL+Slang checks
-pass 15/15, Slang-only checks 9/9, and compiler-off checks 10/10. HLSL request/
-route fields and native empty-intermediate listing are retained; revalidation
-keeps DXC disabled rather than creating another DXC source build. Slang reuses
+After normally merging the HLSL/WGSL baseline, focused combined GLSL+Slang checks
+pass 16/16, Slang-only checks 10/10, and compiler-off checks 11/11. HLSL/Tint
+routes/options and native empty-intermediate listing are retained; revalidation
+keeps DXC/Tint disabled rather than creating another compiler source build. Slang reuses
 the shared define normalization and length-delimited cache-key input helpers.
+Installed-tool smoke checks run the actual `--self-test` and `--routes` with
+loader override paths unset, gated explicitly by `TRUFFLE_BUILD_SHADERC`.
+The shared DXC/Slang CLI runtime path respects configured bin/lib destinations:
+`@loader_path` on macOS and `$ORIGIN` on Linux. Nested directory installation
+passes using the existing Slang build; `shaderc=OFF` skips a retained stale tool.

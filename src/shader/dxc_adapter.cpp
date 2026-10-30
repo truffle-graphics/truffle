@@ -169,8 +169,6 @@ template<class T> rhi::Result<ComPtr<T>> output(IDxcResult& result, DXC_OUT_KIND
 
 rhi::Result<Compilation> compile_dxc(const CompileRequest& request,
                                    std::vector<Compilation>& cache) {
-    if (!request.sourceUnits.empty())
-        return rhi::Status::failure(rhi::StatusCode::unsupported, "DXC does not support sourceUnits");
     if (request.name.empty() || request.source.identity.empty() || request.source.text.empty() ||
         request.entryPoint.empty() || request.source.text.find('\0') != std::string::npos ||
         request.source.identity.find('\0') != std::string::npos ||

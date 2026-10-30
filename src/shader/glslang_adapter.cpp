@@ -170,8 +170,6 @@ rhi::Status detail::validate_generated_glsl(const CompileRequest& request,
 
 rhi::Result<Compilation> compile_glslang(const CompileRequest& request,
                                        std::vector<Compilation>& cache) {
-    if (!request.sourceUnits.empty())
-        return unsupported("GLSL does not accept sourceUnits; use native includes");
     if (request.source.identity.empty() || request.source.text.empty() ||
         request.source.text.find('\0') != std::string::npos ||
         request.source.text.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()) ||
