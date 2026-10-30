@@ -70,6 +70,11 @@ Current evidence is narrower than the old roadmap claimed:
   MSL 2.1, GLSL 410 core and GLSL ES 300 generation (#187). Generated MSL remains
   experimental; exact generated resource-backed graphics agree on Vulkan/
   MoltenVK, Metal and macOS GL 4.1. GLES has compiler validation only.
+  Independent optional pinned DXC now compiles HLSL 2021/SM 6.0 to validated
+  SPIR-V/DXIL and reuses portable native generation (#189). Emitted-DXIL
+  reflection is native DXC/PSV metadata, not a second SPIR-V compilation.
+  HLSL graphics agrees on Vulkan/MoltenVK, Metal and GL 4.1; compute agrees on
+  Vulkan/Metal. Windows/D3D12 native execution remains separate evidence.
   The Shader library (#178/#180) owns compilation; Renderer consumes its
   in-memory results directly through `renderer::SourceProgram` (#181).
 - WebGPU and WebGL2 now have explicit source-only targets; WebGL2 contains an
@@ -185,7 +190,10 @@ WGSL/Tint (#191) now has optional real WGSL→SPIR-V, WGSL regeneration,
 SPIR-V→WGSL and WGSL→MSL routes, canonical reflection and focused native
 Vulkan/Metal exact graphics/compute readback; no WebGPU execution is claimed.
 WGSL preprocessing/imports and pipeline override substitution remain explicitly
-unsupported rather than invented. Remaining phases are MSL/Metal libraries (#188), HLSL (#189), Slang/native module
+unsupported rather than invented.
+HLSL (#189) is implemented with bounded profiles/reflection and Apple Silicon
+native evidence; see the Shader README and handoff for review status.
+Remaining phases are MSL/Metal libraries (#188), Slang/native module
 imports (#190), shared composition/cache/rebuild/tool audit (#192),
 and final evidence/completion audit (#193). Use signed phased commits,
 immediate pushes, and reviewed PR merge commits. Existing Renderer regressions

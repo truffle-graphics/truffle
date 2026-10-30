@@ -7,6 +7,7 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -41,6 +42,8 @@ struct Arguments {
     std::vector<std::string> includeRoots;
     std::vector<truffle::rhi::ShaderDefine> defines;
     truffle::shader::VulkanTarget vulkanTarget;
+    truffle::shader::HlslShaderModel hlslShaderModel = truffle::shader::HlslShaderModel::v6_0;
+    bool hlslModelSpecified = false;
     bool targetSettings = false;
     bool compile = false;
     bool experimentalMetal = false;
@@ -62,6 +65,7 @@ void usage(std::ostream& output) {
            "[--kind precompiled|native|generated] [--append PACKAGE] "
            "[--compile [--include-root DIR]... [--define NAME[=VALUE]]... "
            "[--vulkan-version VERSION] [--spirv-version VERSION] "
+           "[--hlsl-shader-model 6.0] "
            "[--msl-version 2.1|--glsl-version 410|--glsl-es-version 300] "
            "[--allow-experimental-metal] [--allow-experimental-wgsl]]\n"
         << "       truffle-shaderc --routes\n"
@@ -150,6 +154,11 @@ void usage(std::ostream& output) {
             else if (value == truffle::shader::spirv_version_name(truffle::shader::SpirvVersion::v1_3))
                 result.vulkanTarget.spirv = truffle::shader::SpirvVersion::v1_3;
             else return invalid("unknown SPIR-V version: " + value);
+        } else if (key == "--hlsl-shader-model") {
+            result.targetSettings = true;
+            result.hlslModelSpecified = true;
+            if (value != truffle::shader::hlsl_shader_model_name(result.hlslShaderModel))
+                return invalid("unsupported HLSL shader model: " + value);
         } else if (key == "--msl-version" || key == "--glsl-version" || key == "--glsl-es-version") {
             result.targetSettings = true;
             const auto expected = key == "--msl-version" ? "2.1" : key == "--glsl-version" ? "410" : "300";
@@ -172,6 +181,8 @@ void usage(std::ostream& output) {
     }
     if (!result.nativeVersionTarget.empty() && result.nativeVersionTarget != result.target)
         return invalid("native version option disagrees with target");
+    if (result.hlslModelSpecified && result.sourceLanguage != "hlsl")
+        return invalid("HLSL shader model requires HLSL source");
     if (!result.compile && (!result.includeRoots.empty() || !result.defines.empty() || result.targetSettings))
         return invalid("include roots, defines and target settings require --compile");
     if (result.compile && (!result.compilerName.empty() || !result.compilerVersion.empty() ||
@@ -297,19 +308,24 @@ int main(int argc, char** argv) {
         std::cout << "source-routes=" << routes.size() << '\n';
         for (const auto& route : routes) {
             for (const auto stage : route.stages) {
-                for (const auto target : route.vulkanTargets) {
+                const auto print = [&](std::optional<shader::VulkanTarget> target) {
                     std::cout << "source=" << rhi::shader_source_language_name(route.language)
                               << " target=" << rhi::shader_target_name(route.target)
                               << " stage=" << (stage == ShaderStage::vertex ? "vertex" :
-                                              stage == ShaderStage::fragment ? "fragment" : "compute")
-                              << " vulkan=" << shader::vulkan_version_name(target.environment)
-                              << " spirv=" << shader::spirv_version_name(target.spirv);
+                                              stage == ShaderStage::fragment ? "fragment" : "compute");
+                    if (target)
+                        std::cout << " vulkan=" << shader::vulkan_version_name(target->environment)
+                                  << " spirv=" << shader::spirv_version_name(target->spirv);
                     if (!route.metalTargets.empty()) std::cout << " msl=macos-2.1";
                     if (!route.glslTargets.empty()) std::cout << " glsl=410-core";
                     if (!route.glslEsTargets.empty()) std::cout << " glsl-es=300-es";
+                    for (const auto model : route.hlslShaderModels)
+                        std::cout << " hlsl-shader-model=" << shader::hlsl_shader_model_name(model);
                     if (route.experimental) std::cout << " experimental";
                     std::cout << '\n';
-                }
+                };
+                if (route.vulkanTargets.empty()) print(std::nullopt);
+                else for (const auto target : route.vulkanTargets) print(target);
             }
         }
         return 0;
@@ -463,6 +479,7 @@ int main(int argc, char** argv) {
         request.target = target;
         request.language = languageResult.value();
         request.vulkanTarget = arguments.vulkanTarget;
+        request.hlslShaderModel = arguments.hlslShaderModel;
         request.allowExperimentalMetalGeneration = arguments.experimentalMetal;
         request.allowExperimentalWgslGeneration = arguments.experimentalWgsl;
         request.includeRoots = arguments.includeRoots;

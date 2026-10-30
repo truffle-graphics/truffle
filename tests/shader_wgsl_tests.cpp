@@ -9,7 +9,7 @@ int main() {
     try {
         shader::Compiler compiler;
         auto request = tests::wgsl_request(rhi::ShaderStage::compute);
-        if (!tests::has_shader_route(rhi::ShaderSourceLanguage::wgsl)) {
+        if (!tests::shader_route_enabled(rhi::ShaderSourceLanguage::wgsl)) {
             const auto disabled = compiler.compile(request);
             TRUFFLE_SHADER_CHECK(!disabled.ok() && disabled.status().code == rhi::StatusCode::unsupported);
             return 0;
@@ -74,7 +74,7 @@ int main() {
             if (result.ok()) throw std::runtime_error("Expected request failure");
             TRUFFLE_SHADER_CHECK(result.status().code == code && !result.status().message.empty());
         };
-        if (tests::has_shader_route(rhi::ShaderSourceLanguage::glsl)) {
+        if (tests::shader_route_enabled()) {
             shader::CompileRequest glsl;
             glsl.stage = rhi::ShaderStage::compute;
             glsl.source = {"existing.comp", "#version 450\nlayout(local_size_x=2) in;\n"

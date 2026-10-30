@@ -1,5 +1,6 @@
 #include "truffle/shader/compiler.hpp"
 #include "digest.hpp"
+#include "compiler_inputs.hpp"
 #include "spirv_reflection.hpp"
 #include "spirv_translation.hpp"
 
@@ -25,9 +26,7 @@ rhi::Status unsupported(std::string text) {
 std::string diagnostic(const tint::Failure& failure) {
     return failure.reason.substr(0, 16384);
 }
-void field(std::string& key, std::string_view value) {
-    key += std::to_string(value.size()) + ":" + std::string{value};
-}
+using detail::field;
 } // namespace
 
 rhi::Result<Compilation> compile_tint(const CompileRequest& request,
@@ -50,7 +49,7 @@ rhi::Result<Compilation> compile_tint(const CompileRequest& request,
         ";spirv-headers=" TRUFFLE_SPIRV_HEADERS_REVISION};
 #if defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS)
     if (request.target == rhi::ShaderTarget::metal_source)
-        result.compiler.revision += ";spirv-cross=" TRUFFLE_SPIRV_CROSS_REVISION ";msl=2.1;truffle-cross=2";
+        result.compiler.revision += detail::translation_provenance();
 #endif
     result.dependencies.push_back({request.source.identity, detail::sha256(request.source.text)});
     std::string key;

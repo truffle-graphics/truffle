@@ -63,11 +63,14 @@ convenience test for any source route, useful to compiler-optional clients.
 | GLSL or GLSL ES, vertex/fragment/compute | macOS MSL 2.1 source | glslang + SPIRV-Tools + SPIRV-Cross | Experimental explicit opt-in; generated graphics and compute execute on Apple M3 Pro |
 | GLSL or GLSL ES, vertex/fragment | GLSL 410 core (macOS OpenGL 4.1) | same three optional adapters | Generated resource-backed graphics executes on macOS 4.1; compute rejected |
 | GLSL or GLSL ES, vertex/fragment | GLSL ES 300 | same three optional adapters | Emission and real glslang parse/link validation; **no native GLES execution evidence** |
+| HLSL 2021, shader model 6.0, vertex/fragment/compute | Vulkan SPIR-V or DXIL | pinned DXC + SPIRV-Tools | In-process compile/validation and emitted-target reflection; Vulkan/MoltenVK graphics and compute execute on Apple M3 Pro |
+| HLSL, vertex/fragment/compute | Experimental macOS MSL 2.1 source | DXC + the portable adapters above | Generated graphics and compute execute on Apple M3 Pro |
+| HLSL, vertex/fragment | GLSL 410 core / GLSL ES 300 | same portable adapters | GL graphics executes on macOS 4.1; ES has real compiler validation, no native evidence |
 | WGSL, vertex/fragment/compute | Vulkan 1.1 / SPIR-V 1.3 | Tint + SPIRV-Tools | Real compiler validation and canonical reflection; native resource-backed graphics and compute exact readback on Vulkan/MoltenVK |
 | WGSL, vertex/fragment/compute | WGSL | Tint + SPIRV-Tools | Selected-entry IR emission, experimental opt-in, emitted WGSL reparsed by Tint and recompiled in tests |
 | Vulkan SPIR-V, vertex/fragment/compute | WGSL | Tint + SPIRV-Tools (including optimizer) | Real upstream reader, selected-entry emission and validation; bounded by Tint's representable input subset |
 | WGSL, vertex/fragment/compute | macOS MSL 2.1 | Tint + SPIRV-Tools + SPIRV-Cross | Experimental opt-in; native resource-backed graphics and compute exact readback on Metal |
-| Slang, HLSL, MSL | None through Shader today | none enabled | Separate #188-#190 work; no adapter or capability advertised here |
+| Slang, MSL | None through Shader today | none enabled | Separate #188/#190 work; no adapter or capability advertised here |
 | DXIL, Metal libraries, backend-native source | None through Shader today | none needed for assembly | Prepared TSP inputs, **not** source-compilation routes |
 
 ### WGSL and Tint (#191)
@@ -145,7 +148,7 @@ RGBA `(64,64,32,255)` and all four compute words as `(12,13,14,15)`.
 This is Shader-output consumption evidence, **not WebGPU backend/runtime
 execution or a backend maturity promotion**. TSP remains unreleased draft 1.0.
 
-Implemented typed `CompileRequest::vulkanTarget` configurations:
+Implemented GLSL/GLSL ES `CompileRequest::vulkanTarget` configurations:
 
 | `VulkanVersion` environment | `SpirvVersion` emitted version |
 | --- | --- |
@@ -175,9 +178,90 @@ Vulkan/MoltenVK exact-readback evidence through Renderer's existing
 `SourceProgram` regression; GLSL ES compute output has existing native Vulkan
 package/dispatch evidence. The additional version configurations have CPU
 compilation/header/provenance tests, **not** new native execution evidence.
-Prepared HLSL/DXIL on D3D12 and prepared GLSL ES on GLES remain independent
-backend-native paths, not additional Shader generation evidence.
+Prepared DXIL on D3D12 and prepared GLSL ES on GLES remain independent
+backend-native paths, not native evidence for the new generation routes.
 No backend maturity is promoted.
+
+### HLSL and DXC (#189)
+
+Enable `TRUFFLE_SHADER_ENABLE_DXC=ON` and
+`TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS=ON`. glslang is **not** required for
+HLSL-to-SPIR-V/DXIL; the additional portable MSL/GL/ES targets require the
+existing Cross/glslang options. DXC runs in process for both runtime clients
+and shaderc. No compiler executable or subprocess is involved.
+
+```sh
+git submodule update --init vendor/dxc vendor/spirv-tools vendor/spirv-headers
+git -C vendor/dxc submodule update --init external/SPIRV-Headers \
+  external/SPIRV-Tools external/DirectX-Headers
+cmake -S . -B build/hlsl -G Ninja -DTRUFFLE_SHADER_ENABLE_DXC=ON \
+  -DTRUFFLE_SHADER_ENABLE_SPIRV_TOOLS=ON -DTRUFFLE_BUILD_SHADERC=ON
+```
+
+The source build is deliberately isolated from Truffle's CMake target namespace,
+uses already-prepared pinned sources, and builds only `dxcompiler` with bounded
+parallelism. Ninja, Python and the platform C/C++ SDK are prerequisites. The
+enabled install includes the private compiler shared library and license
+closure; no DXC headers become a public requirement. Apple Silicon source-build
+and installed-consumer execution are verified. The release has Windows/Linux
+binary assets but **no macOS binary**; these artifacts are not silently used as
+a fallback. Windows/Linux build execution remains separate evidence.
+
+Set `request.language = rhi::ShaderSourceLanguage::hlsl`, choose an entry point,
+and set `request.hlslShaderModel = HlslShaderModel::v6_0` (the default).
+The stage selects `vs_6_0`, `ps_6_0`, or `cs_6_0`; source semantics are explicitly
+HLSL 2021. `CompilerRoute::hlslShaderModels` reports the supported model.
+DXC supports exactly Vulkan 1.0/SPIR-V 1.0 and Vulkan 1.1/SPIR-V 1.3 here,
+not glslang's additional Vulkan 1.1/SPIR-V 1.0 pair. DXIL routes have an empty
+`vulkanTargets` span because there is no intermediate; nondefault Vulkan
+settings are rejected. `Compilation::vulkanTarget` is meaningful only on
+SPIR-V/intermediate routes. shaderc exposes the same contract with
+`--source-language hlsl --hlsl-shader-model 6.0 --entry FUNCTION`.
+
+Includes, guards, conditional sections and macros use DXC's own preprocessor.
+DXC's include callback supplies the **searched candidate path**, not the original
+directive's parent or quote/angle classification. Accordingly the shared
+resolver receives that candidate, an empty `including`, and `system=false`;
+without a callback it reads the candidate file. Native relative/`-I` searches
+remain authoritative. A resolver must understand the provider's candidate-path
+namespace and return stable identities. Each attempt preprocesses current
+dependencies before cache lookup, then compiles against the frozen snapshot.
+Conflicting content for one identity is an error. Ordered roots, normalized
+defines, entry/stage/profile/debug settings, provider pins, effective target,
+source identities/content and preprocessed text all contribute to cache identity.
+Failed preprocessing, compilation, validation or reflection cannot publish a
+package or replace `RebuildState::last_good()`.
+
+SPIR-V uses GL-compatible buffer layout, real SPIRV-Tools validation and the
+same canonical emitted-binary reflection as GLSL. DXIL instead uses DXC's own
+in-process validator, `ID3D12ShaderReflection`, and upstream checked PSV
+metadata for exact interpolation. It is **not** reflected by separately
+compiling the source to SPIR-V: target-predefined macros can change resources.
+Tests exercise that distinction and reject deliberately corrupted DXIL.
+Native D3D12 execution/Windows driver acceptance is not established by the
+open-source validator on this Mac.
+
+DXIL's bounded canonical contract requires `TEXCOORDn` for arbitrary user IO
+(including vertex inputs, matching the current D3D12 backend); fragment
+`SV_Targetn` maps to color locations and built-ins stay native. Scalar/vector
+32-bit leaves and fixed descriptor arrays are represented. Unbounded arrays,
+typed buffer resources and counter/append/consume resources are rejected.
+Different HLSL register classes must use unique logical binding indices within
+a space; no implicit remapping merges `b0`, `t0`, and `s0`. DXIL uses native
+HLSL buffer layout, so authors must ensure compatible layouts when combining
+targets in one package; agreement checks are never bypassed. Vulkan-specific
+push/specialization attributes do not invent DXIL runtime-specialization or
+push-constant support. Unsupported reflected constructs fail explicitly.
+
+Evidence: all nine SPIR-V/DXIL stage/configuration combinations compile, validate,
+reflect, cache and produce byte-identical CLI/library packages; 14 additional
+HLSL portable combinations compile and validate. The same serialized generated
+HLSL graphics packages yield exactly 256 RGBA `(64,128,255,255)` pixels on
+Vulkan/MoltenVK, Metal and OpenGL 4.1. Vulkan and Metal compute write exactly
+`107..110`, leaving four sentinels untouched. Native validation is enabled.
+Compiler-off installed Shader/Renderer consumers have no optional compiler
+link dependencies. Shader completion and other-host evidence remain tracked
+by #192/#193; this route does not resume Renderer feature work.
 
 ### Portable native generation (#187)
 
@@ -262,7 +346,6 @@ The remaining #73 route matrix is **planned, not implemented or advertised**:
 | Input / mechanism | Intended output | Tracking / remaining gate |
 | --- | --- | --- |
 | Native MSL, optional Apple tooling | MSL / offline Metal library | #188; SDK audit, truthful interfaces/dependencies, native readback |
-| HLSL, optional DXC | SPIR-V / DXIL where compiler/host supports it | #189; profiles/reflection, native Vulkan and separately tracked Windows evidence |
 | Slang, native modules/imports | Supported SPIR-V first; other outputs gated | #190; compiler audit, imported dependencies, native output; experimental Metal/WebGPU not promoted by emission alone |
 | WGSL, optional Tint | WGSL input/output and supported conversions determined by compiler audit | #191; actual directions, language semantics, reflection and compiler validation; no WebGPU execution claim |
 

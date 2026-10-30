@@ -17,6 +17,7 @@ struct Source {
 };
 
 // Return stable, unique identities; the callback is borrowed only during compile().
+// DXC supplies a native searched candidate path, with an empty includer and system=false.
 using SourceResolver = std::function<rhi::Result<Source>(
     std::string_view requested, std::string_view including, bool system)>;
 
@@ -25,6 +26,7 @@ enum class SpirvVersion { v1_0, v1_3 };
 enum class MetalVersion { v2_1 };
 enum class GlslVersion { v410 };
 enum class GlslEsVersion { v300 };
+enum class HlslShaderModel { v6_0 };
 
 struct MetalTarget {
     MetalVersion version = MetalVersion::v2_1;
@@ -52,16 +54,18 @@ struct CompilerRoute {
     rhi::ShaderSourceLanguage language;
     rhi::ShaderTarget target;
     std::span<const rhi::ShaderStage> stages;
-    std::span<const VulkanTarget> vulkanTargets;
+    std::span<const VulkanTarget> vulkanTargets; // Empty for routes without a SPIR-V intermediate.
     std::span<const MetalTarget> metalTargets{};
     std::span<const GlslTarget> glslTargets{};
     std::span<const GlslEsTarget> glslEsTargets{};
     bool experimental = false;
+    std::span<const HlslShaderModel> hlslShaderModels{};
 };
 
 // Unknown enum values have no name.
 [[nodiscard]] std::string_view vulkan_version_name(VulkanVersion version) noexcept;
 [[nodiscard]] std::string_view spirv_version_name(SpirvVersion version) noexcept;
+[[nodiscard]] std::string_view hlsl_shader_model_name(HlslShaderModel model) noexcept;
 
 struct CompileRequest {
     std::string name = "shader";
@@ -81,6 +85,7 @@ struct CompileRequest {
     SourceResolver resolver;
     std::vector<rhi::ShaderDefine> defines;
     bool generateDebugInfo = false;
+    HlslShaderModel hlslShaderModel = HlslShaderModel::v6_0;
 };
 
 struct Dependency {

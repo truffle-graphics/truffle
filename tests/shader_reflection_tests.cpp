@@ -370,7 +370,7 @@ void main() {}
 
 int main() {
     try {
-        if (!truffle::tests::has_shader_route(truffle::rhi::ShaderSourceLanguage::glsl)) return 0;
+        if (!truffle::tests::shader_route_enabled()) return 0;
         truffle::shader::Compiler compiler;
         constants_and_resources(compiler);
         interfaces(compiler);

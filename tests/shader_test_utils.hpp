@@ -9,13 +9,15 @@
 #include <utility>
 
 namespace truffle::tests {
-inline bool has_shader_route(rhi::ShaderSourceLanguage language,
-                             rhi::ShaderTarget target = rhi::ShaderTarget::spirv) {
+inline bool shader_route_enabled(
+    rhi::ShaderSourceLanguage language = rhi::ShaderSourceLanguage::glsl,
+    rhi::ShaderTarget target = rhi::ShaderTarget::spirv) {
     const auto routes = shader::Compiler::routes();
     return std::any_of(routes.begin(), routes.end(), [&](const auto& route) {
         return route.language == language && route.target == target;
     });
 }
+
 inline void require(base::Status status) {
     if (!status.ok()) throw std::runtime_error(status.message);
 }

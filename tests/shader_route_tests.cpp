@@ -24,8 +24,10 @@ int main() {
     request.source = {"route.glsl", "#version 450\nvoid main(){ gl_Position=vec4(0); }\n"};
     const auto routes = shader::Compiler::routes();
     check(shader::Compiler::available() == !routes.empty(), "Availability means any enabled source route");
+    std::set<std::pair<rhi::ShaderSourceLanguage, rhi::ShaderTarget>> uniqueRoutes;
     for (const auto& route : routes)
-        check(!route.stages.empty() && !route.vulkanTargets.empty(), "Advertised source routes describe stage/configuration support");
+        check(uniqueRoutes.emplace(route.language, route.target).second,
+              "Source language/target routes are unique");
 
     auto invalidRequest = request;
     bool resolved = false;
@@ -82,9 +84,9 @@ int main() {
     }
     std::set<std::string> keys;
     for (const auto& route : routes) {
-        if (route.target != rhi::ShaderTarget::spirv) continue;
-        if (route.language != rhi::ShaderSourceLanguage::glsl &&
-            route.language != rhi::ShaderSourceLanguage::glsl_es) continue;
+        if (route.target != rhi::ShaderTarget::spirv ||
+            (route.language != rhi::ShaderSourceLanguage::glsl &&
+             route.language != rhi::ShaderSourceLanguage::glsl_es)) continue;
         check(route.target == rhi::ShaderTarget::spirv &&
               (route.language == rhi::ShaderSourceLanguage::glsl ||
                route.language == rhi::ShaderSourceLanguage::glsl_es),
@@ -155,7 +157,7 @@ int main() {
         }
     }
     if (keys.empty()) return 0;
-    check(keys.size() == 18, "Two languages, three stages, three target configurations");
+    check(keys.size() == 18, "Two GLSL languages, three stages, three target configurations");
     request = {};
     request.source = {"default.vert", "#version 450\nvoid main(){ gl_Position=vec4(0); }\n"};
     auto implicit = compiler.compile(request);
