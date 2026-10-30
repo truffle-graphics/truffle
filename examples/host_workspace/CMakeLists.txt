@@ -16,9 +16,13 @@ set(_host_workspace_sources
     src/workspace.cpp)
 
 if(APPLE AND TRUFFLE_BUILD_BACKEND_METAL)
-    list(APPEND _host_workspace_sources
-        src/host_window_metal.mm
-        src/metal_host_presenter.cpp)
+    list(APPEND _host_workspace_sources src/host_window_metal.mm)
+endif()
+if(APPLE AND TRUFFLE_BUILD_BACKEND_OPENGL)
+    list(APPEND _host_workspace_sources src/host_window_cocoa_view.mm)
+endif()
+if(APPLE AND (TRUFFLE_BUILD_BACKEND_METAL OR TRUFFLE_BUILD_BACKEND_OPENGL))
+    list(APPEND _host_workspace_sources src/host_presenter.cpp)
 endif()
 
 add_executable(truffle_host_workspace_example ${_host_workspace_sources})
@@ -28,6 +32,10 @@ set(_host_workspace_libs glfw truffle_backend_null truffle_encom_renderer truffl
 if(APPLE AND TRUFFLE_BUILD_BACKEND_METAL)
     list(APPEND _host_workspace_libs truffle_backend_metal)
     target_compile_definitions(truffle_host_workspace_example PRIVATE TRUFFLE_HOST_WORKSPACE_METAL=1)
+endif()
+if(APPLE AND TRUFFLE_BUILD_BACKEND_OPENGL)
+    list(APPEND _host_workspace_libs truffle_backend_opengl)
+    target_compile_definitions(truffle_host_workspace_example PRIVATE TRUFFLE_HOST_WORKSPACE_OPENGL=1)
 endif()
 if(TRUFFLE_BUILD_BACKEND_VULKAN)
     list(APPEND _host_workspace_libs truffle_backend_vulkan)
@@ -52,6 +60,15 @@ if(TRUFFLE_BUILD_TESTS)
             NAME truffle_host_workspace_metal_window
             COMMAND truffle_host_workspace_example --metal --frames 120)
         set_tests_properties(truffle_host_workspace_metal_window PROPERTIES
+                             LABELS "presentation;host-window;validation"
+                             TIMEOUT 60)
+    endif()
+    if(APPLE AND TRUFFLE_BUILD_BACKEND_OPENGL)
+        # Presents into the host's NSView; needs a logged-in macOS GUI session.
+        add_test(
+            NAME truffle_host_workspace_opengl_window
+            COMMAND truffle_host_workspace_example --opengl --frames 120)
+        set_tests_properties(truffle_host_workspace_opengl_window PROPERTIES
                              LABELS "presentation;host-window;validation"
                              TIMEOUT 60)
     endif()

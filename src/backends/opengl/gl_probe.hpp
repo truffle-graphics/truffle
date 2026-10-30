@@ -21,6 +21,7 @@
 
 #include "gl_graphics.hpp"
 #include "gl_program.hpp"
+#include "gl_sync.hpp"
 
 namespace truffle::rhi::detail::gl_probe {
 
@@ -126,6 +127,9 @@ struct TextureFormatInfo {
         return {GL_DEPTH24_STENCIL8, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, 4,
                 TextureAspect::depth | TextureAspect::stencil};
 #if defined(TRUFFLE_GL_API_DESKTOP)
+    // Desktop GL stores BGRA texels as RGBA8 and swizzles GL_BGRA transfers.
+    case TextureFormat::bgra8_unorm:
+        return {GL_RGBA8, GL_BGRA, GL_UNSIGNED_BYTE, 4, TextureAspect::color};
     case TextureFormat::depth32_float:
         return {GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT, 4,
                 TextureAspect::depth};
@@ -1663,11 +1667,10 @@ struct Probe {
     std::span<const NativeCommand> commands,
     std::span<const NativeSemaphorePoint> waits,
     std::span<const NativeSemaphorePoint> signals) {
-    if (!waits.empty() || !signals.empty()) {
-        return Status::failure(
-            StatusCode::unsupported,
-            "GL timeline semaphore submission is not implemented");
-    }
+    // Semaphore waits were reached on the host before this call, and this
+    // submission completes before the foundation publishes its signals.
+    (void)waits;
+    (void)signals;
     const auto context = std::static_pointer_cast<Context>(nativeContext);
     if (!context || !context_available(*context)) {
         return Status::failure(StatusCode::device_lost,
@@ -1729,6 +1732,24 @@ struct Probe {
             glMemoryBarrier(GL_ALL_BARRIER_BITS);
 #endif
             continue;
+        }
+        if (command.kind == NativeCommandKind::write_timestamp ||
+            command.kind == NativeCommandKind::begin_occlusion_query ||
+            command.kind == NativeCommandKind::end_occlusion_query ||
+            command.kind == NativeCommandKind::resolve_queries) {
+#if defined(TRUFFLE_GL_HAS_SYNC_OBJECTS)
+            const auto destination =
+                std::static_pointer_cast<BufferResource>(command.secondaryObject);
+            if (auto status = execute_query(
+                    command, destination ? destination->name : 0);
+                !status.ok()) {
+                return fail(status);
+            }
+            continue;
+#else
+            return fail(Status::failure(StatusCode::unsupported,
+                                        "GL queries are not enabled here"));
+#endif
         }
         if (command.kind == NativeCommandKind::begin_compute) {
 #if defined(TRUFFLE_GL_HAS_COMPUTE)
@@ -2211,7 +2232,9 @@ struct Probe {
         return fail(Status::failure(StatusCode::invalid_state,
                                     "GL render encoder was not ended"));
     }
-    glFinish();
+    if (auto status = wait_for_completion("GL submission"); !status.ok()) {
+        return fail(status);
+    }
     const auto error = glGetError();
     cleanup();
     return error == GL_NO_ERROR

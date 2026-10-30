@@ -3,6 +3,7 @@
 #include "native_backend_smoke.hpp"
 #include "gl_graphics_tests.hpp"
 #include "gl_binding_tests.hpp"
+#include "gl_sync_tests.hpp"
 
 int main() {
 #if defined(TRUFFLE_EXPECT_EGL_OPENGL) || defined(TRUFFLE_EXPECT_CGL_OPENGL)
@@ -42,6 +43,15 @@ int main() {
         truffle::rhi::create_opengl_instance({
             .debugCallback = &truffle::tests::count_native_diagnostic,
             .debugUserData = &diagnostics}), true, &diagnostics);
+#if defined(TRUFFLE_EXPECT_CGL_OPENGL)
+    constexpr bool expectSync = true;
+#else
+    constexpr bool expectSync = false;
+#endif
+    truffle::tests::verify_gl_sync(
+        truffle::rhi::create_opengl_instance({
+            .debugCallback = &truffle::tests::count_native_diagnostic,
+            .debugUserData = &diagnostics}), expectSync, &diagnostics);
 #else
     const auto result = truffle::rhi::create_opengl_instance();
     truffle::tests::verify_unavailable_backend(result);

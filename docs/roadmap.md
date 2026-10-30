@@ -24,8 +24,9 @@ Active work is a practical baseline for three backends:
 1. **Metal** (macOS) — primary development backend: #69.
 2. **Vulkan** — portable backend; Linux and macOS (MoltenVK, #56) baselines
    are done. MoltenVK packaging and iOS-family lanes are deferred (#172).
-3. **OpenGL** (desktop) — surfaces/presentation (#61) and synchronization,
-   queries, and context ownership (#63). macOS OpenGL is deprecated and capped
+3. **OpenGL** (desktop) — surfaces/presentation (#61; macOS host-owned
+   `NSView` done) and synchronization, queries, and context ownership (#63;
+   macOS fences, occlusion queries and context ownership done). macOS OpenGL is deprecated and capped
    at 4.1, so features above 4.1 (such as compute) need another platform.
 4. Offline shader-compiler routes those backends need (#73).
 
@@ -56,7 +57,8 @@ lanes, or Intel-specific work is planned.
 
 - Vulkan on Windows (#58).
 - Desktop OpenGL on Windows (WGL, #61), and on Linux beyond its current EGL
-  evidence, including the refactored EGL context path.
+  evidence, including the refactored EGL context path and window
+  presentation (#61).
 - Any baseline backend feature first verified on only one platform.
 
 ## Deferred Backlog

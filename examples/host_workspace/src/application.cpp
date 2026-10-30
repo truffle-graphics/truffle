@@ -6,8 +6,17 @@
 #include "truffle/rhi/null_backend.hpp"
 #include "truffle/encom_renderer/encom_render_adapter.hpp"
 
+#if defined(TRUFFLE_HOST_WORKSPACE_METAL) || defined(TRUFFLE_HOST_WORKSPACE_OPENGL)
+#define TRUFFLE_HOST_WORKSPACE_WINDOW 1
+#include "host_presenter.hpp"
+#endif
+
 #ifdef TRUFFLE_HOST_WORKSPACE_METAL
-#include "metal_host_presenter.hpp"
+#include "truffle/rhi/metal_backend.hpp"
+#endif
+
+#ifdef TRUFFLE_HOST_WORKSPACE_OPENGL
+#include "truffle/rhi/opengl_backend.hpp"
 #endif
 
 #ifdef TRUFFLE_BUILD_BACKEND_VULKAN
@@ -248,9 +257,9 @@ void print_summary(std::string_view runKind, const IWorkspace& workspace,
     return 0;
 }
 
-#ifdef TRUFFLE_HOST_WORKSPACE_METAL
-constexpr rhi::Extent2D kMetalWindowExtent{640, 400};
-constexpr rhi::Extent2D kMetalResizedWindowExtent{800, 520};
+#ifdef TRUFFLE_HOST_WORKSPACE_WINDOW
+constexpr rhi::Extent2D kHostWindowExtent{640, 400};
+constexpr rhi::Extent2D kResizedHostWindowExtent{800, 520};
 constexpr std::uint32_t kResizeSettleAttempts = 60;
 
 [[nodiscard]] rhi::ClearColor frame_clear_color(std::uint32_t frame) noexcept {
@@ -262,27 +271,70 @@ constexpr std::uint32_t kResizeSettleAttempts = 60;
     return colors[(frame / 30) % colors.size()];
 }
 
-// The host owns the GLFW window and its CAMetalLayer; Truffle receives only
-// the layer as a cocoa_layer surface. A bounded run scripts one window resize
-// halfway through and requires the swapchain to track the new framebuffer.
-[[nodiscard]] int run_metal_host_window(std::uint32_t boundedFrames) {
+enum class HostWindowBackend { metal, opengl };
+
+[[nodiscard]] std::string_view backend_label(HostWindowBackend backend) noexcept {
+    return backend == HostWindowBackend::metal ? "Metal" : "OpenGL";
+}
+
+[[nodiscard]] base::Status initialize_presenter(HostWindowBackend backend,
+                                                const HostWindow& window,
+                                                rhi::Extent2D extent,
+                                                HostPresenter& presenter) {
+    if (backend == HostWindowBackend::metal) {
+#ifdef TRUFFLE_HOST_WORKSPACE_METAL
+        auto instance = rhi::create_metal_instance();
+        if (!instance.ok()) {
+            return instance.status();
+        }
+        return presenter.initialize(
+            std::move(instance).value(),
+            {.kind = rhi::NativeSurfaceKind::cocoa_layer,
+             .handle = window.native_layer_handle()},
+            rhi::TextureFormat::bgra8_unorm, extent);
+#endif
+    } else {
+#ifdef TRUFFLE_HOST_WORKSPACE_OPENGL
+        auto instance = rhi::create_opengl_instance();
+        if (!instance.ok()) {
+            return instance.status();
+        }
+        return presenter.initialize(
+            std::move(instance).value(),
+            {.kind = rhi::NativeSurfaceKind::cocoa_view,
+             .handle = window.native_view_handle()},
+            rhi::TextureFormat::rgba8_unorm, extent);
+#endif
+    }
+    return base::Status::failure(base::StatusCode::unsupported,
+                                 "host window backend is not compiled");
+}
+
+// The host owns the GLFW window and its native surface (a CAMetalLayer for
+// Metal, the content NSView for OpenGL); Truffle receives only that handle.
+// A bounded run scripts one window resize halfway through and requires the
+// swapchain to track the new framebuffer.
+[[nodiscard]] int run_host_window(HostWindowBackend backend,
+                                  std::uint32_t boundedFrames) {
+    const std::string label{backend_label(backend)};
     HostWindow window;
-    if (auto status = window.open("Truffle Host Workspace - Metal",
-                                  kMetalWindowExtent);
+    if (auto status = window.open("Truffle Host Workspace - " + label,
+                                  kHostWindowExtent);
         !status.ok()) {
         return fail("open host window", status);
     }
-    void* layer = window.native_layer_handle();
     const auto initialExtent = window.framebuffer_extent();
-    MetalHostPresenter presenter;
-    if (auto status = presenter.initialize(layer, initialExtent); !status.ok()) {
-        return fail("initialize Metal host presenter", status);
+    HostPresenter presenter;
+    if (auto status =
+            initialize_presenter(backend, window, initialExtent, presenter);
+        !status.ok()) {
+        return fail("initialize " + label + " host presenter", status);
     }
     std::uint32_t frame = 0;
     while (!window.should_close() &&
            (boundedFrames == 0 || frame < boundedFrames)) {
         if (boundedFrames != 0 && frame == boundedFrames / 2) {
-            window.set_size(kMetalResizedWindowExtent);
+            window.set_size(kResizedHostWindowExtent);
             for (std::uint32_t attempt = 0;
                  attempt < kResizeSettleAttempts &&
                  same_extent(window.framebuffer_extent(), initialExtent);
@@ -300,16 +352,17 @@ constexpr std::uint32_t kResizeSettleAttempts = 60;
         if (auto status =
                 presenter.present_frame(extent, frame_clear_color(frame));
             !status.ok()) {
-            return fail("present Metal host frame", status);
+            return fail("present " + label + " host frame", status);
         }
         ++frame;
     }
     const auto& stats = presenter.stats();
     const auto finalExtent = presenter.extent();
-    std::cout << "Metal host window adapter=" << presenter.adapter_name()
+    std::cout << label << " host window adapter=" << presenter.adapter_name()
               << " frames=" << stats.framesPresented
               << " resizes=" << stats.swapchainResizes
               << " suboptimal=" << stats.suboptimalAcquires
+              << " suboptimal_presents=" << stats.suboptimalPresents
               << " out_of_date=" << stats.outOfDateAcquires
               << " extent=" << initialExtent.width << 'x'
               << initialExtent.height << "->" << finalExtent.width << 'x'
@@ -319,8 +372,8 @@ constexpr std::uint32_t kResizeSettleAttempts = 60;
          stats.swapchainResizes == 0 ||
          same_extent(finalExtent, initialExtent) ||
          !same_extent(finalExtent, window.framebuffer_extent()))) {
-        std::cerr << "Metal host window run did not present every frame "
-                     "across a tracked resize\n";
+        std::cerr << label << " host window run did not present every frame "
+                             "across a tracked resize\n";
         return 1;
     }
     return 0;
@@ -351,9 +404,17 @@ int run_application(const ApplicationOptions& options) {
     }
     if (options.useMetal && !options.smoke) {
 #ifdef TRUFFLE_HOST_WORKSPACE_METAL
-        return run_metal_host_window(options.frames);
+        return run_host_window(HostWindowBackend::metal, options.frames);
 #else
         std::cerr << "Metal backend target is not compiled\n";
+        return 1;
+#endif
+    }
+    if (options.useOpenGL && !options.smoke) {
+#ifdef TRUFFLE_HOST_WORKSPACE_OPENGL
+        return run_host_window(HostWindowBackend::opengl, options.frames);
+#else
+        std::cerr << "macOS OpenGL host-window presentation is not compiled\n";
         return 1;
 #endif
     }

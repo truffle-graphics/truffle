@@ -20,6 +20,7 @@ namespace truffle::rhi::validation {
     case NativeSurfaceKind::headless:
         return native.handle == nullptr && native.display == nullptr;
     case NativeSurfaceKind::cocoa_layer:
+    case NativeSurfaceKind::cocoa_view:
     case NativeSurfaceKind::android_window:
     case NativeSurfaceKind::web_canvas:
     case NativeSurfaceKind::external:

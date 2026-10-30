@@ -46,6 +46,11 @@ CommandLineParse parse_command_line(int argc, char* argv[]) {
             continue;
         }
 
+        if (argument == "--opengl") {
+            result.options.useOpenGL = true;
+            continue;
+        }
+
         if (argument == "--vulkan") {
             result.options.useVulkan = true;
             continue;
@@ -85,16 +90,20 @@ CommandLineParse parse_command_line(int argc, char* argv[]) {
         return fail("unknown argument: " + std::string{argument});
     }
 
+    if (result.options.useMetal && result.options.useOpenGL) {
+        return fail("--metal and --opengl are mutually exclusive");
+    }
     if (result.options.frames != 0 &&
-        (!result.options.useMetal || result.options.smoke)) {
-        return fail("--frames requires --metal without --smoke");
+        (!(result.options.useMetal || result.options.useOpenGL) ||
+         result.options.smoke)) {
+        return fail("--frames requires --metal or --opengl without --smoke");
     }
     return result;
 }
 
 void print_usage(std::ostream& output) {
     output << "Usage: truffle_host_workspace_example [--smoke] "
-              "[--metal [--frames N]] [--vulkan] "
+              "[--metal|--opengl [--frames N]] [--vulkan] "
               "[--workspace editor|cad|simulation]\n";
 }
 

@@ -424,6 +424,8 @@ enum class NativeSurfaceKind {
     android_window,
     web_canvas,
     external,
+    // A host-owned macOS NSView*; used by the OpenGL backend.
+    cocoa_view,
 };
 
 enum class ResourceBindingType { buffer, texture, sampler };
