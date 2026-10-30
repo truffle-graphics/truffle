@@ -2,179 +2,36 @@
 #include "truffle/renderer/renderer.hpp"
 
 #include <array>
-#include <string>
+#include <algorithm>
 
 namespace truffle::renderer {
 namespace {
 
 base::Status validate_render_batch_bindings(const RenderBatch& batch,
                                             const rhi::Pipeline& pipeline) {
-    if (pipeline.reflection().bindings().empty()) {
-        return base::Status::success();
+    for (std::size_t index = 0; index < batch.bindGroups.size(); ++index) {
+        const auto& group = batch.bindGroups[index];
+        if (group.bindings == nullptr || !group.bindings->valid() ||
+            std::any_of(batch.bindGroups.begin(),
+                        batch.bindGroups.begin() + static_cast<std::ptrdiff_t>(index),
+                        [&](const auto& previous) { return previous.group == group.group; })) {
+            return base::Status::failure(
+                base::StatusCode::invalid_argument,
+                "Renderer: invalid or duplicate batch descriptor group");
+        }
     }
-    constexpr std::size_t kBindingSlots = RenderBatch::kMaxBindings + 1;
-    std::array<bool, kBindingSlots> expected{};
     for (const auto& binding : pipeline.reflection().bindings()) {
-        if (binding.type != rhi::ResourceBindingType::buffer ||
-            (binding.stage != rhi::ShaderStage::vertex &&
-             binding.stage != rhi::ShaderStage::fragment)) {
-            continue;
-        }
-        if (binding.group != 0 || binding.binding >= kBindingSlots) {
+        if (std::none_of(batch.bindGroups.begin(), batch.bindGroups.end(),
+                         [&](const auto& group) { return group.group == binding.group; })) {
             return base::Status::failure(
                 base::StatusCode::invalid_argument,
-                "Renderer: reflected buffer binding exceeds the direct binding lane");
-        }
-        expected[binding.binding] = true;
-    }
-
-    std::array<bool, kBindingSlots> provided{};
-    for (std::uint32_t index = 0; index < RenderBatch::kMaxBindings; ++index) {
-        provided[index] = batch.bindings[index].buffer != nullptr;
-    }
-    provided[RenderBatch::kMaxBindings] = batch.uniformBuffer.buffer != nullptr;
-
-    for (std::size_t index = 0; index < kBindingSlots; ++index) {
-        if (expected[index] != provided[index]) {
-            return base::Status::failure(
-                base::StatusCode::invalid_argument,
-                expected[index]
-                    ? "Renderer: missing reflected buffer binding"
-                    : "Renderer: unexpected buffer binding");
+                "Renderer: missing reflected descriptor group");
         }
     }
     return base::Status::success();
 }
 
 } // namespace
-
-NullPipelineCache::NullPipelineCache(rhi::Device& device) : device_(&device) {}
-
-base::Status NullPipelineCache::prepare_render_pass(
-    const rhi::RenderPassDesc& pass) {
-    std::vector<rhi::TextureFormat> colorFormats;
-    colorFormats.reserve(pass.colorAttachments.size());
-    std::uint32_t sampleCount = 1;
-    bool sampleCountSet = false;
-    for (const auto& attachment : pass.colorAttachments) {
-        if (attachment.texture == nullptr) {
-            return base::Status::failure(base::StatusCode::invalid_argument,
-                                         "Renderer: null color attachment");
-        }
-        const auto desc = attachment.texture->desc();
-        if (sampleCountSet && sampleCount != desc.sampleCount) {
-            return base::Status::failure(
-                base::StatusCode::invalid_argument,
-                "Renderer: attachment sample counts do not match");
-        }
-        colorFormats.push_back(desc.format);
-        sampleCount = desc.sampleCount;
-        sampleCountSet = true;
-    }
-    auto depthFormat = rhi::TextureFormat::unknown;
-    if (pass.depthStencilAttachment.texture != nullptr) {
-        const auto desc = pass.depthStencilAttachment.texture->desc();
-        depthFormat = desc.format;
-        if (sampleCountSet && sampleCount != desc.sampleCount) {
-            return base::Status::failure(
-                base::StatusCode::invalid_argument,
-                "Renderer: attachment sample counts do not match");
-        }
-        sampleCount = desc.sampleCount;
-    }
-    if (colorFormats != colorFormats_ || depthFormat != depthStencilFormat_ ||
-        sampleCount != sampleCount_) {
-        colorFormats_ = std::move(colorFormats);
-        depthStencilFormat_ = depthFormat;
-        sampleCount_ = sampleCount;
-        pipeline_ = {};
-    }
-    return base::Status::success();
-}
-
-rhi::Pipeline* NullPipelineCache::get_or_create(const InstanceLayout&,
-                                                MaterialId,
-                                                std::size_t) {
-    if (!pipeline_.valid()) {
-        rhi::PipelineDesc desc;
-        for (const auto format : colorFormats_) {
-            rhi::ColorTargetState target;
-            target.format = format;
-            desc.colorTargets.push_back(target);
-        }
-        desc.depthStencil.format = depthStencilFormat_;
-        desc.multisample.sampleCount = sampleCount_;
-        desc.debugName = "null pipeline";
-        auto result = device_->create_pipeline(desc);
-        if (!result.ok()) {
-            return nullptr;
-        }
-        pipeline_ = std::move(result).value();
-    }
-    return &pipeline_;
-}
-
-PipelineCache::PipelineCache(rhi::Device& device, rhi::TextureFormat colorFormat)
-    : device_(&device), colorFormat_(colorFormat) {}
-
-void PipelineCache::register_shaders(MaterialId material,
-                                     const ShaderBinding& shaders) {
-    shaders_[material] = shaders;
-}
-
-base::Status PipelineCache::prepare_render_pass(
-    const rhi::RenderPassDesc& pass) {
-    if (pass.colorAttachments.size() != 1 ||
-        pass.colorAttachments.front().texture == nullptr ||
-        pass.colorAttachments.front().texture->desc().format != colorFormat_ ||
-        pass.colorAttachments.front().texture->desc().sampleCount != 1 ||
-        pass.depthStencilAttachment.texture != nullptr) {
-        return base::Status::failure(
-            base::StatusCode::invalid_argument,
-            "Renderer: pipeline cache does not match render-pass attachments");
-    }
-    return base::Status::success();
-}
-
-rhi::Pipeline* PipelineCache::get_or_create(const InstanceLayout& layout,
-                                            MaterialId material,
-                                            std::size_t variantHash) {
-    const CacheKey key{layout.hash(), material, variantHash};
-    if (const auto found = pipelines_.find(key); found != pipelines_.end()) {
-        return &found->second;
-    }
-    const auto shaders = shaders_.find(material);
-    if (shaders == shaders_.end()) {
-        return nullptr;
-    }
-    rhi::PipelineDesc desc;
-    desc.vertexShader = shaders->second.vertexShader;
-    desc.fragmentShader = shaders->second.fragmentShader;
-    rhi::ColorTargetState target;
-    target.format = colorFormat_;
-    desc.colorTargets.push_back(target);
-    desc.debugName = "pipeline material " + std::to_string(material);
-    auto result = device_->create_pipeline(desc);
-    if (!result.ok()) {
-        return nullptr;
-    }
-    const auto [inserted, added] =
-        pipelines_.emplace(key, std::move(result).value());
-    (void)added;
-    return &inserted->second;
-}
-
-void PipelineCache::invalidate(MaterialId material) {
-    for (auto current = pipelines_.begin(); current != pipelines_.end();) {
-        if (current->first.material == material) {
-            current = pipelines_.erase(current);
-        } else {
-            ++current;
-        }
-    }
-}
-
-void PipelineCache::invalidate_all() { pipelines_.clear(); }
 
 Renderer::Renderer(rhi::Device& device, IPipelineCache* cache)
     : device_(&device), cache_(cache) {
@@ -271,12 +128,15 @@ base::Status Renderer::render(const FrameGraph& graph, rhi::Swapchain* swapchain
         ++lastFrameStats_.renderNodesExecuted;
 
         for (const auto& batch : render->batches()) {
-            auto* pipeline = cache_->get_or_create(
+            auto pipelineResult = cache_->get_or_create(
                 batch.layout, batch.material, batch.variantHash);
-            if (pipeline == nullptr) {
-                return base::Status::failure(
-                    base::StatusCode::invalid_state,
-                    "Renderer: no graphics pipeline is available");
+            if (!pipelineResult.ok()) {
+                return pipelineResult.status();
+            }
+            auto* pipeline = pipelineResult.value();
+            if (pipeline == nullptr || !pipeline->valid()) {
+                return base::Status::failure(base::StatusCode::invalid_state,
+                                             "Renderer: cache returned an invalid pipeline");
             }
             if (auto status = encoder.bind_pipeline(*pipeline); !status.ok()) {
                 return status;
@@ -284,6 +144,13 @@ base::Status Renderer::render(const FrameGraph& graph, rhi::Swapchain* swapchain
             if (auto status = validate_render_batch_bindings(batch, *pipeline);
                 !status.ok()) {
                 return status;
+            }
+            for (const auto& group : batch.bindGroups) {
+                if (auto status = encoder.bind_group(
+                        group.group, *group.bindings, group.dynamicOffsets);
+                    !status.ok()) {
+                    return status;
+                }
             }
             for (std::uint32_t index = 0; index < RenderBatch::kMaxBindings;
                  ++index) {

@@ -4,122 +4,143 @@
 #include "truffle/rhi/rhi.hpp"
 
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
 namespace truffle::renderer {
 
-// ---------------------------------------------------------------------------
-// ShaderBinding — vertex/fragment shader pair for one material
-// ---------------------------------------------------------------------------
-
+// Ownership is transferred, never borrowed from caller-local shader wrappers.
 struct ShaderBinding {
-    rhi::Shader* vertexShader   = nullptr;
-    rhi::Shader* fragmentShader = nullptr;
+    rhi::Shader vertexShader;
+    rhi::Shader fragmentShader;
 };
 
-// ---------------------------------------------------------------------------
-// IPipelineCache — maps (InstanceLayout, MaterialId) → Pipeline
-// ---------------------------------------------------------------------------
+struct ShaderSelection {
+    const rhi::ShaderPackage* package = nullptr;
+    rhi::ShaderTarget target = rhi::ShaderTarget::spirv;
+    std::string entryPoint = "main";
+    rhi::ShaderStage stage = rhi::ShaderStage::vertex;
+    std::string permutation;
+};
 
+struct ProgramDesc {
+    ShaderSelection vertex;
+    ShaderSelection fragment{.stage = rhi::ShaderStage::fragment};
+    // Shader pointers must be null. Layout/cache are borrowed only during staging;
+    // the created RHI pipeline retains their payloads. Static graphics state only.
+    rhi::PipelineDesc pipeline;
+};
+
+class PipelineCache;
+
+// A complete, native-validated candidate. Destroying it discards the candidate
+// without changing the published material. It retains no package/source pointers.
+class StagedProgram {
+public:
+    StagedProgram(StagedProgram&&) noexcept = default;
+    StagedProgram& operator=(StagedProgram&&) noexcept = default;
+    StagedProgram(const StagedProgram&) = delete;
+    StagedProgram& operator=(const StagedProgram&) = delete;
+
+private:
+    StagedProgram() = default;
+    const PipelineCache* owner_ = nullptr;
+    ShaderBinding shaders_;
+    rhi::Pipeline pipeline_;
+    rhi::ObjectId layoutId_{};
+    std::vector<rhi::TextureFormat> colorFormats_;
+    rhi::TextureFormat depthStencilFormat_ = rhi::TextureFormat::unknown;
+    std::uint32_t sampleCount_ = 1;
+    friend class PipelineCache;
+};
+
+// Caches, staging/publication and Renderer recording are single-thread-owned.
+// Returned pipeline pointers are borrowed until replacement/invalidation/destruction.
 class IPipelineCache {
 public:
     virtual ~IPipelineCache() = default;
-
-    // Register vertex/fragment shaders for a material ID.
-    // Must be called before the first get_or_create for that material.
-    virtual void register_shaders(MaterialId material,
-                                  const ShaderBinding& shaders) = 0;
-
-    // Select the attachment state that pipelines returned for the next pass
-    // must match.
     [[nodiscard]] virtual base::Status prepare_render_pass(
         const rhi::RenderPassDesc& pass) = 0;
-
-    // Returns a matching pipeline or creates one.
-    // variantHash can be used to bucket pipelines driven by shader variants.
-    [[nodiscard]] virtual rhi::Pipeline* get_or_create(
+    [[nodiscard]] virtual base::Result<rhi::Pipeline*> get_or_create(
         const InstanceLayout& layout, MaterialId material,
         std::size_t variantHash = 0) = 0;
-
-    // Invalidate caches to trigger hot-reloads
     virtual void invalidate(MaterialId material) = 0;
     virtual void invalidate_all() = 0;
 };
 
-// ---------------------------------------------------------------------------
-// NullPipelineCache — placeholder; ignores layout/material, always returns
-// a single null pipeline with no shaders (suitable for the null backend only).
-// ---------------------------------------------------------------------------
-
+// Explicit validation-only cache: shaderless pipelines are not native programs.
 class NullPipelineCache final : public IPipelineCache {
 public:
     explicit NullPipelineCache(rhi::Device& device);
-
-    void register_shaders(MaterialId /*material*/,
-                          const ShaderBinding& /*shaders*/) override {}
-
     [[nodiscard]] base::Status prepare_render_pass(
         const rhi::RenderPassDesc& pass) override;
-
-    [[nodiscard]] rhi::Pipeline* get_or_create(
+    [[nodiscard]] base::Result<rhi::Pipeline*> get_or_create(
         const InstanceLayout& layout, MaterialId material,
         std::size_t variantHash = 0) override;
-
     void invalidate(MaterialId /*material*/) override {}
     void invalidate_all() override { pipeline_ = {}; }
 
 private:
-    rhi::Device*   device_ = nullptr;
+    rhi::Device* device_ = nullptr;
     rhi::Pipeline pipeline_;
     std::vector<rhi::TextureFormat> colorFormats_;
     rhi::TextureFormat depthStencilFormat_ = rhi::TextureFormat::unknown;
     std::uint32_t sampleCount_ = 1;
 };
 
-// ---------------------------------------------------------------------------
-// PipelineCache — real cache keyed on (InstanceLayout hash, MaterialId).
-// Requires register_shaders() before the first get_or_create for a material.
-// ---------------------------------------------------------------------------
-
+// Each (material, variantHash) names one immutable shader + graphics-state
+// configuration. Staging creates its pipeline eagerly; lookup reuses it.
+// InstanceLayout describes data lanes, not implicit vertex-attribute semantics;
+// native vertex input is specified explicitly in ProgramDesc::pipeline.
 class PipelineCache final : public IPipelineCache {
 public:
-    explicit PipelineCache(rhi::Device& device,
-                           rhi::TextureFormat colorFormat =
-                               rhi::TextureFormat::bgra8_unorm);
+    explicit PipelineCache(rhi::Device& device);
+    PipelineCache(const PipelineCache&) = delete;
+    PipelineCache& operator=(const PipelineCache&) = delete;
+    PipelineCache(PipelineCache&&) = delete;
+    PipelineCache& operator=(PipelineCache&&) = delete;
 
-    void register_shaders(MaterialId material,
-                          const ShaderBinding& shaders) override;
+    [[nodiscard]] base::Result<StagedProgram> stage_program(
+        const ProgramDesc& desc);
+    [[nodiscard]] base::Result<StagedProgram> stage_shaders(
+        ShaderBinding shaders, const rhi::PipelineDesc& state);
+    [[nodiscard]] base::Status commit_program(
+        MaterialId material, StagedProgram&& program, std::size_t variantHash = 0);
+    [[nodiscard]] base::Status register_program(
+        MaterialId material, const ProgramDesc& desc, std::size_t variantHash = 0);
+    [[nodiscard]] base::Status register_shaders(
+        MaterialId material, ShaderBinding shaders,
+        const rhi::PipelineDesc& state, std::size_t variantHash = 0);
 
     [[nodiscard]] base::Status prepare_render_pass(
         const rhi::RenderPassDesc& pass) override;
-
-    [[nodiscard]] rhi::Pipeline* get_or_create(
+    [[nodiscard]] base::Result<rhi::Pipeline*> get_or_create(
         const InstanceLayout& layout, MaterialId material,
         std::size_t variantHash = 0) override;
 
+    // Removes complete programs; subsequent lookup fails until registration.
     void invalidate(MaterialId material) override;
     void invalidate_all() override;
 
 private:
     struct CacheKey {
-        std::size_t layoutHash;
-        MaterialId  material;
+        MaterialId material;
         std::size_t variantHash;
-        bool operator==(const CacheKey& o) const noexcept {
-            return layoutHash == o.layoutHash && material == o.material && variantHash == o.variantHash;
-        }
+        bool operator==(const CacheKey&) const = default;
     };
     struct CacheKeyHash {
-        std::size_t operator()(const CacheKey& k) const noexcept {
-            return k.layoutHash ^ (k.material * 0x9e3779b9u) ^ (k.variantHash * 0x01000193u);
+        std::size_t operator()(const CacheKey& key) const noexcept {
+            return std::hash<MaterialId>{}(key.material) ^
+                   (std::hash<std::size_t>{}(key.variantHash) << 1u);
         }
     };
-
-    rhi::Device*       device_;
-    rhi::TextureFormat colorFormat_;
-    std::unordered_map<MaterialId, ShaderBinding>                          shaders_;
-    std::unordered_map<CacheKey, rhi::Pipeline, CacheKeyHash> pipelines_;
+    rhi::Device* device_;
+    bool passPrepared_ = false;
+    std::vector<rhi::TextureFormat> colorFormats_;
+    rhi::TextureFormat depthStencilFormat_ = rhi::TextureFormat::unknown;
+    std::uint32_t sampleCount_ = 1;
+    std::unordered_map<CacheKey, std::unique_ptr<StagedProgram>, CacheKeyHash> programs_;
 };
 
 } // namespace truffle::renderer

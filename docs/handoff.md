@@ -7,6 +7,52 @@ AI work that reaches a commit must update this handoff before that commit.
 Promote durable decisions into project context, architecture, roadmap, or ADRs
 rather than growing a historical transcript here.
 
+## Renderer Prepared Programs (#179)
+
+- Renderer-owned TSP selection, shaders and eager native pipeline staging are
+  implemented in `PipelineCache`; atomic publication preserves the existing
+  material on failure. Exact configuration slots replace lossy layout hashes;
+  binding/layout and attachment contracts cannot silently change on replacement.
+- `IPipelineCache` returns typed pipeline results; low-level registration moves
+  shader ownership. Batches support explicit RHI descriptor groups separately
+  from vertex input. See `docs/renderer.md` for the public contract and #181
+  integration seam.
+- Ownership/cohesion: Renderer depends only on RHI/Base. Pipeline-cache program
+  lifecycle is separated from frame recording in `pipeline_cache.cpp`. No shader
+  source/compiler, host-window or higher-layer responsibility was added.
+- Native evidence: hand-authored MSL packaged/serialized/loaded as TSPs drives
+  real `RenderBatch` + `FrameGraph` execution on Metal. All 256 RGBA8 pixels
+  match red (initial/reuse/staged), green (published replacement and retained
+  output after failures), black (changed write mask), and blue (uniform group).
+  Recording an old pipeline before replacing its owners still submits red.
+  Intentional native shader and pipeline failures preserve native status/detail
+  and working output; incompatible reflection/layouts/attachments are rejected.
+- PR #182 review follow-up separates layout-mismatch coverage from reflected
+  binding mismatch. Null and Metal now stage candidates with the same exact
+  pipeline layout, attachment state and binding count, but a reflected minimum
+  buffer size of 4 instead of the published 16 bytes. Both candidates stage
+  successfully, commit returns `invalid_argument`, and the published pipeline
+  ID stays unchanged. Metal still reads exact blue across all 256 pixels.
+  The two affected program/native tests pass with Metal API/GPU validation;
+  `git diff --check` passes. No production contract or code changed.
+- Verified: Ninja Debug with macOS SDK, warnings as errors, compiler tooling
+  disabled; 12 focused tests pass (Renderer/program/native Metal, frame graph,
+  EnCom adapter, transform, existing Metal and three host smoke tests).
+  Metal API/GPU validation was enabled with all three required environment
+  variables. Architecture guard and `git diff --check` pass. The native test
+  requires actual availability on Apple hosts rather than succeeding on a skip.
+- Added `examples/prepared_renderer`: a small no-window file-loaded TSP consumer
+  with enabled Metal/Vulkan selection. Its Metal execution succeeds after
+  destroying caller packages. Native Vulkan/GL Renderer evidence remains future
+  work; the reusable readback harness is backend-neutral.
+- Delivery uses signed/pushed #179 commits on PR #182; parent reviews/merges. #181 can
+  feed compiled TSP results into `ProgramDesc`, then `stage_program` and
+  `commit_program`. Per the user decision, #181 adds direct Renderer → Shader
+  use after #178 lands, not an intermediate adapter module. #179 adds no Shader
+  or source compiler dependency. Dynamic-state and
+  push-constant batches remain explicitly outside this first slice. Backend
+  maturity is unchanged.
+
 ## Current Focus
 
 The Apple Silicon macOS baseline is complete: Metal conformance audit (#69,

@@ -1,0 +1,1 @@
+#error intentional_renderer_native_shader_failure
