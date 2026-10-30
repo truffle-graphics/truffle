@@ -7,6 +7,33 @@ AI work that reaches a commit must update this handoff before that commit.
 Promote durable decisions into project context, architecture, roadmap, or ADRs
 rather than growing a historical transcript here.
 
+## Renderer Source Programs (#181)
+
+- Renderer now links `truffle_shader` directly (Renderer → Shader → RHI →
+  Base; no adapter module, RHI unchanged). `renderer::SourceProgram` compiles
+  the requested vertex/fragment configuration with `shader::Compiler`,
+  consumes `Compilation` packages in memory, validates the stage link and
+  pipeline vertex inputs, and adopts the result via `PipelineCache`
+  stage/commit. Failures (compile/include, interface, layout, native pipeline)
+  keep the last working program; unchanged rebuilds are cache-hit no-ops.
+  `PipelineCache::published` exposes the slot pipeline for change detection.
+  The host triggers rebuilds; there is no watcher or service.
+- With `TRUFFLE_SHADER_ENABLE_GLSLANG=OFF`, Renderer builds and runs prepared
+  TSPs and `rebuild` returns `unsupported`; the installed consumer verifies a
+  glslang-free Renderer link line. Compiler-enabled installs carry glslang in
+  Renderer's link closure.
+- Verification on Apple M3 Pro: enabled build (Vulkan + MoltenVK 1.4.2 with
+  validation, glslang) passes 13/13 focused Renderer/Shader/Vulkan/consumer
+  tests, including `truffle_renderer_vulkan_source_tests` with exact readbacks
+  (cache hit, include change red→blue, recorded old list stays red, three
+  failed rebuilds keep blue, recovery to green). Disabled build (Metal + Null,
+  Metal validation) passes 12/12 focused tests. Architecture guard and diff
+  checks pass.
+- Limitations: runtime GLSL→SPIR-V evidence is Vulkan only (Metal consumes
+  prepared MSL); the Vulkan source test uses layout mismatch rather than a
+  genuine native pipeline-creation failure. Stale `TRUFFLE_SHADERC_ENABLE_GLSLANG`
+  doc references were corrected. Next: further compiler routes (#73).
+
 ## Shader Review Follow-up (#183)
 
 - Merged current `origin/develop` (including #182), preserving both Shader and

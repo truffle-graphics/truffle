@@ -4,7 +4,8 @@
 compilation, reflection, compilation caching, and rebuild state. Its public API
 is `truffle/shader/compiler.hpp`, namespace `truffle::shader`. It depends only
 on RHI/Base and an explicitly enabled private compiler adapter. Renderer owns
-GPU objects and safe publication; this module has no backend, Renderer, EnCom,
+GPU objects and safe publication (`renderer::SourceProgram` consumes
+`Compilation` results in memory); this module has no backend, Renderer, EnCom,
 watcher, application, or tool dependency.
 
 The accepted module direction is Renderer → Shader → RHI → Base. There is no

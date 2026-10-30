@@ -66,7 +66,8 @@ Current evidence is narrower than the old roadmap claimed:
   capability gates, and native-override selection. Optional
   `truffle-shaderc` assembles precompiled or native variants without a compiler
   toolchain, or explicitly enables pinned glslang for GLSL/GLSL ES to SPIR-V.
-  Shared library ownership of compilation is being implemented in #178/#180.
+  The Shader library (#178/#180) owns compilation; Renderer consumes its
+  in-memory results directly through `renderer::SourceProgram` (#181).
 - WebGPU and WebGL2 now have explicit source-only targets; WebGL2 contains an
   Emscripten browser-context path but has no browser execution evidence yet.
 - The public support table and `truffle-rhi-doctor` expose matrix maturity and
@@ -161,11 +162,10 @@ consumer selects concrete loading, upload, and backend behavior.
 
 The practical Apple Silicon baseline is established for Metal, Vulkan via
 MoltenVK, and OpenGL 4.1 (see the support matrix and handoff for evidence).
-Develop shared Shader mechanisms/tooling (#178/#180) and native prepared-TSP
-Renderer execution (#179) in parallel, then integrate optional runtime
-compilation and safe rebuild adoption (#181). These are initial usable
-slices, not completion claims for every shader route or future Renderer
-feature. Verification on other platforms is recorded, not a blocker.
+Shared Shader mechanisms/tooling (#178/#180), native prepared-TSP Renderer
+execution (#179), and optional runtime compilation with safe rebuild adoption
+(#181) are initial usable slices, not completion claims for every shader route
+(#73) or future Renderer feature. Verification on other platforms is recorded, not a blocker.
 Other backends/platforms, Phase 6 advanced features, and Phase 7 hardening are
 deferred backlog (see `docs/roadmap.md`), not abandoned. Promote no pair beyond
 its recorded evidence.

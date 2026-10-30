@@ -33,6 +33,11 @@ add_executable(truffle_renderer_program_tests renderer_program_tests.cpp)
 target_link_libraries(truffle_renderer_program_tests PRIVATE truffle_backend_null truffle_renderer)
 add_test(NAME truffle_renderer_program_tests COMMAND truffle_renderer_program_tests)
 
+# Runs with and without a compiler adapter; disabled builds prove `unsupported`.
+add_executable(truffle_renderer_source_program_tests renderer_source_program_tests.cpp)
+target_link_libraries(truffle_renderer_source_program_tests PRIVATE truffle_backend_null truffle_renderer)
+add_test(NAME truffle_renderer_source_program_tests COMMAND truffle_renderer_source_program_tests)
+
 add_executable(truffle_advanced_render_flow_tests advanced_render_flow_tests.cpp)
 target_link_libraries(truffle_advanced_render_flow_tests PRIVATE truffle_backend_null truffle_renderer)
 add_test(NAME truffle_advanced_render_flow_tests COMMAND truffle_advanced_render_flow_tests)
@@ -137,6 +142,25 @@ if(TRUFFLE_BUILD_BACKEND_VULKAN)
             get_filename_component(_truffle_vulkan_loader_dir
                                    "${TRUFFLE_VULKAN_HOST_LOADER}" DIRECTORY)
             set_property(TEST truffle_vulkan_tests APPEND PROPERTY ENVIRONMENT
+                "DYLD_FALLBACK_LIBRARY_PATH=${_truffle_vulkan_loader_dir}:/usr/local/lib:/usr/lib")
+        endif()
+    endif()
+    if(TRUFFLE_SHADER_ENABLE_GLSLANG)
+        add_executable(truffle_renderer_vulkan_source_tests renderer_vulkan_source_tests.cpp)
+        target_link_libraries(truffle_renderer_vulkan_source_tests
+                              PRIVATE truffle_backend_vulkan truffle_renderer)
+        target_include_directories(truffle_renderer_vulkan_source_tests
+                                   PRIVATE "${PROJECT_SOURCE_DIR}/src/backends/vulkan")
+        target_compile_definitions(truffle_renderer_vulkan_source_tests PRIVATE
+            "TRUFFLE_RENDERER_SOURCE_DIR=\"${CMAKE_CURRENT_BINARY_DIR}/renderer-vulkan-sources\"")
+        add_test(NAME truffle_renderer_vulkan_source_tests
+                 COMMAND truffle_renderer_vulkan_source_tests)
+        set_tests_properties(truffle_renderer_vulkan_source_tests PROPERTIES
+                             LABELS "native-smoke;validation;renderer"
+                             SKIP_RETURN_CODE 77
+                             FAIL_REGULAR_EXPRESSION "Validation (Error|Warning)")
+        if(APPLE AND _truffle_vulkan_loader_dir)
+            set_property(TEST truffle_renderer_vulkan_source_tests APPEND PROPERTY ENVIRONMENT
                 "DYLD_FALLBACK_LIBRARY_PATH=${_truffle_vulkan_loader_dir}:/usr/local/lib:/usr/lib")
         endif()
     endif()

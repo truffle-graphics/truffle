@@ -26,7 +26,7 @@ unrelated modules. Truffle is not an application framework.
    converts EnCom state into render batches.
 9. `truffle_diagnostics` provides opt-in, pull-based inspection. Runtime
    modules do not depend on it.
-10. The Shader module, being implemented in #178, provides independently usable
+10. The Shader module (`truffle_shader`) provides independently usable
     source composition, configuration, compilation, reflection, dependency
     tracking, and compilation-result caching. Its compiler backends are
     optional build parts inside Shader; without them, prepared packages still
@@ -279,9 +279,15 @@ error without discarding the last working program, and in-flight GPU work
 retains the resources it references. No OS file watcher or background service
 becomes a mandatory dependency.
 
-Shader-library work (#178), tool reuse and TSP naming (#180), and prepared-TSP
-Renderer execution (#179) proceed as separate deliverables. Renderer's direct
-use of Shader for runtime compilation and reload follows in #181. The first compiler route
+Shader-library work (#178), tool reuse and TSP naming (#180), prepared-TSP
+Renderer execution (#179), and Renderer's direct use of Shader for runtime
+compilation and rebuild adoption (#181) are implemented. `renderer::SourceProgram`
+compiles only the requested configuration through `shader::Compiler`, consumes
+the in-memory `Compilation`, validates the vertex/fragment link and pipeline
+vertex inputs, then adopts the result through the same Renderer stage/commit
+path used for prepared TSPs. The host decides when to rebuild (for example by
+polling); every attempt re-resolves includes, so the Shader compilation cache
+detects dependency changes. There is no watcher or service. The first compiler route
 reuses pinned glslang for GLSL/GLSL ES to SPIR-V; this does not claim that every
 language/target in #73 is implemented. Compiler-free package consumption and
 assembly remain supported.
@@ -303,8 +309,8 @@ their own design issues.
   architecture, and the future of the provisional `truffle_assets` and
   `truffle_asset_render` targets are decided later.
 
-The practical macOS RHI baseline is followed by parallel Shader and Renderer
-work (#178-#181). Engine and other higher-level modules remain later work.
+The practical macOS RHI baseline is followed by the initial Shader and Renderer
+slices (#178-#181). Engine and other higher-level modules remain later work.
 
 ## Deferred Surfaces
 
