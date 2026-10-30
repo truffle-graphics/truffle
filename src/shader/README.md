@@ -58,16 +58,20 @@ new dependencies' license notices; all-off consumers require none of them.
 
 ## Routes and target configuration (#73, #185)
 
-`Compiler::routes()` describes only compiled-in source routes, not package
-assembly, all features of an upstream compiler, or live native device support.
+`Compiler::routes()` describes source routes available in this process/runtime,
+not package assembly, all features of an upstream compiler, request success, or
+eventual GPU execution. Most routes are build-time capabilities. Native MSL is
+the narrow exception: it is advertised only when a Metal device is available
+and the macOS 26+ reflection API can be used.
 Each route lists its accepted language, emitted target, supported stages, and
 exact supported Vulkan/SPIR-V configurations; every listed stage/configuration
 combination is supported, subject to the reflection limits below.
 Native routes also list typed `metalTargets`, `glslTargets`, or `glslEsTargets`.
 The Vulkan settings on these routes configure the **intermediate**, not the
 native output profile.
-The borrowed read-only spans have process lifetime. `available()` is the
-convenience test for any source route, useful to compiler-optional clients.
+Routes are cached on first discovery and their borrowed read-only spans have
+process lifetime; native MSL capability changes are not observed afterward.
+`available()` is the convenience test for any discovered source route.
 `CompilerRoute::experimental` marks routes whose generated Metal/WGSL output
 requires explicit package safety consent.
 

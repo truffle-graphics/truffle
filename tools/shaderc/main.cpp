@@ -21,6 +21,7 @@ using truffle::rhi::ShaderStage;
 using truffle::rhi::ShaderTarget;
 using truffle::rhi::ShaderVariantDesc;
 using truffle::rhi::ShaderVariantKind;
+using truffle::rhi::ShaderReflection;
 using truffle::rhi::Status;
 using truffle::rhi::StatusCode;
 
@@ -57,6 +58,27 @@ struct Arguments {
     return Status::failure(StatusCode::invalid_argument, std::move(message));
 }
 
+bool same_reflection(const ShaderReflection& left,
+                     const ShaderReflection& right) {
+    const auto sameBindings = left.bindings.size() == right.bindings.size() &&
+        std::equal(left.bindings.begin(), left.bindings.end(),
+                   right.bindings.begin(), [](const auto& a, const auto& b) {
+                       return a.name == b.name && a.stage == b.stage &&
+                              a.type == b.type && a.group == b.group &&
+                              a.binding == b.binding &&
+                              a.arrayCount == b.arrayCount &&
+                              a.minimumSize == b.minimumSize &&
+                              a.readOnly == b.readOnly;
+                   });
+    return sameBindings &&
+           left.pushConstants == right.pushConstants &&
+           left.specializationConstants == right.specializationConstants &&
+           left.interfaces == right.interfaces &&
+           left.requiredWorkgroupSize == right.requiredWorkgroupSize &&
+           left.preferredWorkgroupSize == right.preferredWorkgroupSize &&
+           left.workgroupSpecializationIds == right.workgroupSpecializationIds;
+}
+
 void usage(std::ostream& output) {
     output
         << "Usage: truffle-shaderc --name NAME --target TARGET --stage STAGE "
@@ -82,13 +104,14 @@ void usage(std::ostream& output) {
         << "Assembly requires source-hash/compiler-name/compiler-version. "
            "Compilation computes source/dependency hashes and compiler identity; "
            "a supplied source-hash is verified. No toolchains are fetched.\n"
-        << "--routes lists enabled source compilation, not package assembly "
-           "or native GPU support. GLSL defaults to Vulkan 1.1/SPIR-V 1.3; "
-           "native MSL is macOS Metal 2.1.\n"
+        << "--routes lists source routes available in this process/runtime, "
+           "not package assembly or guaranteed request success. Native MSL "
+           "discovery probes Metal once and is cached for process lifetime. "
+           "GLSL defaults to Vulkan 1.1/SPIR-V 1.3; native MSL is macOS Metal 2.1.\n"
         << "--hlsl-shader-model selects the exact HLSL target model.\n"
         << "--source-unit composes an ordered MSL source unit before the root. "
         << "--interface-from reuses typed reflection from a TSP variant with "
-        << "the requested stage (and prefers an exact entry-point match).\n";
+        << "the requested stage/entry; matching permutations must agree.\n";
 }
 
 [[nodiscard]] Result<Arguments> parse_arguments(int argc, char** argv) {
@@ -537,8 +560,17 @@ int main(int argc, char** argv) {
                 ++stageVariantCount;
                 onlyStageVariant = &variant;
                 if (variant.entryPoint == arguments.entry) {
+                    if (selected != nullptr &&
+                        !same_reflection(selected->reflection,
+                                         variant.reflection)) {
+                        std::cerr
+                            << "--interface-from found matching stage/entry "
+                               "variants with differing interface declarations; "
+                               "use a package whose matching permutations share "
+                               "one ShaderReflection declaration\n";
+                        return 2;
+                    }
                     selected = &variant;
-                    break;
                 }
             }
             if (selected == nullptr && stageVariantCount == 1) {

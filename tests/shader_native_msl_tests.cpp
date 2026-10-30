@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <iostream>
 #include <map>
 #include <span>
@@ -405,6 +406,32 @@ void source_contract(shader::Compiler& compiler) {
         static_cast<std::streamsize>(interfaceBytes.size()));
     check(interfaceFile.good(),
           "Native MSL test must persist its typed interface package for shaderc");
+    const auto write_variant_package = [&](bool differingReflection,
+                                           const char* filename) {
+        auto desc = fileRootCompilation.value().package.desc();
+        auto second = desc.variants.front();
+        second.permutation = "additional-interface-variant";
+        if (differingReflection) {
+            second.reflection.interfaces.front().type = "vec4";
+        }
+        desc.permutations.push_back({
+            "additional-interface-variant", {}, {}});
+        desc.variants.push_back(std::move(second));
+        auto package = tests::require(rhi::ShaderPackage::create(
+            std::move(desc),
+            {.allowExperimentalMetalGeneration = true}));
+        const auto path =
+            std::filesystem::path{TRUFFLE_NATIVE_MSL_TEST_OUTPUT_DIR} /
+            filename;
+        std::ofstream file{path, std::ios::binary};
+        const auto bytes = package.bytes();
+        file.write(reinterpret_cast<const char*>(bytes.data()),
+                   static_cast<std::streamsize>(bytes.size()));
+        check(file.good(),
+              "Native MSL test must persist its interface-variant package");
+    };
+    write_variant_package(false, "interface-agreeing.tsp");
+    write_variant_package(true, "interface-differing.tsp");
     const auto previousKey = first.value().cacheKey;
     auto otherConfiguration = request;
     otherConfiguration.defines.push_back({"CACHE_ONLY", "7"});
@@ -442,6 +469,41 @@ void source_contract(shader::Compiler& compiler) {
         "#include \"not-resolved.metal\"\n" + graphicsSource;
     check(!compiler.compile(unsupportedInclude).ok(),
           "Unresolved user includes must fail explicitly");
+    auto commentedDirectives = request;
+    commentedDirectives.source.text =
+        "// #include \"unused.metal\"\n"
+        "/* #import \"also-unused.metal\" */\n"
+        "#include <metal_stdlib> // supported system header\n"
+        "#/**/include <metal_stdlib>\n" + graphicsSource;
+    check(compiler.compile(commentedDirectives).ok(),
+          "MSL comments and built-in includes must not be misclassified");
+    auto continuedInclude = request;
+    continuedInclude.source.text =
+        "#include \\\n\"not-resolved.metal\"\n" + graphicsSource;
+    check(!compiler.compile(continuedInclude).ok(),
+          "Continued user includes must fail explicitly");
+    auto unsupportedImport = request;
+    unsupportedImport.source.text =
+        "#import \"not-resolved.metal\"\n" + graphicsSource;
+    check(!compiler.compile(unsupportedImport).ok(),
+          "Native MSL imports must fail explicitly");
+
+    auto writablePush = request_for(
+        compiler, rhi::ShaderTarget::metal_source,
+        rhi::ShaderStage::compute,
+        R"MSL(kernel void compute_main(
+    device uint* output [[buffer(17)]],
+    device uint* pushData [[buffer(30)]],
+    uint tid [[thread_position_in_grid]]) {
+    output[tid] = pushData[tid];
+}
+)MSL",
+        compute_interface());
+    const auto writablePushResult = compiler.compile(writablePush);
+    check(!writablePushResult.ok() &&
+              writablePushResult.status().code ==
+                  rhi::StatusCode::invalid_argument,
+          "Writable Metal buffer(30) must not be declared as push constants");
 
     auto wrongEntry = request;
     wrongEntry.entryPoint = "missing_entry";
@@ -489,6 +551,49 @@ int run() {
     if (libraryRoute != routes.end()) {
         graphics(device, compiler, rhi::ShaderTarget::metal_library);
         compute(device, compiler, rhi::ShaderTarget::metal_library);
+
+        rhi::ShaderReflection conditionalInterface;
+        conditionalInterface.bindings = {{
+            "output", rhi::ShaderStage::compute,
+            rhi::ResourceBindingType::buffer, 0, 0, 1,
+            sizeof(std::uint32_t), false}};
+        auto conditionalTarget = request_for(
+            compiler, rhi::ShaderTarget::metal_library,
+            rhi::ShaderStage::compute,
+            R"MSL(kernel void compute_main(
+    device uint* output [[buffer(17)]],
+#if __ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ < 260000
+    device uint* targetOnly [[buffer(18)]],
+#endif
+    uint tid [[thread_position_in_grid]]) {
+    output[tid] = tid;
+#if __ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ < 260000
+    targetOnly[tid] = tid;
+#endif
+}
+)MSL",
+            std::move(conditionalInterface));
+        conditionalTarget.name = "native-msl-target-conditional";
+        const auto conditionalResult = compiler.compile(conditionalTarget);
+        check(!conditionalResult.ok() &&
+                  conditionalResult.status().code ==
+                      rhi::StatusCode::invalid_argument,
+              "Offline target reflection mismatch must not publish metadata");
+
+        const auto concurrentCompile = [](std::string name) {
+            shader::Compiler independentCompiler;
+            auto request = request_for(
+                independentCompiler, rhi::ShaderTarget::metal_library,
+                rhi::ShaderStage::vertex, graphicsSource, vertex_interface());
+            request.name = std::move(name);
+            return independentCompiler.compile(request);
+        };
+        auto concurrentOne = std::async(
+            std::launch::async, concurrentCompile, "native-msl-concurrent-one");
+        auto concurrentTwo = std::async(
+            std::launch::async, concurrentCompile, "native-msl-concurrent-two");
+        check(concurrentOne.get().ok() && concurrentTwo.get().ok(),
+              "Concurrent offline Metal compiler processes must complete");
     }
     return 0;
 }

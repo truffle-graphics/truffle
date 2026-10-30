@@ -257,6 +257,38 @@ rather than growing a historical transcript here.
   Portable GLSL route/native/unit tests (3/3) and runtime-only MSL source
   builds (2/2) passed earlier in this branch. Parent owns the all-provider
   coexistence build and reuses its existing DXC build.
+- **PR #201 review fixes:** the offline route now loads and reflects the exact
+  emitted metallib before package publication, verifies that artifact against
+  the declaration, and uses its remaps. The linker preserves Metal's reflection
+  list; a target-macro regression rejects source/offline metadata divergence.
+  Push-data `buffer(30)` must be read-only. Source checks ignore comments and
+  strings, handle continued/comment-separated directives, allow only
+  `<metal_stdlib>`, and reject user includes/imports; offline compilation also
+  uses Metal's native dependency output and rejects dependencies outside the
+  installed Metal Toolchain.
+- Offline process management moved into the private Shader-only
+  `metal_offline_toolchain` helper because tool discovery, depfile validation,
+  concurrent process/pipe lifecycle, and error/reaping behavior form a distinct
+  implementation boundary. It uses Darwin close-by-default spawn handling,
+  checks every spawn action, reports pipe I/O failures, and retries `waitpid`
+  on `EINTR`; concurrent offline compiles are covered.
+  `metal_adapter.mm` remains the cohesive native MSL request owner (source
+  assembly, native compile/reflection, declaration checks, and publication all
+  share one request lifecycle); only the distinct offline toolchain/process
+  implementation was extracted.
+- Integration regressions now keep the GLSL route matrix running, compile a
+  real declared MSL input in the installed consumer, and reject ambiguous
+  `shaderc --interface-from` matches unless canonical declarations agree.
+  Route documentation now records the macOS 26+ Metal/device probe and
+  process-lifetime discovery cache.
+- Review-fix validation: focused AppleClang warnings-as-errors build of the
+  Shader, native MSL tests, route tests, and shaderc succeeded. Native MSL,
+  route, and CLI smoke tests passed 3/3 in that build; the installed-consumer
+  test was excluded there because only narrow targets were built, not every
+  library needed by install. The complete focused `build/shader-native` run
+  passed 4/4 including installed-consumer smoke. Runtime-only Shader build
+  passed after helper extraction. Parent owns consolidated all-provider
+  validation after this branch merges current develop.
 - Parent owns review/merge/tracking; #188 remains active until accepted. No
   TSP version bump, migration, legacy reader, or Shader-module completion claim.
 

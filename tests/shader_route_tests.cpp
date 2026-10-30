@@ -217,7 +217,6 @@ int main() {
                         "void main(){ data.value=gl_GlobalInvocationID.x; }\n";
                     break;
                 }
-                if (keys.empty()) return 0;
                 auto result = compiler.compile(request);
                 if (!result.ok()) std::cerr << result.status().message << '\n';
                 check(result.ok() && !result.value().cacheHit, "Every advertised configuration compiles");

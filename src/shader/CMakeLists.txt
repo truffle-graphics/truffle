@@ -31,7 +31,8 @@ endfunction()
 if(TRUFFLE_SHADER_ENABLE_METAL_COMPILER)
     find_library(TRUFFLE_METAL_FRAMEWORK Metal REQUIRED)
     find_library(TRUFFLE_FOUNDATION_FRAMEWORK Foundation REQUIRED)
-    target_sources(truffle_shader PRIVATE metal_adapter.mm)
+    target_sources(truffle_shader PRIVATE
+        metal_adapter.mm metal_offline_toolchain.cpp)
     target_link_libraries(truffle_shader PRIVATE
         "${TRUFFLE_METAL_FRAMEWORK}" "${TRUFFLE_FOUNDATION_FRAMEWORK}")
     target_compile_definitions(truffle_shader PRIVATE

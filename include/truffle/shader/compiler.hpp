@@ -129,7 +129,9 @@ public:
     [[nodiscard]] rhi::Result<Compilation> compile(const CompileRequest& request);
     void clear_cache();
     [[nodiscard]] static std::span<const CompilerRoute> routes() noexcept;
-    // Whether any source-compilation route is built in; not a native GPU probe.
+    // Whether any route is discoverable in this process/runtime. Native MSL
+    // discovery probes Metal availability once; this does not guarantee a
+    // particular request compiles.
     [[nodiscard]] static bool available() noexcept;
 
 private:

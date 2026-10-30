@@ -5,9 +5,8 @@
 int main() {
     using namespace truffle;
     shader::Compiler compiler;
-    if (compiler.available() != static_cast<bool>(EXPECT_COMPILER)) return 1;
-    if (compiler.routes().empty() == static_cast<bool>(EXPECT_COMPILER)) return 4;
-    if (!EXPECT_COMPILER) {
+    if (EXPECT_COMPILER && !compiler.available()) return 1;
+    if (!compiler.available()) {
         shader::CompileRequest request;
         request.source = {"installed.vert", "#version 450\nvoid main(){gl_Position=vec4(0);}\n"};
         return compiler.compile(request).status().code == base::StatusCode::unsupported ? 0 : 3;
@@ -23,9 +22,27 @@ int main() {
             ? "float4 main(uint id : SV_VulkanVertexID) : SV_Position { return float4(0,0,0,1); }\n"
             : route.language == rhi::ShaderSourceLanguage::hlsl
             ? "float4 main():SV_Position{return float4(0,0,0,1);}\n"
+            : route.language == rhi::ShaderSourceLanguage::msl
+                ? "#include <metal_stdlib>\nusing namespace metal;\n"
+                  "struct InstalledInput { "
+                  "float2 position [[attribute(0)]]; };\n"
+                  "vertex float4 installed_vertex(InstalledInput input "
+                  "[[stage_in]]) { return float4(input.position, 0.0, 1.0); }\n"
             : route.language == rhi::ShaderSourceLanguage::glsl_es
                 ? "#version 310 es\nvoid main(){gl_Position=vec4(0);}\n"
                 : "#version 450\nvoid main(){gl_Position=vec4(0);}\n";
+        if (route.language == rhi::ShaderSourceLanguage::msl) {
+            request.entryPoint = "installed_vertex";
+            request.interfaceDeclaration = rhi::ShaderReflection{};
+            request.interfaceDeclaration->interfaces.push_back({
+                rhi::ShaderStage::vertex,
+                rhi::ShaderInterfaceDirection::input,
+                0,
+                "position",
+                "vec2",
+                "smooth",
+            });
+        }
         if (route.language == rhi::ShaderSourceLanguage::wgsl ||
             route.language == rhi::ShaderSourceLanguage::spirv) {
             request.source.text = "@vertex fn main() -> @builtin(position) vec4f { return vec4f(0); }";

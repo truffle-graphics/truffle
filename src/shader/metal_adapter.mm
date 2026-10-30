@@ -1,13 +1,14 @@
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
+#import <dispatch/dispatch.h>
 
 #include "metal_adapter.hpp"
 #include "compiler_inputs.hpp"
 #include "digest.hpp"
+#include "metal_offline_toolchain.hpp"
 
 #include <algorithm>
 #include <array>
-#include <cerrno>
 #include <cctype>
 #include <cstring>
 #include <filesystem>
@@ -18,23 +19,10 @@
 #include <span>
 #include <string>
 #include <tuple>
-#include <thread>
 #include <type_traits>
 #include <vector>
 
-#include <fcntl.h>
-#include <signal.h>
-#include <pthread.h>
-#include <spawn.h>
 #include <sys/sysctl.h>
-#include <sys/wait.h>
-#include <unistd.h>
-
-#ifndef TRUFFLE_XCRUN_EXECUTABLE
-#define TRUFFLE_XCRUN_EXECUTABLE "xcrun"
-#endif
-
-extern char** environ;
 
 namespace truffle::shader::detail {
 namespace {
@@ -57,47 +45,114 @@ Status invalid(std::string message) {
 
 Status validate_includes(std::span<const Source> units) {
     for (const auto& unit : units) {
+        std::string logical;
+        logical.reserve(unit.text.size());
+        for (std::size_t index = 0; index < unit.text.size(); ++index) {
+            if (unit.text[index] == '\\' && index + 1 < unit.text.size() &&
+                unit.text[index + 1] == '\n') {
+                logical.push_back(' ');
+                ++index;
+            } else if (unit.text[index] == '\\' &&
+                       index + 2 < unit.text.size() &&
+                       unit.text[index + 1] == '\r' &&
+                       unit.text[index + 2] == '\n') {
+                logical.push_back(' ');
+                index += 2;
+            } else {
+                logical.push_back(unit.text[index]);
+            }
+        }
+
+        std::string sanitized;
+        sanitized.reserve(logical.size());
+        bool blockComment = false;
+        char quote = '\0';
+        for (std::size_t index = 0; index < logical.size(); ++index) {
+            const char current = logical[index];
+            const char next = index + 1 < logical.size()
+                ? logical[index + 1] : '\0';
+            if (blockComment) {
+                if (current == '*' && next == '/') {
+                    sanitized.push_back(' ');
+                    ++index;
+                    blockComment = false;
+                } else if (current == '\n') {
+                    sanitized.push_back('\n');
+                }
+                continue;
+            }
+            if (quote != '\0') {
+                sanitized.push_back(current);
+                if (current == '\\' && index + 1 < logical.size()) {
+                    sanitized.push_back(logical[++index]);
+                } else if (current == quote) {
+                    quote = '\0';
+                }
+                continue;
+            }
+            if (current == '/' && next == '*') {
+                sanitized.push_back(' ');
+                ++index;
+                blockComment = true;
+            } else if (current == '/' && next == '/') {
+                sanitized.push_back(' ');
+                ++index;
+                while (index + 1 < logical.size() &&
+                       logical[index + 1] != '\n') {
+                    ++index;
+                }
+            } else {
+                sanitized.push_back(current);
+                if (current == '"' || current == '\'') quote = current;
+            }
+        }
+
         std::size_t offset = 0;
-        while (offset < unit.text.size()) {
-            const auto end = unit.text.find('\n', offset);
-            const auto line = std::string_view{unit.text}.substr(
+        while (offset < sanitized.size()) {
+            const auto end = sanitized.find('\n', offset);
+            const auto line = std::string_view{sanitized}.substr(
                 offset, end == std::string::npos ? std::string::npos
                                                   : end - offset);
-            const auto first = line.find_first_not_of(" \t\r");
-            auto marker = line.find('#');
-            while (marker != std::string_view::npos) {
-                auto tokenStart = marker + 1;
-                while (tokenStart < line.size() &&
-                       std::isspace(static_cast<unsigned char>(line[tokenStart]))) {
-                    ++tokenStart;
+            auto cursor = line.find_first_not_of(" \t\r\f\v");
+            if (cursor != std::string_view::npos && line[cursor] == '#') {
+                ++cursor;
+                while (cursor < line.size() &&
+                       std::isspace(static_cast<unsigned char>(line[cursor]))) {
+                    ++cursor;
                 }
-                auto tokenEnd = tokenStart;
-                while (tokenEnd < line.size() &&
-                       (std::isalnum(static_cast<unsigned char>(line[tokenEnd])) ||
-                        line[tokenEnd] == '_')) {
-                    ++tokenEnd;
+                const auto directiveStart = cursor;
+                while (cursor < line.size() &&
+                       (std::isalnum(static_cast<unsigned char>(line[cursor])) ||
+                        line[cursor] == '_')) {
+                    ++cursor;
                 }
-                if (line.substr(tokenStart, tokenEnd - tokenStart) == "include") {
-                    auto argumentStart = line.find_first_not_of(
-                        " \t\r", tokenEnd);
-                    auto argument = argumentStart == std::string_view::npos
-                        ? std::string_view{}
-                        : line.substr(argumentStart);
-                    const auto argumentEnd =
-                        argument.find_last_not_of(" \t\r");
-                    if (argumentEnd != std::string_view::npos) {
-                        argument = argument.substr(0, argumentEnd + 1);
+                const auto directive =
+                    line.substr(directiveStart, cursor - directiveStart);
+                while (cursor < line.size() &&
+                       std::isspace(static_cast<unsigned char>(line[cursor]))) {
+                    ++cursor;
+                }
+                if (directive == "include") {
+                    auto argument = line.substr(cursor);
+                    const auto last =
+                        argument.find_last_not_of(" \t\r\f\v");
+                    if (last == std::string_view::npos) {
+                        argument = {};
+                    } else {
+                        argument = argument.substr(0, last + 1);
                     }
-                    const bool builtInOnly =
-                        first == marker &&
-                        argument == "<metal_stdlib>";
-                    if (!builtInOnly) {
+                    if (argument != "<metal_stdlib>") {
                         return unsupported(
                             "Native MSL accepts only the built-in <metal_stdlib> include; "
                             "compose user code with CompileRequest::sourceUnits");
                     }
+                } else if (directive == "import" ||
+                           directive == "include_next" ||
+                           directive == "include_macros") {
+                    return unsupported(
+                        "Native MSL imports and non-standard include directives are not supported; "
+                        "compose user code with CompileRequest::sourceUnits");
                 }
-                marker = line.find('#', marker + 1);
             }
             if (end == std::string::npos) break;
             offset = end + 1;
@@ -264,13 +319,6 @@ std::optional<ShaderValueType> shader_value_type(MTLDataType type) {
     case MTLDataTypeFloat: return ShaderValueType::float32;
     default: return std::nullopt;
     }
-}
-
-std::string single_line(std::string value) {
-    std::replace(value.begin(), value.end(), '\n', ' ');
-    std::replace(value.begin(), value.end(), '\r', ' ');
-    if (value.size() > 1024) value.resize(1024);
-    return value;
 }
 
 void reflection_key(std::string& key, const ShaderReflection& reflection) {
@@ -505,6 +553,10 @@ Status validate_resources(MTLFunctionReflection* metalReflection,
         if (!native.ok()) return native.status();
         auto value = std::move(native).value();
         if (value.type == ResourceBindingType::buffer && value.index == 30) {
+            if (!value.readOnly) {
+                return invalid(
+                    "Native MSL push-data buffer(30) must be read-only");
+            }
             if (hasPushBuffer) {
                 return unsupported("Native MSL declares more than one Metal push-data buffer");
             }
@@ -633,297 +685,10 @@ std::string define_preamble(const std::vector<rhi::ShaderDefine>& defines) {
     return result;
 }
 
-struct CommandOutput {
-    int status = -1;
-    std::string output;
-    std::string error;
-};
-
-std::vector<char*> argv_for(std::vector<std::string>& arguments) {
-    std::vector<char*> values;
-    values.reserve(arguments.size() + 1);
-    for (auto& argument : arguments) values.push_back(argument.data());
-    values.push_back(nullptr);
-    return values;
-}
-
-CommandOutput run_capture(std::vector<std::string> arguments) {
-    CommandOutput result;
-    int outputPipe[2]{-1, -1};
-    if (pipe(outputPipe) != 0) {
-        result.error = "Unable to create Metal tool output pipe";
-        return result;
-    }
-    posix_spawn_file_actions_t actions;
-    if (posix_spawn_file_actions_init(&actions) != 0) {
-        close(outputPipe[0]);
-        close(outputPipe[1]);
-        result.error = "Unable to initialize Metal tool process";
-        return result;
-    }
-    posix_spawn_file_actions_adddup2(&actions, outputPipe[1], STDOUT_FILENO);
-    posix_spawn_file_actions_adddup2(&actions, outputPipe[1], STDERR_FILENO);
-    posix_spawn_file_actions_addclose(&actions, outputPipe[0]);
-    posix_spawn_file_actions_addclose(&actions, outputPipe[1]);
-    auto argv = argv_for(arguments);
-    pid_t child = 0;
-    const int spawnResult = posix_spawn(&child, argv.front(), &actions, nullptr,
-                                        argv.data(), environ);
-    posix_spawn_file_actions_destroy(&actions);
-    close(outputPipe[1]);
-    if (spawnResult != 0) {
-        close(outputPipe[0]);
-        result.error = "Unable to launch Apple Metal tool: " +
-                       std::string{std::strerror(spawnResult)};
-        return result;
-    }
-    std::array<char, 4096> buffer{};
-    for (;;) {
-        const auto count = read(outputPipe[0], buffer.data(), buffer.size());
-        if (count > 0) {
-            result.output.append(buffer.data(), static_cast<std::size_t>(count));
-        } else if (count == 0) {
-            break;
-        } else if (errno != EINTR) {
-            result.error = "Unable to read Apple Metal tool output";
-            break;
-        }
-    }
-    close(outputPipe[0]);
-    int status = 0;
-    if (waitpid(child, &status, 0) < 0 || !WIFEXITED(status)) {
-        result.status = -1;
-    } else {
-        result.status = WEXITSTATUS(status);
-    }
-    if (result.status != 0 && result.error.empty()) result.error = result.output;
-    return result;
-}
-
-struct OfflineResult {
-    std::vector<std::byte> bytes;
-    std::string diagnostics;
-};
-
-struct StreamState {
-    int source = -1;
-    int output = -1;
-    int metalErrors = -1;
-    int metallibErrors = -1;
-    const std::string* sourceText = nullptr;
-    std::vector<std::byte> binary;
-    std::string metalLog;
-    std::string metallibLog;
-    std::string ioError;
-};
-
-void close_descriptor(int& descriptor) {
-    if (descriptor >= 0) {
-        close(descriptor);
-        descriptor = -1;
-    }
-}
-
-void read_pipe(int descriptor, std::vector<std::byte>* binary,
-               std::string* text) {
-    std::array<std::byte, 8192> buffer{};
-    for (;;) {
-        const auto count = read(descriptor, buffer.data(), buffer.size());
-        if (count > 0) {
-            if (binary) {
-                binary->insert(binary->end(), buffer.begin(),
-                               buffer.begin() + count);
-            }
-            if (text) {
-                text->append(reinterpret_cast<const char*>(buffer.data()),
-                             static_cast<std::size_t>(count));
-            }
-        } else if (count == 0) {
-            break;
-        } else if (errno != EINTR) {
-            break;
-        }
-    }
-}
-
-void write_source(int descriptor, std::string_view source) {
-    sigset_t blocked;
-    sigset_t previous;
-    sigemptyset(&blocked);
-    sigaddset(&blocked, SIGPIPE);
-    pthread_sigmask(SIG_BLOCK, &blocked, &previous);
-    std::size_t offset = 0;
-    bool pipeClosed = false;
-    while (offset < source.size()) {
-        const auto count = write(descriptor, source.data() + offset,
-                                 source.size() - offset);
-        if (count > 0) {
-            offset += static_cast<std::size_t>(count);
-        } else if (count < 0 && errno == EINTR) {
-            continue;
-        } else {
-            pipeClosed = errno == EPIPE;
-            break;
-        }
-    }
-    close(descriptor);
-    if (pipeClosed) {
-        sigset_t pending;
-        if (sigpending(&pending) == 0 &&
-            sigismember(&pending, SIGPIPE) == 1) {
-            int signal = 0;
-            sigwait(&blocked, &signal);
-        }
-    }
-    pthread_sigmask(SIG_SETMASK, &previous, nullptr);
-}
-
-int add_child_actions(posix_spawn_file_actions_t& actions,
-                      int input, int output, int errorOutput,
-                      const std::array<int, 10>& descriptors) {
-    if (posix_spawn_file_actions_adddup2(&actions, input, STDIN_FILENO) != 0 ||
-        posix_spawn_file_actions_adddup2(&actions, output, STDOUT_FILENO) != 0 ||
-        posix_spawn_file_actions_adddup2(&actions, errorOutput, STDERR_FILENO) != 0) {
-        return EINVAL;
-    }
-    for (const int descriptor : descriptors) {
-        if (descriptor > STDERR_FILENO &&
-            posix_spawn_file_actions_addclose(&actions, descriptor) != 0) {
-            return EINVAL;
-        }
-    }
-    return 0;
-}
-
-rhi::Result<OfflineResult> compile_metallib(
-    const std::string& source, bool debugInfo) {
-    int sourcePipe[2]{-1, -1};
-    int airPipe[2]{-1, -1};
-    int binaryPipe[2]{-1, -1};
-    int metalErrorPipe[2]{-1, -1};
-    int metallibErrorPipe[2]{-1, -1};
-    if (pipe(sourcePipe) != 0 || pipe(airPipe) != 0 ||
-        pipe(binaryPipe) != 0 || pipe(metalErrorPipe) != 0 ||
-        pipe(metallibErrorPipe) != 0) {
-        for (auto* pair : {sourcePipe, airPipe, binaryPipe,
-                           metalErrorPipe, metallibErrorPipe}) {
-            close_descriptor(pair[0]);
-            close_descriptor(pair[1]);
-        }
-        return unsupported("Unable to create offline Metal compiler pipes");
-    }
-
-    const std::array<int, 10> descriptors{
-        sourcePipe[0], sourcePipe[1], airPipe[0], airPipe[1],
-        binaryPipe[0], binaryPipe[1], metalErrorPipe[0], metalErrorPipe[1],
-        metallibErrorPipe[0], metallibErrorPipe[1]};
-    std::vector<std::string> metalArguments{
-        TRUFFLE_XCRUN_EXECUTABLE, "metal", "-x", "metal",
-        "-std=macos-metal2.1", "-target", "air64-apple-macos13.0"};
-    if (debugInfo) metalArguments.emplace_back("-g");
-    metalArguments.insert(metalArguments.end(), {"-c", "-", "-o", "-"});
-    auto metalArgv = argv_for(metalArguments);
-    std::vector<std::string> metallibArguments{
-        TRUFFLE_XCRUN_EXECUTABLE, "metallib", "-", "-o", "-"};
-    auto metallibArgv = argv_for(metallibArguments);
-
-    posix_spawn_file_actions_t metalActions;
-    posix_spawn_file_actions_t metallibActions;
-    const int metalActionsResult =
-        posix_spawn_file_actions_init(&metalActions);
-    const int metallibActionsResult =
-        metalActionsResult == 0
-            ? posix_spawn_file_actions_init(&metallibActions)
-            : metalActionsResult;
-    if (metalActionsResult != 0 || metallibActionsResult != 0) {
-        if (metalActionsResult == 0) {
-            posix_spawn_file_actions_destroy(&metalActions);
-        }
-        for (const int descriptor : descriptors) {
-            if (descriptor >= 0) close(descriptor);
-        }
-        return unsupported("Unable to initialize offline Metal compiler processes");
-    }
-    add_child_actions(metalActions, sourcePipe[0], airPipe[1],
-                      metalErrorPipe[1], descriptors);
-    add_child_actions(metallibActions, airPipe[0], binaryPipe[1],
-                      metallibErrorPipe[1], descriptors);
-    pid_t metalChild = 0;
-    pid_t metallibChild = 0;
-    const int metalSpawn = posix_spawn(
-        &metalChild, metalArgv.front(), &metalActions, nullptr,
-        metalArgv.data(), environ);
-    const int metallibSpawn = metalSpawn == 0
-        ? posix_spawn(&metallibChild, metallibArgv.front(), &metallibActions,
-                      nullptr, metallibArgv.data(), environ)
-        : metalSpawn;
-    posix_spawn_file_actions_destroy(&metalActions);
-    posix_spawn_file_actions_destroy(&metallibActions);
-    close_descriptor(sourcePipe[0]);
-    close_descriptor(airPipe[0]);
-    close_descriptor(airPipe[1]);
-    close_descriptor(binaryPipe[1]);
-    close_descriptor(metalErrorPipe[1]);
-    close_descriptor(metallibErrorPipe[1]);
-    if (metallibSpawn != 0) {
-        close_descriptor(sourcePipe[1]);
-        close_descriptor(binaryPipe[0]);
-        close_descriptor(metalErrorPipe[0]);
-        close_descriptor(metallibErrorPipe[0]);
-        if (metalSpawn == 0) {
-            kill(metalChild, SIGTERM);
-            int ignored = 0;
-            waitpid(metalChild, &ignored, 0);
-        }
-        return unsupported("Unable to launch Apple Metal Toolchain: " +
-                           std::string{std::strerror(metallibSpawn)});
-    }
-
-    StreamState stream;
-    stream.source = sourcePipe[1];
-    stream.output = binaryPipe[0];
-    stream.metalErrors = metalErrorPipe[0];
-    stream.metallibErrors = metallibErrorPipe[0];
-    stream.sourceText = &source;
-    std::thread writer{[&] { write_source(stream.source, *stream.sourceText); }};
-    std::thread reader{[&] {
-        read_pipe(stream.output, &stream.binary, nullptr);
-        close(stream.output);
-    }};
-    std::thread metalReader{[&] {
-        read_pipe(stream.metalErrors, nullptr, &stream.metalLog);
-        close(stream.metalErrors);
-    }};
-    std::thread metallibReader{[&] {
-        read_pipe(stream.metallibErrors, nullptr, &stream.metallibLog);
-        close(stream.metallibErrors);
-    }};
-    writer.join();
-    reader.join();
-    metalReader.join();
-    metallibReader.join();
-    int metalStatus = 0;
-    int metallibStatus = 0;
-    waitpid(metalChild, &metalStatus, 0);
-    waitpid(metallibChild, &metallibStatus, 0);
-    if (!WIFEXITED(metalStatus) || WEXITSTATUS(metalStatus) != 0 ||
-        !WIFEXITED(metallibStatus) || WEXITSTATUS(metallibStatus) != 0) {
-        auto diagnostics = stream.metalLog + stream.metallibLog;
-        if (diagnostics.empty()) diagnostics = "Apple Metal offline compilation failed";
-        return invalid("Apple Metal offline compilation failed: " +
-                       diagnostics.substr(0, 16384));
-    }
-    if (stream.binary.empty()) {
-        return rhi::Status::failure(StatusCode::backend_error,
-                                    "metallib produced an empty library");
-    }
-    return OfflineResult{std::move(stream.binary),
-                         (stream.metalLog + stream.metallibLog).substr(0, 16384)};
-}
-
 Status validate_native_reflection(
     id<MTLLibrary> library, id<MTLFunction> function,
-    const CompileRequest& request, std::vector<rhi::ShaderBindingRemap>& remaps) {
+    const CompileRequest& request, std::vector<rhi::ShaderBindingRemap>& remaps,
+    std::string_view artifact) {
     if (@available(macOS 26.0, *)) {
         const auto expectedType =
             request.stage == rhi::ShaderStage::vertex ? MTLFunctionTypeVertex :
@@ -946,7 +711,8 @@ Status validate_native_reflection(
             [library reflectionForFunctionWithName:name];
         [name release];
         if (reflection == nil) {
-            return unsupported("Metal did not provide complete function-binding reflection");
+            return unsupported("Metal did not provide complete function-binding reflection for " +
+                               std::string{artifact});
         }
         const auto resourceStatus = validate_resources(
             reflection, *request.interfaceDeclaration, request.stage,
@@ -969,35 +735,6 @@ bool native_msl_available() noexcept {
         }
     }
     return false;
-}
-
-bool offline_metallib_available() noexcept {
-#if defined(TRUFFLE_SHADER_HAS_METALLIB_COMPILER)
-    if (access(TRUFFLE_XCRUN_EXECUTABLE, X_OK) != 0) return false;
-    try {
-        auto metal = run_capture(
-            {TRUFFLE_XCRUN_EXECUTABLE, "--find", "metal"});
-        auto metallib = run_capture(
-            {TRUFFLE_XCRUN_EXECUTABLE, "--find", "metallib"});
-        while (!metal.output.empty() &&
-               (metal.output.back() == '\n' || metal.output.back() == '\r')) {
-            metal.output.pop_back();
-        }
-        while (!metallib.output.empty() &&
-               (metallib.output.back() == '\n' ||
-                metallib.output.back() == '\r')) {
-            metallib.output.pop_back();
-        }
-        return metal.status == 0 && metallib.status == 0 &&
-               !metal.output.empty() && !metallib.output.empty() &&
-               access(metal.output.c_str(), X_OK) == 0 &&
-               access(metallib.output.c_str(), X_OK) == 0;
-    } catch (...) {
-        return false;
-    }
-#else
-    return false;
-#endif
 }
 
 rhi::Result<Compilation> compile_msl(
@@ -1033,22 +770,19 @@ rhi::Result<Compilation> compile_msl(
     std::string compilerRevision = runtime_compiler_revision();
     std::string toolVersion;
     std::string toolLinkerVersion;
+    std::string toolSdkVersion;
     if (request.target == rhi::ShaderTarget::metal_library) {
-        const auto metalVersion = run_capture(
-            {TRUFFLE_XCRUN_EXECUTABLE, "metal", "--version"});
-        const auto linkerVersion = run_capture(
-            {TRUFFLE_XCRUN_EXECUTABLE, "metallib", "--version"});
-        if (metalVersion.status != 0 || linkerVersion.status != 0) {
-            return unsupported("Unable to query the installed Apple Metal Toolchain version");
-        }
-        toolVersion = single_line(metalVersion.output);
-        toolLinkerVersion = single_line(linkerVersion.output);
-        const auto firstLineEnd = metalVersion.output.find_first_of("\r\n");
-        compilerVersion = single_line(
-            metalVersion.output.substr(0, firstLineEnd));
+        auto identityResult = offline_metallib_identity();
+        if (!identityResult.ok()) return identityResult.status();
+        auto identity = std::move(identityResult).value();
+        toolVersion = identity.compilerVersion;
+        toolLinkerVersion = identity.linkerVersion;
+        toolSdkVersion = identity.sdkVersion;
+        compilerVersion = toolVersion;
         compilerRevision += ";offline=" + toolVersion + ";metallib=" +
                             toolLinkerVersion +
-                            ";target=air64-apple-macos13.0;msl=2.1";
+                            ";target=air64-apple-macos13.0;msl=2.1;sdk=" +
+                            identity.sdkVersion;
     }
     std::string key;
     field(key, "truffle-native-msl=1");
@@ -1114,8 +848,8 @@ rhi::Result<Compilation> compile_msl(
                 [device newLibraryWithSource:source options:options error:&error];
             [source release];
             [options release];
-            [device release];
             if (library == nil) {
+                [device release];
                 const auto message = metal_error(
                     error, "Native Metal source compilation failed");
                 return invalid(message.substr(0, 16384));
@@ -1126,34 +860,101 @@ rhi::Result<Compilation> compile_msl(
                      encoding:NSUTF8StringEncoding];
             if (entryName == nil) {
                 [library release];
+                [device release];
                 return invalid("Native MSL entry point is not valid UTF-8");
             }
             id<MTLFunction> function = [library newFunctionWithName:entryName];
             [entryName release];
             if (function == nil) {
                 [library release];
+                [device release];
                 return invalid("Native MSL entry point was not found");
             }
-            std::vector<rhi::ShaderBindingRemap> remaps;
+            std::vector<rhi::ShaderBindingRemap> runtimeRemaps;
             const auto reflectionStatus = validate_native_reflection(
-                library, function, request, remaps);
+                library, function, request, runtimeRemaps, "runtime source");
             [function release];
             [library release];
-            if (!reflectionStatus.ok()) return reflectionStatus;
+            if (!reflectionStatus.ok()) {
+                [device release];
+                return reflectionStatus;
+            }
 
             std::vector<std::byte> code;
             std::string diagnostics;
+            auto remaps = std::move(runtimeRemaps);
             if (request.target == rhi::ShaderTarget::metal_library) {
                 auto offline = compile_metallib(composed,
                                                 request.generateDebugInfo);
-                if (!offline.ok()) return offline.status();
+                if (!offline.ok()) {
+                    [device release];
+                    return offline.status();
+                }
                 auto output = std::move(offline).value();
                 code = std::move(output.bytes);
                 diagnostics = std::move(output.diagnostics);
+                if (output.compilerVersion != toolVersion ||
+                    output.linkerVersion != toolLinkerVersion ||
+                    output.sdkVersion != toolSdkVersion) {
+                    [device release];
+                    return rhi::Status::failure(
+                        StatusCode::backend_error,
+                        "Apple Metal Toolchain identity changed during compilation; "
+                        "retry to avoid stale cache provenance");
+                }
+                dispatch_data_t data = dispatch_data_create(
+                    code.data(), code.size(), nullptr,
+                    DISPATCH_DATA_DESTRUCTOR_DEFAULT);
+                if (data == nullptr) {
+                    [device release];
+                    return rhi::Status::failure(
+                        StatusCode::backend_error,
+                        "Unable to expose offline metallib bytes to Metal reflection");
+                }
+                NSError* loadError = nil;
+                id<MTLLibrary> offlineLibrary =
+                    [device newLibraryWithData:data error:&loadError];
+                dispatch_release(data);
+                if (offlineLibrary == nil) {
+                    const auto message = metal_error(
+                        loadError, "Metal could not load the emitted metallib");
+                    [device release];
+                    return invalid(message.substr(0, 16384));
+                }
+                auto* offlineEntryName = [[NSString alloc]
+                    initWithBytes:request.entryPoint.data()
+                           length:request.entryPoint.size()
+                         encoding:NSUTF8StringEncoding];
+                if (offlineEntryName == nil) {
+                    [offlineLibrary release];
+                    [device release];
+                    return invalid("Native MSL entry point is not valid UTF-8");
+                }
+                id<MTLFunction> offlineFunction =
+                    [offlineLibrary newFunctionWithName:offlineEntryName];
+                [offlineEntryName release];
+                if (offlineFunction == nil) {
+                    [offlineLibrary release];
+                    [device release];
+                    return invalid(
+                        "Emitted metallib does not contain the requested entry point");
+                }
+                std::vector<rhi::ShaderBindingRemap> offlineRemaps;
+                const auto offlineReflectionStatus = validate_native_reflection(
+                    offlineLibrary, offlineFunction, request, offlineRemaps,
+                    "emitted metallib");
+                [offlineFunction release];
+                [offlineLibrary release];
+                if (!offlineReflectionStatus.ok()) {
+                    [device release];
+                    return offlineReflectionStatus;
+                }
+                remaps = std::move(offlineRemaps);
             } else {
                 code.resize(composed.size());
                 std::memcpy(code.data(), composed.data(), composed.size());
             }
+            [device release];
             result.diagnostics = std::move(diagnostics);
             rhi::ShaderPackageDesc desc;
             desc.name = request.name;
