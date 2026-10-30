@@ -27,6 +27,14 @@ rather than growing a historical transcript here.
   Recording an old pipeline before replacing its owners still submits red.
   Intentional native shader and pipeline failures preserve native status/detail
   and working output; incompatible reflection/layouts/attachments are rejected.
+- PR #182 review follow-up separates layout-mismatch coverage from reflected
+  binding mismatch. Null and Metal now stage candidates with the same exact
+  pipeline layout, attachment state and binding count, but a reflected minimum
+  buffer size of 4 instead of the published 16 bytes. Both candidates stage
+  successfully, commit returns `invalid_argument`, and the published pipeline
+  ID stays unchanged. Metal still reads exact blue across all 256 pixels.
+  The two affected program/native tests pass with Metal API/GPU validation;
+  `git diff --check` passes. No production contract or code changed.
 - Verified: Ninja Debug with macOS SDK, warnings as errors, compiler tooling
   disabled; 12 focused tests pass (Renderer/program/native Metal, frame graph,
   EnCom adapter, transform, existing Metal and three host smoke tests).
@@ -37,7 +45,7 @@ rather than growing a historical transcript here.
   with enabled Metal/Vulkan selection. Its Metal execution succeeds after
   destroying caller packages. Native Vulkan/GL Renderer evidence remains future
   work; the reusable readback harness is backend-neutral.
-- Delivery is two signed/pushed #179 commits; parent reviews/merges. #181 can
+- Delivery uses signed/pushed #179 commits on PR #182; parent reviews/merges. #181 can
   feed compiled TSP results into `ProgramDesc`, then `stage_program` and
   `commit_program`. Per the user decision, #181 adds direct Renderer → Shader
   use after #178 lands, not an intermediate adapter module. #179 adds no Shader

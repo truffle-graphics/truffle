@@ -20,6 +20,10 @@ fragment float4 tinted_fragment(constant float4& tint [[buffer(0)]]) {
     return tint;
 }
 
+fragment float4 scalar_fragment(constant float& tint [[buffer(0)]]) {
+    return float4(tint, 0.0, 0.0, 1.0);
+}
+
 struct AttributeInput {
     float4 position [[attribute(0)]];
 };

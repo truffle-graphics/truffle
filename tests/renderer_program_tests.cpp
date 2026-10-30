@@ -151,21 +151,30 @@ int main() {
     });
     TRUFFLE_CHECK(pipelineLayoutResult.ok());
     auto pipelineLayout = std::move(pipelineLayoutResult).value();
-    const auto shaders = [&]() {
+    const auto shaders = [&](std::size_t minimumSize = 16) {
         return renderer::ShaderBinding{
             tests::make_shader(context.device, rhi::ShaderStage::vertex),
             tests::make_shader(context.device, rhi::ShaderStage::fragment,
                                {{.name = "color", .stage = rhi::ShaderStage::fragment,
-                                 .binding = 0, .minimumSize = 16}})};
+                                 .binding = 0, .minimumSize = minimumSize}})};
     };
     // Missing reflection layout fails before changing the working material.
     TRUFFLE_CHECK(!cache.register_shaders(7, shaders(), {}).ok());
-    // A native-valid but incompatible binding contract is also rejected at commit.
-    auto changedBindings = cache.stage_shaders(shaders(), {.layout = &pipelineLayout});
-    TRUFFLE_CHECK(changedBindings.ok());
-    TRUFFLE_CHECK(!cache.commit_program(7, std::move(changedBindings).value()).ok());
+    // A different pipeline-layout identity is rejected at commit.
+    auto changedLayout = cache.stage_shaders(shaders(), {.layout = &pipelineLayout});
+    TRUFFLE_CHECK(changedLayout.ok());
+    TRUFFLE_CHECK(!cache.commit_program(7, std::move(changedLayout).value()).ok());
     TRUFFLE_CHECK(cache.get_or_create({}, 7).value()->id() == second);
-    TRUFFLE_CHECK(cache.commit_program(8, std::move(changedBindings).value()).ok());
+    TRUFFLE_CHECK(cache.commit_program(8, std::move(changedLayout).value()).ok());
+    // Both signatures fit the same layout, but publication must compare the
+    // reflected binding contents, not just layout identity or binding count.
+    const auto boundProgramId = cache.get_or_create({}, 8).value()->id();
+    auto changedBindings = cache.stage_shaders(shaders(4), {.layout = &pipelineLayout});
+    TRUFFLE_CHECK(changedBindings.ok());
+    const auto bindingStatus =
+        cache.commit_program(8, std::move(changedBindings).value());
+    TRUFFLE_CHECK(bindingStatus.code == base::StatusCode::invalid_argument);
+    TRUFFLE_CHECK(cache.get_or_create({}, 8).value()->id() == boundProgramId);
 
     auto arenaResult = context.device.create_descriptor_arena();
     TRUFFLE_CHECK(arenaResult.ok());

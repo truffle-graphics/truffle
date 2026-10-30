@@ -25,7 +25,7 @@ rhi::ShaderPackage make_package(bool invalidSource = false) {
         .language = rhi::ShaderSourceLanguage::msl,
         .sha256 = invalidSource
                       ? "69fa9bbe6f5a57eb510d0c99603a787a97651eca2edfd5be2d96d7bbc05c6b5f"
-                      : "4acd7ef4cc73f52cdc0779351543a2b76fa155f785429ec1ed2961f2834e183f",
+                      : "458aea31af0e7ee053391e715bae853f882751fc864402f2826c729cd277ecfc",
     }};
     desc.compilers = {{.name = "Metal native source", .version = "host SDK"}};
     desc.permutations = {{.name = "configured"}};
@@ -49,6 +49,9 @@ rhi::ShaderPackage make_package(bool invalidSource = false) {
     add(rhi::ShaderStage::fragment, "tinted_fragment",
         {{.name = "tint", .stage = rhi::ShaderStage::fragment,
           .binding = 0, .minimumSize = 16}});
+    add(rhi::ShaderStage::fragment, "scalar_fragment",
+        {{.name = "tint", .stage = rhi::ShaderStage::fragment,
+          .binding = 0, .minimumSize = 4}});
     auto package = tests::require(rhi::ShaderPackage::create(std::move(desc)));
     // Exercise the file-consumer format boundary as well as in-memory inputs.
     return tests::require(rhi::ShaderPackage::load(package.bytes()));
@@ -196,10 +199,19 @@ int run() {
     TRUFFLE_CHECK(!programs.register_program(material, tintDesc).ok());
     render(green, "missing reflection layout preserves output");
     tintDesc.pipeline.layout = &pipelineLayout;
-    auto incompatible = tests::require(programs.stage_program(tintDesc));
-    TRUFFLE_CHECK(!programs.commit_program(material, std::move(incompatible)).ok());
-    render(green, "native-valid incompatible binding replacement preserves output");
-    tests::require(programs.commit_program(18, std::move(incompatible)));
+    auto changedLayout = tests::require(programs.stage_program(tintDesc));
+    TRUFFLE_CHECK(!programs.commit_program(material, std::move(changedLayout)).ok());
+    render(green, "pipeline-layout mismatch preserves output");
+    tests::require(programs.commit_program(18, std::move(changedLayout)));
+    const auto boundProgramId = tests::require(programs.get_or_create({}, 18))->id();
+    auto scalarDesc = tintDesc;
+    scalarDesc.fragment.entryPoint = "scalar_fragment";
+    // Same exact layout, attachment state and binding count, different minimum
+    // buffer size. Both pipelines are native-valid under the layout's 16 bytes.
+    auto changedBindings = tests::require(programs.stage_program(scalarDesc));
+    const auto bindingStatus = programs.commit_program(18, std::move(changedBindings));
+    TRUFFLE_CHECK(bindingStatus.code == base::StatusCode::invalid_argument);
+    TRUFFLE_CHECK(tests::require(programs.get_or_create({}, 18))->id() == boundProgramId);
 
     auto arena = tests::require(device.create_descriptor_arena());
     auto uniform = tests::require(device.create_buffer({
@@ -218,7 +230,7 @@ int run() {
     batch.material = 18;
     TRUFFLE_CHECK(!renderer.render(tests::color_graph(target, batch)).ok());
     batch.bindGroups = {{.bindings = &group}};
-    render(blue, "reflected uniform descriptor");
+    render(blue, "reflected uniform survives same-layout reflection rejection");
     auto otherLayout = tests::require(device.create_bind_group_layout({
         .entries = {{.binding = 0, .type = rhi::BindingType::uniform_buffer,
                      .visibility = rhi::ShaderStageMask::fragment,
