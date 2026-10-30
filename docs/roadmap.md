@@ -195,8 +195,10 @@ Tracked by #33.
     Build `40230852839` proves exact native output without changing maturity.
 - [ ] Deferred: WebGPU and WebGL2 runtime, rendering, browser presentation,
   and recovery through #65-#68 and #70.
-- [ ] Complete Metal macOS conformance through #69; Apple cross-build and
-  runtime evidence (#71-#72) is deferred.
+- [x] Complete Metal macOS advertised-capability conformance through #69
+  (host window, readback for every advertised capability, documented
+  fault-injection-only device loss); Apple cross-build and runtime evidence
+  (#71-#72) is deferred.
 - [ ] Close the phase only through the evidence audit in #74, scoped to the
   current priorities with deferred rows recorded truthfully.
 

@@ -59,6 +59,12 @@ if(TRUFFLE_BUILD_BACKEND_METAL)
     add_test(NAME truffle_metal_tests COMMAND truffle_metal_tests)
     set_tests_properties(truffle_metal_tests PROPERTIES
                          LABELS "native-smoke;validation")
+    add_executable(truffle_metal_conformance_tests metal_conformance_tests.cpp)
+    target_link_libraries(truffle_metal_conformance_tests PRIVATE truffle_backend_metal)
+    add_test(NAME truffle_metal_conformance_tests
+             COMMAND truffle_metal_conformance_tests)
+    set_tests_properties(truffle_metal_conformance_tests PROPERTIES
+                         LABELS "native-smoke;validation")
     add_executable(truffle_metal_presentation_tests metal_presentation_tests.mm)
     target_link_libraries(truffle_metal_presentation_tests
                           PRIVATE truffle_backend_metal "-framework QuartzCore")
