@@ -292,6 +292,22 @@ rather than growing a historical transcript here.
   `990f7e679f41f1dc9d55c7d5a31e3acbbac87381` is already an ancestor of this
   branch; no additional develop merge is pending. Parent owns consolidated
   all-provider validation of the pushed review-fix head.
+- **Follow-up review fixes:** offline Metal's native dependency scan now runs
+  for every request before cache lookup; offline requests rely on that
+  authoritative dependency list rather than the runtime source guard. The
+  source guard now removes phase-two line splices and recognizes `%:`. A
+  controlled `__has_include` regression first caches the no-header result, then
+  creates a test-owned header reached through a spliced directive and verifies
+  the now-active external dependency is rejected instead of returning stale
+  success. Spawn-action and attribute cleanup track successful initialization
+  independently. The writable-push test clears unrelated specialization
+  declarations, and the compiler-off installed consumer again rejects any
+  unexpected discovered route.
+- Follow-up validation: native MSL, route, and shaderc smoke tests pass 3/3 in
+  the warnings-as-errors build; the strict compiler-off installed consumer
+  passes 1/1. Parent's consolidated all-provider warnings-as-errors run passed
+  6/6 at the previous review-fix head `c92e81c`; parent owns the next
+  consolidated check after this follow-up push.
 - Parent owns review/merge/tracking; #188 remains active until accepted. No
   TSP version bump, migration, legacy reader, or Shader-module completion claim.
 

@@ -50,13 +50,11 @@ Status validate_includes(std::span<const Source> units) {
         for (std::size_t index = 0; index < unit.text.size(); ++index) {
             if (unit.text[index] == '\\' && index + 1 < unit.text.size() &&
                 unit.text[index + 1] == '\n') {
-                logical.push_back(' ');
                 ++index;
             } else if (unit.text[index] == '\\' &&
                        index + 2 < unit.text.size() &&
                        unit.text[index + 1] == '\r' &&
                        unit.text[index + 2] == '\n') {
-                logical.push_back(' ');
                 index += 2;
             } else {
                 logical.push_back(unit.text[index]);
@@ -114,8 +112,9 @@ Status validate_includes(std::span<const Source> units) {
                 offset, end == std::string::npos ? std::string::npos
                                                   : end - offset);
             auto cursor = line.find_first_not_of(" \t\r\f\v");
-            if (cursor != std::string_view::npos && line[cursor] == '#') {
-                ++cursor;
+            if (cursor != std::string_view::npos &&
+                (line[cursor] == '#' || line.substr(cursor, 2) == "%:")) {
+                cursor += line[cursor] == '#' ? 1 : 2;
                 while (cursor < line.size() &&
                        std::isspace(static_cast<unsigned char>(line[cursor]))) {
                     ++cursor;
@@ -745,13 +744,15 @@ rhi::Result<Compilation> compile_msl(
     if (request.name.empty() || request.entryPoint.empty()) {
         return invalid("Native MSL requires a package name and entry point");
     }
-    if (request.target == rhi::ShaderTarget::metal_library &&
-        !offline_metallib_available()) {
-        return unsupported("Offline metallib output requires the installed Apple Metal Toolchain");
-    }
     if (request.generateDebugInfo &&
         request.target == rhi::ShaderTarget::metal_source) {
         return unsupported("The in-process Metal source API does not expose a debug-info option");
+    }
+    std::optional<OfflineMetalToolchain> offlineToolchain;
+    if (request.target == rhi::ShaderTarget::metal_library) {
+        auto toolchain = offline_metallib_toolchain();
+        if (!toolchain.ok()) return toolchain.status();
+        offlineToolchain = std::move(toolchain).value();
     }
     const auto stageStatus =
         validate_stage(*request.interfaceDeclaration, request.stage);
@@ -762,8 +763,10 @@ rhi::Result<Compilation> compile_msl(
     auto sourcesResult = resolve_units(request);
     if (!sourcesResult.ok()) return sourcesResult.status();
     auto sources = std::move(sourcesResult).value();
-    const auto includeStatus = validate_includes(sources);
-    if (!includeStatus.ok()) return includeStatus;
+    if (request.target == rhi::ShaderTarget::metal_source) {
+        const auto includeStatus = validate_includes(sources);
+        if (!includeStatus.ok()) return includeStatus;
+    }
     const auto composed = configured_source(sources, defines);
 
     std::string compilerVersion = runtime_compiler_version();
@@ -772,17 +775,17 @@ rhi::Result<Compilation> compile_msl(
     std::string toolLinkerVersion;
     std::string toolSdkVersion;
     if (request.target == rhi::ShaderTarget::metal_library) {
-        auto identityResult = offline_metallib_identity();
-        if (!identityResult.ok()) return identityResult.status();
-        auto identity = std::move(identityResult).value();
-        toolVersion = identity.compilerVersion;
-        toolLinkerVersion = identity.linkerVersion;
-        toolSdkVersion = identity.sdkVersion;
+        const auto dependencyStatus =
+            validate_metallib_dependencies(*offlineToolchain, composed);
+        if (!dependencyStatus.ok()) return dependencyStatus;
+        toolVersion = offlineToolchain->compilerVersion;
+        toolLinkerVersion = offlineToolchain->linkerVersion;
+        toolSdkVersion = offlineToolchain->sdkVersion;
         compilerVersion = toolVersion;
         compilerRevision += ";offline=" + toolVersion + ";metallib=" +
                             toolLinkerVersion +
                             ";target=air64-apple-macos13.0;msl=2.1;sdk=" +
-                            identity.sdkVersion;
+                            offlineToolchain->sdkVersion;
     }
     std::string key;
     field(key, "truffle-native-msl=1");
@@ -884,7 +887,7 @@ rhi::Result<Compilation> compile_msl(
             std::string diagnostics;
             auto remaps = std::move(runtimeRemaps);
             if (request.target == rhi::ShaderTarget::metal_library) {
-                auto offline = compile_metallib(composed,
+                auto offline = compile_metallib(*offlineToolchain, composed,
                                                 request.generateDebugInfo);
                 if (!offline.ok()) {
                     [device release];
@@ -893,7 +896,12 @@ rhi::Result<Compilation> compile_msl(
                 auto output = std::move(offline).value();
                 code = std::move(output.bytes);
                 diagnostics = std::move(output.diagnostics);
-                if (output.compilerVersion != toolVersion ||
+                auto currentToolchain = offline_metallib_toolchain();
+                if (!currentToolchain.ok() ||
+                    currentToolchain.value().compilerVersion != toolVersion ||
+                    currentToolchain.value().linkerVersion != toolLinkerVersion ||
+                    currentToolchain.value().sdkVersion != toolSdkVersion ||
+                    output.compilerVersion != toolVersion ||
                     output.linkerVersion != toolLinkerVersion ||
                     output.sdkVersion != toolSdkVersion) {
                     [device release];

@@ -220,7 +220,8 @@ CommandOutput run_capture(std::vector<std::string> arguments,
 
     posix_spawn_file_actions_t actions;
     int actionError = posix_spawn_file_actions_init(&actions);
-    if (actionError == 0) {
+    const bool actionsInitialized = actionError == 0;
+    if (actionsInitialized) {
         const std::array<int, 6> descriptors{
             inputPipe.read, inputPipe.write, outputPipe.read,
             outputPipe.write, errorPipe.read, errorPipe.write};
@@ -229,11 +230,13 @@ CommandOutput run_capture(std::vector<std::string> arguments,
                                         descriptors);
     }
     posix_spawnattr_t attributes;
-    const bool actionsInitialized = actionError == 0;
-    int attributeError = actionError == 0
-        ? posix_spawnattr_init(&attributes) : actionError;
-    const bool attributesInitialized = attributeError == 0;
-    if (attributeError == 0) {
+    int attributeError = 0;
+    bool attributesInitialized = false;
+    if (actionError == 0) {
+        attributeError = posix_spawnattr_init(&attributes);
+        attributesInitialized = attributeError == 0;
+    }
+    if (attributesInitialized) {
         attributeError = set_close_by_default(attributes);
     }
     if (actionError != 0 || attributeError != 0) {
@@ -316,16 +319,7 @@ std::string first_line(std::string_view value) {
 }
 #endif
 
-struct Toolchain {
-    std::string metalPath;
-    std::string metallibPath;
-    std::filesystem::path compilerRoot;
-    std::string compilerVersion;
-    std::string linkerVersion;
-    std::string sdkVersion;
-};
-
-rhi::Result<Toolchain> query_toolchain() {
+rhi::Result<OfflineMetalToolchain> query_toolchain() {
 #if !defined(TRUFFLE_SHADER_HAS_METALLIB_COMPILER)
     return unsupported(
         "Offline metallib output requires the installed Apple Metal Toolchain");
@@ -360,7 +354,7 @@ rhi::Result<Toolchain> query_toolchain() {
     if (filesystemError) {
         return unsupported("Unable to resolve the installed Metal compiler path");
     }
-    Toolchain result;
+    OfflineMetalToolchain result;
     result.compilerRoot =
         canonicalMetal.parent_path().parent_path() / "metal";
     result.metalPath =
@@ -456,7 +450,7 @@ bool within(const std::filesystem::path& path,
     return first == relative.end() || *first != "..";
 }
 
-Status validate_native_dependencies(const Toolchain& toolchain,
+Status validate_native_dependencies(const OfflineMetalToolchain& toolchain,
                                     std::string_view source) {
     auto dependencies = run_capture(
         {TRUFFLE_XCRUN_EXECUTABLE, "metal", "-x", "metal",
@@ -503,24 +497,18 @@ bool offline_metallib_available() noexcept {
     }
 }
 
-rhi::Result<OfflineMetalIdentity> offline_metallib_identity() {
-    auto toolchain = query_toolchain();
-    if (!toolchain.ok()) return toolchain.status();
-    auto identity = std::move(toolchain).value();
-    return OfflineMetalIdentity{std::move(identity.compilerVersion),
-                               std::move(identity.linkerVersion),
-                               std::move(identity.sdkVersion)};
+rhi::Result<OfflineMetalToolchain> offline_metallib_toolchain() {
+    return query_toolchain();
+}
+
+rhi::Status validate_metallib_dependencies(
+    const OfflineMetalToolchain& toolchain, std::string_view source) {
+    return validate_native_dependencies(toolchain, source);
 }
 
 rhi::Result<OfflineMetalResult> compile_metallib(
-    std::string_view source, bool debugInfo) {
-    auto toolchainResult = query_toolchain();
-    if (!toolchainResult.ok()) return toolchainResult.status();
-    auto toolchain = std::move(toolchainResult).value();
-    const auto dependencyStatus =
-        validate_native_dependencies(toolchain, source);
-    if (!dependencyStatus.ok()) return dependencyStatus;
-
+    const OfflineMetalToolchain& toolchain, std::string_view source,
+    bool debugInfo) {
     Pipe sourcePipe;
     Pipe airPipe;
     Pipe binaryPipe;
@@ -576,10 +564,13 @@ rhi::Result<OfflineMetalResult> compile_metallib(
             metallibErrorPipe.write, descriptors);
     }
     posix_spawnattr_t attributes;
-    int attributeError = actionError == 0 && metallibActionError == 0
-        ? posix_spawnattr_init(&attributes) : 0;
-    if (actionError == 0 && metallibActionError == 0 &&
-        attributeError == 0) {
+    int attributeError = 0;
+    bool attributesInitialized = false;
+    if (actionError == 0 && metallibActionError == 0) {
+        attributeError = posix_spawnattr_init(&attributes);
+        attributesInitialized = attributeError == 0;
+    }
+    if (attributesInitialized) {
         attributeError = set_close_by_default(attributes);
     }
     if (actionError != 0 || metallibActionError != 0 ||
@@ -590,8 +581,7 @@ rhi::Result<OfflineMetalResult> compile_metallib(
         if (metallibActionsInitialized) {
             posix_spawn_file_actions_destroy(&metallibActions);
         }
-        if (actionError == 0 && metallibActionError == 0 &&
-            attributeError != 0) {
+        if (attributesInitialized) {
             posix_spawnattr_destroy(&attributes);
         }
         for (auto* pipe : {&sourcePipe, &airPipe, &binaryPipe,
@@ -722,9 +712,9 @@ rhi::Result<OfflineMetalResult> compile_metallib(
                                     "metallib produced an empty library");
     }
 
-    result.compilerVersion = std::move(toolchain.compilerVersion);
-    result.linkerVersion = std::move(toolchain.linkerVersion);
-    result.sdkVersion = std::move(toolchain.sdkVersion);
+    result.compilerVersion = toolchain.compilerVersion;
+    result.linkerVersion = toolchain.linkerVersion;
+    result.sdkVersion = toolchain.sdkVersion;
     if (result.diagnostics.size() > 16384) {
         result.diagnostics.resize(16384);
     }

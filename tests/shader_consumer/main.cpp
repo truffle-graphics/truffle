@@ -6,6 +6,8 @@ int main() {
     using namespace truffle;
     shader::Compiler compiler;
     if (EXPECT_COMPILER && !compiler.available()) return 1;
+    if (!EXPECT_COMPILER &&
+        (compiler.available() || !compiler.routes().empty())) return 4;
     if (!compiler.available()) {
         shader::CompileRequest request;
         request.source = {"installed.vert", "#version 450\nvoid main(){gl_Position=vec4(0);}\n"};

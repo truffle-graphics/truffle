@@ -487,6 +487,16 @@ void source_contract(shader::Compiler& compiler) {
         "#import \"not-resolved.metal\"\n" + graphicsSource;
     check(!compiler.compile(unsupportedImport).ok(),
           "Native MSL imports must fail explicitly");
+    auto digraphInclude = request;
+    digraphInclude.source.text =
+        "%:include \"not-resolved.metal\"\n" + graphicsSource;
+    check(!compiler.compile(digraphInclude).ok(),
+          "MSL source guard must recognize the native %: directive marker");
+    auto splicedIncludeName = request;
+    splicedIncludeName.source.text =
+        "#inc\\\nlude \"not-resolved.metal\"\n" + graphicsSource;
+    check(!compiler.compile(splicedIncludeName).ok(),
+          "MSL source guard must remove phase-two line splices before inspection");
 
     auto writablePush = request_for(
         compiler, rhi::ShaderTarget::metal_source,
@@ -499,6 +509,7 @@ void source_contract(shader::Compiler& compiler) {
 }
 )MSL",
         compute_interface());
+    writablePush.interfaceDeclaration->specializationConstants.clear();
     const auto writablePushResult = compiler.compile(writablePush);
     check(!writablePushResult.ok() &&
               writablePushResult.status().code ==
@@ -551,6 +562,74 @@ int run() {
     if (libraryRoute != routes.end()) {
         graphics(device, compiler, rhi::ShaderTarget::metal_library);
         compute(device, compiler, rhi::ShaderTarget::metal_library);
+
+        const auto dependencyHeader =
+            std::filesystem::path{TRUFFLE_NATIVE_MSL_TEST_OUTPUT_DIR} /
+            "dependency-added-after-cache.metal";
+        std::error_code removeError;
+        std::filesystem::remove(dependencyHeader, removeError);
+        check(!removeError,
+              "Stale test-owned Metal dependency must be removable");
+        struct RemoveHeader {
+            const std::filesystem::path& path;
+            ~RemoveHeader() {
+                std::error_code error;
+                std::filesystem::remove(path, error);
+            }
+        } removeHeader{dependencyHeader};
+        const auto quotedHeader = "\"" + dependencyHeader.string() + "\"";
+        std::string cachedDependencySource =
+            "#include <metal_stdlib>\n"
+            "using namespace metal;\n"
+            "#if __has_include(";
+        cachedDependencySource += quotedHeader;
+        cachedDependencySource += R"MSL()
+#inc\
+lude )MSL";
+        cachedDependencySource += quotedHeader;
+        cachedDependencySource += R"MSL(
+#define TRUFFLE_HAS_OPTIONAL_HEADER 1
+#endif
+kernel void compute_main(
+    device uint* output [[buffer(17)]],
+    uint tid [[thread_position_in_grid]]) {
+#if defined(TRUFFLE_HAS_OPTIONAL_HEADER)
+    output[tid] = optional_value();
+#else
+    output[tid] = tid;
+#endif
+}
+)MSL";
+        rhi::ShaderReflection dependencyReflection;
+        dependencyReflection.bindings = {{
+            "output", rhi::ShaderStage::compute,
+            rhi::ResourceBindingType::buffer, 0, 0, 1,
+            sizeof(std::uint32_t), false}};
+        auto cachedDependencyRequest = request_for(
+            compiler, rhi::ShaderTarget::metal_library,
+            rhi::ShaderStage::compute, cachedDependencySource,
+            std::move(dependencyReflection));
+        cachedDependencyRequest.name = "native-msl-dependency-cache";
+        cachedDependencyRequest.sourceUnits.clear();
+        cachedDependencyRequest.resolver = {};
+        cachedDependencyRequest.defines.clear();
+        const auto initialDependencyCompile =
+            compiler.compile(cachedDependencyRequest);
+        check(initialDependencyCompile.ok() &&
+                  !initialDependencyCompile.value().cacheHit,
+              "Offline MSL without an optional header must compile and cache");
+        {
+            std::ofstream header{dependencyHeader, std::ios::binary};
+            header << "inline uint optional_value() { return 7u; }\n";
+            check(header.good(),
+                  "Test-owned optional Metal header must be created");
+        }
+        const auto activeDependencyRebuild =
+            compiler.compile(cachedDependencyRequest);
+        check(!activeDependencyRebuild.ok() &&
+                  activeDependencyRebuild.status().code ==
+                      rhi::StatusCode::unsupported,
+              "Native dependency scan must reject a newly active user header before cache lookup");
 
         rhi::ShaderReflection conditionalInterface;
         conditionalInterface.bindings = {{

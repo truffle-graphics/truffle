@@ -453,12 +453,15 @@ records. A failed compile never replaces the last-good rebuild result.
 Nonempty `sourceUnits` and typed declarations are explicitly rejected by
 routes that do not implement them.
 
-Only the built-in `#include <metal_stdlib>` is accepted. Arbitrary user
-`#include`/`#import` resolution is not promised because the in-process Metal
-source API has no Shader `SourceResolver` callback. Compose reusable project
-code with `sourceUnits`; Metal performs the ordinary MSL preprocessor work
-inside each unit. This first route does not recursively resolve nested
-includes.
+For in-process source output, only the built-in `#include <metal_stdlib>` is
+accepted; arbitrary user `#include`/`#import` resolution is not promised because
+the Metal source API has no Shader `SourceResolver` callback. Compose reusable
+project code with `sourceUnits`. For offline library output, Metal's native
+dependency scan runs on every attempt before cache lookup; any active dependency
+outside the installed Metal Toolchain is rejected. This catches conditional
+includes that become active after a previously cached request. Metal performs
+its own preprocessing for both targets; Shader does not parse MSL or claim
+recursive user-include support.
 
 `truffle-shaderc --source-unit FILE` is repeatable and uses the same ordered
 request field; `--interface-from PACKAGE` selects the exact entry/stage
