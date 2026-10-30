@@ -203,6 +203,26 @@ add_executable(truffle_renderer_data_tests renderer_data_tests.cpp)
 target_link_libraries(truffle_renderer_data_tests PRIVATE truffle_backend_null truffle_renderer)
 add_test(NAME truffle_renderer_data_tests COMMAND truffle_renderer_data_tests)
 
+add_executable(truffle_renderer_view_tests renderer_view_tests.cpp)
+target_link_libraries(truffle_renderer_view_tests PRIVATE truffle_backend_null truffle_renderer)
+add_test(NAME truffle_renderer_view_tests COMMAND truffle_renderer_view_tests)
+
+if(APPLE AND TRUFFLE_SHADER_ENABLE_METAL_COMPILER AND TRUFFLE_BUILD_BACKEND_METAL)
+    add_executable(truffle_renderer_scene_metal_tests
+        renderer_scene_metal_tests.cpp ../examples/minimum_renderer/scene.cpp)
+    target_include_directories(truffle_renderer_scene_metal_tests PRIVATE
+        "${PROJECT_SOURCE_DIR}/examples/minimum_renderer")
+    target_link_libraries(truffle_renderer_scene_metal_tests PRIVATE
+        truffle_renderer truffle_backend_metal)
+    target_compile_definitions(truffle_renderer_scene_metal_tests PRIVATE
+        "TRUFFLE_MINIMUM_RENDERER_SHADER_DIR=\"${PROJECT_SOURCE_DIR}/examples/minimum_renderer/shaders\"")
+    truffle_target_warnings(truffle_renderer_scene_metal_tests)
+    add_test(NAME truffle_renderer_scene_metal_tests COMMAND truffle_renderer_scene_metal_tests)
+    set_tests_properties(truffle_renderer_scene_metal_tests PROPERTIES
+        LABELS "native-smoke;validation;renderer" TIMEOUT 60
+        ENVIRONMENT "MTL_DEBUG_LAYER=1;MTL_SHADER_VALIDATION=1;METAL_DEVICE_WRAPPER_TYPE=1")
+endif()
+
 # Runs with and without a compiler adapter; disabled builds prove `unsupported`.
 add_executable(truffle_renderer_source_program_tests renderer_source_program_tests.cpp)
 target_link_libraries(truffle_renderer_source_program_tests PRIVATE truffle_backend_null truffle_renderer)

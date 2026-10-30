@@ -12,7 +12,7 @@ automatically: data/mesh #207, optional view/depth #208, host-window example
 #209. They stack on ADR PR #205. The minimum Renderer is the only accepted next
 scope; GUI and later applications are not planned here.
 
-#207 adds explicit, reflection-checked vertex layouts, owned immutable mesh byte
+#207 (PR #210) adds explicit, reflection-checked vertex layouts, owned immutable mesh byte
 uploads and batch-range validation. Renderer owns those mechanisms; Shader/RHI
 retain their lower-layer responsibilities. ECS semantics, buffer-member packing
 and lighting remain application-owned. Separate mesh upload, layout validation,
@@ -22,6 +22,14 @@ Metal uploaded indexed-mesh exact 256-pixel proof under validation. The final
 native rerun also covers indexed indirect buffer binding and rejection of
 vertex-layout-changing replacement. Architecture guard and whitespace checks
 are required before publication.
+
+#208 adds optional camera math and depth allocation/transition helpers. The
+shared minimum-renderer application fixture owns its vertex/instance/view/light
+types, composed MSL shader chunks and explicit completion fence. Renderer does
+not acquire those semantics. View/depth contract tests and the Metal offscreen
+proof pass. The latter checks all pixels for occlusion in either instance
+order, app properties, light direction/intensity, quaternion interpretation,
+camera translation, perspective, and resized 32x24 targets under validation.
 
 ## Render Data Direction (#204)
 
