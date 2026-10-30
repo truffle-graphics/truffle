@@ -113,23 +113,21 @@ compose Truffle with one at its own application boundary.
 
 ## Current Focus
 
-Current focus is **Shader completion first** under #73. Route/target contracts
-(#185, PR #194) and baseline reflection (#186, PRs #195/#196) are completed.
-Native MSL authoring and offline Metal libraries (#188) are the current bounded
-phase: optional in-process Metal reflection, ordered source-unit composition,
-typed interface validation and a separate installed-toolchain metallib route.
-Composed native source and metallib each pass exact Apple M3 Pro graphics and
-compute readback; see the Shader matrix for macOS/API floors and declaration
-limits. Portable native output (#187) separately provides experimentally gated
-GLSL/GLSL ES-to-MSL 2.1, GLSL 410 and GLSL ES 300 with real logical/native
-entry identities and binding remaps. The unreleased TSP draft retains its
-`1.0` identifiers without compatibility scaffolding.
-The merged #178-#181 Shader/Renderer foundations are
-not full module completion. Renderer feature work is paused; the remaining
-Shader phases (#188, #192, and #193) and their evidence gates are in
-[`docs/roadmap.md`](docs/roadmap.md). See the
-[Shader API and implemented/planned route matrix](src/shader/README.md) for
-accepted sources, emitted targets, target versions, and native evidence.
+**The agreed Shader baseline (#73) is implemented**, with final acceptance
+recorded by #193. It covers language-native composition, requested
+configurations, optional offline/runtime compilation, reflection,
+dependencies, caching, rebuilding and shared tools. GLSL/GLSL ES, HLSL, Slang,
+WGSL and native MSL have bounded optional routes; this is not every upstream
+language feature or every source-to-target combination.
+
+See the [evidence-linked Shader matrix](src/shader/README.md#completion-scope-and-evidence-73-193)
+for actual routes, experimental gates, reflection limits and native Apple
+Silicon Metal/Vulkan/OpenGL 4.1 results. Other-platform output verification
+remains separately tracked; Shader completion does not promote backend
+maturity. The unreleased TSP draft retains `1.0` without compatibility
+scaffolding. After #193 acceptance, Renderer development may resume from its
+existing direct Shader integration; no new material, lighting, texture or
+asset feature is implied. [`docs/roadmap.md`](docs/roadmap.md) records sequencing.
 
 ## Build
 

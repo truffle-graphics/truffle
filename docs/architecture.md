@@ -53,8 +53,9 @@ backends --> RHI
 
 Renderer depends on Shader directly. Unlike EnCom, Shader exists to serve
 rendering, so an EnComRenderer-style integration module would add a layer
-without benefit. Compiler toolchains (glslang, DXC and optional SPIRV-Tools/SPIRV-Cross) are optional Shader
-build parts, so Renderer gains no mandatory compiler dependency. RHI does not
+without benefit. Compiler toolchains (glslang, DXC, Slang, Tint, native Metal
+and optional SPIRV-Tools/SPIRV-Cross) are optional Shader build parts, so
+Renderer gains no mandatory compiler dependency. RHI does not
 depend on Shader. Shader tooling and runtime clients share compilation
 mechanisms.
 
@@ -335,7 +336,10 @@ list resolved through Shader's existing source resolver and composed before
 the root; there is no new shader language, recursive MSL include resolver or
 custom parser. The built-in `<metal_stdlib>` include is allowed; arbitrary user
 includes are rejected. Optional offline `metal`/`metallib` output is a separate
-capability and is validated in-process before the toolchain produces a library.
+capability. The exact emitted library is loaded and reflected before packaging,
+not inferred from a separate source compilation. Native dependency scanning
+precedes every offline cache lookup; active project includes are not silently
+accepted outside the explicit source-unit contract.
 The RHI package contract/codec and draft TSP `1.0` remain unchanged; package
 consumption remains compiler-free and Shader still depends only on RHI/Base
 plus explicitly enabled private Apple APIs.
@@ -357,11 +361,13 @@ their own design issues.
   architecture, and the future of the provisional `truffle_assets` and
   `truffle_asset_render` targets are decided later.
 
-The practical macOS RHI baseline and initial Shader/Renderer foundations
-(#178-#181) are implemented. Current work completes Shader first (#73; #185/#186
-are completed and #187 portable generation is active/review); Renderer feature growth is paused. Existing Renderer regressions
-may supply native Shader-output evidence. Engine and other higher-level
-modules remain later work.
+The practical macOS RHI baseline and direct Shader/Renderer integration
+(#178-#181) are implemented. The bounded Shader completion baseline (#73,
+audited by #193) now includes #185-#192; the
+[evidence-linked matrix](../src/shader/README.md#completion-scope-and-evidence-73-193)
+defines its actual routes and limits. Renderer feature growth may resume after
+#193 acceptance; existing Shader-output regressions are not new Renderer
+features. Engine and other higher-level modules remain later work.
 
 The #186 contract extension makes RHI's `ShaderInterfaceVariable::direction`
 canonical and serializes all located stage IO with `(stage,direction,location)`

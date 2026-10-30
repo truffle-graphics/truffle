@@ -34,9 +34,11 @@ Current evidence is narrower than the old roadmap claimed:
   compute-to-render proofs with Metal API validation enabled. Native shared
   events and `CAMetalLayer` tests also prove ordered submission, timeline
   synchronization, acquisition, presentation, resize, and recoverable status
-  paths. Its macOS maturity remains `native_smoke`; host-window integration,
-  physical device-removal evidence, broader Apple-platform execution, and full
-  native conformance remain.
+  paths. Host-window presentation/resize and advertised-capability readback
+  are also established (#69). Its macOS maturity remains `native_smoke`;
+  broader Apple-platform execution and full cross-backend conformance remain.
+  Physical removal is not an Apple Silicon requirement; device-loss evidence
+  is explicitly private fault injection.
 - The #33 matrix work gives Linux Vulkan a pinned private headers/volk loader
   path, native buffers, host-visible linear images, capability-checked texture
   shapes/views,
@@ -182,30 +184,22 @@ MoltenVK, and OpenGL 4.1 (see the support matrix and handoff for evidence).
 Shared Shader mechanisms/tooling (#178/#180), native prepared-TSP Renderer
 execution (#179), and optional runtime compilation with safe rebuild adoption
 (#181) are completed foundations, not module-completion claims.
-**Complete Shader first (#73); Renderer feature work is paused.** The bounded
-first phase (#185, merged PR #194) adds truthful route discovery and typed target settings.
-Baseline reflection (#186) is completed (PRs #195/#196): representable push/constants/arrays/IO
-have focused implementation evidence (merged PR #195). The approved RHI/TSP
-extension now serializes canonical full directional IO and direct per-axis
-workgroup specialization; typed resolution precedes limits/native/dispatch
-metadata. Native Vulkan and Metal exact readback pass. Portable native
-Metal/OpenGL generation (#187) is the active, bounded review phase: pinned
-optional translation/validation, target limits, true native remaps and logical/
-native entry identities retain evolving TSP `1.0`. Shader is not complete.
-WGSL/Tint (#191) now has optional real WGSL→SPIR-V, WGSL regeneration,
-SPIR-V→WGSL and WGSL→MSL routes, canonical reflection and focused native
-Vulkan/Metal exact graphics/compute readback; no WebGPU execution is claimed.
-WGSL preprocessing/imports and pipeline override substitution remain explicitly
-unsupported rather than invented.
-HLSL (#189) is implemented with bounded profiles/reflection and Apple Silicon
-native evidence; see the Shader README and handoff for review status.
-Remaining phases are MSL/Metal libraries (#188), Slang/native module
-imports (#190), shared composition/cache/rebuild/tool audit (#192),
-and final evidence/completion audit (#193). Use signed phased commits,
-immediate pushes, and reviewed PR merge commits. Existing Renderer regressions
-may establish Shader-output evidence; materials, lighting, texture/asset
-management and other Renderer features remain paused.
-Verification on other platforms is recorded, not a blocker.
+**The agreed Shader baseline (#73) is implemented; #193 records final
+acceptance.** Route contracts/reflection, portable Metal/GL output, native MSL
+source/metallib, HLSL/DXC, native Slang imports, WGSL/Tint and the shared
+composition/cache/rebuild audit (#185-#192) are delivered.
+The [evidence-linked Shader matrix](src/shader/README.md#completion-scope-and-evidence-73-193)
+is the authority for actual routes, profile/API floors, experimental gates and
+representational limits, not full upstream-language or cross-product support.
+Native Metal/Vulkan/OpenGL 4.1 evidence is local to Apple Silicon; DXIL native
+Windows consumption, new Linux/GLES output checks and browser execution remain
+separately tracked, not simulated or blocking this baseline.
+
+After #193 acceptance, Renderer feature development can resume from
+`SourceProgram` and prepared-TSP consumption, without an adapter module.
+Materials, lighting, texture/asset management and further Renderer features
+are not implemented by Shader completion and need their own accepted scope.
+Use signed issue-scoped phases, immediate pushes and reviewed merge-commit PRs.
 Other backends/platforms, Phase 6 advanced features, and Phase 7 hardening are
 deferred backlog (see `docs/roadmap.md`), not abandoned. Promote no pair beyond
 its recorded evidence.

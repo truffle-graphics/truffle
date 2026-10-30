@@ -180,6 +180,10 @@ if(TRUFFLE_SHADER_ENABLE_GLSLANG)
     if(TRUFFLE_INSTALL AND NOT BUILD_SHARED_LIBS)
         add_dependencies(truffle_shader OSDependent MachineIndependent GenericCodeGen)
     endif()
+    if(TRUFFLE_INSTALL)
+        install(FILES "${PROJECT_SOURCE_DIR}/vendor/glslang/LICENSE.txt"
+                DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/Truffle/glslang")
+    endif()
     target_sources(truffle_shader PRIVATE glslang_adapter.cpp)
     target_link_libraries(truffle_shader PRIVATE
         glslang::SPIRV glslang::glslang-default-resource-limits)
