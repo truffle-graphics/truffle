@@ -65,6 +65,38 @@ int main() {
 
     auto package = make_package();
     auto desc = program_desc(package);
+    {
+        auto vertexDesc = package.desc();
+        std::erase_if(vertexDesc.variants, [](const auto& variant) {
+            return variant.stage != rhi::ShaderStage::vertex;
+        });
+        auto fragmentDesc = package.desc();
+        std::erase_if(fragmentDesc.variants, [](const auto& variant) {
+            return variant.stage != rhi::ShaderStage::fragment;
+        });
+        auto vertexPackage = rhi::ShaderPackage::create(std::move(vertexDesc));
+        auto fragmentPackage = rhi::ShaderPackage::create(std::move(fragmentDesc));
+        TRUFFLE_CHECK(vertexPackage.ok() && fragmentPackage.ok());
+        auto split = desc;
+        split.vertex.package = &vertexPackage.value();
+        split.fragment.package = &fragmentPackage.value();
+        TRUFFLE_CHECK(cache.register_program(9, split).ok());
+    }
+    TRUFFLE_CHECK(cache.get_or_create({}, 9).ok());
+    auto requiredDesc = package.desc();
+    requiredDesc.requiredFeatures = {rhi::Feature::external_memory};
+    auto requiredPackage = rhi::ShaderPackage::create(std::move(requiredDesc));
+    TRUFFLE_CHECK(requiredPackage.ok());
+    const auto unsupported = cache.register_program(7, program_desc(requiredPackage.value()));
+    TRUFFLE_CHECK(unsupported.code == base::StatusCode::unsupported);
+    auto pushDesc = package.desc();
+    for (auto& variant : pushDesc.variants) {
+        variant.reflection.pushConstants = {{.stage = variant.stage, .size = 16}};
+    }
+    auto pushPackage = rhi::ShaderPackage::create(std::move(pushDesc));
+    TRUFFLE_CHECK(pushPackage.ok());
+    TRUFFLE_CHECK(cache.register_program(7, program_desc(pushPackage.value())).code ==
+                   base::StatusCode::unsupported);
     auto bad = desc;
     bad.fragment.package = nullptr;
     TRUFFLE_CHECK(!cache.register_program(7, bad).ok());

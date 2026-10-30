@@ -20,12 +20,30 @@ rather than growing a historical transcript here.
 - Ownership/cohesion: Renderer depends only on RHI/Base. Pipeline-cache program
   lifecycle is separated from frame recording in `pipeline_cache.cpp`. No shader
   source/compiler, host-window or higher-layer responsibility was added.
+- Native evidence: hand-authored MSL packaged/serialized/loaded as TSPs drives
+  real `RenderBatch` + `FrameGraph` execution on Metal. All 256 RGBA8 pixels
+  match red (initial/reuse/staged), green (published replacement and retained
+  output after failures), black (changed write mask), and blue (uniform group).
+  Recording an old pipeline before replacing its owners still submits red.
+  Intentional native shader and pipeline failures preserve native status/detail
+  and working output; incompatible reflection/layouts/attachments are rejected.
 - Verified: Ninja Debug with macOS SDK, warnings as errors, compiler tooling
-  disabled; seven focused Renderer/program/frame-graph/EnCom/transform tests
-  pass. Architecture guard and `git diff --check` pass.
-- Next slice: exact native Metal TSP-backed frame/readback, replacement/failure
-  output evidence and a small prepared-package consumer. No native Renderer
-  claim yet; backend maturity is unchanged.
+  disabled; 12 focused tests pass (Renderer/program/native Metal, frame graph,
+  EnCom adapter, transform, existing Metal and three host smoke tests).
+  Metal API/GPU validation was enabled with all three required environment
+  variables. Architecture guard and `git diff --check` pass. The native test
+  requires actual availability on Apple hosts rather than succeeding on a skip.
+- Added `examples/prepared_renderer`: a small no-window file-loaded TSP consumer
+  with enabled Metal/Vulkan selection. Its Metal execution succeeds after
+  destroying caller packages. Native Vulkan/GL Renderer evidence remains future
+  work; the reusable readback harness is backend-neutral.
+- Delivery is two signed/pushed #179 commits; parent reviews/merges. #181 can
+  feed compiled TSP results into `ProgramDesc`, then `stage_program` and
+  `commit_program`. Per the user decision, #181 adds direct Renderer → Shader
+  use after #178 lands, not an intermediate adapter module. #179 adds no Shader
+  or source compiler dependency. Dynamic-state and
+  push-constant batches remain explicitly outside this first slice. Backend
+  maturity is unchanged.
 
 ## Current Focus
 

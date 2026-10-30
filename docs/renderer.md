@@ -119,6 +119,46 @@ complete rendering engine. Dynamic graphics-state batches and push-constant TSP
 programs are explicitly unsupported. Low-level owned shader callers must not
 require push constants. Source includes, compilation, dependencies, caching
 compiled results and rebuild policy belong to the separate optional Shader
-module. #181 will compose that module's results with this staging/publication
-boundary. The default shaderless Renderer cache remains a Null-validation aid;
+module. In #181 Renderer will use the Shader module directly after #178 lands;
+there is no intermediate adapter module. That dependency is not added by #179.
+The same staging/publication boundary accepts the resulting prepared packages.
+The default shaderless Renderer cache remains a Null-validation aid;
 native consumers pass a real `PipelineCache`.
+
+## Evidence and consumer
+
+`tests/renderer_program_tests.cpp` checks package selection, distinct stage
+packages, move-owned shader registration, exact slots, candidate publication,
+binding incompatibility, explicit errors and removal on the Null oracle.
+Existing Renderer/frame-graph/EnCom/transform tests remain intact.
+
+`tests/renderer_metal_tests.cpp` requires a native device and uses hand-authored
+small MSL fixtures packaged as TSPs, including serialize/load round trips. It
+proves complete 16×16 RGBA8 targets: red initial/reused/staged output, green
+committed output, black after a write-mask change, and blue from a reflected
+uniform descriptor. Missing selection, intentional native shader compilation
+failure, intentional native pipeline creation failure, incompatible bindings
+and attachments all preserve the working output. Native error codes/details
+are retained. A separately recorded old pipeline still submits and produces
+red after its published owner is replaced with green.
+
+The helper `tests/renderer_native_test_utils.hpp` uses only RHI/Renderer and
+explicit attachment/transfer barriers so future Vulkan/GL tests can reuse the
+frame/readback harness; native evidence here is Metal only.
+
+```bash
+cmake -S . -B build/renderer -G Ninja \
+  -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_OSX_SYSROOT="$(xcrun --sdk macosx --show-sdk-path)" \
+  -DTRUFFLE_WARNINGS_AS_ERRORS=ON -DTRUFFLE_BUILD_TESTS=ON \
+  -DTRUFFLE_BUILD_BACKEND_METAL=ON -DTRUFFLE_BUILD_SHADERC=OFF \
+  -DTRUFFLE_SHADERC_ENABLE_GLSLANG=OFF
+cmake --build build/renderer --parallel 4 --target \
+  truffle_renderer_program_tests truffle_renderer_metal_tests
+MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 METAL_DEVICE_WRAPPER_TYPE=1 \
+  ctest --test-dir build/renderer --output-on-failure \
+  -R '^truffle_renderer_(program|metal)_tests$'
+```
+
+See [`examples/prepared_renderer`](../examples/prepared_renderer/README.md) for a
+small native file-loaded TSP consumer. No backend maturity claim is changed.
