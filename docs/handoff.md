@@ -7,6 +7,26 @@ AI work that reaches a commit must update this handoff before that commit.
 Promote durable decisions into project context, architecture, roadmap, or ADRs
 rather than growing a historical transcript here.
 
+## Renderer Prepared Programs (#179)
+
+- Renderer-owned TSP selection, shaders and eager native pipeline staging are
+  implemented in `PipelineCache`; atomic publication preserves the existing
+  material on failure. Exact configuration slots replace lossy layout hashes;
+  binding/layout and attachment contracts cannot silently change on replacement.
+- `IPipelineCache` returns typed pipeline results; low-level registration moves
+  shader ownership. Batches support explicit RHI descriptor groups separately
+  from vertex input. See `docs/renderer.md` for the public contract and #181
+  integration seam.
+- Ownership/cohesion: Renderer depends only on RHI/Base. Pipeline-cache program
+  lifecycle is separated from frame recording in `pipeline_cache.cpp`. No shader
+  source/compiler, host-window or higher-layer responsibility was added.
+- Verified: Ninja Debug with macOS SDK, warnings as errors, compiler tooling
+  disabled; seven focused Renderer/program/frame-graph/EnCom/transform tests
+  pass. Architecture guard and `git diff --check` pass.
+- Next slice: exact native Metal TSP-backed frame/readback, replacement/failure
+  output evidence and a small prepared-package consumer. No native Renderer
+  claim yet; backend maturity is unchanged.
+
 ## Current Focus
 
 The Apple Silicon macOS baseline is complete: Metal conformance audit (#69,
