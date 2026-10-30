@@ -81,6 +81,16 @@ only by rows with a native presentation receipt.
 
 ## Target Matrix
 
+Shader #187 adds narrower **generated-output** evidence without promoting any
+backend maturity: on Apple M3 Pro, the same portable vertex/fragment fixture
+generates SPIR-V, macOS MSL 2.1 and GLSL 410 and reads exactly 256 RGBA
+`(64,64,32,255)` pixels through real texture/sampler/uniform bindings.
+Generated Vulkan and Metal compute exercise scalar/local-size specialization
+and push data with exact output and untouched sentinel tails. Generated Metal
+is still experimental and explicitly opted in. GLSL ES 300 has real compiler
+validation only; there is no new GLES native evidence or higher-profile claim.
+See [Shader route limits and tests](../../src/shader/README.md#portable-native-generation-187).
+
 These are implementation targets, not present support claims.
 
 | Backend | Target platforms | Position |

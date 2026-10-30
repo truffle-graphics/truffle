@@ -61,7 +61,7 @@ layout(set=1,binding=5,std430,row_major) readonly buffer Input {
 layout(set=2,binding=1,std430) buffer Output {
     layout(offset=16) uint values[];
 } outputs[2];
-layout(set=3,binding=2) uniform texture2D images[2][3];
+layout(set=3,binding=2) uniform texture2D images[6];
 layout(set=3,binding=3) uniform sampler states[4];
 layout(set=3,binding=4,rgba32f) readonly uniform image2D readImage;
 layout(set=3,binding=5,rgba32f) writeonly uniform image2D writeImage;
@@ -296,6 +296,11 @@ void main() {}
 }
 
 void negative(shader::Compiler& compiler) {
+    reject(compiler, R"(#version 450
+layout(local_size_x=1) in;
+layout(set=0,binding=0) uniform texture2D images[2][3];
+void main() {}
+)", "single array dimension");
     reject(compiler, R"(#version 450
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 layout(local_size_x=1) in;

@@ -65,7 +65,8 @@ The optional dependency-free `truffle-shaderc` assembly target consumes
 precompiled or backend-native variants without a compiler library. Its first
 source route is enabled independently with `TRUFFLE_SHADER_ENABLE_GLSLANG` and
 compiles GLSL or GLSL ES to SPIR-V using the pinned `vendor/glslang` source.
-Future routes may use pinned Slang, DXC, SPIR-V Tools, SPIRV-Cross, and Tint
+Portable native routes use `TRUFFLE_SHADER_ENABLE_SPIRV_CROSS`, requiring
+glslang and `TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS`. Future routes may use Slang, DXC, and Tint
 submodules, enabled individually. No compiler submodule is introduced before
 its route exists, and configure never downloads it. Runtime packages do not
 acquire the compiler toolchain. Runtime source compilation is an explicit
@@ -74,6 +75,29 @@ optional feature; production packages prefer offline variants.
 | Dependency | Pin | Upstream and license | Consumer and update policy |
 |---|---|---|---|
 | glslang | `16.5.0` / `a8d28bd082bff18ffbe80996e922b012f915cf07` | `KhronosGroup/glslang`; upstream `LICENSE.txt` contains BSD-2-Clause, BSD-3-Clause, MIT, and Apache-2.0 notices. | Private to `Truffle::Shader` when its adapter is enabled; shaderc and optional runtime clients share it. Static installs include its exported link closure; adapter-disabled prepared-package RHI/Renderer consumers remain compiler-free. No local patches. Update by reviewing release notes and licenses, advancing the submodule, then running deterministic compile, invalid-source, package/install, and native Vulkan consumers. |
+| SPIRV-Cross | `vulkan-sdk-1.4.350.1` / `1a6169566c73d3da552748fc372fe2bbb856e46e` | `KhronosGroup/SPIRV-Cross`; Apache-2.0 primary license, bundled generated-header/registry notices in `LICENSES` (MIT, Khronos Free Use, CC-BY-4.0). | Private optional core/GLSL/MSL static closure. C++ `CompilerMSL` resource remaps/cleansed entry API and `CompilerGLSL` combined-sampler API audited at this pin; no C API, CLI or extra target generators. |
+| SPIRV-Tools | `v2026.3` / `b707790a898e44038547df54580022fc1cf89c3d` | `KhronosGroup/SPIRV-Tools`; Apache-2.0 | Private optional in-process `SpirvTools::Validate`, Vulkan 1.0/1.1 environments. Pin is glslang 16.5.0's `known_good.json` selection, not an arbitrary latest tool. Only validation static library is built/installed, exported as Shader's private static closure in Truffle's target export; no optimizer or tool runtime. |
+| SPIRV-Headers | `29981f65241605e08b0ede4cfeb999fe3b723c6a` | `KhronosGroup/SPIRV-Headers`; Khronos MIT-style license, MIT/CC-BY-4.0 notices in `LICENSES`; optional JsonCpp utility carries PD/MIT terms in root `LICENSE`. | Paired with Tools by glslang's `known_good.json`; supplied explicitly through `SPIRV-Headers_SOURCE_DIR`. Build-time grammar/header dependency only, not an RHI dependency. |
+
+These pins have no local patches. Prepare all source checkouts explicitly with
+`git submodule update --init vendor/glslang vendor/spirv-cross vendor/spirv-tools
+vendor/spirv-headers`; configure checks exact clean revisions and never fetches.
+Offline builds use those already-prepared sources and the platform SDK/Python
+needed for Tools' generated tables. No implicit system fallback is implemented.
+Updates review upstream API changes, release notes and all license notices,
+change the gitlinks and recorded compiler pins together, then rerun the focused
+route/invalid-source/cache/CLI-equivalence/install tests and the generated
+Vulkan/Metal/GL native fixture. Tools/Headers update as a compatible pair;
+the Cross SDK tag is separately tested against emitted SPIR-V 1.0/1.3.
+Enabled installs preserve their license texts under `share/licenses/Truffle`.
+Disabling all adapters removes these libraries and package requirements entirely.
+
+Cross uses its upstream C++/SPIR-V namespace overrides (`truffle_spirv_cross`,
+`truffle_spirv_cross_spv`) to avoid collisions between its generated SPIR-V
+header and glslang/Tools headers, or an application's own translator.
+Exceptions stay enabled so unsupported constructs return diagnostics rather
+than asserting. Tools' optional mimalloc integration is disabled; it adds no
+extra allocator source or package requirement.
 
 ### Validation and tests
 

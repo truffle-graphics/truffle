@@ -118,6 +118,8 @@ struct ShaderVariantDesc {
     ShaderVariantKind kind = ShaderVariantKind::precompiled;
     ShaderStage stage = ShaderStage::vertex;
     std::string entryPoint = "main";
+    // Logical selection/agreement uses entryPoint. Empty means the same spelling.
+    std::string nativeEntryPoint;
     std::string permutation;
     ShaderReflection reflection;
     std::vector<std::byte> code;

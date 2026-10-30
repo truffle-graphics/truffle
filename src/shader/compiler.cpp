@@ -43,9 +43,24 @@ std::span<const CompilerRoute> Compiler::routes() noexcept {
         {VulkanVersion::v1_0, SpirvVersion::v1_0},
         {VulkanVersion::v1_1, SpirvVersion::v1_0},
         {VulkanVersion::v1_1, SpirvVersion::v1_3}};
+#if defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS)
+    static constexpr rhi::ShaderStage graphics[]{rhi::ShaderStage::vertex, rhi::ShaderStage::fragment};
+    static constexpr MetalTarget metal[]{{}};
+    static constexpr GlslTarget glsl[]{{}};
+    static constexpr GlslEsTarget es[]{{}};
+#endif
     static constexpr CompilerRoute enabled[]{
         {rhi::ShaderSourceLanguage::glsl, rhi::ShaderTarget::spirv, stages, targets},
-        {rhi::ShaderSourceLanguage::glsl_es, rhi::ShaderTarget::spirv, stages, targets}};
+        {rhi::ShaderSourceLanguage::glsl_es, rhi::ShaderTarget::spirv, stages, targets},
+#if defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS)
+        {rhi::ShaderSourceLanguage::glsl, rhi::ShaderTarget::metal_source, stages, targets, metal, {}, {}, true},
+        {rhi::ShaderSourceLanguage::glsl_es, rhi::ShaderTarget::metal_source, stages, targets, metal, {}, {}, true},
+        {rhi::ShaderSourceLanguage::glsl, rhi::ShaderTarget::glsl, graphics, targets, {}, glsl},
+        {rhi::ShaderSourceLanguage::glsl_es, rhi::ShaderTarget::glsl, graphics, targets, {}, glsl},
+        {rhi::ShaderSourceLanguage::glsl, rhi::ShaderTarget::glsl_es, graphics, targets, {}, {}, es},
+        {rhi::ShaderSourceLanguage::glsl_es, rhi::ShaderTarget::glsl_es, graphics, targets, {}, {}, es},
+#endif
+    };
     return enabled;
 #else
     return {};
@@ -73,6 +88,17 @@ rhi::Result<Compilation> Compiler::compile(const CompileRequest& request) {
             "No enabled Shader compiler route: " +
             std::string{rhi::shader_source_language_name(request.language)} + " -> " +
             std::string{rhi::shader_target_name(request.target)});
+    }
+    if ((request.target == rhi::ShaderTarget::metal_source &&
+         request.metalTarget.version != MetalVersion::v2_1) ||
+        (request.target == rhi::ShaderTarget::glsl && request.glslTarget.version != GlslVersion::v410) ||
+        (request.target == rhi::ShaderTarget::glsl_es && request.glslEsTarget.version != GlslEsVersion::v300)) {
+        return rhi::Status::failure(rhi::StatusCode::invalid_argument, "Invalid native target version");
+    }
+    if (request.target == rhi::ShaderTarget::metal_source &&
+        !request.allowExperimentalMetalGeneration) {
+        return rhi::Status::failure(rhi::StatusCode::unsupported,
+                                   "Generated Metal requires explicit experimental opt-in");
     }
     if (std::find(route->stages.begin(), route->stages.end(), request.stage) == route->stages.end()) {
         return rhi::Status::failure(rhi::StatusCode::unsupported,

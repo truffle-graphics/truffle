@@ -285,7 +285,10 @@ private:
         const auto& d = decorations[id];
         if (!d.set || !d.binding) return unsupported("Resource needs explicit set/binding: " + names[id]);
         std::uint64_t count = 1;
+        std::uint32_t dimensions = 0;
         while (nodes.at(typeId).op == spv::Op::OpTypeArray) {
+            if (++dimensions > 1)
+                return unsupported("Vulkan resource descriptors require a single array dimension: " + names[id]);
             const auto& array = nodes.at(typeId);
             const auto elements = length(array.args[1]);
             if (!elements || count * *elements > std::numeric_limits<Word>::max())

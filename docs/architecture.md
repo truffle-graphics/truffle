@@ -53,7 +53,7 @@ backends --> RHI
 
 Renderer depends on Shader directly. Unlike EnCom, Shader exists to serve
 rendering, so an EnComRenderer-style integration module would add a layer
-without benefit. Compiler toolchains (initially glslang) are optional Shader
+without benefit. Compiler toolchains (glslang and optional SPIRV-Tools/SPIRV-Cross) are optional Shader
 build parts, so Renderer gains no mandatory compiler dependency. RHI does not
 depend on Shader. Shader tooling and runtime clients share compilation
 mechanisms.
@@ -300,6 +300,18 @@ than maintaining a second route policy. See the [Shader route matrix](../src/sha
 This extends Shader's public API without changing module dependencies or the
 RHI/TSP schema.
 
+Portable native routes (#187) add private optional SPIRV-Cross translation and
+SPIRV-Tools validation inside Shader, after shared source composition and
+canonical emitted-SPIR-V reflection. The translator owns native payloads and
+actual resource remaps; RHI owns logical/native entry identity and the package
+codec/selection semantics. Generated macOS MSL 2.1 remains experimentally gated;
+GLSL 410 and ES 300 enforce their graphics-only core limits. Generated source
+is consumed in memory unchanged. This tightly coupled draft TSP extension
+retains `1.0`, without compatibility machinery or reverse dependency edges.
+The [route/limit matrix](../src/shader/README.md#portable-native-generation-187)
+distinguishes native Apple Silicon graphics/compute proofs from GLES compiler
+validation. No backend implementation or Renderer feature is added.
+
 See [the shader package contract](rhi1/shader-package.md).
 
 ## Planned Modules
@@ -318,8 +330,8 @@ their own design issues.
   `truffle_asset_render` targets are decided later.
 
 The practical macOS RHI baseline and initial Shader/Renderer foundations
-(#178-#181) are implemented. Current work completes Shader first (#73; #185 is
-merged and #186 reflection is active); Renderer feature growth is paused. Existing Renderer regressions
+(#178-#181) are implemented. Current work completes Shader first (#73; #185/#186
+are completed and #187 portable generation is active/review); Renderer feature growth is paused. Existing Renderer regressions
 may supply native Shader-output evidence. Engine and other higher-level
 modules remain later work.
 
@@ -335,7 +347,7 @@ updates the unreleased TSP draft in place under identifiers `1.0`; there is no
 legacy reader, migration, version bump or dependency-edge change. Stable
 format/versioning guarantees begin with release. Vulkan and prepared Metal
 exact consumption evidence is local to Apple Silicon; no unrun-platform
-claim is implied. This phase awaits independent review, not module completion.
+claim is implied. This reflection phase is merged in PR #196, not module completion.
 
 ## Deferred Surfaces
 

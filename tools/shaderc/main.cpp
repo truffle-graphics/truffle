@@ -43,6 +43,8 @@ struct Arguments {
     truffle::shader::VulkanTarget vulkanTarget;
     bool targetSettings = false;
     bool compile = false;
+    bool experimentalMetal = false;
+    std::string nativeVersionTarget;
 };
 
 [[nodiscard]] Status invalid(std::string message) {
@@ -58,8 +60,11 @@ void usage(std::ostream& output) {
            "[--compiler-revision REV] [--entry NAME] "
            "[--kind precompiled|native|generated] [--append PACKAGE] "
            "[--compile [--include-root DIR]... [--define NAME[=VALUE]]... "
-           "[--vulkan-version VERSION] [--spirv-version VERSION]]\n"
+           "[--vulkan-version VERSION] [--spirv-version VERSION] "
+           "[--msl-version 2.1|--glsl-version 410|--glsl-es-version 300] "
+           "[--allow-experimental-metal]]\n"
         << "       truffle-shaderc --routes\n"
+        << "       truffle-shaderc --inspect PACKAGE [--allow-experimental-metal]\n"
         << "Targets: spirv, dxil, metallib, msl, wgsl, glsl, glsl-es\n"
         << "Stages: vertex, fragment, compute\n"
         << "Source languages: slang, hlsl, glsl, glsl-es, wgsl, msl, "
@@ -83,6 +88,10 @@ void usage(std::ostream& output) {
         }
         if (key == "--compile") {
             result.compile = true;
+            continue;
+        }
+        if (key == "--allow-experimental-metal") {
+            result.experimentalMetal = true;
             continue;
         }
         if (index + 1 >= argc) {
@@ -136,6 +145,15 @@ void usage(std::ostream& output) {
             else if (value == truffle::shader::spirv_version_name(truffle::shader::SpirvVersion::v1_3))
                 result.vulkanTarget.spirv = truffle::shader::SpirvVersion::v1_3;
             else return invalid("unknown SPIR-V version: " + value);
+        } else if (key == "--msl-version" || key == "--glsl-version" || key == "--glsl-es-version") {
+            result.targetSettings = true;
+            const auto expected = key == "--msl-version" ? "2.1" : key == "--glsl-version" ? "410" : "300";
+            if (value != expected) return invalid("unsupported native target version: " + value);
+            const auto target = key == "--msl-version" ? "msl" : key == "--glsl-version" ? "glsl" : "glsl-es";
+            // Validate after parsing so argument order has no effect.
+            if (!result.nativeVersionTarget.empty() && result.nativeVersionTarget != target)
+                return invalid("conflicting native version options");
+            result.nativeVersionTarget = target;
         } else {
             return invalid("unknown argument " + std::string{key});
         }
@@ -147,6 +165,8 @@ void usage(std::ostream& output) {
          (result.sourceHash.empty() || result.compilerName.empty() || result.compilerVersion.empty()))) {
         return invalid("required package arguments are missing");
     }
+    if (!result.nativeVersionTarget.empty() && result.nativeVersionTarget != result.target)
+        return invalid("native version option disagrees with target");
     if (!result.compile && (!result.includeRoots.empty() || !result.defines.empty() || result.targetSettings))
         return invalid("include roots, defines and target settings require --compile");
     if (result.compile && (!result.compilerName.empty() || !result.compilerVersion.empty() ||
@@ -278,7 +298,12 @@ int main(int argc, char** argv) {
                               << " stage=" << (stage == ShaderStage::vertex ? "vertex" :
                                               stage == ShaderStage::fragment ? "fragment" : "compute")
                               << " vulkan=" << shader::vulkan_version_name(target.environment)
-                              << " spirv=" << shader::spirv_version_name(target.spirv) << '\n';
+                              << " spirv=" << shader::spirv_version_name(target.spirv);
+                    if (!route.metalTargets.empty()) std::cout << " msl=macos-2.1";
+                    if (!route.glslTargets.empty()) std::cout << " glsl=410-core";
+                    if (!route.glslEsTargets.empty()) std::cout << " glsl-es=300-es";
+                    if (route.experimental) std::cout << " experimental";
+                    std::cout << '\n';
                 }
             }
         }
@@ -287,14 +312,16 @@ int main(int argc, char** argv) {
     if (argc == 2 && std::string_view{argv[1]} == "--self-test") {
         return self_test();
     }
-    if (argc == 3 && std::string_view{argv[1]} == "--inspect") {
+    if ((argc == 3 || (argc == 4 && std::string_view{argv[3]} == "--allow-experimental-metal")) &&
+        std::string_view{argv[1]} == "--inspect") {
         auto bytesResult = read_file(argv[2]);
         if (!bytesResult.ok()) {
             std::cerr << bytesResult.status().message << '\n';
             return 2;
         }
         auto packageResult =
-            ShaderPackage::load(std::move(bytesResult).value());
+            ShaderPackage::load(std::move(bytesResult).value(),
+                                {.allowExperimentalMetalGeneration = argc == 4});
         if (!packageResult.ok()) {
             std::cerr << packageResult.status().message << '\n';
             return 2;
@@ -312,9 +339,18 @@ int main(int argc, char** argv) {
         for (const auto& source : desc.sources) {
             std::cout << "source=" << source.path << " sha256=" << source.sha256 << '\n';
         }
+        for (const auto& remap : desc.remaps) {
+            std::cout << "remap=" << remap.group << ':' << remap.binding
+                      << " element=" << remap.arrayElement
+                      << " target=" << rhi::shader_target_name(remap.target)
+                      << " stage=" << static_cast<unsigned>(remap.stage)
+                      << " native=" << remap.nativeGroup << ':' << remap.nativeBinding
+                      << ':' << remap.nativeArrayElement << '\n';
+        }
         for (const auto& variant : desc.variants) {
             std::cout << "target=" << rhi::shader_target_name(variant.target)
                       << " entry=" << variant.entryPoint
+                      << " native-entry=" << variant.nativeEntryPoint
                       << " permutation=" << variant.permutation
                       << " bindings=" << variant.reflection.bindings.size()
                       << " interfaces=" << variant.reflection.interfaces.size()
@@ -385,7 +421,8 @@ int main(int argc, char** argv) {
             std::cerr << baseBytes.status().message << '\n';
             return 2;
         }
-        auto basePackage = ShaderPackage::load(std::move(baseBytes).value());
+        auto basePackage = ShaderPackage::load(std::move(baseBytes).value(),
+            {.allowExperimentalMetalGeneration = arguments.experimentalMetal});
         if (!basePackage.ok()) {
             std::cerr << basePackage.status().message << '\n';
             return 2;
@@ -414,6 +451,7 @@ int main(int argc, char** argv) {
         request.target = target;
         request.language = languageResult.value();
         request.vulkanTarget = arguments.vulkanTarget;
+        request.allowExperimentalMetalGeneration = arguments.experimentalMetal;
         request.includeRoots = arguments.includeRoots;
         request.defines = arguments.defines;
         shader::Compiler compiler;
@@ -475,8 +513,21 @@ int main(int argc, char** argv) {
         }
     }
     desc.variants.insert(desc.variants.end(), addition.variants.begin(), addition.variants.end());
+    for (const auto& remap : addition.remaps) {
+        const auto existing = std::find_if(desc.remaps.begin(), desc.remaps.end(), [&](const auto& value) {
+            return value.target == remap.target && value.stage == remap.stage &&
+                   value.group == remap.group && value.binding == remap.binding &&
+                   value.arrayElement == remap.arrayElement;
+        });
+        if (existing == desc.remaps.end()) desc.remaps.push_back(remap);
+        else if (*existing != remap) {
+            std::cerr << "appended native binding remap disagrees with the package\n";
+            return 2;
+        }
+    }
     desc.diagnostics.insert(desc.diagnostics.end(), addition.diagnostics.begin(), addition.diagnostics.end());
-    auto packageResult = ShaderPackage::create(std::move(desc));
+    auto packageResult = ShaderPackage::create(std::move(desc),
+        {.allowExperimentalMetalGeneration = arguments.experimentalMetal});
     if (!packageResult.ok()) {
         std::cerr << packageResult.status().message << '\n';
         return 2;
