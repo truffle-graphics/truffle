@@ -3,6 +3,33 @@
 Use this document as Truffle's rolling cross-machine handoff. Keep it useful to
 a human resuming work and to a fresh AI session reading the repository.
 
+## Shared Shader mechanism audit (#192, in progress)
+
+- Added a runnable Shader-only workflow example with native GLSL transitive
+  includes, explicit requested configurations, cache reuse, compile/reflection
+  failure retention and recovery. It also builds independently against an
+  installed `Truffle::Shader`, without Renderer, backend, device or shaderc.
+- Its standalone installed-consumer build passes with warnings-as-errors
+  against the accumulated optional compiler package. This demonstrates actual
+  three-source composition and last-good retention, not GPU consumption.
+  A second build against a compiler-disabled install links successfully and
+  reports the unavailable GLSL route with a nonzero exit; it never simulates
+  compilation success.
+- Added direct native reflection/canonical-package failure regressions:
+  overlapping push ranges fail repeatedly without entering the cache or
+  replacing last-good, valid requests recover their cached package, and
+  last-good remains loadable after cache clearing and compiler destruction.
+  The updated compiler tests pass against the installed all-provider library.
+- Parent integrated glslang, DXC, Tint, Slang, SPIRV-Tools, Cross and native
+  MSL: 29 focused enabled checks and nine exact-source compiler-off checks
+  pass. Native MSL is accepted in merged PR #201. The shared audit requires
+  integration with that merge before acceptance; final completion #193
+  remains open.
+- No public API or architecture boundary changes. Shader still owns CPU-side
+  mechanisms; Renderer owns GPU publication and remains paused for features.
+  Integrate the native MSL merge and verify the in-tree example/regressions
+  before closing #192. This phase changes tests/examples/documentation only.
+
 ## WGSL/Tint source routes — issue #191 (merged in PR #198)
 
 - Integration update: normally merged `origin/develop` at

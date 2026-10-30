@@ -8,6 +8,10 @@ GPU objects and safe publication (`renderer::SourceProgram` consumes
 `Compilation` results in memory); this module has no backend, Renderer, EnCom,
 watcher, application, or tool dependency.
 
+The [standalone Shader workflow example](../../examples/shader_workflow/README.md)
+builds directly against `Truffle::Shader` and demonstrates modular GLSL,
+requested configurations, cache reuse, rejected edits and last-good recovery.
+
 The accepted module direction is Renderer → Shader → RHI → Base. There is no
 adapter/integration module between Renderer and Shader. The core Shader target,
 public types, configuration, dependency records, cache ownership, and rebuild
@@ -47,6 +51,47 @@ SPIR-V reader additionally requires its optimizer library. Compiler CLI
 libraries are not part of Shader's install closure. SPIRV-Cross installs its
 core/GLSL/MSL static closure and CMake configs. Enabled installs include the
 new dependencies' license notices; all-off consumers require none of them.
+
+## Shared composition, cache and rebuild contract (#192)
+
+Shader compiles requested entries/configurations, not a Cartesian product of
+every possible feature. Composition follows the selected language:
+
+| Input | Reusable source and configuration | Dependency boundary |
+| --- | --- | --- |
+| GLSL / GLSL ES | Native includes, guards and defines | Root plus transitive native-preprocessor snapshots |
+| HLSL | DXC includes, guards and defines | Root plus native searched include candidates, frozen for compilation |
+| Slang | Native imports/includes and component linking, with defines | Root plus native module/include snapshots |
+| WGSL | Host-assembled standard declarations/functions and literal constants | One exact-byte source; invented includes/macros and unsupported pipeline overrides are rejected |
+| Native MSL | Ordered `sourceUnits` followed by the root, with Metal-owned macros | Every selected unit/root; offline native dependency scanning precedes cache lookup |
+| SPIR-V import to WGSL | Select an entry from an existing binary module | Exact input-module bytes, validated before translation |
+
+The host supplies the current root `Source` on each attempt. `read_source()`
+provides canonical file identity but starts no watcher. Resolved dependencies
+are refreshed before cache lookup; configuration, effective target, source
+identity/content and compiler/adapter provenance distinguish relevant results.
+Only unchanged effective inputs can reuse a cached package. Unrelated settings
+for a different language/target do not imply extra compilation.
+
+Each `Compiler` owns its unbounded in-memory cache until `clear_cache()` or
+destruction; no persistent store or global polling service is introduced.
+Use one `RebuildState` per logical shader. Compilation, reflection and canonical
+package-validation failures return failure, never a successful cached fallback,
+and never replace `last_good()`. Clearing/destroying the compiler does not
+invalidate the rebuild state's owned last-good package. Results likewise own
+their TSP bytes, dependencies, diagnostics and canonical reflection.
+
+shaderc and runtime hosts call the same library mechanisms. CLI compilation
+and package-validation failures occur before opening an existing output file;
+this is not a general filesystem transaction or crash-recovery guarantee.
+Shader owns no GPU residency or publication: Renderer/RHI consumption and
+in-flight replacement remain separate.
+
+The standalone example demonstrates transitive composition, explicit
+configurations, repeat-cache behavior and failed-edit recovery. Focused native
+rebuild tests additionally reject observable reflection mismatches and invalid
+canonical push ranges, verify repeated failures never become cache hits, and
+load the last-good TSP after cache clearing and compiler destruction.
 
 ## Routes and target configuration (#73, #185)
 
@@ -141,8 +186,8 @@ truffle-shaderc --inspect example-wgsl.tsp --allow-experimental-wgsl
 
 Compiler revision, dependency pins, effective target, source identity/bytes,
 stage/entry and opt-ins distinguish cache entries. Failures never enter the
-cache or replace `RebuildState::last_good()`, and failed CLI attempts leave
-last-good files intact. Enabled installs export only the used private static
+cache or replace `RebuildState::last_good()`, and failed CLI compilation or
+validation leaves existing package files untouched. Enabled installs export only the used private static
 Tint/Abseil/Tools closure, with licenses, without exporting Tint headers as a
 Truffle API. All adapters off leaves prepared TSP consumers compiler-free.
 

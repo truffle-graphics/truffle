@@ -48,6 +48,10 @@ if(APPLE AND TRUFFLE_SHADER_ENABLE_TINT AND TRUFFLE_SHADER_ENABLE_SPIRV_CROSS AN
         ENVIRONMENT "MTL_DEBUG_LAYER=1;MTL_SHADER_VALIDATION=1")
 endif()
 target_link_libraries(truffle_shader_compiler_tests PRIVATE truffle_shader)
+if(TRUFFLE_SHADER_ENABLE_METAL_COMPILER)
+    target_compile_definitions(truffle_shader_compiler_tests PRIVATE
+        TRUFFLE_TEST_METAL_COMPILER=1)
+endif()
 truffle_target_warnings(truffle_shader_compiler_tests)
 add_test(NAME truffle_shader_compiler_tests COMMAND truffle_shader_compiler_tests)
 add_executable(truffle_shader_route_tests shader_route_tests.cpp)

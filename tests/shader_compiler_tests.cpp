@@ -15,10 +15,87 @@ void check(bool value, const char* message) {
         std::exit(1);
     }
 }
+
+#if defined(TRUFFLE_TEST_METAL_COMPILER)
+void native_rebuild_contract() {
+    using namespace truffle;
+    if (!tests::shader_route_enabled(rhi::ShaderSourceLanguage::msl,
+                                    rhi::ShaderTarget::metal_source)) {
+        std::cout << "Native MSL rebuild checks unavailable on this runtime\n";
+        return;
+    }
+
+    shader::RebuildState rebuild;
+    {
+        shader::Compiler compiler;
+        shader::CompileRequest request;
+        request.name = "shared-rebuild-contract";
+        request.source = {"shared-rebuild.metal", R"MSL(#include <metal_stdlib>
+using namespace metal;
+kernel void compute_main(device uint* output [[buffer(16)]],
+                         constant uint& pushData [[buffer(30)]]) {
+    output[0] = pushData;
+}
+)MSL"};
+        request.stage = rhi::ShaderStage::compute;
+        request.entryPoint = "compute_main";
+        request.language = rhi::ShaderSourceLanguage::msl;
+        request.target = rhi::ShaderTarget::metal_source;
+        request.allowExperimentalMetalGeneration = true;
+        request.interfaceDeclaration = rhi::ShaderReflection{};
+        request.interfaceDeclaration->bindings = {{
+            "output", rhi::ShaderStage::compute,
+            rhi::ResourceBindingType::buffer, 0, 0, 1, 4, false}};
+        request.interfaceDeclaration->pushConstants = {
+            {rhi::ShaderStage::compute, 0, 4}};
+        request.interfaceDeclaration->requiredWorkgroupSize = {1, 1, 1};
+        auto good = rebuild.rebuild(compiler, request);
+        if (!good.ok()) std::cerr << good.status().message << '\n';
+        check(good.ok(), "Initial native rebuild succeeds");
+        const auto key = good.value().cacheKey;
+
+        auto invalidReflection = request;
+        invalidReflection.interfaceDeclaration->bindings.front().readOnly = true;
+        const auto reflectionFailure =
+            rebuild.rebuild(compiler, invalidReflection);
+        check(!reflectionFailure.ok() && rebuild.last_good() &&
+                  rebuild.last_good()->cacheKey == key,
+              "Native reflection rejection retains last-good output");
+
+        auto invalidPackage = request;
+        invalidPackage.interfaceDeclaration->pushConstants.push_back(
+            {rhi::ShaderStage::compute, 0, 4});
+        for (int attempt = 0; attempt < 2; ++attempt) {
+            const auto packageFailure = rebuild.rebuild(compiler, invalidPackage);
+            check(!packageFailure.ok() &&
+                      packageFailure.status().message.find(
+                          "push-constant ranges must not overlap") != std::string::npos &&
+                      rebuild.last_good() &&
+                      rebuild.last_good()->cacheKey == key,
+                  "Canonical package rejection neither enters cache nor replaces last-good");
+        }
+        auto recovered = rebuild.rebuild(compiler, request);
+        check(recovered.ok() && recovered.value().cacheHit &&
+                  recovered.value().cacheKey == key,
+              "Native rebuild recovers the cached validated package");
+        compiler.clear_cache();
+        check(rebuild.last_good() && rebuild.last_good()->cacheKey == key,
+              "Clearing compiler cache does not clear rebuild ownership");
+    }
+    check(rebuild.last_good() &&
+              rhi::ShaderPackage::load(
+                  rebuild.last_good()->package.bytes(),
+                  {.allowExperimentalMetalGeneration = true}).ok(),
+          "Last-good package remains usable after compiler destruction");
+}
+#endif
 }
 
 int main() {
     using namespace truffle;
+#if defined(TRUFFLE_TEST_METAL_COMPILER)
+    native_rebuild_contract();
+#endif
     check(shader::detail::sha256("") == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "SHA-256 empty vector");
     check(shader::detail::sha256("abc") == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", "SHA-256 abc vector");
     check(shader::detail::sha256("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq") ==
