@@ -29,9 +29,47 @@ setup, not immediate work. No issue labels or hosted workflows change.
 - #56's macOS lane is delivered (PR #170); its packaging, package isolation,
   iOS-family lanes and MoltenVK timestamp re-check move to deferred #172
   (sub-issue of #33), so #56 closes.
-- Next: OpenGL macOS host-window presentation (#61) and macOS-supported GL
-  fences/queries/context ownership (#63); Metal advertised-capability
-  conformance audit (#69).
+- Next: macOS-supported GL fences/queries/context ownership (#63, branch
+  `feat/opengl-macos-present-sync`); Metal advertised-capability conformance
+  audit (#69). macOS GL host-view presentation (#61) is on the same branch.
+
+## OpenGL macOS Host-View Presentation (#61)
+
+- Branch `feat/opengl-macos-present-sync` (from develop `c6779c8`). New
+  public `NativeSurfaceKind::cocoa_view` (a host-owned `NSView*`, appended to
+  the enum). The host owns window, event loop and view settings; Truffle
+  never creates windows.
+- Backend: `cgl_view.{hpp,mm}` is the only AppKit code (manual
+  retain/release, AppKit NSOpenGL deprecations silenced in that file only).
+  `gl_present.hpp` implements surface/swapchain/acquire/resize/present and
+  host-value semaphores (the GL queue completes work before submit returns,
+  so semaphores are reached at submit). The swapchain owns one
+  `NSOpenGLContext` sharing objects with the device CGL context and one
+  back-buffer texture; present blits it with a Y flip (texture row 0 = window
+  top), checks `glGetError`, `flushBuffer`s and `glFinish`es, then restores
+  the device context. `bgra8_unorm` was added to the desktop GL format table
+  (the SwapchainDesc default).
+- Contract: RGBA8/BGRA8; `fifo`/`immediate` (swap interval 1/0), `mailbox`
+  `unsupported`; drawable drift gives `suboptimal` (present scales), a view
+  without a window gives `out_of_date`; all presentation calls require the
+  AppKit main thread (`invalid_state` otherwise); wrong surface kind
+  `unsupported`, non-NSView handle `invalid_argument`.
+- `Feature::presentation` and `AdapterInfo::presentation` are now advertised
+  on macOS GL; the `backend_support.cpp` macOS GL evidence gains
+  `presentation`.
+- host_workspace: `MetalHostPresenter` became backend-neutral `HostPresenter`
+  (takes an instance, native surface and format; counts suboptimal
+  presents), the run loop is shared, and `--opengl [--frames N]` passes the
+  GLFW content view (`host_window_cocoa_view.mm`). New ctest
+  `truffle_host_workspace_opengl_window` (120 frames, one scripted resize).
+- Evidence (Apple M3 Pro, macOS 27.0.1, Xcode SDK 27, Debug, Metal+OpenGL
+  on): all 32 ctests pass, including new `truffle_opengl_presentation_tests`
+  (back-buffer pixel checks, resize, `out_of_date`, negatives) and both host
+  window runs; repeated GL window runs report
+  `frames=120 resizes=1 extent=1280x800->1600x1040`. Architecture guard
+  passes. `clang-format` was not installed, so the format check did not run.
+- Not done: Linux EGL window surfaces and WGL presentation (pending
+  verification on those machines).
 
 ## OpenGL macOS Offscreen CGL (#61, #63)
 
@@ -62,9 +100,9 @@ setup, not immediate work. No issue labels or hosted workflows change.
   macOS and the context still renders afterwards.
 - Architecture guard: 19 dependency declarations (+1 for the private
   `OpenGL.framework` link).
-- Still open: host-window presentation on macOS and WGL (#61), GL fences,
-  queries and context ownership evidence (#63), Windows verification
-  (roadmap pending list). Linux EGL is compile-safe by
+- Still open: WGL/EGL window presentation (#61; macOS host-view
+  presentation is done above), GL fences, queries and context ownership
+  evidence (#63), Windows verification (roadmap pending list). Linux EGL is compile-safe by
   inspection only on this run.
 
 ## Metal macOS Host Window (#69)

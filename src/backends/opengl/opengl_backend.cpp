@@ -12,8 +12,27 @@
 #endif
 #include "gl_probe.hpp"
 #endif
+#if defined(TRUFFLE_GL_CONTEXT_CGL)
+#include "gl_present.hpp"
+#endif
 
 namespace truffle::rhi {
+
+#if defined(TRUFFLE_GL_CONTEXT_CGL)
+namespace detail {
+
+void set_opengl_present_capture_for_testing(bool enabled) noexcept {
+    gl_probe::present_capture_state().enabled.store(enabled);
+}
+
+OpenGLPresentCapture opengl_last_present_capture_for_testing() {
+    auto& capture = gl_probe::present_capture_state();
+    std::lock_guard lock{capture.mutex};
+    return capture.last;
+}
+
+} // namespace detail
+#endif
 
 Result<Instance> create_opengl_instance(const InstanceDesc& desc) {
 #ifdef TRUFFLE_HAS_NATIVE_OPENGL
@@ -36,6 +55,11 @@ Result<Instance> create_opengl_instance(const InstanceDesc& desc) {
     config.supportedFeatures = {Feature::transfer, Feature::compute,
                                 Feature::descriptor_arrays, Feature::dynamic_offsets,
                                 Feature::push_constants};
+#elif defined(TRUFFLE_GL_CONTEXT_CGL)
+    config.supportedFeatures = {Feature::presentation, Feature::transfer,
+                                Feature::descriptor_arrays,
+                                Feature::dynamic_offsets, Feature::push_constants};
+    config.presentation = true;
 #else
     config.supportedFeatures = {Feature::transfer, Feature::descriptor_arrays,
                                 Feature::dynamic_offsets, Feature::push_constants};
@@ -101,6 +125,14 @@ Result<Instance> create_opengl_instance(const InstanceDesc& desc) {
     config.createPipeline = &detail::gl_probe::create_pipeline;
     config.createComputePipeline = &detail::gl_probe::create_compute_pipeline;
     config.nativeSubmit = &detail::gl_probe::submit;
+#if defined(TRUFFLE_GL_CONTEXT_CGL)
+    config.createSemaphore = &detail::gl_probe::create_semaphore;
+    config.createSurface = &detail::gl_probe::create_surface;
+    config.createSwapchain = &detail::gl_probe::create_swapchain;
+    config.acquireSwapchain = &detail::gl_probe::acquire_swapchain;
+    config.resizeSwapchain = &detail::gl_probe::resize_swapchain;
+    config.presentSwapchain = &detail::gl_probe::present_swapchain;
+#endif
     return detail::create_foundation_instance(desc, std::move(config));
 #else
     (void)desc;

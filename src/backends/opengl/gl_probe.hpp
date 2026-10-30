@@ -126,6 +126,9 @@ struct TextureFormatInfo {
         return {GL_DEPTH24_STENCIL8, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, 4,
                 TextureAspect::depth | TextureAspect::stencil};
 #if defined(TRUFFLE_GL_API_DESKTOP)
+    // Desktop GL stores BGRA texels as RGBA8 and swizzles GL_BGRA transfers.
+    case TextureFormat::bgra8_unorm:
+        return {GL_RGBA8, GL_BGRA, GL_UNSIGNED_BYTE, 4, TextureAspect::color};
     case TextureFormat::depth32_float:
         return {GL_DEPTH_COMPONENT32F, GL_DEPTH_COMPONENT, GL_FLOAT, 4,
                 TextureAspect::depth};
@@ -1663,11 +1666,10 @@ struct Probe {
     std::span<const NativeCommand> commands,
     std::span<const NativeSemaphorePoint> waits,
     std::span<const NativeSemaphorePoint> signals) {
-    if (!waits.empty() || !signals.empty()) {
-        return Status::failure(
-            StatusCode::unsupported,
-            "GL timeline semaphore submission is not implemented");
-    }
+    // Semaphore waits were reached on the host before this call, and this
+    // submission completes before the foundation publishes its signals.
+    (void)waits;
+    (void)signals;
     const auto context = std::static_pointer_cast<Context>(nativeContext);
     if (!context || !context_available(*context)) {
         return Status::failure(StatusCode::device_lost,

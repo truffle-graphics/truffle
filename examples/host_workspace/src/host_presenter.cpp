@@ -1,6 +1,4 @@
-#include "metal_host_presenter.hpp"
-
-#include "truffle/rhi/metal_backend.hpp"
+#include "host_presenter.hpp"
 
 #include <array>
 #include <chrono>
@@ -17,18 +15,16 @@ constexpr auto kFrameTimeout = std::chrono::seconds{2};
 
 } // namespace
 
-base::Status MetalHostPresenter::initialize(void* metalLayer,
-                                            rhi::Extent2D extent) {
-    if (metalLayer == nullptr || extent.width == 0 || extent.height == 0) {
+base::Status HostPresenter::initialize(rhi::Instance instance,
+                                       rhi::NativeSurface native,
+                                       rhi::TextureFormat format,
+                                       rhi::Extent2D extent) {
+    if (native.handle == nullptr || extent.width == 0 || extent.height == 0) {
         return base::Status::failure(
             base::StatusCode::invalid_argument,
-            "Metal host presenter needs a CAMetalLayer and non-zero extent");
+            "host presenter needs a native surface and non-zero extent");
     }
-    auto instanceResult = rhi::create_metal_instance();
-    if (!instanceResult.ok()) {
-        return instanceResult.status();
-    }
-    instance_ = std::move(instanceResult).value();
+    instance_ = std::move(instance);
     auto adapterResult = instance_.adapter(0);
     if (!adapterResult.ok()) {
         return adapterResult.status();
@@ -44,10 +40,9 @@ base::Status MetalHostPresenter::initialize(void* metalLayer,
     device_ = std::move(deviceResult).value();
 
     auto surfaceResult = device_.create_surface({
-        .native = {.kind = rhi::NativeSurfaceKind::cocoa_layer,
-                   .handle = metalLayer},
+        .native = native,
         .initialExtent = extent,
-        .debugName = "host window CAMetalLayer",
+        .debugName = "host window surface",
     });
     if (!surfaceResult.ok()) {
         return surfaceResult.status();
@@ -55,7 +50,7 @@ base::Status MetalHostPresenter::initialize(void* metalLayer,
     surface_ = std::move(surfaceResult).value();
     auto swapchainResult = device_.create_swapchain(
         surface_, {.extent = extent,
-                   .format = rhi::TextureFormat::bgra8_unorm,
+                   .format = format,
                    .presentMode = rhi::PresentMode::fifo,
                    .imageCount = 2,
                    .debugName = "host window swapchain"});
@@ -88,7 +83,7 @@ base::Status MetalHostPresenter::initialize(void* metalLayer,
     return base::Status::success();
 }
 
-base::Status MetalHostPresenter::resize(rhi::Extent2D extent) {
+base::Status HostPresenter::resize(rhi::Extent2D extent) {
     if (auto status = swapchain_.resize(extent); !status.ok()) {
         return status;
     }
@@ -97,7 +92,7 @@ base::Status MetalHostPresenter::resize(rhi::Extent2D extent) {
     return base::Status::success();
 }
 
-base::Status MetalHostPresenter::record_clear(rhi::CommandList& list,
+base::Status HostPresenter::record_clear(rhi::CommandList& list,
                                               rhi::Texture& image,
                                               rhi::ClearColor clear) {
     if (auto status = list.begin(); !status.ok()) {
@@ -142,7 +137,7 @@ base::Status MetalHostPresenter::record_clear(rhi::CommandList& list,
     return list.end();
 }
 
-base::Status MetalHostPresenter::present_frame(rhi::Extent2D framebufferExtent,
+base::Status HostPresenter::present_frame(rhi::Extent2D framebufferExtent,
                                                rhi::ClearColor clear) {
     if (framebufferExtent.width == 0 || framebufferExtent.height == 0) {
         return base::Status::failure(base::StatusCode::invalid_argument,
@@ -201,11 +196,15 @@ base::Status MetalHostPresenter::present_frame(rhi::Extent2D framebufferExtent,
          .value = frameValue_,
          .stages = rhi::PipelineStage::bottom},
     }};
-    if (auto status = queue_.present({.swapchain = &swapchain_,
-                                      .imageIndex = acquired.imageIndex,
-                                      .waits = presentWaits});
-        !status.ok()) {
-        return status;
+    // A suboptimal present still reached the window (macOS OpenGL scales a
+    // stale-sized image into the resized view); resize before the next frame.
+    auto presented = queue_.present({.swapchain = &swapchain_,
+                                     .imageIndex = acquired.imageIndex,
+                                     .waits = presentWaits});
+    if (presented.code == base::StatusCode::suboptimal) {
+        ++stats_.suboptimalPresents;
+    } else if (!presented.ok()) {
+        return presented;
     }
     // The command list is released at scope exit, so wait for its work.
     if (auto status = frameFence_.wait(frameValue_, kFrameTimeout);
@@ -216,6 +215,8 @@ base::Status MetalHostPresenter::present_frame(rhi::Extent2D framebufferExtent,
 
     if (suboptimal) {
         ++stats_.suboptimalAcquires;
+    }
+    if (suboptimal || presented.code == base::StatusCode::suboptimal) {
         if (auto status = resize(framebufferExtent); !status.ok()) {
             return status;
         }

@@ -24,6 +24,10 @@ public:
     // On macOS: returns the CAMetalLayer* attached to the window's content view.
     // On other platforms: returns nullptr.
     [[nodiscard]] void* native_layer_handle() const noexcept;
+    // On macOS: returns the window's content NSView*, opted into a
+    // full-resolution (Retina) OpenGL drawable; no layer is attached.
+    // On other platforms: returns nullptr.
+    [[nodiscard]] void* native_view_handle() const noexcept;
     void poll_events() const noexcept;
     // Requests a new window size in screen coordinates; the framebuffer
     // extent follows once the platform applies it.

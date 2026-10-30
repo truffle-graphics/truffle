@@ -135,6 +135,20 @@ if(TRUFFLE_BUILD_BACKEND_OPENGL)
         set_tests_properties(truffle_opengl_tests PROPERTIES
                              LABELS "native-smoke")
     endif()
+    if(APPLE AND NOT IOS AND TRUFFLE_OPENGL_FRAMEWORK)
+        add_executable(truffle_opengl_presentation_tests
+                       opengl_presentation_tests.mm)
+        target_link_libraries(truffle_opengl_presentation_tests
+                              PRIVATE truffle_backend_opengl "-framework AppKit")
+        target_compile_definitions(truffle_opengl_presentation_tests
+                                   PRIVATE TRUFFLE_EXPECT_CGL_OPENGL=1)
+        target_include_directories(truffle_opengl_presentation_tests
+                                   PRIVATE "${PROJECT_SOURCE_DIR}/src/backends/opengl")
+        add_test(NAME truffle_opengl_presentation_tests
+                 COMMAND truffle_opengl_presentation_tests)
+        set_tests_properties(truffle_opengl_presentation_tests PROPERTIES
+                             LABELS "presentation;validation")
+    endif()
 endif()
 
 if(TRUFFLE_BUILD_BACKEND_OPENGLES)

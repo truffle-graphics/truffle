@@ -27,8 +27,11 @@ elseif(APPLE AND NOT IOS)
         target_compile_definitions(truffle_backend_opengl PRIVATE
                                    TRUFFLE_HAS_CGL_OPENGL=1
                                    GL_SILENCE_DEPRECATION=1)
+        # Host-owned NSView presentation needs AppKit's NSOpenGLContext.
+        target_sources(truffle_backend_opengl PRIVATE cgl_view.mm)
         target_link_libraries(truffle_backend_opengl PRIVATE
-                              "${TRUFFLE_OPENGL_FRAMEWORK}")
+                              "${TRUFFLE_OPENGL_FRAMEWORK}"
+                              "-framework AppKit")
     else()
         message(STATUS
             "OpenGL target is source-only: OpenGL.framework was not found")

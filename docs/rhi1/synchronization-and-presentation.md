@@ -130,6 +130,25 @@ must create a new device and dependent objects.
   `out_of_date`, acquisition exhaustion returns `timeout`, a detached layer
   returns `surface_lost`, and Metal device-removal errors return `device_lost`.
 
+## macOS OpenGL mapping
+
+- The GL queue is synchronous: a submit completes its GPU work before it
+  returns, so timeline semaphores are host values reached at submit.
+- A `cocoa_view` surface retains a host-owned `NSView`; the host keeps the
+  window, event loop and view configuration (set
+  `wantsBestResolutionOpenGLSurface` for a Retina-sized drawable). The
+  swapchain owns one `NSOpenGLContext` that shares objects with the device
+  context, and a single back-buffer texture (`imageCount` is advisory).
+- Present blits the image into the view's default framebuffer (texture row 0
+  at the top of the window), then `flushBuffer`. `fifo` and `immediate` set
+  the swap interval to 1 and 0; `mailbox` and formats other than
+  RGBA8/BGRA8 return `unsupported`.
+- A drawable that no longer matches the swapchain extent returns `suboptimal`
+  from acquire or present (present scales the image); a view without a
+  window returns `out_of_date`.
+- Surface and swapchain creation, acquire, resize and present are AppKit
+  work and return `invalid_state` off the main thread.
+
 The validation-enabled macOS suites prove mixed render-to-copy ordering,
 shared-event semaphore/fence completion, native layer acquire/render/present,
 suboptimal acquisition, resize recovery, `out_of_date`, and surface-loss

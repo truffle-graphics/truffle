@@ -16,11 +16,13 @@ constexpr BackendEvidence validated_native_smoke{
     .validation = true,
 };
 // macOS validation is per-call glGetError checking with zero errors
-// required; no debug-message layer exists on macOS GL 4.1.
+// required; no debug-message layer exists on macOS GL 4.1. Presentation is
+// exercised into a host-owned NSView with back-buffer pixel checks.
 constexpr BackendEvidence gl_error_checked_smoke{
     .compiles = true,
     .nativeSmoke = true,
     .validation = true,
+    .presentation = true,
 };
 constexpr BackendEvidence metal_smoke{
     .compiles = true,
@@ -103,12 +105,12 @@ constexpr std::array support{
     BackendPlatformSupport{BackendKind::opengl, PlatformKind::macos,
                            BackendMaturity::native_smoke, true,
                            gl_error_checked_smoke,
-                           "deprecated GL 4.1 core offscreen CGL resources, "
-                           "bindings, and graphics with exact readback; "
-                           "validation is per-call glGetError checking with "
-                           "zero errors required (no debug-message layer "
-                           "exists on macOS GL 4.1); no compute or "
-                           "presentation"},
+                           "deprecated GL 4.1 core CGL resources, bindings, "
+                           "and graphics with exact readback, presented into "
+                           "a host-owned NSView with resize; validation is "
+                           "per-call glGetError checking with zero errors "
+                           "required (no debug-message layer exists on macOS "
+                           "GL 4.1); no compute"},
     BackendPlatformSupport{BackendKind::opengles, PlatformKind::linux_host,
                            BackendMaturity::native_smoke, true,
                            validated_native_smoke,

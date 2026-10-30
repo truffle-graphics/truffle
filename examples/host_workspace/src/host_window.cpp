@@ -89,6 +89,10 @@ void* HostWindow::native_handle() const noexcept {
 void* HostWindow::native_layer_handle() const noexcept {
     return nullptr;
 }
+
+void* HostWindow::native_view_handle() const noexcept {
+    return nullptr;
+}
 #endif
 
 void HostWindow::poll_events() const noexcept {
