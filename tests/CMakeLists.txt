@@ -396,6 +396,24 @@ if(TRUFFLE_BUILD_BACKEND_VULKAN)
             set_property(TEST truffle_renderer_vulkan_source_tests APPEND PROPERTY ENVIRONMENT
                 "DYLD_FALLBACK_LIBRARY_PATH=${_truffle_vulkan_loader_dir}:/usr/local/lib:/usr/lib")
         endif()
+
+        add_executable(truffle_renderer_layer_composite_vulkan_tests
+                       renderer_layer_composite_vulkan_tests.cpp)
+        target_link_libraries(truffle_renderer_layer_composite_vulkan_tests
+                              PRIVATE truffle_backend_vulkan truffle_renderer)
+        target_include_directories(truffle_renderer_layer_composite_vulkan_tests
+                                   PRIVATE "${PROJECT_SOURCE_DIR}/src/backends/vulkan")
+        add_test(NAME truffle_renderer_layer_composite_vulkan_tests
+                 COMMAND truffle_renderer_layer_composite_vulkan_tests)
+        set_tests_properties(truffle_renderer_layer_composite_vulkan_tests PROPERTIES
+                             LABELS "native-smoke;validation;renderer"
+                             SKIP_RETURN_CODE 77
+                             FAIL_REGULAR_EXPRESSION "Validation (Error|Warning)")
+        if(APPLE AND _truffle_vulkan_loader_dir)
+            set_property(TEST truffle_renderer_layer_composite_vulkan_tests APPEND PROPERTY
+                ENVIRONMENT
+                "DYLD_FALLBACK_LIBRARY_PATH=${_truffle_vulkan_loader_dir}:/usr/local/lib:/usr/lib")
+        endif()
     endif()
 endif()
 

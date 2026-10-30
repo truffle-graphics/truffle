@@ -342,6 +342,18 @@ int main() {
                               ShaderVariantKind::generated),
                allowMetal)
                .ok());
+    auto nativeMsl = single_variant(ShaderTarget::metal_source,
+                                    ShaderVariantKind::generated);
+    nativeMsl.sources[0].language = ShaderSourceLanguage::msl;
+    auto nativeMslPackage = ShaderPackage::create(nativeMsl);
+    assert(nativeMslPackage.ok());
+    assert(ShaderPackage::load(nativeMslPackage.value().bytes()).ok());
+    auto mixedMsl = nativeMsl;
+    mixedMsl.sources.push_back({.path = "other.hlsl",
+                                .language = ShaderSourceLanguage::hlsl,
+                                .sha256 = std::string(64, '2')});
+    assert(ShaderPackage::create(std::move(mixedMsl)).status().code ==
+           StatusCode::unsupported);
 
     auto badHash = package_desc();
     badHash.sources[0].sha256 = "not-a-sha256";

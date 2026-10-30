@@ -134,7 +134,6 @@ shader::CompileRequest request_for(
                                                               "compute_main";
     request.language = rhi::ShaderSourceLanguage::msl;
     request.target = target;
-    request.allowExperimentalMetalGeneration = true;
     request.sourceUnits = {"common.metal"};
     request.interfaceDeclaration = std::move(reflection);
     request.defines = {{"TRUFFLE_MSL_CONFIG", "1"}};
@@ -172,7 +171,7 @@ rhi::ShaderPackage combine(
     desc.remaps.insert(desc.remaps.end(), fragmentDesc.remaps.begin(),
                        fragmentDesc.remaps.end());
     return tests::require(rhi::ShaderPackage::create(
-        std::move(desc), {.allowExperimentalMetalGeneration = true}));
+        std::move(desc), {}));
 }
 
 shader::Compilation compile(
@@ -196,7 +195,7 @@ void graphics(rhi::Device& device, shader::Compiler& compiler,
                             graphicsSource, fragment_interface());
     const auto package = combine(vertex, fragment);
     auto loaded = tests::require(rhi::ShaderPackage::load(
-        package.bytes(), {.allowExperimentalMetalGeneration = true}));
+        package.bytes(), {}));
     auto vertexShader = tests::require(device.create_shader(
         loaded, target, "vertex_main", rhi::ShaderStage::vertex,
         loaded.desc().variants[0].permutation));
@@ -303,7 +302,7 @@ void compute(rhi::Device& device, shader::Compiler& compiler,
                             computeSource, compute_interface());
     auto package = tests::require(rhi::ShaderPackage::load(
         compiled.package.bytes(),
-        {.allowExperimentalMetalGeneration = true}));
+        {}));
     auto shaderObject = tests::require(device.create_shader(
         package, target, "compute_main", rhi::ShaderStage::compute,
         package.desc().variants[0].permutation));
@@ -419,7 +418,7 @@ void source_contract(shader::Compiler& compiler) {
         desc.variants.push_back(std::move(second));
         auto package = tests::require(rhi::ShaderPackage::create(
             std::move(desc),
-            {.allowExperimentalMetalGeneration = true}));
+            {}));
         const auto path =
             std::filesystem::path{TRUFFLE_NATIVE_MSL_TEST_OUTPUT_DIR} /
             filename;

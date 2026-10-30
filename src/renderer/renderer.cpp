@@ -103,6 +103,20 @@ base::Status Renderer::render(const FrameGraph& graph, rhi::Swapchain* swapchain
         }
 
         const auto* render = static_cast<const RenderPassNode*>(node);
+        if (const auto transitions = render->barriers_before(); !transitions.empty()) {
+            rhi::BarrierBatch batch;
+            for (const auto& barrier : transitions) {
+                if (barrier.texture == nullptr) {
+                    return base::Status::failure(
+                        base::StatusCode::invalid_argument,
+                        "Renderer: pass transition requires a texture");
+                }
+                batch.textures.push_back(barrier);
+            }
+            if (auto status = list.barrier(batch); !status.ok()) {
+                return status;
+            }
+        }
         rhi::RenderPassDesc pass = render->explicit_desc() != nullptr
             ? *render->explicit_desc() : rhi::RenderPassDesc{};
         if (render->uses_swapchain()) {

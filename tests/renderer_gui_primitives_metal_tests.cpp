@@ -1,3 +1,4 @@
+#include "renderer_layer_composite.hpp"
 #include "renderer_native_test_utils.hpp"
 #include "truffle/renderer/frame_stream.hpp"
 #include "truffle/renderer/source_program.hpp"
@@ -55,7 +56,6 @@ shader::CompileRequest request(rhi::ShaderStage stage) {
     result.source = {"gui_primitives.metal", kShader};
     result.language = rhi::ShaderSourceLanguage::msl;
     result.target = rhi::ShaderTarget::metal_source;
-    result.allowExperimentalMetalGeneration = true;
     result.stage = stage;
     result.entryPoint = stage == rhi::ShaderStage::vertex ? "vertex_main" : "fragment_main";
     rhi::ShaderReflection reflection;
@@ -82,6 +82,83 @@ shader::CompileRequest request(rhi::ShaderStage stage) {
     }
     result.interfaceDeclaration = std::move(reflection);
     return result;
+}
+
+// Render-to-texture proof (#215): a writer fills a layer, a compositor samples it.
+constexpr const char* kLayerShader = R"(#include <metal_stdlib>
+using namespace metal;
+
+struct FullscreenOutput {
+    float4 position [[position]];
+};
+
+vertex FullscreenOutput fullscreen_vertex(uint id [[vertex_id]]) {
+    const float2 corner = float2((id << 1) & 2, id & 2);
+    FullscreenOutput result;
+    result.position = float4(corner * 2.0 - 1.0, 0.0, 1.0);
+    return result;
+}
+
+fragment float4 writer_fragment() {
+    return float4(1.0, 0.0, 0.0, 1.0);
+}
+
+fragment float4 composite_fragment(float4 position [[position]],
+                                   texture2d<float> layer [[texture(0)]],
+                                   sampler layerSampler [[sampler(0)]]) {
+    return layer.sample(layerSampler, position.xy / 16.0);
+}
+)";
+
+shader::CompileRequest layer_request(rhi::ShaderStage stage, const char* entry,
+                                     bool sampled = false) {
+    shader::CompileRequest result;
+    result.name = "Renderer render-to-texture proof";
+    result.source = {"layer.metal", kLayerShader};
+    result.language = rhi::ShaderSourceLanguage::msl;
+    result.target = rhi::ShaderTarget::metal_source;
+    result.stage = stage;
+    result.entryPoint = entry;
+    rhi::ShaderReflection reflection;
+    if (stage == rhi::ShaderStage::fragment) {
+        reflection.interfaces.push_back({stage, rhi::ShaderInterfaceDirection::output, 0,
+                                         "color", "vec4", "smooth"});
+    }
+    if (sampled) {
+        reflection.bindings = {
+            {.name = "layer", .stage = stage, .type = rhi::ResourceBindingType::texture,
+             .group = 0, .binding = 0},
+            {.name = "layerSampler", .stage = stage,
+             .type = rhi::ResourceBindingType::sampler, .group = 0, .binding = 1},
+        };
+    }
+    result.interfaceDeclaration = std::move(reflection);
+    return result;
+}
+
+void render_to_texture(rhi::Device& device) {
+    auto bindings = tests::make_layer_bindings(device);
+    renderer::PipelineCache programs(device);
+    renderer::Renderer renderer(device, &programs);
+    shader::Compiler compiler;
+    rhi::PipelineDesc writerState;
+    writerState.colorTargets = {{.format = rhi::TextureFormat::rgba8_unorm}};
+    writerState.dynamicState = rhi::DynamicState::scissor;
+    renderer::SourceProgram writer(programs, 1, writerState);
+    tests::require(writer.rebuild(compiler, {
+        .vertex = layer_request(rhi::ShaderStage::vertex, "fullscreen_vertex"),
+        .fragment = layer_request(rhi::ShaderStage::fragment, "writer_fragment"),
+    }));
+    rhi::PipelineDesc compositorState;
+    compositorState.layout = &bindings.pipelineLayout;
+    compositorState.colorTargets = {{.format = rhi::TextureFormat::rgba8_unorm}};
+    renderer::SourceProgram compositor(programs, 2, compositorState);
+    tests::require(compositor.rebuild(compiler, {
+        .vertex = layer_request(rhi::ShaderStage::vertex, "fullscreen_vertex"),
+        .fragment = layer_request(rhi::ShaderStage::fragment, "composite_fragment", true),
+    }));
+    tests::LayerComposite layer(device, renderer, bindings, 1, 2);
+    layer.run_proof();
 }
 
 void wait_graphics(rhi::Device& device, rhi::CommandList& list) {
@@ -290,6 +367,7 @@ int run() {
         }
         return x < 12 ? Pixel{255, 255, 255, 255} : Pixel{0, 255, 0, 255};
     });
+    render_to_texture(device);
     return 0;
 }
 

@@ -22,7 +22,6 @@ shader::CompileRequest request(rhi::ShaderStage stage) {
         std::string(TRUFFLE_MINIMUM_RENDERER_SHADER_DIR) + "/draw.metal"));
     result.language = rhi::ShaderSourceLanguage::msl;
     result.target = rhi::ShaderTarget::metal_source;
-    result.allowExperimentalMetalGeneration = true;
     result.stage = stage;
     result.entryPoint = stage == rhi::ShaderStage::vertex ? "vertex_main" : "fragment_main";
     result.sourceUnits = {"types.metal", "transform.metal", "lighting.metal"};

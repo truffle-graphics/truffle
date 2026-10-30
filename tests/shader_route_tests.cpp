@@ -141,7 +141,7 @@ int main() {
     check(nativeMsl != routes.end() && nativeMsl->stages.size() == 3 &&
               nativeMsl->vulkanTargets.empty() &&
               nativeMsl->metalTargets.size() == 1 &&
-              nativeMsl->experimental,
+              !nativeMsl->experimental,
           "Native MSL advertises exact stages and Metal configuration");
 #endif
 #if defined(TRUFFLE_TEST_METALLIB_COMPILER)
@@ -154,7 +154,7 @@ int main() {
               nativeLibrary->stages.size() == 3 &&
               nativeLibrary->vulkanTargets.empty() &&
               nativeLibrary->metalTargets.size() == 1 &&
-              nativeLibrary->experimental,
+              !nativeLibrary->experimental,
           "Offline metallib route advertises exact stages and Metal configuration");
 #endif
 #if defined(TRUFFLE_TEST_DXC)

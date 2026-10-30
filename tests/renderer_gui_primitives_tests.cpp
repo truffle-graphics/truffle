@@ -94,6 +94,22 @@ int main() {
         TRUFFLE_CHECK(!renderer.render(pass_with(target.value(), {inside})).ok());
     }
 
+    // Pass transitions: recorded before the pass; a missing texture is rejected.
+    {
+        ScissorCache cache(device, true);
+        renderer::Renderer renderer(device, &cache);
+        auto graph = pass_with(target.value(), {unclipped});
+        auto* pass = static_cast<renderer::RenderPassNode*>(graph.nodes().front().get());
+        pass->transition_before({.texture = &target.value(),
+                                 .oldLayout = rhi::TextureLayout::undefined,
+                                 .newLayout = rhi::TextureLayout::color_attachment});
+        TRUFFLE_CHECK(pass->barriers_before().size() == 1);
+        TRUFFLE_CHECK(renderer.render(graph).ok());
+        pass->transition_before({});
+        const auto status = renderer.render(graph);
+        TRUFFLE_CHECK(status.code == base::StatusCode::invalid_argument);
+    }
+
     // Frame pacing over one fence.
     TRUFFLE_CHECK(!renderer::FramePacer::create(device, 0).ok());
     auto pacerResult = renderer::FramePacer::create(device, 2);

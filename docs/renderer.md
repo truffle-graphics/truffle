@@ -226,6 +226,24 @@ checks every pixel of three paced frames: alpha blending over a clear color,
 atlas sampling, an atlas update after upload, clip rectangles (including a
 fully clipped batch), and rebuilt streamed geometry reusing a slot.
 
+### Pass transitions and render-to-texture (#215)
+
+Frame-graph resource usages only order passes; the Renderer does not track
+texture layouts. A pass that writes or samples a texture another pass produced
+states its transitions with `RenderPassNode::transition_before(rhi::TextureBarrier)`.
+The Renderer records them as one barrier batch immediately before that pass.
+A transition without a texture is rejected with `invalid_argument`. Layout
+choice (for example `color_attachment` before writing a layer, then
+`shader_read_only` before compositing it) stays with the caller, which also
+remembers a cached layer's current layout across frames.
+
+Shared exact-pixel proofs render a 16x16 layer, composite it by sampling,
+re-render it under a clip rectangle, then reuse it unchanged in a later frame:
+on Metal with native MSL under API/shader validation, and on Vulkan with
+GLSL-to-SPIR-V under the validation layer. Removing the compositor transition
+makes the Vulkan proof fail validation. A Null contract test covers recording
+and rejection.
+
 ## Lifetimes, threading and limits
 
 The device outlives the cache and Renderer. All cache operations (including
