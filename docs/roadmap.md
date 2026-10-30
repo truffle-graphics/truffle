@@ -52,8 +52,13 @@ Shader completion proceeds through bounded, independently validated phases:
    validation only. Logical/native entry identity preserves cross-target
    agreement. Scalar descriptor/one-to-one GL sampling limits are explicit;
    higher profiles and GLES native evidence are not claimed. Parent owns acceptance.
-4. **Native Metal inputs/libraries (#188), HLSL (#189), Slang and native module
-   imports (#190), WGSL (#191):** optional compiler routes with their own
+4. **Native MSL inputs/libraries (#188), active:** optional in-process Metal
+   source/reflection route, explicit ordered source-unit composition, and
+   separate optional offline `metal`/`metallib` output. Validate declared
+   observable interface fields and retain explicit assertions for unavailable
+   reflection. See the [native MSL evidence and limits](../src/shader/README.md#native-msl-source-and-libraries-188).
+   **HLSL (#189), done (PR #199)**; Slang and native module imports (#190),
+   WGSL (#191): remaining optional compiler routes require their own truthful
    validation and native evidence, not capability placeholders.
 5. **Shared behavior audit (#192):** composition, cache, rebuilding, and tools.
 6. **Completion audit (#193):** close #73 only after the required route,

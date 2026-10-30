@@ -72,6 +72,15 @@ its route exists, and configure never downloads it. Runtime packages do not
 acquire the compiler toolchain. Runtime source compilation is an explicit
 optional feature; production packages prefer offline variants.
 
+Native MSL compilation is an Apple-platform-only optional capability enabled
+with `TRUFFLE_SHADER_ENABLE_METAL_COMPILER`; it links the SDK's Metal and
+Foundation frameworks privately and introduces no vendored source or license
+bundle. `TRUFFLE_SHADER_ENABLE_METALLIB_COMPILER` additionally requires the
+locally installed Apple Metal Toolchain (`xcrun metal` and `xcrun metallib`).
+These Apple components are neither downloaded nor redistributed by Truffle.
+Prepared TSP consumers and all-off Shader builds do not acquire either
+framework/toolchain dependency.
+
 | Dependency | Pin | Upstream and license | Consumer and update policy |
 |---|---|---|---|
 | glslang | `16.5.0` / `a8d28bd082bff18ffbe80996e922b012f915cf07` | `KhronosGroup/glslang`; upstream `LICENSE.txt` contains BSD-2-Clause, BSD-3-Clause, MIT, and Apache-2.0 notices. | Private to `Truffle::Shader` when its adapter is enabled; shaderc and optional runtime clients share it. Static installs include its exported link closure; adapter-disabled prepared-package RHI/Renderer consumers remain compiler-free. No local patches. Update by reviewing release notes and licenses, advancing the submodule, then running deterministic compile, invalid-source, package/install, and native Vulkan consumers. |

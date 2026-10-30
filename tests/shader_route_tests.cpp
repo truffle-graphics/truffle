@@ -24,7 +24,11 @@ int main() {
     request.source = {"route.glsl", "#version 450\nvoid main(){ gl_Position=vec4(0); }\n"};
     const auto routes = shader::Compiler::routes();
     check(shader::Compiler::available() == !routes.empty(), "Availability means any enabled source route");
-    check(routes.empty() || routes.size() == 2 || routes.size() == 8, "Only implemented source routes are advertised");
+    std::set<std::pair<rhi::ShaderSourceLanguage, rhi::ShaderTarget>> routeKeys;
+    for (const auto& route : routes) {
+        check(routeKeys.emplace(route.language, route.target).second,
+              "Each implemented source/target route is advertised once");
+    }
 
     auto invalidRequest = request;
     bool resolved = false;
@@ -49,6 +53,13 @@ int main() {
     invalidRequest.vulkanTarget = {};
     invalidRequest.stage = static_cast<rhi::ShaderStage>(99);
     expect(invalidRequest, rhi::StatusCode::unsupported);
+    invalidRequest.stage = request.stage;
+    invalidRequest.sourceUnits = {"shared.glsl"};
+    expect(invalidRequest, rhi::StatusCode::unsupported);
+    invalidRequest.sourceUnits.clear();
+    invalidRequest.interfaceDeclaration = rhi::ShaderReflection{};
+    expect(invalidRequest, rhi::StatusCode::unsupported);
+    invalidRequest.interfaceDeclaration.reset();
 
     constexpr rhi::ShaderSourceLanguage languages[]{
         rhi::ShaderSourceLanguage::slang, rhi::ShaderSourceLanguage::hlsl,
@@ -80,6 +91,36 @@ int main() {
         return 0;
     }
     std::set<std::string> keys;
+#if defined(TRUFFLE_TEST_METAL_COMPILER)
+    const auto nativeMsl = std::find_if(
+        routes.begin(), routes.end(), [](const auto& route) {
+            return route.language == rhi::ShaderSourceLanguage::msl &&
+                   route.target == rhi::ShaderTarget::metal_source;
+        });
+    check(nativeMsl != routes.end() && nativeMsl->stages.size() == 3 &&
+              nativeMsl->vulkanTargets.empty() &&
+              nativeMsl->metalTargets.size() == 1 &&
+              nativeMsl->experimental,
+          "Native MSL advertises exact stages and Metal configuration");
+#endif
+#if defined(TRUFFLE_TEST_METALLIB_COMPILER)
+    const auto nativeLibrary = std::find_if(
+        routes.begin(), routes.end(), [](const auto& route) {
+            return route.language == rhi::ShaderSourceLanguage::msl &&
+                   route.target == rhi::ShaderTarget::metal_library;
+        });
+    check(nativeLibrary != routes.end() &&
+              nativeLibrary->stages.size() == 3 &&
+              nativeLibrary->vulkanTargets.empty() &&
+              nativeLibrary->metalTargets.size() == 1 &&
+              nativeLibrary->experimental,
+          "Offline metallib route advertises exact stages and Metal configuration");
+#endif
+    if (std::none_of(routes.begin(), routes.end(), [](const auto& route) {
+            return route.target == rhi::ShaderTarget::spirv;
+        })) {
+        return 0;
+    }
     for (const auto& route : routes) {
         if (route.target != rhi::ShaderTarget::spirv) continue;
         check(route.target == rhi::ShaderTarget::spirv &&

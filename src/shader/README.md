@@ -16,13 +16,20 @@ then reports `unsupported`.
 
 Enable `TRUFFLE_SHADER_ENABLE_GLSLANG=ON` to use the pinned GLSL/GLSL ES to
 Vulkan SPIR-V adapter. This does **not** require building shaderc.
-With the option off, `Compiler::routes()` is empty, `available()` is false and `compile()` returns
-`unsupported`; prepared Truffle Shader Packages (TSP, `.tsp`) still work through
-RHI and Renderer without linking a compiler. No language/compiler is fetched.
+With all compiler options off, `Compiler::routes()` is empty, `available()` is
+false and `compile()` returns `unsupported`; prepared Truffle Shader Packages
+(TSP, `.tsp`) still work through RHI and Renderer without linking a compiler.
+No language/compiler is fetched.
 An enabled install bundles glslang's static libraries and CMake package so
 installed `Truffle::Shader` consumers resolve its private static link closure.
 `Truffle::RHI` never links those libraries. Renderer can depend directly on the
 compiler-disabled Shader core without acquiring any compiler link dependency.
+
+`TRUFFLE_SHADER_ENABLE_METAL_COMPILER=ON` optionally enables in-process native
+MSL compilation on supported Apple runtimes; `TRUFFLE_SHADER_ENABLE_METALLIB_COMPILER=ON`
+adds offline library output and requires the installed Apple Metal Toolchain.
+These are private, separate capabilities; neither is required for prepared
+package consumers.
 
 `TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS=ON` adds real in-process SPIR-V validation.
 `TRUFFLE_SHADER_ENABLE_SPIRV_CROSS=ON` requires both glslang and that validator,
@@ -62,7 +69,9 @@ convenience test for any source route, useful to compiler-optional clients.
 | GLSL or GLSL ES, vertex/fragment/compute | macOS MSL 2.1 source | glslang + SPIRV-Tools + SPIRV-Cross | Experimental explicit opt-in; generated graphics and compute execute on Apple M3 Pro |
 | GLSL or GLSL ES, vertex/fragment | GLSL 410 core (macOS OpenGL 4.1) | same three optional adapters | Generated resource-backed graphics executes on macOS 4.1; compute rejected |
 | GLSL or GLSL ES, vertex/fragment | GLSL ES 300 | same three optional adapters | Emission and real glslang parse/link validation; **no native GLES execution evidence** |
-| Slang, HLSL, WGSL, MSL | None through Shader today | none enabled | Planned #188-#191 under #73; no adapter or capability advertised |
+| MSL, vertex/fragment/compute | macOS MSL 2.1 source | optional Apple Metal framework adapter | #188; requires macOS 26+ runtime reflection API and Metal device; exact M3 Pro graphics/compute readback |
+| MSL, vertex/fragment/compute | macOS metallib | optional Apple Metal framework adapter plus installed Metal Toolchain | #188; actual `metal`/`metallib` compile and exact M3 Pro graphics/compute readback |
+| Slang, HLSL, WGSL | Remaining outputs are route-specific | optional compiler adapters | Tracked #189-#191; not an all-input/all-output cross product |
 | SPIR-V, DXIL, Metal libraries, backend-native source | None through Shader today | none needed for assembly | Prepared TSP inputs, **not** source-compilation routes |
 
 Implemented typed `CompileRequest::vulkanTarget` configurations:
@@ -192,6 +201,105 @@ packaging and per-route native conformance remain completion gates under #73
 (baseline reflection #186 completed; shared behavior #192, final evidence audit #193).
 The completed #178-#181 foundations are not full Shader-module completion.
 
+### Native MSL source and libraries (#188)
+
+Native MSL authoring is a separate route from portable GLSL-to-MSL translation.
+It is disabled by default and adds no mandatory compiler dependency to Shader,
+RHI, Renderer or prepared-package consumers:
+
+| CMake option | Capability |
+| --- | --- |
+| `TRUFFLE_SHADER_ENABLE_METAL_COMPILER=ON` | Optional in-process Metal source compilation and reflection. Requires Apple frameworks, a Metal device, and macOS 26+ at runtime for the reflection API. |
+| `TRUFFLE_SHADER_ENABLE_METALLIB_COMPILER=ON` | Adds offline `metal`/`metallib` output. Requires the first option and the installed Apple Metal Toolchain (`xcrun --find metal` and `xcrun --find metallib`). |
+
+`Compiler::routes()` reports native source only when the runtime Metal/reflection
+capability exists; it reports the separate `metallib` target only when the
+offline tools are also executable. An SDK alone does not advertise an offline
+route. The current supported profile is macOS Metal 2.1, with vertex,
+fragment and compute entry points. Offline AIR is compiled for
+`air64-apple-macos13.0`; successful compilation is not a minimum-runtime claim
+for every library feature. No toolchain or SDK is fetched or redistributed.
+
+Every native request requires a typed `CompileRequest::interfaceDeclaration`
+(`rhi::ShaderReflection`). Fields exposed by `MTLFunction` and
+`MTLFunctionReflection` are checked against the selected entry point:
+
+- entry-point function stage;
+- active vertex input attribute names, locations and scalar/vector types when
+  Metal reports them;
+- reflected resource names, kind, access, array count and native index, with
+  remaps to the declared logical group/binding;
+- declared buffer minimum size against Metal's reflected data size, and push
+  ranges against the reserved `buffer(30)` size;
+- function-constant ID, name, type and required status.
+
+Metal does not expose logical group/binding, general fragment inputs, stage
+outputs, varying locations/interpolation, push-range layout, function-constant
+default bits, or the complete workgroup contract through this source reflection
+path. Those values remain explicit caller assertions in the typed declaration;
+the interface is still serialized through existing TSP reflection fields. On
+the current Apple runtime, fragment `stageInputAttributes` is absent, so those
+inputs are caller assertions as well. The adapter does not parse MSL to infer
+metadata. Compiler-visible changes that contradict observable declaration
+fields fail rather than producing a package.
+
+The initially supported resources are named scalar buffers, 2D float textures
+and scalar samplers. Buffer indices 0..15 remain reserved for vertex streams,
+16..29 are remapped resources, and 30 is reserved for push data. Texture arrays
+are accepted only when reflected consistently; sampler arrays, argument
+buffers, unsupported texture forms, unrepresented Metal resource kinds and
+resources that cannot be remapped fail explicitly. Function constants must be
+required in MSL; their typed default bits come from the declaration and RHI
+applies them unless a pipeline supplies an override. Unsupported or
+unobservable resource forms are never represented by fabricated reflection.
+
+Reusable source composition is an explicit ordered list, not a module language:
+
+```cpp
+request.language = truffle::rhi::ShaderSourceLanguage::msl;
+request.target = truffle::rhi::ShaderTarget::metal_source; // or metal_library
+request.stage = truffle::rhi::ShaderStage::vertex;
+request.entryPoint = "vertex_main";
+request.sourceUnits = {"shared/types.metal", "shared/lighting.metal"};
+request.interfaceDeclaration = typedReflection;
+request.allowExperimentalMetalGeneration = true;
+```
+
+Shader resolves each requested source unit through the same resolver/include
+roots on every attempt, in list order before the root. The root entry point
+connects the selected functions. Exact `#line` boundaries preserve source
+diagnostics; normalized defines are passed as source preamble and Metal owns
+macro/language processing. Unit order, requested/resolved identities, full
+contents, defines, include-root order, target profile, interface declaration
+and compiler identity/version contribute to the cache key and dependency
+records. A failed compile never replaces the last-good rebuild result.
+Nonempty `sourceUnits` and typed declarations are explicitly rejected by
+routes that do not implement them.
+
+Only the built-in `#include <metal_stdlib>` is accepted. Arbitrary user
+`#include`/`#import` resolution is not promised because the in-process Metal
+source API has no Shader `SourceResolver` callback. Compose reusable project
+code with `sourceUnits`; Metal performs the ordinary MSL preprocessor work
+inside each unit. This first route does not recursively resolve nested
+includes.
+
+`truffle-shaderc --source-unit FILE` is repeatable and uses the same ordered
+request field; `--interface-from PACKAGE` selects the exact entry/stage
+declaration (or the sole variant for that stage). `--target msl` emits source;
+`--target metallib` invokes the optional offline route. Both require
+`--allow-experimental-metal`, and both are validated in-process before
+packaging. In compiler-disabled/non-Apple builds, Shader and prepared TSP
+consumers remain compiler-free.
+
+Local validation used macOS 27.0.1 / Xcode 27.2, Apple Metal compiler
+32023.922 (`metalfe-32023.922.4`), and the installed matching `metallib` tool.
+On an Apple M3 Pro with Metal API/GPU validation enabled, composed source and
+offline-library packages each read exactly 256 RGBA `(64,64,32,255)` graphics
+pixels and compute values `10,12,14,16` (declared specialization default) /
+`15,18,21,24` (pipeline override). These are local native results, not
+cross-machine or older-OS guarantees.
+
+## On-demand compilation and reload
 ## On-demand compilation and reload
 
 ```cpp

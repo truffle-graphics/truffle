@@ -12,6 +12,17 @@ include(TruffleOptions)
 include(TruffleFormatting)
 include(TruffleInstall)
 
+if(TRUFFLE_SHADER_ENABLE_METAL_COMPILER OR
+   TRUFFLE_SHADER_ENABLE_METALLIB_COMPILER)
+    if(NOT APPLE)
+        message(FATAL_ERROR "Native MSL compilation is available only on Apple platforms")
+    endif()
+    enable_language(OBJCXX)
+    set(CMAKE_OBJCXX_STANDARD 20)
+    set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
+    set(CMAKE_OBJCXX_EXTENSIONS OFF)
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)

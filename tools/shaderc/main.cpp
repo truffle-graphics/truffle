@@ -38,7 +38,9 @@ struct Arguments {
     std::string compilerVersion;
     std::string compilerRevision;
     std::string append;
+    std::string interfacePackage;
     std::vector<std::string> includeRoots;
+    std::vector<std::string> sourceUnits;
     std::vector<truffle::rhi::ShaderDefine> defines;
     truffle::shader::VulkanTarget vulkanTarget;
     bool targetSettings = false;
@@ -60,6 +62,7 @@ void usage(std::ostream& output) {
            "[--compiler-revision REV] [--entry NAME] "
            "[--kind precompiled|native|generated] [--append PACKAGE] "
            "[--compile [--include-root DIR]... [--define NAME[=VALUE]]... "
+           "[--source-unit FILE]... [--interface-from PACKAGE] "
            "[--vulkan-version VERSION] [--spirv-version VERSION] "
            "[--msl-version 2.1|--glsl-version 410|--glsl-es-version 300] "
            "[--allow-experimental-metal]]\n"
@@ -75,7 +78,11 @@ void usage(std::ostream& output) {
            "Compilation computes source/dependency hashes and compiler identity; "
            "a supplied source-hash is verified. No toolchains are fetched.\n"
         << "--routes lists enabled source compilation, not package assembly "
-           "or native GPU support. Target versions default to Vulkan 1.1/SPIR-V 1.3.\n";
+           "or native GPU support. GLSL defaults to Vulkan 1.1/SPIR-V 1.3; "
+           "native MSL is macOS Metal 2.1.\n"
+        << "--source-unit composes an ordered MSL source unit before the root. "
+        << "--interface-from reuses typed reflection from a TSP variant with "
+        << "the requested stage (and prefers an exact entry-point match).\n";
 }
 
 [[nodiscard]] Result<Arguments> parse_arguments(int argc, char** argv) {
@@ -127,6 +134,12 @@ void usage(std::ostream& output) {
         } else if (key == "--include-root") {
             if (value.empty()) return invalid("include root must not be empty");
             result.includeRoots.push_back(value);
+        } else if (key == "--source-unit") {
+            if (value.empty()) return invalid("source unit must not be empty");
+            result.sourceUnits.push_back(value);
+        } else if (key == "--interface-from") {
+            if (value.empty()) return invalid("interface package must not be empty");
+            result.interfacePackage = value;
         } else if (key == "--define") {
             const auto equals = value.find('=');
             result.defines.push_back({value.substr(0, equals),
@@ -165,10 +178,16 @@ void usage(std::ostream& output) {
          (result.sourceHash.empty() || result.compilerName.empty() || result.compilerVersion.empty()))) {
         return invalid("required package arguments are missing");
     }
-    if (!result.nativeVersionTarget.empty() && result.nativeVersionTarget != result.target)
+    const bool nativeMetalTarget =
+        result.nativeVersionTarget == "msl" &&
+        (result.target == "msl" || result.target == "metallib");
+    if (!result.nativeVersionTarget.empty() && !nativeMetalTarget &&
+        result.nativeVersionTarget != result.target)
         return invalid("native version option disagrees with target");
-    if (!result.compile && (!result.includeRoots.empty() || !result.defines.empty() || result.targetSettings))
-        return invalid("include roots, defines and target settings require --compile");
+    if (!result.compile && (!result.includeRoots.empty() || !result.sourceUnits.empty() ||
+                            !result.interfacePackage.empty() || !result.defines.empty() ||
+                            result.targetSettings))
+        return invalid("include roots, source units, interface package, defines and target settings require --compile");
     if (result.compile && (!result.compilerName.empty() || !result.compilerVersion.empty() ||
                            !result.compilerRevision.empty()))
         return invalid("--compile derives compiler identity; do not override it");
@@ -292,18 +311,27 @@ int main(int argc, char** argv) {
         std::cout << "source-routes=" << routes.size() << '\n';
         for (const auto& route : routes) {
             for (const auto stage : route.stages) {
-                for (const auto target : route.vulkanTargets) {
+                const auto print = [&](const shader::VulkanTarget* target) {
                     std::cout << "source=" << rhi::shader_source_language_name(route.language)
                               << " target=" << rhi::shader_target_name(route.target)
                               << " stage=" << (stage == ShaderStage::vertex ? "vertex" :
-                                              stage == ShaderStage::fragment ? "fragment" : "compute")
-                              << " vulkan=" << shader::vulkan_version_name(target.environment)
-                              << " spirv=" << shader::spirv_version_name(target.spirv);
+                                              stage == ShaderStage::fragment ? "fragment" : "compute");
+                    if (target != nullptr) {
+                        std::cout << " vulkan="
+                                  << shader::vulkan_version_name(target->environment)
+                                  << " spirv="
+                                  << shader::spirv_version_name(target->spirv);
+                    }
                     if (!route.metalTargets.empty()) std::cout << " msl=macos-2.1";
                     if (!route.glslTargets.empty()) std::cout << " glsl=410-core";
                     if (!route.glslEsTargets.empty()) std::cout << " glsl-es=300-es";
                     if (route.experimental) std::cout << " experimental";
                     std::cout << '\n';
+                };
+                if (route.vulkanTargets.empty()) {
+                    print(nullptr);
+                } else {
+                    for (const auto target : route.vulkanTargets) print(&target);
                 }
             }
         }
@@ -452,8 +480,46 @@ int main(int argc, char** argv) {
         request.language = languageResult.value();
         request.vulkanTarget = arguments.vulkanTarget;
         request.allowExperimentalMetalGeneration = arguments.experimentalMetal;
+        request.sourceUnits = arguments.sourceUnits;
         request.includeRoots = arguments.includeRoots;
         request.defines = arguments.defines;
+        if (!arguments.interfacePackage.empty()) {
+            auto interfaceBytes = read_file(arguments.interfacePackage);
+            if (!interfaceBytes.ok()) {
+                std::cerr << interfaceBytes.status().message << '\n';
+                return 2;
+            }
+            auto interfacePackage = rhi::ShaderPackage::load(
+                interfaceBytes.value(),
+                {.allowExperimentalMetalGeneration =
+                     arguments.experimentalMetal});
+            if (!interfacePackage.ok()) {
+                std::cerr << interfacePackage.status().message << '\n';
+                return 2;
+            }
+            const auto& variants = interfacePackage.value().desc().variants;
+            const ShaderVariantDesc* selected = nullptr;
+            const ShaderVariantDesc* onlyStageVariant = nullptr;
+            std::size_t stageVariantCount = 0;
+            for (const auto& variant : variants) {
+                if (variant.stage != stageResult.value()) continue;
+                ++stageVariantCount;
+                onlyStageVariant = &variant;
+                if (variant.entryPoint == arguments.entry) {
+                    selected = &variant;
+                    break;
+                }
+            }
+            if (selected == nullptr && stageVariantCount == 1) {
+                selected = onlyStageVariant;
+            }
+            if (selected == nullptr) {
+                std::cerr << "interface package must contain one unambiguous "
+                             "variant for the requested stage/entry\n";
+                return 2;
+            }
+            request.interfaceDeclaration = selected->reflection;
+        }
         shader::Compiler compiler;
         auto compiled = compiler.compile(request);
         if (!compiled.ok()) {

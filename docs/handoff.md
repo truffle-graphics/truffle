@@ -7,6 +7,55 @@ AI work that reaches a commit must update this handoff before that commit.
 Promote durable decisions into project context, architecture, roadmap, or ADRs
 rather than growing a historical transcript here.
 
+## Native MSL Inputs And Libraries (#188, Active)
+
+- Added optional `TRUFFLE_SHADER_ENABLE_METAL_COMPILER` in-process native MSL
+  route and the separate `TRUFFLE_SHADER_ENABLE_METALLIB_COMPILER` offline
+  `metal`/`metallib` route. Both are off by default; the latter requires the
+  former and an installed Apple Metal Toolchain. Shader remains independent of
+  Metal backend and Renderer; optional frameworks/tool discovery are private.
+- Native requests require typed `CompileRequest::interfaceDeclaration`
+  (`rhi::ShaderReflection`). macOS 26+ `MTLFunction`/`MTLFunctionReflection`
+  validates function stage, vertex attribute name/location/type, resource
+  names/kind/access/count/index and buffer data size, push-buffer capacity, and
+  function-constant identity/type/required status. Metal-unobservable fields
+  (logical binding slots, fragment IO/output interpolation, push layout,
+  specialization defaults and workgroup contract) remain caller assertions.
+  Unsupported argument buffers, unrepresented kinds and texture/resource forms
+  fail rather than being parsed or guessed.
+- `CompileRequest::sourceUnits` is an explicit ordered list of reusable source
+  files resolved on every attempt with the existing resolver/include roots,
+  assembled before the root as one Metal translation unit with `#line` names.
+  No new shader syntax or MSL parser is introduced. Metal owns macro processing;
+  `<metal_stdlib>` is the only supported include, and arbitrary user includes
+  are rejected. Shared compiler dispatch explicitly rejects this field on
+  non-MSL routes. shaderc exposes repeatable `--source-unit FILE` and
+  `--interface-from PACKAGE`.
+- Source order, requested/resolved identities, full content, defines, include
+  roots, target/profile, typed declaration and compiler identity/version are
+  cache inputs. Dependencies are resolved on each attempt and failures preserve
+  last-good rebuild results. TSP codec/schema remains unchanged at unreleased
+  `1.0`.
+- Installed local toolchain: macOS 27.0.1, Xcode 27.2, Metal 32023.922
+  (`metalfe-32023.922.4`), matching `metallib`; offline AIR target
+  `air64-apple-macos13.0`. Runtime reflection route requires macOS 26+ and a
+  Metal device. This is a local toolchain observation, not an older-OS or
+  cross-machine promise.
+- On Apple M3 Pro with Metal API/GPU validation: composed source and offline
+  metallib both produced exact 256-pixel RGBA `(64,64,32,255)` graphics
+  readback and compute `10,12,14,16` (declared default) / `15,18,21,24`
+  (override). Focused native/route/CLI tests pass; shaderc smoke compiles both
+  source and metallib through `--source-unit` and `--interface-from`.
+- Latest develop is `5852204c9f49c933c6a6fbbd6e1b3b560ac93bac` (#199 HLSL).
+  Before delivery merge `origin/develop` normally into this MSL branch and
+  preserve `HlslShaderModel` plus DXC/CMake/CLI integration. Shared
+  `compiler_inputs.hpp` should be reused where appropriate; nonempty
+  `sourceUnits` must remain explicitly unsupported on DXC and all other routes.
+  Do not undo the SPIR-V `DrawParameters` capability guard from Slang work.
+- No commit or PR has been made yet. Parent owns review/merge/tracking; #188
+  remains active until accepted. No TSP version bump, migration, legacy reader,
+  or Shader-module completion claim.
+
 ## Portable Shader Targets (#187, Ready For Parent Review)
 
 - **Independent review fixes on PR #197:** MSL translation now checks all seven
