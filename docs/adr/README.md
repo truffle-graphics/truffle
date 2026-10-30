@@ -29,3 +29,7 @@ Architecture decisions that need long-term tradeoff history belong here.
 - `0011-rhi-1-replacement-contract.md` adopts the breaking RHI 1 object,
   dispatch, result, threading, lifetime, dependency, shader, and evidence-based
   backend maturity direction.
+- `0012-app-defined-render-data.md` refines ADR 0004: fixed renderer concepts
+  (mesh, buffer, texture, program, pass, view, draw) stay fixed, while
+  per-object data, its interpretation, lights and materials are
+  application-defined and matched to shader reflection.
