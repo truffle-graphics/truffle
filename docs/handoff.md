@@ -3,6 +3,20 @@
 Use this document as Truffle's rolling cross-machine handoff. Keep it useful to
 a human resuming work and to a fresh AI session reading the repository.
 
+## Native MSL parent acceptance (#188)
+
+- Parent reviewed the emitted-metallib reflection, pre-cache native dependency
+  validation, process isolation/cleanup, push access and CLI declaration fixes.
+  The accumulated all-provider warning-clean build passes 29 focused
+  Shader/tool/native/installed-consumer and coupled Metal checks.
+- Compiler-disabled package, rebuild, route and installed-consumer checks
+  retain isolation. The route-smoke assertion now matches the explicit
+  unavailable-route diagnostic; its corrected all-off branch was verified
+  against the final compiler-disabled executable.
+- PR #201 still requires the parent's exact-head merge and issue/Project
+  reconciliation. Shared mechanisms #192 and final audit #193 remain open;
+  no Shader-complete or Renderer-resumption claim is made.
+
 ## WGSL/Tint source routes — issue #191 (merged in PR #198)
 
 - Integration update: HLSL PR #199 was merged in signed merge commit
