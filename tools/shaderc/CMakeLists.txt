@@ -4,6 +4,7 @@ target_compile_features(truffle-shaderc PRIVATE cxx_std_20)
 truffle_target_warnings(truffle-shaderc)
 
 if(TRUFFLE_SHADERC_ENABLE_GLSLANG)
+    if(NOT TARGET glslang)
     set(_truffle_glslang_dir "${PROJECT_SOURCE_DIR}/vendor/glslang")
     if(NOT EXISTS "${_truffle_glslang_dir}/CMakeLists.txt")
         message(FATAL_ERROR
@@ -26,6 +27,7 @@ if(TRUFFLE_SHADERC_ENABLE_GLSLANG)
     # and consumer artifact names aligned for MinGW and other Windows generators.
     set_target_properties(glslang SPIRV glslang-default-resource-limits
         PROPERTIES DEBUG_POSTFIX "")
+    endif()
 
     target_sources(truffle-shaderc PRIVATE glslang_compiler.cpp)
     target_link_libraries(truffle-shaderc PRIVATE

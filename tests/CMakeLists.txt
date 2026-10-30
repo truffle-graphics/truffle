@@ -1,4 +1,8 @@
 add_executable(truffle_encom_tests encom_contract_tests.cpp)
+add_executable(truffle_shader_compiler_tests shader_compiler_tests.cpp)
+target_link_libraries(truffle_shader_compiler_tests PRIVATE truffle_shader)
+truffle_target_warnings(truffle_shader_compiler_tests)
+add_test(NAME truffle_shader_compiler_tests COMMAND truffle_shader_compiler_tests)
 target_link_libraries(truffle_encom_tests PRIVATE truffle_encom)
 add_test(NAME truffle_encom_tests COMMAND truffle_encom_tests)
 

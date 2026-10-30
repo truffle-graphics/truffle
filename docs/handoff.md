@@ -7,6 +7,36 @@ AI work that reaches a commit must update this handoff before that commit.
 Promote durable decisions into project context, architecture, roadmap, or ADRs
 rather than growing a historical transcript here.
 
+## Shader Library (#178)
+
+- Added independently linkable `truffle_shader` / `Truffle::Shader`, public
+  `truffle::shader` request/result, synchronous source resolver, cache and
+  rebuild API. Allowed dependencies are RHI/Base and optional pinned glslang;
+  no Renderer/backend/tool/EnCom dependency. See `src/shader/README.md`.
+- `TRUFFLE_SHADER_ENABLE_GLSLANG=ON` works with shaderc disabled. The initial
+  real route is GLSL/GLSL ES to Vulkan 1.1 SPIR-V 1.3, using glslang's own
+  preprocessor for nested includes/defines. Results own an in-memory TSP,
+  genuine dependency SHA-256 values, compiler identity, diagnostics and
+  supported reflection. Cache keys cover effective configuration, target,
+  compiler revision and transitive source contents; failures remain errors,
+  with last-good state separately retained.
+- Reflection covers declared uniform/storage buffers (including runtime-sized
+  tails), separate images/samplers and fixed image/sampler arrays, scalar/vector
+  IO and literal workgroups. Unsupported combined samplers, push constants,
+  specialization and complex IO fail explicitly. TSP 1.0 schema is unchanged;
+  full directional IO is in the compilation result, pipeline-edge IO in TSP.
+- Verified warning-as-error Apple Silicon Ninja Debug build and focused
+  compiler/package/existing-tool tests (5/5); compiler-disabled compiler/package/tool tests
+  (4/4); real installed static consumers with compiler on and off. Enabled
+  installs bundle glslang's export/link closure; prepared Renderer/RHI link
+  lines contain only Renderer/RHI/Base. Architecture guard passes.
+- Compiler instances are single-thread-owned; independent instances are tested
+  concurrently, with one serialized glslang process lifetime. No file watcher
+  or GPU hot-reload publication is owned here. Native Vulkan/Renderer adoption
+  remains the separately tracked integration slice (#181), not a new maturity
+  claim. Next: #180 makes shaderc a thin shared-library client and completes
+  TSP naming; broader compiler routes remain #73 followups.
+
 ## Current Focus
 
 The Apple Silicon macOS baseline is complete: Metal conformance audit (#69,

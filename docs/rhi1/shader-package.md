@@ -4,6 +4,12 @@
 canonical manifest plus target blobs and can be created, serialized, loaded,
 capability-checked, and selected without a compiler dependency.
 
+The independent `Truffle::Shader` library optionally compiles configured
+multi-file GLSL/GLSL ES directly into an in-memory Truffle Shader Package
+(TSP, `.tsp`). It owns dependency tracking, supported reflection, compilation
+caching and explicit rebuild state; Renderer owns GPU object lifetimes and
+replacement. See [the Shader API](../../src/shader/README.md).
+
 `truffle-shaderc` is an optional host tool. Its dependency-free path assembles
 precompiled or backend-native variants. Its separately enabled pinned glslang
 route compiles GLSL and GLSL ES to SPIR-V. Both paths record authoring-language
@@ -53,13 +59,14 @@ trailing data.
 
 ## Compilation Policy
 
-Offline binaries are the production default. Runtime compilation is optional,
-capability-reported, and backend-local.
+Prepared packages remain compiler-free. Offline and on-demand runtime source
+compilation share the optional Shader library; native backend compilation is a
+separate capability-reported route.
 
 Compilation routes may use pinned Slang, DXC, glslang, SPIR-V Tools,
 SPIRV-Cross, and Tint components. Glslang is linked only by the explicitly
-enabled offline GLSL route and never by the runtime or dependency-free assembly
-configuration. Slang is one authoring route, not Truffle's
+enabled Shader adapter (`TRUFFLE_SHADER_ENABLE_GLSLANG`) and never by RHI,
+backends or prepared-package Renderer consumers. Slang is one authoring route, not Truffle's
 mandatory shader language. Generated Metal and WGSL variants are rejected by
 default and require an explicit experimental package option; the CLI does not
 expose that opt-in.
