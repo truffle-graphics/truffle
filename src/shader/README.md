@@ -67,8 +67,17 @@ policy (including local/system fallback). Keep its identities/content stable
 within one attempt. Resolution is snapshotted for the parse after preprocessing.
 Nested/reused includes are supported, missing dependencies and active include
 cycles fail with diagnostics, and nesting is bounded to 64.
+Include roots are search paths, **not an access-control boundary**: the default
+filesystem resolver can follow absolute paths, `..`, and symlinks outside those
+roots. Hosts compiling untrusted source must supply a resolver that enforces
+their own allowed-source policy; this module does not sandbox filesystem access.
 Composition uses ordinary GLSL functions, include guards, and preprocessor
 defines; this is not a custom module language or preprocessor.
+
+`Compilation::diagnostics` retains the bounded compiler log (up to 16 KiB).
+The diagnostic copied into TSP is limited to its first 4096 bytes, respecting
+the package's per-message limit without turning successful compilation into a
+packaging failure.
 
 Keys are SHA-256 over unambiguous length-framed effective inputs: adapter
 identity, pinned compiler version/revision, fixed target/environment/resources,

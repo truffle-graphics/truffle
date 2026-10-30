@@ -29,6 +29,10 @@ add_executable(truffle_renderer_tests render_flow_tests.cpp)
 target_link_libraries(truffle_renderer_tests PRIVATE truffle_backend_null truffle_renderer)
 add_test(NAME truffle_renderer_tests COMMAND truffle_renderer_tests)
 
+add_executable(truffle_renderer_program_tests renderer_program_tests.cpp)
+target_link_libraries(truffle_renderer_program_tests PRIVATE truffle_backend_null truffle_renderer)
+add_test(NAME truffle_renderer_program_tests COMMAND truffle_renderer_program_tests)
+
 add_executable(truffle_advanced_render_flow_tests advanced_render_flow_tests.cpp)
 target_link_libraries(truffle_advanced_render_flow_tests PRIVATE truffle_backend_null truffle_renderer)
 add_test(NAME truffle_advanced_render_flow_tests COMMAND truffle_advanced_render_flow_tests)
@@ -56,6 +60,20 @@ add_test(NAME truffle_frame_ring_tests COMMAND truffle_frame_ring_tests)
 add_executable(truffle_encom_render_adapter_tests encom_render_adapter_tests.cpp)
 target_link_libraries(truffle_encom_render_adapter_tests PRIVATE truffle_encom_renderer truffle_backend_null)
 add_test(NAME truffle_encom_render_adapter_tests COMMAND truffle_encom_render_adapter_tests)
+
+if(APPLE AND TRUFFLE_BUILD_BACKEND_METAL)
+    add_executable(truffle_renderer_metal_tests renderer_metal_tests.cpp)
+    target_link_libraries(truffle_renderer_metal_tests PRIVATE truffle_backend_metal truffle_renderer)
+    target_compile_definitions(truffle_renderer_metal_tests PRIVATE
+        "TRUFFLE_RENDERER_FIXTURE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/fixtures/renderer\""
+        "TRUFFLE_RENDERER_PACKAGE_OUTPUT_DIR=\"${CMAKE_CURRENT_BINARY_DIR}/renderer-native-fixtures\"")
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/renderer-native-fixtures")
+    add_test(NAME truffle_renderer_metal_tests COMMAND truffle_renderer_metal_tests)
+    set_tests_properties(truffle_renderer_metal_tests PROPERTIES
+        LABELS "native-smoke;validation;renderer"
+        TIMEOUT 60
+        ENVIRONMENT "MTL_DEBUG_LAYER=1;MTL_SHADER_VALIDATION=1;METAL_DEVICE_WRAPPER_TYPE=1")
+endif()
 
 if(TRUFFLE_BUILD_BACKEND_METAL)
     add_executable(truffle_metal_tests metal_backend_tests.cpp)

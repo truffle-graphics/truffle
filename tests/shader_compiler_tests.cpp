@@ -181,4 +181,30 @@ void main() { color=vec4(1); }
     check(warned.ok() && !warned.value().diagnostics.empty() &&
           !warned.value().package.desc().diagnostics.empty(),
           "Successful compiler diagnostics retained in result and TSP");
+    warning.source = {"many-warnings.vert", "#version 450\n"};
+    for (int i = 0; i < 100; ++i) {
+        warning.source.text += "#extension GL_TRUFFLE_missing_extension_" +
+                               std::to_string(i) + " : warn\n";
+    }
+    warning.source.text += "void main(){ gl_Position=vec4(0); }\n";
+    shader::RebuildState noisyReload;
+    auto noisy = noisyReload.rebuild(compiler, warning);
+    if (!noisy.ok()) std::cerr << noisy.status().message << '\n';
+    check(noisy.ok(), "Many compiler warnings must not fail successful compilation/rebuild");
+    check(noisy.value().package.desc().diagnostics.size() == 1 &&
+          rhi::ShaderPackage::load(noisy.value().package.bytes()).ok(),
+          "Warning-heavy result creates a loadable package with one diagnostic");
+    const auto& fullLog = noisy.value().diagnostics;
+    const auto& packagedLog = noisy.value().package.desc().diagnostics.front().message;
+    check(fullLog.size() > 4096 &&
+          fullLog.find("GL_TRUFFLE_missing_extension_99") != std::string::npos,
+          "Compilation retains warnings beyond the package diagnostic limit");
+    check(packagedLog.size() == 4096 && packagedLog == fullLog.substr(0, 4096),
+          "Only the packaged diagnostic is truncated to the TSP limit");
+    check(noisyReload.last_good() && noisyReload.last_good()->diagnostics == fullLog,
+          "Warning-heavy successful rebuild publishes its last-good result");
+    auto noisyHit = noisyReload.rebuild(compiler, warning);
+    check(noisyHit.ok() && noisyHit.value().cacheHit &&
+          noisyHit.value().diagnostics == fullLog,
+          "Warning-heavy successful compilation enters the cache");
 }

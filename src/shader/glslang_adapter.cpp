@@ -387,7 +387,7 @@ rhi::Result<Compilation> compile_glslang(const CompileRequest& request,
             std::string{rhi::shader_target_name(request.target)} + ":" +
                 std::to_string(static_cast<int>(request.stage)) + ":" +
                 request.entryPoint + ":" + variant.permutation,
-            result.diagnostics});
+            result.diagnostics.substr(0, 4096)});
     }
     desc.variants.push_back(std::move(variant));
     auto package = rhi::ShaderPackage::create(std::move(desc));

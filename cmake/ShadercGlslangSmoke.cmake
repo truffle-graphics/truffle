@@ -234,3 +234,28 @@ if(_invalid_result EQUAL 0 OR NOT _invalid_error MATCHES "glslang")
     message(FATAL_ERROR
         "invalid GLSL did not return compiler diagnostics: ${_invalid_output}${_invalid_error}")
 endif()
+
+set(_warnings "${TRUFFLE_SHADERC_TEST_DIR}/many-warnings.vert")
+set(_warnings_package "${TRUFFLE_SHADERC_TEST_DIR}/many-warnings.tsp")
+file(WRITE "${_warnings}" "#version 450\n")
+foreach(_index RANGE 0 99)
+    file(APPEND "${_warnings}"
+        "#extension GL_TRUFFLE_missing_extension_${_index} : warn\n")
+endforeach()
+file(APPEND "${_warnings}" "void main(){ gl_Position=vec4(0); }\n")
+execute_process(
+    COMMAND "${TRUFFLE_SHADERC}" --compile --name many-warnings --target spirv
+        --stage vertex --source-language glsl --input "${_warnings}"
+        --output "${_warnings_package}"
+    RESULT_VARIABLE _warnings_result
+    OUTPUT_VARIABLE _warnings_output
+    ERROR_VARIABLE _warnings_error)
+string(LENGTH "${_warnings_error}" _warnings_length)
+if(NOT _warnings_result EQUAL 0 OR _warnings_length LESS_EQUAL 4096)
+    message(FATAL_ERROR
+        "warning-heavy GLSL must compile and retain diagnostics beyond 4 KiB: "
+        "${_warnings_output}${_warnings_error}")
+endif()
+execute_process(
+    COMMAND "${TRUFFLE_SHADERC}" --inspect "${_warnings_package}"
+    COMMAND_ERROR_IS_FATAL ANY)
