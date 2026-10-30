@@ -1,4 +1,5 @@
 #include "truffle/rhi/shader_package.hpp"
+#include "shader_metadata.hpp"
 
 #include <algorithm>
 #include <array>
@@ -209,7 +210,7 @@ template <typename T, typename Read>
 }
 
 [[nodiscard]] auto interface_key(const ShaderInterfaceVariable& value) {
-    return std::tuple{static_cast<std::uint8_t>(value.stage), value.location,
+    return std::tuple{static_cast<std::uint8_t>(value.stage), value.direction, value.location,
                       value.name, value.type, value.interpolation};
 }
 
@@ -226,26 +227,35 @@ template <typename T, typename Read>
            lhs.minimumSize == rhs.minimumSize && lhs.readOnly == rhs.readOnly;
 }
 
-[[nodiscard]] std::string_view interface_type(std::string_view type) noexcept {
-    if (type == "float2") return "vec2";
-    if (type == "float3") return "vec3";
-    if (type == "float4") return "vec4";
-    if (type == "int2") return "ivec2";
-    if (type == "int3") return "ivec3";
-    if (type == "int4") return "ivec4";
-    if (type == "uint2") return "uvec2";
-    if (type == "uint3") return "uvec3";
-    if (type == "uint4") return "uvec4";
-    return type;
-}
-
-[[nodiscard]] std::string_view interface_interpolation(std::string_view value) noexcept {
-    return value.empty() || value == "perspective" ? std::string_view{"smooth"} : value;
+[[nodiscard]] auto interface_interpolation(std::string_view value) noexcept {
+    const auto original = value;
+    std::uint8_t mode = 0;
+    bool centroid = false, sample = false, explicitMode = false;
+    while (!value.empty()) {
+        const auto begin = value.find_first_not_of(" \t\r\n");
+        if (begin == std::string_view::npos) break;
+        value.remove_prefix(begin);
+        const auto end = value.find_first_of(" \t\r\n");
+        const auto token = value.substr(0, end);
+        if (token == "centroid") centroid = true;
+        else if (token == "sample") sample = true;
+        else if (!explicitMode && (token == "smooth" || token == "perspective" ||
+                                   token == "flat" || token == "noperspective")) {
+            mode = token == "flat" ? 1 : token == "noperspective" ? 2 : 0;
+            explicitMode = true;
+        } else {
+            return std::tuple{original, std::uint8_t{0}, false, false};
+        }
+        if (end == std::string_view::npos) break;
+        value.remove_prefix(end);
+    }
+    return std::tuple{std::string_view{}, mode, centroid, sample};
 }
 
 [[nodiscard]] bool reflection_equal(const ShaderReflection& lhs,
                                     const ShaderReflection& rhs) noexcept {
     if (lhs.bindings.size() != rhs.bindings.size() ||
+        lhs.workgroupSpecializationIds != rhs.workgroupSpecializationIds ||
         lhs.pushConstants != rhs.pushConstants ||
         lhs.specializationConstants.size() != rhs.specializationConstants.size() ||
         lhs.interfaces.size() != rhs.interfaces.size() ||
@@ -268,15 +278,15 @@ template <typename T, typename Read>
     for (std::size_t index = 0; index < lhs.interfaces.size(); ++index) {
         const auto& a = lhs.interfaces[index];
         const auto& b = rhs.interfaces[index];
-        if (a.stage != b.stage || a.location != b.location ||
-            interface_type(a.type) != interface_type(b.type) ||
+        if (a.stage != b.stage || a.direction != b.direction || a.location != b.location ||
+            detail::interface_type(a.type) != detail::interface_type(b.type) ||
             interface_interpolation(a.interpolation) != interface_interpolation(b.interpolation))
             return false;
     }
     return true;
 }
 
-[[nodiscard]] Status normalize_reflection(ShaderReflection& reflection) {
+[[nodiscard]] Status normalize_reflection(ShaderReflection& reflection, ShaderStage stage) {
     std::sort(reflection.bindings.begin(), reflection.bindings.end(),
               [](const auto& lhs, const auto& rhs) {
                   return binding_key(lhs) < binding_key(rhs);
@@ -338,14 +348,11 @@ template <typename T, typename Read>
               [](const auto& lhs, const auto& rhs) {
                   return interface_key(lhs) < interface_key(rhs);
               });
-    for (std::size_t index = 1; index < reflection.interfaces.size(); ++index) {
-        const auto& previous = reflection.interfaces[index - 1];
-        const auto& current = reflection.interfaces[index];
-        if (previous.stage == current.stage &&
-            previous.location == current.location) {
-            return invalid("shader reflection has duplicate interface locations");
-        }
-    }
+    if (auto status = detail::validate_interfaces(stage, reflection.interfaces); !status.ok())
+        return status;
+    if (auto status = detail::validate_workgroup(stage, reflection.requiredWorkgroupSize,
+            reflection.workgroupSpecializationIds, reflection.specializationConstants); !status.ok())
+        return status;
 
     if (reflection.requiredWorkgroupSize.width == 0 ||
         reflection.requiredWorkgroupSize.height == 0 ||
@@ -565,7 +572,7 @@ template <typename T, typename Read>
                 StatusCode::unsupported,
                 "generated WGSL shader variants are experimentally gated");
         }
-        const auto status = normalize_reflection(variant.reflection);
+        const auto status = normalize_reflection(variant.reflection, variant.stage);
         if (!status.ok()) {
             return status;
         }
@@ -652,6 +659,7 @@ void write_reflection(Writer& writer, const ShaderReflection& value) {
     write_vector(writer, value.interfaces,
                  [](Writer& output, const ShaderInterfaceVariable& variable) {
                      write_enum(output, variable.stage);
+                     write_enum(output, variable.direction);
                      output.u32(variable.location);
                      output.string(variable.name);
                      output.string(variable.type);
@@ -663,6 +671,10 @@ void write_reflection(Writer& writer, const ShaderReflection& value) {
     writer.u32(value.preferredWorkgroupSize.width);
     writer.u32(value.preferredWorkgroupSize.height);
     writer.u32(value.preferredWorkgroupSize.depth);
+    for (const auto& id : value.workgroupSpecializationIds) {
+        writer.u8(id.has_value() ? 1 : 0);
+        if (id) writer.u32(*id);
+    }
 }
 
 [[nodiscard]] bool read_reflection(Reader& reader, ShaderReflection& value) {
@@ -679,6 +691,7 @@ void write_reflection(Writer& writer, const ShaderReflection& value) {
                        [](Reader& input, ShaderInterfaceVariable& variable) {
                            return read_enum(input, variable.stage,
                                             ShaderStage::compute) &&
+                                  read_enum(input, variable.direction, ShaderInterfaceDirection::output) &&
                                   input.u32(variable.location) &&
                                   input.string(variable.name) &&
                                   input.string(variable.type) &&
@@ -689,7 +702,19 @@ void write_reflection(Writer& writer, const ShaderReflection& value) {
            reader.u32(value.requiredWorkgroupSize.depth) &&
            reader.u32(value.preferredWorkgroupSize.width) &&
            reader.u32(value.preferredWorkgroupSize.height) &&
-           reader.u32(value.preferredWorkgroupSize.depth);
+           reader.u32(value.preferredWorkgroupSize.depth) &&
+           [&] {
+               for (auto& id : value.workgroupSpecializationIds) {
+                   std::uint8_t present = 0;
+                   if (!reader.u8(present) || present > 1) return false;
+                   if (present) {
+                       std::uint32_t number = 0;
+                       if (!reader.u32(number)) return false;
+                       id = number;
+                   }
+               }
+               return true;
+           }();
 }
 
 [[nodiscard]] std::vector<std::byte> write_manifest(

@@ -108,6 +108,75 @@ void submit_graphics(truffle::rhi::Device& device,
     assert(queue.submit(lists).ok());
 }
 
+void specialized_workgroups(truffle::rhi::Device& device) {
+    using namespace truffle;
+    constexpr std::string_view source = R"MSL(
+#include <metal_stdlib>
+using namespace metal;
+constant uint groupX [[function_constant(17)]];
+constant uint groupY [[function_constant(18)]];
+kernel void workgroups(device uint* output [[buffer(0)]],
+                       uint index [[thread_index_in_threadgroup]],
+                       uint3 size [[threads_per_threadgroup]]) {
+    output[index] = (size.x == groupX && size.y == groupY ? 1000u : 0u) +
+                    size.x * 100u + size.y * 10u + index;
+}
+)MSL";
+    rhi::ShaderDesc desc{
+        .stage = rhi::ShaderStage::compute, .entryPoint = "workgroups", .code = shader_bytes(source),
+        .reflection = {{.stage = rhi::ShaderStage::compute, .type = rhi::ResourceBindingType::buffer,
+                        .binding = 0, .minimumSize = 64, .readOnly = false}},
+        .specializationConstants = {{17, "groupX", rhi::ShaderValueType::uint32, 2},
+                                     {18, "groupY", rhi::ShaderValueType::uint32, 2}},
+        .requiredWorkgroupSize = {2, 2, 1}, .preferredWorkgroupSize = {2, 2, 1},
+        .workgroupSpecializationIds = {17, 18, std::nullopt}};
+    auto shader = device.create_shader(desc);
+    assert(shader.ok());
+    auto groupLayout = device.create_bind_group_layout({
+        .entries = {{.binding = 0, .type = rhi::BindingType::storage_buffer,
+                     .visibility = rhi::ShaderStageMask::compute, .minimumBufferSize = 64}}});
+    assert(groupLayout.ok());
+    auto layout = device.create_pipeline_layout({.bindGroupLayouts = {&groupLayout.value()}});
+    auto arena = device.create_descriptor_arena();
+    auto pool = device.create_command_pool(rhi::QueueKind::compute);
+    auto queue = device.queue(rhi::QueueKind::compute);
+    assert(layout.ok() && arena.ok() && pool.ok() && queue.ok());
+    for (const bool changed : {false, true}) {
+        const auto dimensions = changed ? rhi::Extent3D{3, 1, 1} : rhi::Extent3D{2, 2, 1};
+        auto pipeline = device.create_compute_pipeline({
+            .computeShader = &shader.value(), .layout = &layout.value(), .requiredWorkgroupSize = dimensions,
+            .specializationConstants = changed ? std::vector<rhi::SpecializationValue>{
+                {17, rhi::ShaderValueType::uint32, 3}, {18, rhi::ShaderValueType::uint32, 1}}
+                : std::vector<rhi::SpecializationValue>{}});
+        assert(pipeline.ok() && pipeline.value().preferred_workgroup_size() == dimensions);
+        auto output = device.create_buffer({
+            .size = 64, .usage = rhi::BufferUsage::storage, .memory = rhi::MemoryDomain::readback});
+        assert(output.ok());
+        std::array<std::uint32_t, 16> actual;
+        actual.fill(0xdeadbeefu);
+        assert(output.value().write(0, std::as_bytes(std::span{actual})).ok());
+        auto group = device.create_bind_group({
+            .layout = &groupLayout.value(), .arena = &arena.value(),
+            .entries = {{.binding = 0, .buffer = &output.value(), .size = 64}}});
+        assert(group.ok());
+        auto list = pool.value().allocate();
+        assert(list.ok() && list.value().begin().ok());
+        auto encoder = list.value().begin_compute();
+        assert(encoder.ok());
+        assert(encoder.value().bind_pipeline(pipeline.value()).ok());
+        assert(encoder.value().bind_group(0, group.value()).ok());
+        assert(encoder.value().dispatch(1, 1, 1).ok());
+        assert(encoder.value().end().ok() && list.value().end().ok());
+        const std::array<rhi::CommandList*, 1> lists{&list.value()};
+        assert(queue.value().submit(lists).ok());
+        assert(output.value().read(0, std::as_writable_bytes(std::span{actual})).ok());
+        const auto written = dimensions.width * dimensions.height;
+        const auto base = 1000 + dimensions.width * 100 + dimensions.height * 10;
+        for (std::size_t index = 0; index < actual.size(); ++index)
+            assert(actual[index] == (index < written ? base + index : 0xdeadbeefu));
+    }
+}
+
 } // namespace
 
 int main() {
@@ -156,6 +225,7 @@ int main() {
     auto device = std::move(deviceResult).value();
     assert(!device.lost());
     assert(device.memory_budget(rhi::MemoryDomain::device_local).ok());
+    specialized_workgroups(device);
 
     auto computeQueueProof = device.queue(rhi::QueueKind::compute);
     assert(computeQueueProof.ok());
@@ -997,6 +1067,6 @@ fragment float4 buffer_fragment(VertexOutput input [[stage_in]],
     assert(stats.transfersExecuted >= 10);
     assert(stats.submissions >= 10);
     assert(stats.drawsRecorded == 6);
-    assert(stats.dispatchesRecorded == 2);
+    assert(stats.dispatchesRecorded == 4);
     return 0;
 }

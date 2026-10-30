@@ -8,7 +8,7 @@ set(_root "${TRUFFLE_SHADERC_TEST_DIR}/configured.comp")
 set(_include "${TRUFFLE_SHADERC_TEST_DIR}/include")
 set(_package "${TRUFFLE_SHADERC_TEST_DIR}/configured.tsp")
 file(WRITE "${_root}" "#version 450\n#include \"module.glsl\"\n"
-    "layout(local_size_x=2) in;\n"
+    "layout(local_size_x=2,local_size_x_id=8) in;\n"
     "layout(constant_id=7) const uint increment=9;\n"
     "layout(push_constant) uniform Push { layout(offset=16) uint base; } pc;\n"
     "layout(set=0,binding=0) buffer Output { uint values[]; } data[2];\n"
@@ -44,6 +44,7 @@ if(NOT _result EQUAL 0 OR NOT _inspection MATCHES "variants=2" OR
    NOT _inspection MATCHES "bindings=1" OR
    NOT _inspection MATCHES "count=2 minimum-size=4 readonly=0" OR
    NOT _inspection MATCHES "push-offset=16 size=4" OR
+   NOT _inspection MATCHES "workgroup-axis=x specialization-id=8" OR
    NOT _inspection MATCHES "specialization-id=7 name=increment type=2 default-bits=9")
     message(FATAL_ERROR "Configured append/inspection failed: ${_inspection}")
 endif()
@@ -70,4 +71,19 @@ execute_process(COMMAND "${TRUFFLE_SHADERC}" --inspect "${_package}"
     RESULT_VARIABLE _result OUTPUT_VARIABLE _inspection)
 if(NOT _result EQUAL 0 OR NOT _inspection MATCHES "variants=2")
     message(FATAL_ERROR "Failed compilation damaged the separately retained last-good artifact")
+endif()
+
+set(_vertex "${TRUFFLE_SHADERC_TEST_DIR}/directional.vert")
+set(_vertex_package "${TRUFFLE_SHADERC_TEST_DIR}/directional.tsp")
+file(WRITE "${_vertex}" "#version 450\n"
+    "layout(location=0) in vec3 position;\nlayout(location=0) out vec3 varyingValue;\n"
+    "void main(){ gl_Position=vec4(position,1); varyingValue=position; }\n")
+execute_process(COMMAND "${TRUFFLE_SHADERC}" --compile --name directional
+    --target spirv --stage vertex --source-language glsl --input "${_vertex}" --output "${_vertex_package}"
+    COMMAND_ERROR_IS_FATAL ANY)
+execute_process(COMMAND "${TRUFFLE_SHADERC}" --inspect "${_vertex_package}"
+    OUTPUT_VARIABLE _inspection COMMAND_ERROR_IS_FATAL ANY)
+if(NOT _inspection MATCHES "location=0 name=position direction=input type=vec3" OR
+   NOT _inspection MATCHES "location=0 name=varyingValue direction=output type=vec3")
+    message(FATAL_ERROR "Directional IO inspection failed: ${_inspection}")
 endif()

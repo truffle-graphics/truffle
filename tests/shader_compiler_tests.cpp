@@ -53,7 +53,8 @@ void main() { gl_Position = vec4(position * SCALE, 1); color = shade(params.tint
     check(variant.reflection.bindings.size() == 1, "Reflect uniform buffer");
     check(variant.reflection.bindings[0].binding == 1 && variant.reflection.bindings[0].minimumSize == 16 &&
           variant.reflection.bindings[0].readOnly, "Reflect uniform layout");
-    check(variant.reflection.interfaces.size() == 1 && first.value().interfaces.size() == 2, "Reflect both IO directions and TSP pipeline edge");
+    check(variant.reflection.interfaces.size() == 2 && first.value().interfaces().size() == 2,
+          "Reflect both IO directions in canonical package metadata");
     check(rhi::ShaderPackage::load(first.value().package.bytes()).ok(), "Valid in-memory TSP");
     auto second = compiler.compile(request);
     check(second.ok() && second.value().cacheHit, "Repeat cache hit");
@@ -61,7 +62,7 @@ void main() { gl_Position = vec4(position * SCALE, 1); color = shade(params.tint
     check(first.value().compiler.name == "glslang" &&
           !first.value().compiler.version.empty() &&
           first.value().compiler.revision ==
-              "a8d28bd082bff18ffbe80996e922b012f915cf07;truffle-glslang=3;vulkan=1.1;spirv=1.3",
+              "a8d28bd082bff18ffbe80996e922b012f915cf07;truffle-glslang=4;vulkan=1.1;spirv=1.3",
           "Pinned compiler identity accompanies result and cache");
     request.defines[0].value = "3.0";
     auto configured = compiler.compile(request);

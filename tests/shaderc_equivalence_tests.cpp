@@ -36,7 +36,11 @@ int main(int argc, char** argv) {
         reflection.requiredWorkgroupSize != rhi::Extent3D{2, 1, 1}) return 5;
     if (reflection.bindings[0].arrayCount != 2 || reflection.bindings[0].minimumSize != 4 ||
         reflection.pushConstants != std::vector<rhi::PushConstantRange>{{rhi::ShaderStage::compute, 16, 4}} ||
-        reflection.specializationConstants != std::vector<rhi::ShaderSpecializationConstant>{
-            {7, "increment", rhi::ShaderValueType::uint32, 9}}) return 6;
+        reflection.workgroupSpecializationIds != rhi::WorkgroupSpecializationIds({8, std::nullopt, std::nullopt}) ||
+        reflection.specializationConstants.size() != 2 ||
+        reflection.specializationConstants[0] != rhi::ShaderSpecializationConstant{7, "increment", rhi::ShaderValueType::uint32, 9} ||
+        reflection.specializationConstants[1].id != 8 ||
+        reflection.specializationConstants[1].type != rhi::ShaderValueType::uint32 ||
+        reflection.specializationConstants[1].defaultValueBits != 2) return 6;
     return 0;
 }

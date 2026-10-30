@@ -37,11 +37,15 @@ Shader completion proceeds through bounded, independently validated phases:
    is in [the Shader documentation](../src/shader/README.md).
 2. **Baseline reflection (#186), active:** emitted-SPIR-V push ranges, scalar
    specialization, fixed descriptor arrays and expanded matrix/array/block IO
-   have implementation and native consumption evidence. **Not complete:**
-   workgroup-specialization axis IDs and serialized directional/internal IO
-   require parent-reviewed RHI/TSP contract decisions. Exact mismatches and
-   proposed minimum fixes are in the Shader feature matrix; do not close #186
-   or promote the Shader module on this subset.
+   have implementation and native consumption evidence (merged PR #195).
+   The approved RHI/TSP extension now serializes full canonical directional/
+   internal IO and direct per-axis workgroup IDs/defaults; typed overrides
+   resolve before explicit size matching, limits and retained/native metadata.
+   Exact Vulkan/MoltenVK and prepared Metal default/override dispatch proofs
+   pass. The unreleased draft keeps current `1.0` identifiers, without legacy
+   readers or migrations. **Awaiting independent review:** leave #186 open
+   for parent acceptance; do not promote the entire Shader module. Explicit
+   representational limits remain in the Shader feature matrix.
 3. **Portable native generation (#187):** native Metal/OpenGL outputs.
 4. **Native Metal inputs/libraries (#188), HLSL (#189), Slang and native module
    imports (#190), WGSL (#191):** optional compiler routes with their own

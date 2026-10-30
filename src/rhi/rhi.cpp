@@ -1,6 +1,7 @@
 #include "truffle/rhi/rhi.hpp"
 
 #include "foundation_backend.hpp"
+#include "shader_metadata.hpp"
 #include "truffle/rhi/validation.hpp"
 
 #include <algorithm>
@@ -2206,6 +2207,11 @@ struct Factory {
         return Status::failure(StatusCode::invalid_argument,
                                "compute shader workgroup metadata is invalid");
     }
+    if (auto status = detail::validate_interfaces(desc.stage, desc.interfaces); !status.ok())
+        return status;
+    if (auto status = detail::validate_workgroup(desc.stage, desc.requiredWorkgroupSize,
+            desc.workgroupSpecializationIds, desc.specializationConstants); !status.ok())
+        return status;
     std::shared_ptr<void> native;
     if (!runtime.config.logicalResources) {
         if (runtime.config.createShader == nullptr) {
@@ -2360,6 +2366,9 @@ struct Factory {
                                    "graphics pipeline layout is foreign");
         }
     }
+    if (auto status = detail::validate_graphics_interfaces(vertex ? &vertex->desc : nullptr,
+            fragment ? &fragment->desc : nullptr, desc); !status.ok())
+        return status;
     const auto layout_matches = [&](const std::shared_ptr<ShaderPayload>& shader) {
         if (!shader) {
             return true;
@@ -2611,29 +2620,41 @@ struct Factory {
         return extent.width == 0 || extent.height == 0 || extent.depth == 0;
     };
     ComputePipelineDesc normalized = desc;
+    auto resolved = detail::resolve_workgroup(shader->desc, desc.specializationConstants);
+    if (!resolved.ok()) return resolved.status();
     if (all_zero(normalized.requiredWorkgroupSize)) {
-        normalized.requiredWorkgroupSize = shader->desc.requiredWorkgroupSize;
+        normalized.requiredWorkgroupSize = resolved.value();
     } else if (any_zero(normalized.requiredWorkgroupSize) ||
                normalized.requiredWorkgroupSize !=
-                   shader->desc.requiredWorkgroupSize) {
+                   resolved.value()) {
         return Status::failure(
             StatusCode::invalid_argument,
             "compute pipeline required workgroup size mismatches the shader");
     }
     if (all_zero(normalized.preferredWorkgroupSize)) {
         normalized.preferredWorkgroupSize =
-            shader->desc.preferredWorkgroupSize;
+            shader->desc.preferredWorkgroupSize == shader->desc.requiredWorkgroupSize
+                ? resolved.value() : shader->desc.preferredWorkgroupSize;
+    }
+    // Axis defaults are real native specialization values too, including on
+    // backends whose function constants have no embedded default.
+    for (const auto id : shader->desc.workgroupSpecializationIds) {
+        if (!id || std::any_of(normalized.specializationConstants.begin(),
+                normalized.specializationConstants.end(), [&](const auto& value) { return value.id == *id; }))
+            continue;
+        const auto constant = std::find_if(shader->desc.specializationConstants.begin(),
+            shader->desc.specializationConstants.end(), [&](const auto& value) { return value.id == *id; });
+        normalized.specializationConstants.push_back({*id, constant->type, constant->defaultValueBits});
     }
     const auto maxSize = device->adapter.pipelines.maxComputeWorkgroupSize;
-    const auto invocations =
-        static_cast<std::uint64_t>(normalized.requiredWorkgroupSize.width) *
-        normalized.requiredWorkgroupSize.height *
-        normalized.requiredWorkgroupSize.depth;
+    const auto xy = static_cast<std::uint64_t>(normalized.requiredWorkgroupSize.width) *
+                    normalized.requiredWorkgroupSize.height;
     if (any_zero(normalized.preferredWorkgroupSize) ||
         normalized.requiredWorkgroupSize.width > maxSize.width ||
         normalized.requiredWorkgroupSize.height > maxSize.height ||
         normalized.requiredWorkgroupSize.depth > maxSize.depth ||
-        invocations > device->adapter.pipelines.maxComputeInvocations) {
+        xy > device->adapter.pipelines.maxComputeInvocations /
+                 normalized.requiredWorkgroupSize.depth) {
         return Status::failure(StatusCode::unsupported,
                                "compute workgroup metadata exceeds device limits");
     }
@@ -3789,6 +3810,8 @@ Result<Shader> Device::create_shader(const ShaderPackage& package,
         desc.pushConstants = variant->reflection.pushConstants;
         desc.specializationConstants =
             variant->reflection.specializationConstants;
+        desc.interfaces = variant->reflection.interfaces;
+        desc.workgroupSpecializationIds = variant->reflection.workgroupSpecializationIds;
         desc.requiredWorkgroupSize =
             variant->reflection.requiredWorkgroupSize;
         desc.preferredWorkgroupSize =

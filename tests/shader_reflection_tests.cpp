@@ -4,6 +4,11 @@
 #include <algorithm>
 #include <bit>
 #include <iostream>
+#if defined(TRUFFLE_TEST_SPIRV_REFLECTION)
+#include "spirv_reflection.hpp"
+#include <SPIRV/spirv.hpp11>
+#include <cstring>
+#endif
 
 #define TRUFFLE_CHECK(condition) TRUFFLE_SHADER_CHECK(condition)
 
@@ -142,9 +147,11 @@ void main() { gl_Position=vec4(transforms[0][0],1); outputs.basis=transforms[0];
               outputs.uv[0]=uv; outputs.uv[1]=basis[0]; }
 )", rhi::ShaderStage::vertex);
     const auto& edges = vertex.package.desc().variants[0].reflection.interfaces;
-    TRUFFLE_CHECK(edges.size() == 7 && vertex.interfaces.size() == 11);
-    for (std::uint32_t i = 0; i < edges.size(); ++i) {
+    TRUFFLE_CHECK(edges.size() == 11 && vertex.interfaces().size() == 11);
+    TRUFFLE_CHECK(vertex.interfaces().data() == edges.data());
+    for (std::uint32_t i = 0; i < 7; ++i) {
         TRUFFLE_CHECK(edges[i].stage == rhi::ShaderStage::vertex && edges[i].location == i);
+        TRUFFLE_CHECK(edges[i].direction == rhi::ShaderInterfaceDirection::input);
         TRUFFLE_CHECK(edges[i].type == (i < 4 ? "vec3" : "vec2"));
         TRUFFLE_CHECK(edges[i].interpolation == "smooth");
     }
@@ -152,8 +159,11 @@ void main() { gl_Position=vec4(transforms[0][0],1); outputs.basis=transforms[0];
     TRUFFLE_CHECK(edges[3].name == "transforms[1][1]");
     TRUFFLE_CHECK(edges[4].name == "uv");
     TRUFFLE_CHECK(edges[6].name == "basis[1]");
-    for (const auto& value : vertex.interfaces)
-        if (!value.input) TRUFFLE_CHECK(value.variable.interpolation == "centroid smooth");
+    for (std::size_t i = 7; i < edges.size(); ++i) {
+        TRUFFLE_CHECK(edges[i].direction == rhi::ShaderInterfaceDirection::output);
+        TRUFFLE_CHECK(edges[i].location == i - 7);
+        TRUFFLE_CHECK(edges[i].interpolation == "centroid smooth");
+    }
     auto loaded = tests::require(rhi::ShaderPackage::load(vertex.package.bytes()));
     TRUFFLE_CHECK(loaded.desc().variants[0].reflection.interfaces == edges);
 
@@ -163,46 +173,129 @@ layout(location=2) centroid in mat2 renamedMatrix;
 layout(location=0,index=0) out vec4 color;
 void main() { color=vec4(renamed[0]+vec3(renamedMatrix[0],0),1); }
 )", rhi::ShaderStage::fragment);
-    for (const auto& input : fragment.interfaces) {
-        if (!input.input) continue;
-        const auto found = std::find_if(vertex.interfaces.begin(), vertex.interfaces.end(),
-            [&](const auto& output) { return !output.input &&
-                output.variable.location == input.variable.location; });
-        TRUFFLE_CHECK(found != vertex.interfaces.end());
-        TRUFFLE_CHECK(found->variable.type == input.variable.type);
-        TRUFFLE_CHECK(found->variable.interpolation == input.variable.interpolation);
+    for (const auto& input : fragment.interfaces()) {
+        if (input.direction != rhi::ShaderInterfaceDirection::input) continue;
+        const auto found = std::find_if(vertex.interfaces().begin(), vertex.interfaces().end(),
+            [&](const auto& output) { return output.direction == rhi::ShaderInterfaceDirection::output &&
+                output.location == input.location; });
+        TRUFFLE_CHECK(found != vertex.interfaces().end());
+        TRUFFLE_CHECK(found->type == input.type);
+        TRUFFLE_CHECK(found->interpolation == input.interpolation);
     }
     auto members = compile(compiler, R"(#version 450
 in Input { layout(location=3) flat ivec2 id; layout(location=7) noperspective vec2 uv; } values;
 layout(location=0) out vec4 color;
 void main() { color=vec4(values.id,values.uv); }
 )", rhi::ShaderStage::fragment);
-    TRUFFLE_CHECK(members.interfaces[1].input && members.interfaces[1].variable.location == 3);
-    TRUFFLE_CHECK(members.interfaces[1].variable.type == "ivec2");
-    TRUFFLE_CHECK(members.interfaces[1].variable.interpolation == "flat");
-    TRUFFLE_CHECK(members.interfaces[2].variable.location == 7);
-    TRUFFLE_CHECK(members.interfaces[2].variable.interpolation == "noperspective");
+    TRUFFLE_CHECK(members.interfaces()[0].direction == rhi::ShaderInterfaceDirection::input &&
+                  members.interfaces()[0].location == 3);
+    TRUFFLE_CHECK(members.interfaces()[0].type == "ivec2");
+    TRUFFLE_CHECK(members.interfaces()[0].interpolation == "flat");
+    TRUFFLE_CHECK(members.interfaces()[1].location == 7);
+    TRUFFLE_CHECK(members.interfaces()[1].interpolation == "noperspective");
     auto nested = compile(compiler, R"(#version 450
 struct Nested { mat2x3 basis; vec2 tail[2]; };
 layout(location=2) in Block { sample Nested values[2]; } data;
 layout(location=0) out vec4 color;
 void main() { color=vec4(data.values[1].basis[1]+vec3(data.values[0].tail[0],0),1); }
 )", rhi::ShaderStage::fragment);
-    TRUFFLE_CHECK(nested.interfaces.size() == 9);
-    for (std::size_t i = 1; i < nested.interfaces.size(); ++i) {
-        const auto& leaf = nested.interfaces[i];
-        TRUFFLE_CHECK(leaf.input && leaf.variable.location == i + 1);
-        TRUFFLE_CHECK(leaf.variable.type == ((i - 1) % 4 < 2 ? "vec3" : "vec2"));
-        TRUFFLE_CHECK(leaf.variable.interpolation == "sample smooth");
+    TRUFFLE_CHECK(nested.interfaces().size() == 9);
+    for (std::size_t i = 0; i < 8; ++i) {
+        const auto& leaf = nested.interfaces()[i];
+        TRUFFLE_CHECK(leaf.direction == rhi::ShaderInterfaceDirection::input && leaf.location == i + 2);
+        TRUFFLE_CHECK(leaf.type == (i % 4 < 2 ? "vec3" : "vec2"));
+        TRUFFLE_CHECK(leaf.interpolation == "sample smooth");
     }
-    TRUFFLE_CHECK(nested.interfaces[6].variable.name == "data.values[1].basis[1]");
+    TRUFFLE_CHECK(nested.interfaces()[5].name == "data.values[1].basis[1]");
+}
+
+void workgroups(shader::Compiler& compiler) {
+    auto compiled = compile(compiler, R"(#version 450
+layout(local_size_x=4,local_size_y=4,local_size_z=2,
+       local_size_x_id=7,local_size_y_id=7,local_size_z_id=0) in;
+void main() {}
+)");
+    const auto& reflected = compiled.package.desc().variants[0].reflection;
+    TRUFFLE_CHECK(reflected.requiredWorkgroupSize == rhi::Extent3D(4, 4, 2));
+    TRUFFLE_CHECK(reflected.preferredWorkgroupSize == rhi::Extent3D(4, 4, 2));
+    TRUFFLE_CHECK(reflected.workgroupSpecializationIds == rhi::WorkgroupSpecializationIds({7, 7, 0}));
+    TRUFFLE_CHECK(reflected.specializationConstants.size() == 2);
+    TRUFFLE_CHECK(reflected.specializationConstants[0].id == 0 &&
+                  reflected.specializationConstants[0].type == rhi::ShaderValueType::uint32 &&
+                  reflected.specializationConstants[0].defaultValueBits == 2);
+    TRUFFLE_CHECK(reflected.specializationConstants[1].id == 7 &&
+                  reflected.specializationConstants[1].defaultValueBits == 4);
+    auto loaded = tests::require(rhi::ShaderPackage::load(compiled.package.bytes()));
+    const auto& roundtrip = loaded.desc().variants[0].reflection;
+    TRUFFLE_CHECK(roundtrip.workgroupSpecializationIds == reflected.workgroupSpecializationIds);
+    TRUFFLE_CHECK(roundtrip.requiredWorkgroupSize == reflected.requiredWorkgroupSize);
+    TRUFFLE_CHECK(roundtrip.preferredWorkgroupSize == reflected.preferredWorkgroupSize);
+    TRUFFLE_CHECK(roundtrip.specializationConstants == reflected.specializationConstants);
+    auto fixed = compile(compiler, R"(#version 450
+layout(local_size_x=3,local_size_y=2,local_size_x_id=9) in;
+void main() {}
+)");
+    TRUFFLE_CHECK(fixed.package.desc().variants[0].reflection.workgroupSpecializationIds ==
+                  rhi::WorkgroupSpecializationIds({9, std::nullopt, std::nullopt}));
+    reject(compiler, R"(#version 450
+layout(local_size_x=4,local_size_y=2,local_size_x_id=7,local_size_y_id=7) in;
+void main() {}
+)", "inconsistent scalar types/defaults");
+#if defined(TRUFFLE_TEST_SPIRV_REFLECTION)
+    const auto& code = fixed.package.desc().variants[0].code;
+    std::vector<unsigned int> words(code.size() / sizeof(unsigned int));
+    std::memcpy(words.data(), code.data(), code.size());
+    unsigned int typeId = 0, scalarId = 0;
+    std::size_t composite = 0;
+    for (std::size_t i = 5; i < words.size(); i += words[i] >> 16) {
+        const auto op = static_cast<spv::Op>(words[i] & 0xffffu);
+        if (op == spv::Op::OpSpecConstant) {
+            typeId = words[i + 1];
+            scalarId = words[i + 2];
+        }
+        if (op == spv::Op::OpSpecConstantComposite) composite = i;
+    }
+    TRUFFLE_CHECK(typeId != 0 && scalarId != 0 && composite != 0);
+    auto expression = words;
+    const auto expressionId = expression[3]++;
+    expression[composite + 3] = expressionId;
+    const std::array operation{(6u << 16) | static_cast<unsigned int>(spv::Op::OpSpecConstantOp),
+        typeId, expressionId, static_cast<unsigned int>(spv::Op::OpIAdd), scalarId, scalarId};
+    expression.insert(expression.begin() + static_cast<std::ptrdiff_t>(composite),
+                      operation.begin(), operation.end());
+    rhi::ShaderReflection result;
+    const auto rejected = shader::detail::reflect_spirv(expression, rhi::ShaderStage::compute, result);
+    TRUFFLE_CHECK(!rejected.ok() && rejected.code == rhi::StatusCode::unsupported);
+    TRUFFLE_CHECK(rejected.message.find("not expressions") != std::string::npos);
+    // Exercise LocalSizeId as well as glslang's WorkgroupSize composite encoding.
+    const std::array axisIds{words[composite + 3], words[composite + 4], words[composite + 5]};
+    for (std::size_t i = 5; i < words.size();) {
+        const auto count = words[i] >> 16;
+        const auto op = static_cast<spv::Op>(words[i] & 0xffffu);
+        if (op == spv::Op::OpDecorate &&
+            words[i + 2] == static_cast<unsigned int>(spv::Decoration::BuiltIn) &&
+            words[i + 3] == static_cast<unsigned int>(spv::BuiltIn::WorkgroupSize)) {
+            words.erase(words.begin() + static_cast<std::ptrdiff_t>(i),
+                        words.begin() + static_cast<std::ptrdiff_t>(i + count));
+            continue;
+        }
+        if (op == spv::Op::OpExecutionMode &&
+            words[i + 2] == static_cast<unsigned int>(spv::ExecutionMode::LocalSize)) {
+            words[i] = (count << 16) | static_cast<unsigned int>(spv::Op::OpExecutionModeId);
+            words[i + 2] = static_cast<unsigned int>(spv::ExecutionMode::LocalSizeId);
+            std::copy(axisIds.begin(), axisIds.end(), words.begin() + static_cast<std::ptrdiff_t>(i + 3));
+        }
+        i += count;
+    }
+    rhi::ShaderReflection localSizeId;
+    tests::require(shader::detail::reflect_spirv(words, rhi::ShaderStage::compute, localSizeId));
+    TRUFFLE_CHECK(localSizeId.requiredWorkgroupSize == rhi::Extent3D(3, 2, 1));
+    TRUFFLE_CHECK(localSizeId.workgroupSpecializationIds ==
+                  rhi::WorkgroupSpecializationIds({9, std::nullopt, std::nullopt}));
+#endif
 }
 
 void negative(shader::Compiler& compiler) {
-    reject(compiler, R"(#version 450
-layout(local_size_x=4,local_size_x_id=7) in;
-void main() {}
-)", "per-axis specialization IDs");
     reject(compiler, R"(#version 450
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 layout(local_size_x=1) in;
@@ -276,6 +369,7 @@ int main() {
         truffle::shader::Compiler compiler;
         constants_and_resources(compiler);
         interfaces(compiler);
+        workgroups(compiler);
         negative(compiler);
     } catch (const std::exception& error) {
         std::cerr << "Reflection: " << error.what() << '\n';

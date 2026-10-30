@@ -114,8 +114,10 @@ compose Truffle with one at its own application boundary.
 ## Current Focus
 
 Current focus is **Shader completion first** under #73. Route/target contracts
-(#185, PR #194) are merged; baseline reflection (#186) is active, with
-workgroup-specialization/directional-IO contract gates still open.
+(#185, PR #194) are merged; baseline reflection (#186) is active.
+Full directional-IO and per-axis workgroup-specialization contracts now have
+focused package/native evidence and await independent review. The unreleased
+TSP draft retains its `1.0` identifiers without compatibility scaffolding.
 The merged #178-#181 Shader/Renderer foundations are
 not full module completion. Renderer feature work is paused; the remaining
 Shader phases (#186-#193) and their evidence gates are in

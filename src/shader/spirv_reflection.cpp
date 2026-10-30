@@ -93,7 +93,8 @@ public:
                     workgroup = {args[2], args[3], args[4]};
                 break;
             case spv::Op::OpExecutionModeId:
-                if (args[1] == static_cast<Word>(spv::ExecutionMode::LocalSizeId)) specializedWorkgroup = true;
+                if (args[1] == static_cast<Word>(spv::ExecutionMode::LocalSizeId))
+                    workgroupIds = std::array<Word, 3>{args[2], args[3], args[4]};
                 break;
             case spv::Op::OpTypeBool: case spv::Op::OpTypeInt: case spv::Op::OpTypeFloat:
             case spv::Op::OpTypeVector: case spv::Op::OpTypeMatrix: case spv::Op::OpTypeArray:
@@ -123,13 +124,16 @@ public:
         return rhi::Status::success();
     }
 
-    rhi::Status reflect(rhi::ShaderStage stage, rhi::ShaderReflection& reflection,
-                        std::vector<StageInterface>& interfaces) {
+    rhi::Status reflect(rhi::ShaderStage stage, rhi::ShaderReflection& reflection) {
+        auto& interfaces = reflection.interfaces;
         for (const auto& [id, node] : nodes) {
             const auto& d = decorations[id];
-            if (d.builtin == static_cast<Word>(spv::BuiltIn::WorkgroupSize) &&
-                node.op == spv::Op::OpSpecConstantComposite)
-                specializedWorkgroup = true;
+            if (d.builtin == static_cast<Word>(spv::BuiltIn::WorkgroupSize)) {
+                if ((node.op != spv::Op::OpSpecConstantComposite &&
+                     node.op != spv::Op::OpConstantComposite) || node.args.size() != 5)
+                    return unsupported("Workgroup dimensions require direct scalar constants, not expressions");
+                workgroupIds = std::array<Word, 3>{node.args[2], node.args[3], node.args[4]};
+            }
             if (d.specId) {
                 rhi::ShaderValueType type;
                 const auto& scalar = nodes.at(node.args[0]);
@@ -144,12 +148,35 @@ public:
                 else if (node.op == spv::Op::OpSpecConstantFalse) bits = 0;
                 else if (node.op == spv::Op::OpSpecConstant) bits = node.args[2];
                 else return unsupported("Specialization default must be a scalar literal: " + names[id]);
-                reflection.specializationConstants.push_back({*d.specId, names[id], type, bits});
+                const auto existing = std::find_if(reflection.specializationConstants.begin(),
+                    reflection.specializationConstants.end(), [&](const auto& value) { return value.id == *d.specId; });
+                if (existing == reflection.specializationConstants.end())
+                    reflection.specializationConstants.push_back({*d.specId, names[id], type, bits});
+                else if (existing->type != type || existing->defaultValueBits != bits)
+                    return unsupported("Shared specialization ID has inconsistent scalar types/defaults");
             }
         }
-        if (specializedWorkgroup)
-            return unsupported("Workgroup specialization needs per-axis specialization IDs in RHI/TSP; "
-                               "requiredWorkgroupSize currently represents only a fixed extent");
+        if (workgroupIds) {
+            std::array<Word, 3> dimensions{};
+            for (std::size_t axis = 0; axis < dimensions.size(); ++axis) {
+                const auto id = (*workgroupIds)[axis];
+                const auto& node = nodes.at(id);
+                if ((node.op != spv::Op::OpConstant && node.op != spv::Op::OpSpecConstant) ||
+                    node.args.size() != 3)
+                    return unsupported("Workgroup dimensions require direct scalar constants, not expressions");
+                const auto& type = nodes.at(node.args[0]);
+                if (type.op != spv::Op::OpTypeInt || type.args[0] != 32 || node.args[2] == 0 ||
+                    (type.args[1] && node.args[2] > 0x7fffffffu))
+                    return unsupported("Workgroup dimensions require positive 32-bit integers");
+                if (node.op == spv::Op::OpSpecConstant) {
+                    if (!decorations[id].specId)
+                        return unsupported("Workgroup specialization requires a direct scalar specialization ID");
+                    reflection.workgroupSpecializationIds[axis] = decorations[id].specId;
+                }
+                dimensions[axis] = node.args[2];
+            }
+            workgroup = {dimensions[0], dimensions[1], dimensions[2]};
+        }
         for (const auto& [id, node] : nodes) {
             if (node.op != spv::Op::OpVariable) continue;
             const auto typeId = nodes.at(node.args[0]).args[1];
@@ -184,17 +211,12 @@ public:
             }
         }
         std::sort(interfaces.begin(), interfaces.end(), [](const auto& a, const auto& b) {
-            return std::tuple{a.input, a.variable.location} < std::tuple{b.input, b.variable.location};
+            return std::tuple{a.direction, a.location} < std::tuple{b.direction, b.location};
         });
         for (std::size_t i = 1; i < interfaces.size(); ++i) {
-            if (interfaces[i - 1].input == interfaces[i].input &&
-                interfaces[i - 1].variable.location == interfaces[i].variable.location)
+            if (interfaces[i - 1].direction == interfaces[i].direction &&
+                interfaces[i - 1].location == interfaces[i].location)
                 return unsupported("Overlapping expanded interface locations");
-        }
-        for (const auto& value : interfaces) {
-            if ((stage == rhi::ShaderStage::vertex && value.input) ||
-                (stage == rhi::ShaderStage::fragment && !value.input))
-                reflection.interfaces.push_back(value.variable);
         }
         if (stage == rhi::ShaderStage::compute) {
             reflection.requiredWorkgroupSize = workgroup;
@@ -304,7 +326,7 @@ private:
 
     rhi::Status io(Word id, Decoration d, const std::string& name, rhi::ShaderStage stage,
                    bool input, Word& location, bool located,
-                   std::vector<StageInterface>& result) {
+                   std::vector<rhi::ShaderInterfaceVariable>& result) {
         if (d.builtin) return rhi::Status::success();
         if (d.packed) return unsupported("Component/index-packed IO is not representable: " + name);
         if (d.extendedIO) return unsupported("Extended per-vertex/primitive/view/task or explicit-interpolation IO is not representable: " + name);
@@ -349,7 +371,8 @@ private:
         std::string interpolation = d.flat ? "flat" : d.noperspective ? "noperspective" : "smooth";
         if (d.centroid) interpolation = "centroid " + interpolation;
         if (d.sample) interpolation = "sample " + interpolation;
-        result.push_back({input, {stage, location++, name, std::move(spelling), std::move(interpolation)}});
+        result.push_back({stage, input ? rhi::ShaderInterfaceDirection::input : rhi::ShaderInterfaceDirection::output,
+                          location++, name, std::move(spelling), std::move(interpolation)});
         return rhi::Status::success();
     }
 
@@ -359,17 +382,17 @@ private:
     std::map<Word, std::string> names;
     std::map<std::pair<Word, Word>, std::string> memberNames;
     rhi::Extent3D workgroup{1, 1, 1};
-    bool specializedWorkgroup = false;
+    std::optional<std::array<Word, 3>> workgroupIds;
 };
 
 } // namespace
 
 rhi::Status reflect_spirv(Words words, rhi::ShaderStage stage,
-                          rhi::ShaderReflection& reflection, std::vector<StageInterface>& interfaces) {
+                          rhi::ShaderReflection& reflection) {
     Module module;
     auto status = module.read(words);
     if (!status.ok()) return status;
-    return module.reflect(stage, reflection, interfaces);
+    return module.reflect(stage, reflection);
 }
 
 } // namespace truffle::shader::detail

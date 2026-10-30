@@ -423,6 +423,12 @@ struct PipelineResource {
         return Status::failure(StatusCode::invalid_argument,
                                "GL compute shader is invalid");
     }
+    if (std::any_of(shader->desc.workgroupSpecializationIds.begin(),
+                    shader->desc.workgroupSpecializationIds.end(),
+                    [](const auto& id) { return id.has_value(); })) {
+        return Status::failure(StatusCode::unsupported,
+            "GL native-source workgroup specialization requires compile-time variants, not uniform overrides");
+    }
     std::lock_guard lock{context->mutex};
     if (auto status = make_current(*context); !status.ok()) {
         return status;
@@ -448,9 +454,9 @@ struct PipelineResource {
 #if defined(TRUFFLE_GL_HAS_COMPUTE)
     std::array<GLint, 3> workgroup{};
     glGetProgramiv(pipeline->program, GL_COMPUTE_WORK_GROUP_SIZE, workgroup.data());
-    if (workgroup[0] != static_cast<GLint>(shader->desc.requiredWorkgroupSize.width) ||
-        workgroup[1] != static_cast<GLint>(shader->desc.requiredWorkgroupSize.height) ||
-        workgroup[2] != static_cast<GLint>(shader->desc.requiredWorkgroupSize.depth)) {
+    if (workgroup[0] != static_cast<GLint>(desc.requiredWorkgroupSize.width) ||
+        workgroup[1] != static_cast<GLint>(desc.requiredWorkgroupSize.height) ||
+        workgroup[2] != static_cast<GLint>(desc.requiredWorkgroupSize.depth)) {
         glDeleteProgram(pipeline->program);
         pipeline->program = 0;
         return program::mismatch("GL compute local size disagrees with reflection");

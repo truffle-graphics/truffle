@@ -7,67 +7,79 @@ AI work that reaches a commit must update this handoff before that commit.
 Promote durable decisions into project context, architecture, roadmap, or ADRs
 rather than growing a historical transcript here.
 
-## Shader Baseline Reflection (#186, Active / Partial)
+## Shader Reflection Contracts (#186, Awaiting Independent Review)
 
-- #185 is done in merged PR #194 (`develop` merge `3eb54f0`).
-  This next Shader-only phase uses emitted SPIR-V metadata for reflection:
-  push ranges with actual offsets/strides/minimum addressable bytes; exact
-  bool/int32/uint32/float32 specialization IDs/default bits; fixed buffer,
-  image and sampler descriptor arrays; readonly/member access; and recursive
-  matrix/array/structure IO expansion to occupied 32-bit scalar/vector locations.
-  Buffer minima are per descriptor element and exclude unused trailing padding.
-  Emitted instance/member paths are diagnostic names, not linkage identities.
-- Shader's private reflection reader is separate from glslang's source,
-  include, compilation and cache orchestration, and reusable for subsequent
-  SPIR-V-producing adapters. RHI owns its existing package semantic agreement
-  checks, now independent of diagnostic names; conventional 32-bit GLSL/HLSL
-  vector spellings and empty/default/perspective/smooth interpolation agree,
-  while actual type/count/size/access/constant/
-  location/interpolation disagreement fails, including resource-free packages.
-  Shaderc remains a library client and inspects the serialized values.
-  Public effect: richer existing reflection and normalized `StageInterface`
-  leaves, not new RHI fields/schema. Internal adapter/cache provenance is
-  `truffle-glslang=3`; the package/product version is unchanged.
-- **Do not close #186. Two concrete shared-contract gates remain:**
-  - Workgroup specialization has no per-axis specialization-ID mapping in
-    `ShaderReflection`/`ShaderDesc`/TSP. RHI validates and stores a fixed extent
-    before Vulkan applies overrides, so accepting it would misstate device-limit
-    checks and dispatch metadata. Proposed minimum: carry axis IDs/defaults
-    through serialization and shader creation; resolve overrides before pipeline
-    limits/dispatch metadata. Expression-based sizes need an explicit policy.
-  - TSP IO has no direction and allows only one record per `(stage, location)`.
-    Both directions/internal varyings remain in `Compilation::interfaces`, but
-    only vertex inputs/fragment outputs can round-trip in TSP. Proposed minimum:
-    direction plus `(stage, direction, location)` keys and full-IO serialization.
-  These are proposals for parent-coordinated RHI/TSP review, **not approved
-  architecture/schema changes or completed features**. Exact limits for
-  combined samplers, subpass/texel-buffer bindings, unsized/specialized descriptor
-  arrays, component/index packing and extended IO are in `src/shader/README.md`.
-- Focused local Apple Silicon validation: existing Ninja Debug/SDK-sysroot/
-  warnings-as-errors builds, `--parallel 4`, no dependency installs or hosted runs:
-  - Enabled `build/renderer-shader`: 14/14 focused Shader/reflection/package/
-    route/CLI/install and existing Renderer-source/Vulkan tests passed.
-  - Disabled `build/renderer-shader-off`: 9/9 focused Shader/package/CLI/install
-    and Renderer-source tests passed. Installed Shader and prepared Renderer
-    consumers link only the expected Truffle core libraries; no glslang/compiler
-    link dependency.
-  - New native Vulkan/MoltenVK test on Apple M3 Pro with validation active loads
-    an unmodified library TSP round-trip and consumes scalar defaults/typed
-    overrides, matrix push range `[16,60)` (column stride 16), buffer arrays
-    (uniform/readonly storage/writable storage), and separate image/sampler
-    arrays. Exact default outputs are `[246,247,248,249]` and
-    `[217,218,219,220]`; overrides produce `[352,353,354,355]` and
-    `[323,324,325,326]`. No native workgroup-specialization claim.
-  - Architecture guard and `git diff --check` passed. Cohesion reviewed:
-    Shader's reader owns metadata decoding/normalization; adapter owns compiler
-    orchestration; shaderc owns reporting. Existing `src/rhi/shader_package.cpp`
-    remains cohesive around package normalization/validation/serialization,
-    despite its informational length-review signal. No boundary change,
-    backend production expansion or Renderer feature was added.
-- **Next:** parent reviews this issue-scoped signed PR and coordinates the two
-  contract decisions before #186 can complete. #187-#193 remain outstanding;
-  Shader is not complete and Renderer features remain paused. Do not merge,
-  close issues or delete branches from this implementation session.
+- #185 is done in PR #194. The first representable reflection phase is merged
+  in PR #195 (`8e4c72f`). This continuation uses the same main checkout on
+  `feat/shader-reflection-contracts`; no sibling worktree or new checkout.
+- Both shared-contract extensions were approved in
+  [#186 comment 6527097946](https://github.com/truffle-graphics/truffle/issues/186#issuecomment-6527097946).
+  TSP is an unreleased development draft: update contracts/codec/fixtures/
+  consumers together, retaining container/schema `1` / `1.0`. No version bump,
+  legacy reader, alias or migration; earlier development artifacts must be
+  rebuilt. Stable format/versioning guarantees begin with release.
+- **Canonical full IO:** RHI owns direction on `ShaderInterfaceVariable` and
+  `(stage,direction,location)` uniqueness. Both directions/internal varyings
+  survive package normalization, cross-target agreement, serialization,
+  selection and `ShaderDesc`. Shader's `StageInterface` and duplicate IO vector
+  are removed; `Compilation::interfaces()` borrows package metadata. Renderer
+  source linkage and prepared RHI pipeline linkage/vertex-attribute checks
+  consume those records. Names do not determine agreement. Conventional
+  vector aliases and default/perspective/smooth interpolation, including
+  reordered known centroid/sample qualifiers, normalize without hiding actual
+  type/location/direction/interpolation disagreement.
+- **Workgroups:** RHI owns optional X/Y/Z scalar IDs with default required
+  extents in reflection/selected shaders. Referenced int32/uint32 defaults
+  must be positive and agree; ID zero/shared IDs work. Shader decodes actual
+  SPIR-V `WorkgroupSize` composites or `LocalSizeId`, deduplicating only
+  consistent scalar IDs. Expression-derived dimensions are explicitly rejected:
+  direct axis IDs cannot describe expression dependencies/override semantics.
+  There is no interpreter or stale-default fallback.
+- RHI's private metadata helper validates package and direct shader metadata
+  and resolves typed overrides before explicit pipeline-size comparisons,
+  axis/total limits, native creation and retained dispatch dimensions.
+  Total-invocation checks cannot wrap. Effective axis defaults are passed as
+  typed native values, including to Metal function constants; matching default
+  preferred hints follow resolved dimensions, distinct hints stay independent.
+  Vulkan/Metal consume those values; GL native-source uniform specialization
+  explicitly rejects local-size IDs, and D3D12's existing runtime-specialization
+  rejection covers effective defaults too. WebGPU/WebGL2 have no native compute
+  path. GL/Windows/WebGPU execution was not run or promoted.
+- Shaderc remains a library client and inspects full IO/direction and axis IDs.
+  Adapter/cache provenance advances to `truffle-glslang=4`; compiler identity
+  and emitted metadata survive round-trip. No Shader→Renderer/backend or
+  RHI→Shader dependency, new route, or Renderer feature was introduced.
+- **Local validation:** existing Apple Silicon Ninja Debug/SDK-sysroot/
+  warnings-as-errors builds; `--parallel 4`, no installs of dependencies or
+  hosted workflows/full matrices:
+  - Enabled `build/renderer-shader`: **16/16** focused Shader/reflection/package/
+    CLI/install, Null contracts, Renderer-source and native Vulkan tests pass,
+    including installed Shader/prepared Renderer and whole-package consumers.
+  - Disabled `build/renderer-shader-off`: **12/12** focused Shader/package/CLI/
+    install, Null contracts, Renderer-source and native Metal tests pass,
+    including installed Shader/prepared Renderer and whole-package consumers. Compiler-off
+    installed consumers retain only core-library link dependencies.
+  - Vulkan/MoltenVK, Apple M3 Pro with validation active: existing exact
+    push/scalar/resource-array proof remains green. New unmodified package
+    changes local size `2x1x2`→`3x2x2`: two groups write exactly 8/24 values
+    `21200..21207` / `22300..22323`, with untouched sentinel tails and correct
+    retained preferred/explicit required dimensions. A shared-ID override
+    changes both X/Y and writes exactly 16 values `22200..22215`; its tail
+    remains untouched too.
+  - Native Metal, with `MTL_DEBUG_LAYER=1` (API validation enabled): prepared metadata defaults `2x2x1`→override `3x1x1` match
+    real function constants/dispatch; exact `1220..1223` / `1310..1312` values
+    and untouched sentinel tails pass. This is not a new Metal compiler route.
+  - Architecture guard and `git diff --check` pass. Cohesion: common RHI
+    metadata validation/resolution is private and separate from the large RHI
+    dispatch file; package codec/agreement stays in RHI; emitted decoding stays
+    in Shader. Informational length-review signals do not imply a new framework.
+- **Next:** parent independently reviews this signed issue-scoped PR and owns
+  merge/tracking. Leave #186 open until acceptance; #187-#193 remain outstanding.
+  Shader overall is not complete and Renderer features remain paused.
+  Combined samplers, subpass/texel-buffer bindings, unsized/specialized
+  descriptor layouts, component/index packing, extended IO and advanced stages
+  retain their explicit documented representational limits; none is silently
+  mapped or promoted. Do not merge, close issues or delete the branch here.
 
 ## Shader Route And Target Contracts (#185)
 
@@ -115,7 +127,7 @@ rather than growing a historical transcript here.
   - Architecture guard and `git diff --check` pass. No dependencies installed,
     full platform matrix or hosted workflows run.
 - **Status:** merged in PR #194. Shader is
-  not complete: finish #186 reflection and its contract gates, #187 portable native outputs, #188
+  not complete: review #186 reflection contracts, then #187 portable native outputs, #188
   MSL/Metal libraries, #189 HLSL, #190 Slang/native imports, #191 WGSL, #192
   shared behavior, and #193 final evidence audit under #73. Renderer features
   (including materials, lighting, texture/asset management) remain paused;
@@ -216,11 +228,11 @@ rather than growing a historical transcript here.
   supported reflection. Cache keys cover effective configuration, target,
   compiler revision and transitive source contents; failures remain errors,
   with last-good state separately retained.
-- Reflection covers declared uniform/storage buffers (including runtime-sized
+- Historical #181 baseline, superseded by #186 above: reflection covered declared uniform/storage buffers (including runtime-sized
   tails), separate images/samplers and fixed image/sampler arrays, scalar/vector
-  IO and literal workgroups. Unsupported combined samplers, push constants,
-  specialization and complex IO fail explicitly. TSP 1.0 schema is unchanged;
-  full directional IO is in the compilation result, pipeline-edge IO in TSP.
+  IO and literal workgroups. Combined samplers, push constants,
+  specialization and complex IO initially failed explicitly. That snapshot's
+  TSP retained only pipeline-edge IO; #186 replaces this restricted layout.
 - Verified warning-as-error Apple Silicon Ninja Debug build and focused
   compiler/package/existing-tool tests (5/5); compiler-disabled compiler/package/tool tests
   (4/4); real installed static consumers with compiler on and off. Enabled

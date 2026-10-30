@@ -65,16 +65,6 @@ struct ShaderPermutation {
     bool operator==(const ShaderPermutation&) const = default;
 };
 
-struct ShaderInterfaceVariable {
-    ShaderStage stage = ShaderStage::vertex;
-    std::uint32_t location = 0;
-    std::string name;
-    std::string type;
-    std::string interpolation;
-
-    bool operator==(const ShaderInterfaceVariable&) const = default;
-};
-
 struct ShaderReflection {
     std::vector<ResourceBinding> bindings;
     std::vector<PushConstantRange> pushConstants;
@@ -82,6 +72,7 @@ struct ShaderReflection {
     std::vector<ShaderInterfaceVariable> interfaces;
     Extent3D requiredWorkgroupSize{1, 1, 1};
     Extent3D preferredWorkgroupSize{1, 1, 1};
+    WorkgroupSpecializationIds workgroupSpecializationIds{};
 };
 
 struct ShaderBindingRemap {

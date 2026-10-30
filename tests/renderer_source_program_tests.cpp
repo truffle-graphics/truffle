@@ -192,6 +192,29 @@ void main() { color=vec4(renamed[0]+vec3(tail[1],0),1); }
     renderer::SourceProgram linked(cache, 9, {});
     TRUFFLE_CHECK(linked.rebuild(compiler, normalized).ok());
     const auto normalizedId = cache.published(9)->id();
+    auto vertexPackage = rhi::ShaderPackage::load(linked.published_vertex()->package.bytes());
+    auto fragmentPackage = rhi::ShaderPackage::load(linked.published_fragment()->package.bytes());
+    TRUFFLE_CHECK(vertexPackage.ok() && fragmentPackage.ok());
+    const auto& fragmentVariant = fragmentPackage.value().desc().variants[0];
+    TRUFFLE_CHECK(fragmentVariant.reflection.interfaces.size() == 5);
+    TRUFFLE_CHECK(fragmentVariant.reflection.interfaces[0].direction == rhi::ShaderInterfaceDirection::input);
+    TRUFFLE_CHECK(fragmentVariant.reflection.interfaces[4].direction == rhi::ShaderInterfaceDirection::output);
+    TRUFFLE_CHECK(fragmentVariant.reflection.interfaces[0].location == 0 &&
+                  fragmentVariant.reflection.interfaces[4].location == 0);
+    renderer::ProgramDesc serialized;
+    serialized.vertex = {&vertexPackage.value(), rhi::ShaderTarget::spirv, "main", rhi::ShaderStage::vertex,
+                         vertexPackage.value().desc().variants[0].permutation};
+    serialized.fragment = {&fragmentPackage.value(), rhi::ShaderTarget::spirv, "main", rhi::ShaderStage::fragment,
+                           fragmentVariant.permutation};
+    TRUFFLE_CHECK(cache.register_program(10, serialized).ok());
+    const auto serializedId = cache.published(10)->id();
+    auto mismatch = fragmentPackage.value().desc();
+    mismatch.variants[0].reflection.interfaces[0].type = "vec4";
+    auto mismatchedPackage = rhi::ShaderPackage::create(mismatch);
+    TRUFFLE_CHECK(mismatchedPackage.ok());
+    serialized.fragment.package = &mismatchedPackage.value();
+    TRUFFLE_CHECK(!cache.register_program(10, serialized).ok());
+    TRUFFLE_CHECK(cache.published(10)->id() == serializedId);
     const auto rejectsNormalized = [&](const char* fragment) {
         auto wrong = normalized;
         wrong.fragment.source.text = fragment;
