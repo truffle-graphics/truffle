@@ -1,5 +1,6 @@
 #include "rhi_test_utils.hpp"
 #include "test_support.hpp"
+#include "shader_test_utils.hpp"
 #include "truffle/renderer/source_program.hpp"
 
 #include <cstdlib>
@@ -89,9 +90,8 @@ void main() { color = shade() * tint; }
 
     shader::Compiler compiler;
     renderer::SourceProgram program(cache, compiled, {});
-    if (!shader::Compiler::available()) {
-        // Compiler-disabled build: Renderer links Shader's core only, prepared
-        // programs keep working and source requests are explicitly unsupported.
+    if (!tests::shader_route_enabled()) {
+        // Prepared programs remain usable without this source-language adapter.
         auto attempt = program.rebuild(compiler, request);
         TRUFFLE_CHECK(!attempt.ok());
         TRUFFLE_CHECK(attempt.status().code == base::StatusCode::unsupported);

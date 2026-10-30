@@ -370,10 +370,7 @@ void main() {}
 
 int main() {
     try {
-        const auto routes = truffle::shader::Compiler::routes();
-        if (std::none_of(routes.begin(), routes.end(), [](const auto& route) {
-            return route.language == truffle::rhi::ShaderSourceLanguage::glsl;
-        })) return 0;
+        if (!truffle::tests::shader_route_enabled()) return 0;
         truffle::shader::Compiler compiler;
         constants_and_resources(compiler);
         interfaces(compiler);

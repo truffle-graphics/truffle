@@ -53,7 +53,7 @@ backends --> RHI
 
 Renderer depends on Shader directly. Unlike EnCom, Shader exists to serve
 rendering, so an EnComRenderer-style integration module would add a layer
-without benefit. Compiler toolchains (glslang and optional SPIRV-Tools/SPIRV-Cross) are optional Shader
+without benefit. Compiler toolchains (glslang, DXC and optional SPIRV-Tools/SPIRV-Cross) are optional Shader
 build parts, so Renderer gains no mandatory compiler dependency. RHI does not
 depend on Shader. Shader tooling and runtime clients share compilation
 mechanisms.

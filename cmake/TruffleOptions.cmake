@@ -11,6 +11,8 @@ option(TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS
        "Validate emitted SPIR-V with pinned SPIRV-Tools" OFF)
 option(TRUFFLE_SHADER_ENABLE_SPIRV_CROSS
        "Translate validated portable SPIR-V to Metal/GLSL/GLSL ES" OFF)
+option(TRUFFLE_SHADER_ENABLE_DXC
+       "Enable pinned in-process HLSL compilation with DXC" OFF)
 option(TRUFFLE_BUILD_RHI_DOCTOR "Build the RHI backend/platform doctor tool" ${PROJECT_IS_TOP_LEVEL})
 
 option(TRUFFLE_BUILD_BACKEND_NULL    "Build the Truffle null validation backend" ON)

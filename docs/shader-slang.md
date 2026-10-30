@@ -148,3 +148,8 @@ RGBA(78,0,0,255) pixels, then imported compute code for `QUALITY=3/4`, checking
 eight exact output words and an untouched sentinel.
 No Renderer feature work is involved. Compiler-off installed Shader/Renderer/RHI
 consumers must still resolve without compiler libraries/package requirements.
+After normally merging the HLSL baseline, focused combined GLSL+Slang checks
+pass 15/15, Slang-only checks 9/9, and compiler-off checks 10/10. HLSL request/
+route fields and native empty-intermediate listing are retained; revalidation
+keeps DXC disabled rather than creating another DXC source build. Slang reuses
+the shared define normalization and length-delimited cache-key input helpers.

@@ -1,12 +1,23 @@
 #pragma once
 
 #include "truffle/rhi/status.hpp"
+#include "truffle/shader/compiler.hpp"
 
+#include <algorithm>
 #include <stdexcept>
 #include <string>
 #include <utility>
 
 namespace truffle::tests {
+inline bool shader_route_enabled(
+    rhi::ShaderSourceLanguage language = rhi::ShaderSourceLanguage::glsl,
+    rhi::ShaderTarget target = rhi::ShaderTarget::spirv) {
+    const auto routes = shader::Compiler::routes();
+    return std::any_of(routes.begin(), routes.end(), [&](const auto& route) {
+        return route.language == language && route.target == target;
+    });
+}
+
 inline void require(base::Status status) {
     if (!status.ok()) throw std::runtime_error(status.message);
 }

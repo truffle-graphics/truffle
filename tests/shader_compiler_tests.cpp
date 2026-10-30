@@ -1,5 +1,6 @@
 #include "truffle/shader/compiler.hpp"
 #include "../src/shader/digest.hpp"
+#include "shader_test_utils.hpp"
 
 #include <cstdlib>
 #include <algorithm>
@@ -33,8 +34,7 @@ layout(location=0) out vec4 color;
 layout(set=0,binding=1) uniform Params { vec4 tint; } params;
 void main() { gl_Position = vec4(position * SCALE, 1); color = shade(params.tint); }
 )"};
-    if (std::none_of(shader::Compiler::routes().begin(), shader::Compiler::routes().end(),
-        [](const auto& route) { return route.language == rhi::ShaderSourceLanguage::glsl; })) {
+    if (!tests::shader_route_enabled()) {
         check(!compiler.compile(request).ok(), "Disabled adapter reports failure");
         return 0;
     }

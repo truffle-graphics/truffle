@@ -154,10 +154,14 @@ dependency.
 Native Slang modules/imports can independently opt in with
 `-DTRUFFLE_SHADER_ENABLE_SLANG=ON -DTRUFFLE_SHADER_ENABLE_SPIRV_TOOLS=ON`;
 see [Slang's pinned source build and bounded target matrix](docs/shader-slang.md).
+HLSL compilation is independently enabled with
+`-DTRUFFLE_SHADER_ENABLE_DXC=ON -DTRUFFLE_SHADER_ENABLE_SPIRV_TOOLS=ON`;
+it uses pinned in-process DXC for SPIR-V and DXIL, without requiring glslang.
 Portable native outputs additionally require
 `-DTRUFFLE_SHADER_ENABLE_SPIRV_TOOLS=ON -DTRUFFLE_SHADER_ENABLE_SPIRV_CROSS=ON`.
 Explicitly prepare their pinned submodules first; configure never downloads.
-See the [shared Shader target profiles and limits](src/shader/README.md#portable-native-generation-187)
+See the [HLSL dependency preparation and limits](src/shader/README.md#hlsl-and-dxc-189),
+the [shared native profiles and limits](src/shader/README.md#portable-native-generation-187)
 and [shaderc examples](docs/rhi1/shader-package.md#tool-usage).
 
 `truffle-rhi-doctor --strict --json <path>` records the declared matrix and the

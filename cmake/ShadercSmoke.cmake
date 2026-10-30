@@ -71,7 +71,7 @@ if(DEFINED TRUFFLE_EXPECT_COMPILER AND NOT TRUFFLE_EXPECT_COMPILER)
         --source-language glsl --input "${_source}"
         --output "${TRUFFLE_SHADERC_TEST_DIR}/disabled.tsp"
         RESULT_VARIABLE _result ERROR_VARIABLE _error)
-    if(_result EQUAL 0 OR NOT _error MATCHES "TRUFFLE_SHADER_ENABLE_GLSLANG|No enabled Shader compiler route")
+    if(_result EQUAL 0 OR NOT _error MATCHES "(TRUFFLE_SHADER_ENABLE_GLSLANG|No enabled Shader compiler route)")
         message(FATAL_ERROR "Disabled compilation did not fail explicitly: ${_error}")
     endif()
 endif()

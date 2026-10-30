@@ -1,5 +1,6 @@
 #include "truffle/shader/compiler.hpp"
 #include "digest.hpp"
+#include "compiler_inputs.hpp"
 #include "spirv_reflection.hpp"
 #include "spirv_translation.hpp"
 
@@ -18,6 +19,7 @@ namespace truffle::shader {
 namespace {
 
 using Slang::ComPtr;
+using detail::field;
 
 rhi::Status invalid(std::string message) {
     return rhi::Status::failure(rhi::StatusCode::invalid_argument, std::move(message));
@@ -171,11 +173,6 @@ private:
     std::map<std::string, std::pair<std::string, std::string>> origins_;
 };
 
-void field(std::string& output, std::string_view value) {
-    output += std::to_string(value.size()) + ":";
-    output += value;
-}
-
 bool identifier(std::string_view value) {
     if (value.empty() || !(std::isalpha(static_cast<unsigned char>(value.front())) || value.front() == '_'))
         return false;
@@ -203,15 +200,12 @@ rhi::Result<Compilation> compile_slang(const CompileRequest& request, std::vecto
         request.source.text.empty() ||
         request.source.text.find('\0') != std::string::npos || !identifier(request.entryPoint))
         return invalid("Slang requires source identity/content/name and a valid entry point");
-    auto defines = request.defines;
-    std::sort(defines.begin(), defines.end(), [](const auto& a, const auto& b) { return a.name < b.name; });
+    auto definesResult = detail::normalized_defines(request.defines);
+    if (!definesResult.ok()) return definesResult.status();
+    const auto defines = std::move(definesResult).value();
     std::string configuration;
     std::vector<::slang::PreprocessorMacroDesc> macros;
-    for (size_t i = 0; i < defines.size(); ++i) {
-        const auto& define = defines[i];
-        if (!identifier(define.name) || define.value.find_first_of("\r\n\0", 0, 3) != std::string::npos ||
-            (i && defines[i - 1].name == define.name))
-            return invalid("Invalid/duplicate Slang define: " + define.name);
+    for (const auto& define : defines) {
         macros.push_back({define.name.c_str(), define.value.c_str()});
         field(configuration, define.name);
         field(configuration, define.value);

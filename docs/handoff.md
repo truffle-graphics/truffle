@@ -17,7 +17,7 @@ rather than growing a historical transcript here.
 - **Actual matrix:** vertex/fragment/compute → SPIR-V 1.3 / Vulkan 1.1 only,
   independently validated with the existing pinned SPIRV-Tools. No Slang
   Metal/GL/WGSL/DXIL or advanced-stage route is advertised. `sourceUnits` is the
-  agreed native-MSL-only field and is explicitly rejected by Slang/glslang.
+  agreed native-MSL-only field and is explicitly rejected by Slang/glslang/DXC.
 - **Pins/source policy:** clean upstream Slang `v2026.12.1`,
   `90b8e77eafdfa0aabbbc48f0e86f6cfbde4cb8f8`, Apache-2.0 WITH LLVM-exception.
   Exact audited nested source pins/licenses and initialization commands are in
@@ -43,7 +43,8 @@ rather than growing a historical transcript here.
   changes or silent source rewriting. Negative regression covers the rejection.
 - **Focused final implementation checks:** Release Ninja, explicit Xcode SDK,
   warnings-as-errors and builds limited to `--parallel 2`. Combined GLSL+Slang
-  **14/14**, Slang-only/glslang-off **8/8**, compiler-off **9/9** pass. Checks
+  **15/15**, Slang-only/glslang-off **9/9**, compiler-off **10/10** pass after
+  the develop merge. Checks
   include native proof, one emitted entry/all stages, multilevel imports/includes,
   content/configuration invalidation, cycles/missing-source recovery, concurrent
   compiler instances, CLI/library byte equality, and installed consumers.
@@ -52,13 +53,86 @@ rather than growing a historical transcript here.
   and Slang output targets are not verified or claimed.
 - **Integration:** shared reflection uses canonical SPIRV-Headers rather than a
   glslang-private include and is built for independently enabled adapters.
+  Headers license notices are retained even for glslang-only/validator-off installs.
   Dispatch/discovery and test gates no longer assume glslang is the only adapter.
   Slang uses no Cross outputs, so it adds no competing generated-GLSL validator
-  or translation provenance helper. Merge current develop normally and retain
-  HLSL/DXC contracts/shared input helpers before final PR delivery. Parent owns
+  or translation provenance helper. Normal merge of develop
+  `5852204c9f49c933c6a6fbbd6e1b3b560ac93bac` preserves independent DXC routes,
+  HLSL Shader Model fields and native empty-intermediate CLI/consumer handling.
+  Slang now reuses `compiler_inputs.hpp` define/key helpers. Only existing
+  affected Slang/GLSL/off builds are revalidated; no second DXC build.
+  HLSL tests exercise their disabled-adapter path here, not a second native
+  HLSL proof. The added DXC `sourceUnits` negative regression is for the parent's
+  existing DXC-enabled build. Parent owns
   independent review, merge, issue acceptance and any later route expansion.
 
-## Portable Shader Targets (#187, Ready For Parent Review)
+## HLSL Compilation (#189, Merged In PR #199)
+
+- **Owner/boundary:** Shader owns the optional in-process DXC adapter, native
+  include/define preprocessing, dependencies, caching, validation and emitted
+  reflection. shaderc is a client of that same API. Dependencies remain private
+  DXC/SPIRV-Tools and optional glslang/SPIRV-Cross above RHI/Base; native backends
+  are linked by tests only. No architectural boundary change, Renderer feature,
+  new language, subprocess runtime compiler, watcher, or TSP version change.
+- **Routes:** independently enabled `TRUFFLE_SHADER_ENABLE_DXC` supports HLSL
+  2021, Shader Model 6.0 vertex/fragment/compute, Vulkan 1.0/SPIR-V 1.0 and
+  Vulkan 1.1/SPIR-V 1.3, plus native DXIL without a Vulkan intermediate.
+  `HlslShaderModel`, request/route metadata and `--hlsl-shader-model 6.0` expose
+  that bounded contract. Unsupported profiles/configurations fail explicitly.
+  Optional portable emission reuses #187: experimental macOS MSL 2.1 for all
+  three stages, GL 410 core/ES 300 for vertex/fragment.
+- **Dependency audit:** official DXC `v1.9.2609`, exact revision
+  `01b62ad47db7dee3dd33f90e7339cf9e860b3f93`, built offline in an isolated
+  Release/Ninja child build. Exact nested DirectX-Headers/SPIRV-Headers/
+  SPIRV-Tools pins and root/nested licenses are recorded in
+  `docs/rhi1/dependencies.md`; no local patches or implicit downloads.
+  Official binaries do not cover Apple Silicon, so this host uses the supported
+  source build. Only `dxcompiler` is built; it links system C/C++ libraries.
+- **Composition/cache:** native DXC preprocessing runs before every lookup.
+  Its callback supplies searched candidate paths, not an original includer or
+  quote/system distinction; the shared resolver receives an empty includer and
+  `system=false`. Resolved content is frozen for the actual compile. Stable
+  identities, transitive content hashes, sorted defines, profiles, options,
+  compiler revision and optional translation provenance determine cache identity.
+  Native guards/macros remain compiler-owned; failed rebuilds retain the
+  previous published result and expose diagnostics.
+- **Reflection/validation:** SPIR-V uses the shared real validator/reflector.
+  DXIL uses DXC's real validator and emitted DXIL reflection plus checked PSV
+  signature metadata, never a second SPIR-V compilation. Fixtures prove
+  target-predefined macros can change bindings and malformed DXIL is rejected.
+  User DXIL IO is bounded to `TEXCOORDn` and fragment `SV_Targetn`; unsupported
+  register-class collisions, unbounded descriptors, typed buffers and
+  append/consume/counter resources fail rather than receiving invented remaps.
+  Structured/raw storage minima reflect native stride/four-byte access.
+- **Focused evidence, Apple Silicon:** final combined Release/warnings-as-errors
+  configuration passes **19/19** with
+  `ctest --test-dir build/shader-hlsl -R 'truffle_shader|truffle_renderer_source_program_tests' --output-on-failure --parallel 2`.
+  This includes all 23 HLSL stage/target/intermediate configurations with
+  byte-identical CLI/library packages, transitive/guarded includes, defines,
+  dependency invalidation, failed rebuild retention, reflection, real validation,
+  existing GLSL/portable regressions and installed Shader/Renderer consumers.
+  DXC-only passes **8/8** focused tests and separately installed consumers without
+  glslang/Cross. Compiler-off installed Shader/Renderer consumers pass; their
+  link commands contain no optional compiler libraries.
+- **Native evidence:** unchanged serialized HLSL packages render all 256 pixels
+  exactly RGBA `(64,128,255,255)` on Vulkan/MoltenVK, Metal and macOS GL 4.1.
+  Vulkan/Metal compute writes `107..110`, retaining four `0xdeadbeef` tail values.
+  Vulkan validation and Metal API/GPU validation are active. DXIL validation is
+  real on this host but is not Windows/D3D12 driver execution; GLES has compiler
+  validation, not native evidence. Other-host validation remains separately
+  tracked and is not required to pretend D3D12 runs on this Mac.
+- **Cohesion:** the adapter coordinates compilation/package/cache lifecycle;
+  DXIL validation/reflection and COM ownership are separate private helpers.
+  Shared define/key normalization and existing generated-GLSL validation/Cross
+  provenance are reused rather than copied. Architecture and whitespace guards
+  pass. One issue-scoped signed commit/paired push is the approved delivery unit.
+- **Next:** review and integrate #189, then reconcile the independently developed
+  native MSL (#188), Slang (#190), WGSL (#191), shared-mechanism audit (#192) and
+  final completion audit (#193). Shader is not complete; Renderer features stay
+  paused. Source-unit contracts introduced by #188 must reject unsupported
+  adapters explicitly during integration.
+
+## Portable Shader Targets (#187, Merged Baseline)
 
 - **Independent review fixes on PR #197:** MSL translation now checks all seven
   upstream auxiliary-resource feedback APIs **after** compilation and rejects
