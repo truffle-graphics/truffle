@@ -40,6 +40,8 @@ struct Arguments {
     std::string append;
     std::vector<std::string> includeRoots;
     std::vector<truffle::rhi::ShaderDefine> defines;
+    truffle::shader::VulkanTarget vulkanTarget;
+    bool targetSettings = false;
     bool compile = false;
 };
 
@@ -55,7 +57,9 @@ void usage(std::ostream& output) {
            "[--source-hash SHA256] [--compiler-name NAME --compiler-version VERSION] "
            "[--compiler-revision REV] [--entry NAME] "
            "[--kind precompiled|native|generated] [--append PACKAGE] "
-           "[--compile [--include-root DIR]... [--define NAME[=VALUE]]...]\n"
+           "[--compile [--include-root DIR]... [--define NAME[=VALUE]]... "
+           "[--vulkan-version VERSION] [--spirv-version VERSION]]\n"
+        << "       truffle-shaderc --routes\n"
         << "Targets: spirv, dxil, metallib, msl, wgsl, glsl, glsl-es\n"
         << "Stages: vertex, fragment, compute\n"
         << "Source languages: slang, hlsl, glsl, glsl-es, wgsl, msl, "
@@ -64,7 +68,9 @@ void usage(std::ostream& output) {
            "compile through the optional shared Truffle::Shader adapter.\n"
         << "Assembly requires source-hash/compiler-name/compiler-version. "
            "Compilation computes source/dependency hashes and compiler identity; "
-           "a supplied source-hash is verified. No toolchains are fetched.\n";
+           "a supplied source-hash is verified. No toolchains are fetched.\n"
+        << "--routes lists enabled source compilation, not package assembly "
+           "or native GPU support. Target versions default to Vulkan 1.1/SPIR-V 1.3.\n";
 }
 
 [[nodiscard]] Result<Arguments> parse_arguments(int argc, char** argv) {
@@ -116,6 +122,20 @@ void usage(std::ostream& output) {
             const auto equals = value.find('=');
             result.defines.push_back({value.substr(0, equals),
                 equals == std::string::npos ? "1" : value.substr(equals + 1)});
+        } else if (key == "--vulkan-version") {
+            result.targetSettings = true;
+            if (value == truffle::shader::vulkan_version_name(truffle::shader::VulkanVersion::v1_0))
+                result.vulkanTarget.environment = truffle::shader::VulkanVersion::v1_0;
+            else if (value == truffle::shader::vulkan_version_name(truffle::shader::VulkanVersion::v1_1))
+                result.vulkanTarget.environment = truffle::shader::VulkanVersion::v1_1;
+            else return invalid("unknown Vulkan version: " + value);
+        } else if (key == "--spirv-version") {
+            result.targetSettings = true;
+            if (value == truffle::shader::spirv_version_name(truffle::shader::SpirvVersion::v1_0))
+                result.vulkanTarget.spirv = truffle::shader::SpirvVersion::v1_0;
+            else if (value == truffle::shader::spirv_version_name(truffle::shader::SpirvVersion::v1_3))
+                result.vulkanTarget.spirv = truffle::shader::SpirvVersion::v1_3;
+            else return invalid("unknown SPIR-V version: " + value);
         } else {
             return invalid("unknown argument " + std::string{key});
         }
@@ -127,8 +147,8 @@ void usage(std::ostream& output) {
          (result.sourceHash.empty() || result.compilerName.empty() || result.compilerVersion.empty()))) {
         return invalid("required package arguments are missing");
     }
-    if (!result.compile && (!result.includeRoots.empty() || !result.defines.empty()))
-        return invalid("include roots and defines require --compile");
+    if (!result.compile && (!result.includeRoots.empty() || !result.defines.empty() || result.targetSettings))
+        return invalid("include roots, defines and target settings require --compile");
     if (result.compile && (!result.compilerName.empty() || !result.compilerVersion.empty() ||
                            !result.compilerRevision.empty()))
         return invalid("--compile derives compiler identity; do not override it");
@@ -247,6 +267,23 @@ void usage(std::ostream& output) {
 
 int main(int argc, char** argv) {
     using namespace truffle;
+    if (argc == 2 && std::string_view{argv[1]} == "--routes") {
+        const auto routes = shader::Compiler::routes();
+        std::cout << "source-routes=" << routes.size() << '\n';
+        for (const auto& route : routes) {
+            for (const auto stage : route.stages) {
+                for (const auto target : route.vulkanTargets) {
+                    std::cout << "source=" << rhi::shader_source_language_name(route.language)
+                              << " target=" << rhi::shader_target_name(route.target)
+                              << " stage=" << (stage == ShaderStage::vertex ? "vertex" :
+                                              stage == ShaderStage::fragment ? "fragment" : "compute")
+                              << " vulkan=" << shader::vulkan_version_name(target.environment)
+                              << " spirv=" << shader::spirv_version_name(target.spirv) << '\n';
+                }
+            }
+        }
+        return 0;
+    }
     if (argc == 2 && std::string_view{argv[1]} == "--self-test") {
         return self_test();
     }
@@ -312,14 +349,6 @@ int main(int argc, char** argv) {
         return 2;
     }
     const auto target = targetResult.value();
-    if (arguments.compile &&
-        (target != rhi::ShaderTarget::spirv ||
-         (languageResult.value() != rhi::ShaderSourceLanguage::glsl &&
-          languageResult.value() != rhi::ShaderSourceLanguage::glsl_es))) {
-        std::cerr << "the enabled compiler route accepts GLSL or GLSL ES to "
-                     "SPIR-V only\n";
-        return 2;
-    }
     ShaderPackageDesc desc;
     if (!arguments.append.empty()) {
         auto baseBytes = read_file(arguments.append);
@@ -355,6 +384,7 @@ int main(int argc, char** argv) {
         request.entryPoint = arguments.entry;
         request.target = target;
         request.language = languageResult.value();
+        request.vulkanTarget = arguments.vulkanTarget;
         request.includeRoots = arguments.includeRoots;
         request.defines = arguments.defines;
         shader::Compiler compiler;

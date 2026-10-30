@@ -46,7 +46,7 @@ planned, not implemented.
 (Engine) -.-> EnCom, (GUI), (Assets)
 (GUI) -----> Renderer          (no EnCom dependency; own lightweight hierarchy)
 EnComRenderer --> EnCom, Renderer
-Renderer --> (Shader) --> RHI --> Base
+Renderer --> Shader --> RHI --> Base
 EnCom ----------------> Base
 backends --> RHI
 ```
@@ -292,6 +292,14 @@ reuses pinned glslang for GLSL/GLSL ES to SPIR-V; this does not claim that every
 language/target in #73 is implemented. Compiler-free package consumption and
 assembly remain supported.
 
+Shader's public capability query describes only enabled source routes and
+their stages/target configurations (#185). Shader validates those settings
+before invoking an optional private compiler and includes effective targets in
+cache identity and compiler provenance. Shaderc consumes that contract rather
+than maintaining a second route policy. See the [Shader route matrix](../src/shader/README.md).
+This extends Shader's public API without changing module dependencies or the
+RHI/TSP schema.
+
 See [the shader package contract](rhi1/shader-package.md).
 
 ## Planned Modules
@@ -309,8 +317,11 @@ their own design issues.
   architecture, and the future of the provisional `truffle_assets` and
   `truffle_asset_render` targets are decided later.
 
-The practical macOS RHI baseline is followed by the initial Shader and Renderer
-slices (#178-#181). Engine and other higher-level modules remain later work.
+The practical macOS RHI baseline and initial Shader/Renderer foundations
+(#178-#181) are implemented. Current work completes Shader first (#73, starting
+with #185); Renderer feature growth is paused. Existing Renderer regressions
+may supply native Shader-output evidence. Engine and other higher-level
+modules remain later work.
 
 ## Deferred Surfaces
 

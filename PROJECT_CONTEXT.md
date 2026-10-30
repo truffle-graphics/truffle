@@ -164,8 +164,17 @@ The practical Apple Silicon baseline is established for Metal, Vulkan via
 MoltenVK, and OpenGL 4.1 (see the support matrix and handoff for evidence).
 Shared Shader mechanisms/tooling (#178/#180), native prepared-TSP Renderer
 execution (#179), and optional runtime compilation with safe rebuild adoption
-(#181) are initial usable slices, not completion claims for every shader route
-(#73) or future Renderer feature. Verification on other platforms is recorded, not a blocker.
+(#181) are completed foundations, not module-completion claims.
+**Complete Shader first (#73); Renderer feature work is paused.** The bounded
+first phase (#185) adds truthful route discovery and typed target settings.
+Remaining phases are baseline reflection (#186), portable native Metal/OpenGL
+generation (#187), MSL/Metal libraries (#188), HLSL (#189), Slang/native module
+imports (#190), WGSL (#191), shared composition/cache/rebuild/tool audit (#192),
+and final evidence/completion audit (#193). Use signed phased commits,
+immediate pushes, and reviewed PR merge commits. Existing Renderer regressions
+may establish Shader-output evidence; materials, lighting, texture/asset
+management and other Renderer features remain paused.
+Verification on other platforms is recorded, not a blocker.
 Other backends/platforms, Phase 6 advanced features, and Phase 7 hardening are
 deferred backlog (see `docs/roadmap.md`), not abandoned. Promote no pair beyond
 its recorded evidence.

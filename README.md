@@ -92,6 +92,10 @@ for each backend/platform pair:
   normalized cross-target reflection and native-variant selection. The optional
   `truffle-shaderc` target assembles and inspects packages without adding a
   compiler dependency to RHI consumers.
+- `truffle_shader` owns optional source compilation, route discovery, typed
+  target configuration, reflection, dependency tracking, caching, and rebuild
+  results. Shaderc and Renderer use this library directly; RHI never depends
+  on it.
 - `truffle_renderer` starts the independently consumable rendering layer above RHI.
 - `truffle_encom_renderer` is the optional EnCom–Renderer integration that
   extracts EnCom state into render batches.
@@ -106,6 +110,16 @@ conversion.
 
 Truffle has no dependency on an application or host framework. A consumer may
 compose Truffle with one at its own application boundary.
+
+## Current Focus
+
+Current focus is **Shader completion first** under #73, starting with route/
+target contracts (#185). The merged #178-#181 Shader/Renderer foundations are
+not full module completion. Renderer feature work is paused; the remaining
+Shader phases (#186-#193) and their evidence gates are in
+[`docs/roadmap.md`](docs/roadmap.md). See the
+[Shader API and implemented/planned route matrix](src/shader/README.md) for
+accepted sources, emitted targets, target versions, and native evidence.
 
 ## Build
 
@@ -156,7 +170,7 @@ target_link_libraries(my_tool PRIVATE Truffle::RHI Truffle::Renderer)
 ```
 
 The current package exports `Truffle::Base`, `Truffle::Assets`,
-`Truffle::AssetRender`, `Truffle::EnCom`, `Truffle::RHI`,
+`Truffle::AssetRender`, `Truffle::EnCom`, `Truffle::RHI`, `Truffle::Shader`,
 `Truffle::BackendNull`, `Truffle::Renderer`, `Truffle::EnComRenderer`, and
 `Truffle::Diagnostics`. Additional backend exports
 (`Truffle::BackendMetal`, `Truffle::BackendVulkan`, `Truffle::BackendOpenGL`,
