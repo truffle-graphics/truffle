@@ -118,10 +118,11 @@ consumer selects concrete loading, upload, and backend behavior.
 - Shader mechanisms belong to an independently usable library: source
   composition/includes/imports, compile-time configuration, compilation,
   reflection, dependency tracking, caching, and rebuilding. Offline tools
-  and optional runtime compilation share that library. Renderer owns GPU
-  shader/pipeline resources, binding compatibility, and safe replacement;
-  RHI/backends do not depend on the Shader library. Prepared TSP consumers
-  remain compiler-free. Use existing shader languages, compile requested
+  and optional runtime compilation share that library. Renderer depends on
+  Shader directly (no adapter module) and owns GPU shader/pipeline
+  resources, binding compatibility, and safe replacement; RHI/backends do
+  not depend on the Shader library. Compiler toolchains are optional Shader
+  build parts, so prepared TSP consumers remain compiler-free. Use existing shader languages, compile requested
   combinations rather than every possible permutation, and keep source
   rebuilding separate from publication of validated GPU programs
   (#73, #178-#181; see `docs/architecture.md`).

@@ -34,8 +34,9 @@ The next work is parallel Shader and Renderer development:
 3. **Renderer (#179):** prepared-TSP GPU shader/pipeline ownership and real
    frame-graph/batch execution. This runs independently of source compilation
    and does not require EnCom or compiler dependencies.
-4. **Runtime integration (#181):** compose the completed tracks for on-demand
-   compilation and safe shader rebuild adoption with native output evidence.
+4. **Runtime integration (#181):** Renderer uses Shader directly (no adapter
+   module) for on-demand compilation and safe shader rebuild adoption, with
+   native output evidence.
 
 The common compiled-result boundary is the existing RHI ShaderPackage;
 optional runtime compilation additionally uses the Shader request/result

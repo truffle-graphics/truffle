@@ -14,7 +14,8 @@ unrelated modules. Truffle is not an application framework.
 4. `truffle_renderer` provides render batches, frame-graph orchestration,
    renderer execution, and pipeline-cache integration without depending on
    EnCom. The Renderer owns GPU resources: buffers, textures, uploads, and
-   their lifetimes.
+   their lifetimes. It uses the Shader module directly; no adapter module
+   sits between them.
 5. `truffle_assets` declares backend-free asset, material, texture, geometry,
    group, and tag metadata (provisional; see Planned Modules).
 6. `truffle_asset_render` validates and maps asset declarations to metadata-only
@@ -27,8 +28,9 @@ unrelated modules. Truffle is not an application framework.
    modules do not depend on it.
 10. The Shader module, being implemented in #178, provides independently usable
     source composition, configuration, compilation, reflection, dependency
-    tracking, and compilation-result caching. Its compiler adapters are
-    optional; prepared-package RHI and Renderer consumers do not require them.
+    tracking, and compilation-result caching. Its compiler backends are
+    optional build parts inside Shader; without them, prepared packages still
+    work and source-compilation requests report `unsupported`.
 
 Developer tools (`truffle-shaderc`, `truffle-rhi-doctor`) are tools, not
 modules. Shader tools use the Shader module; the doctor uses RHI. Neither tool
@@ -44,15 +46,17 @@ planned, not implemented.
 (Engine) -.-> EnCom, (GUI), (Assets)
 (GUI) -----> Renderer          (no EnCom dependency; own lightweight hierarchy)
 EnComRenderer --> EnCom, Renderer
-Renderer --> RHI --> Base
-(Shader) --> RHI
+Renderer --> (Shader) --> RHI --> Base
 EnCom ----------------> Base
 backends --> RHI
 ```
 
-An optional runtime-compiling host composes Shader and Renderer. The Renderer
-does not acquire a mandatory compiler dependency, and RHI does not depend on
-Shader. Shader tooling and runtime clients share compilation mechanisms.
+Renderer depends on Shader directly. Unlike EnCom, Shader exists to serve
+rendering, so an EnComRenderer-style integration module would add a layer
+without benefit. Compiler toolchains (initially glslang) are optional Shader
+build parts, so Renderer gains no mandatory compiler dependency. RHI does not
+depend on Shader. Shader tooling and runtime clients share compilation
+mechanisms.
 
 EnCom and Renderer are each usable alone. Using both through
 `truffle_encom_renderer` is the intended fastest combination: aligned data
@@ -253,8 +257,9 @@ The accepted architecture separates four responsibilities:
   belong exclusively to the CLI.
 - **Renderer:** GPU shader/program and pipeline ownership, material/variant
   use, binding compatibility, pipeline caching, and safe adoption of rebuilt
-  programs. Source parsing, include resolution, and compiler policy stay out
-  of Renderer.
+  programs. Renderer calls the Shader module directly for compilation and
+  rebuild requests; source parsing, include resolution, and compiler
+  implementations stay inside Shader.
 - **RHI/backends:** package selection and native shader/pipeline creation,
   with accurate capabilities and explicit failures. They do not depend on
   Shader, Renderer, or compiler tools.
@@ -267,16 +272,16 @@ diagnostics. This result can be consumed without writing a package to disk.
 Reflection must agree across variants of the same logical interface.
 
 Hot reload separates rebuilding from GPU publication. Shader tracks source
-changes and produces rebuild results; a host or optional integration composes
-it with Renderer. Renderer accepts a replacement only after its interfaces
+changes and produces rebuild results that Renderer consumes directly.
+Renderer accepts a replacement only after its interfaces
 and native pipeline are valid. Failed rebuilding/publication reports an
 error without discarding the last working program, and in-flight GPU work
 retains the resources it references. No OS file watcher or background service
 becomes a mandatory dependency.
 
 Shader-library work (#178), tool reuse and TSP naming (#180), and prepared-TSP
-Renderer execution (#179) proceed as separate deliverables. Optional runtime
-compilation/reload integration follows in #181. The first compiler route
+Renderer execution (#179) proceed as separate deliverables. Renderer's direct
+use of Shader for runtime compilation and reload follows in #181. The first compiler route
 reuses pinned glslang for GLSL/GLSL ES to SPIR-V; this does not claim that every
 language/target in #73 is implemented. Compiler-free package consumption and
 assembly remain supported.

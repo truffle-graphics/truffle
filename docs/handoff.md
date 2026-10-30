@@ -37,6 +37,9 @@ setup, not immediate work. No issue labels or hosted workflows change.
 - Renderer owns GPU shader/pipeline resources, binding compatibility,
   pipeline caching, and validated replacement. RHI/backends remain independent
   of Shader, Renderer, and compiler toolchains.
+- Renderer depends on Shader directly; there is no EnComRenderer-style
+  adapter module. Compiler toolchains are optional Shader build parts, so
+  Renderer stays compiler-free when they are disabled.
 - Two contracts: prepared TSP results, plus optional source compilation/rebuild
   requests and results. An in-memory package is sufficient; no disk roundtrip
   is required.
