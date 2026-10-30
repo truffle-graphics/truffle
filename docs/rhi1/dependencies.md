@@ -66,10 +66,12 @@ precompiled or backend-native variants without a compiler library. Its first
 source route is enabled independently with `TRUFFLE_SHADER_ENABLE_GLSLANG` and
 compiles GLSL or GLSL ES to SPIR-V using the pinned `vendor/glslang` source.
 Portable native routes use `TRUFFLE_SHADER_ENABLE_SPIRV_CROSS`, requiring
-glslang and `TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS`. The independent
+one SPIR-V source adapter and `TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS`.
+`TRUFFLE_SHADER_ENABLE_TINT` adds independent WGSL and SPIR-V-to-WGSL routes.
+The independent
 `TRUFFLE_SHADER_ENABLE_DXC` adapter compiles HLSL to SPIR-V/DXIL and requires
 SPIRV-Tools; portable HLSL output reuses the same Cross/glslang closure.
-Future routes may use Slang and Tint
+Future routes may use Slang
 submodules, enabled individually. No compiler submodule is introduced before
 its route exists, and configure never downloads it. Runtime packages do not
 acquire the compiler toolchain. Runtime source compilation is an explicit
@@ -77,9 +79,11 @@ optional feature; production packages prefer offline variants.
 
 | Dependency | Pin | Upstream and license | Consumer and update policy |
 |---|---|---|---|
+| Tint in Dawn | `46b4670bc67cb4f6d34f6ce6a46ba7e1d6059abf` (`chromium/7258`) | `dawn.googlesource.com/dawn`; BSD-3-Clause (`LICENSE`) | Private optional in-process WGSL reader/writer, SPIR-V reader/writer, inspector and native IR transforms. Dawn backends/browser/GUI/tests/tools and unrelated writers disabled; no source patches. Exact static link closure exported, not public Tint headers. |
+| Abseil | `04dc59d2c83238cb1fcb49083e5e416643a899ce` | Chromium `third_party/abseil-cpp`; Apache-2.0 (`LICENSE`) | Dawn's exact DEPS selection, private used static closure only; no system fallback or patches. |
 | glslang | `16.5.0` / `a8d28bd082bff18ffbe80996e922b012f915cf07` | `KhronosGroup/glslang`; upstream `LICENSE.txt` contains BSD-2-Clause, BSD-3-Clause, MIT, and Apache-2.0 notices. | Private to `Truffle::Shader` when its adapter is enabled; shaderc and optional runtime clients share it. Static installs include its exported link closure; adapter-disabled prepared-package RHI/Renderer consumers remain compiler-free. No local patches. Update by reviewing release notes and licenses, advancing the submodule, then running deterministic compile, invalid-source, package/install, and native Vulkan consumers. |
 | SPIRV-Cross | `vulkan-sdk-1.4.350.1` / `1a6169566c73d3da552748fc372fe2bbb856e46e` | `KhronosGroup/SPIRV-Cross`; Apache-2.0 primary license, bundled generated-header/registry notices in `LICENSES` (MIT, Khronos Free Use, CC-BY-4.0). | Private optional core/GLSL/MSL static closure. C++ `CompilerMSL` resource remaps/cleansed entry API and `CompilerGLSL` combined-sampler API audited at this pin; no C API, CLI or extra target generators. |
-| SPIRV-Tools | `v2026.3` / `b707790a898e44038547df54580022fc1cf89c3d` | `KhronosGroup/SPIRV-Tools`; Apache-2.0 | Private optional in-process `SpirvTools::Validate`, Vulkan 1.0/1.1 environments. Pin is glslang 16.5.0's `known_good.json` selection, not an arbitrary latest tool. Only validation static library is built/installed, exported as Shader's private static closure in Truffle's target export; no optimizer or tool runtime. |
+| SPIRV-Tools | `v2026.3` / `b707790a898e44038547df54580022fc1cf89c3d` | `KhronosGroup/SPIRV-Tools`; Apache-2.0 | Private optional in-process `SpirvTools::Validate`, Vulkan 1.0/1.1 environments. Pin is glslang 16.5.0's `known_good.json` selection, not an arbitrary latest tool. Validation static closure; Tint's SPIR-V reader additionally builds/exports optimizer, no CLI runtime. |
 | SPIRV-Headers | `29981f65241605e08b0ede4cfeb999fe3b723c6a` | `KhronosGroup/SPIRV-Headers`; Khronos MIT-style license, MIT/CC-BY-4.0 notices in `LICENSES`; optional JsonCpp utility carries PD/MIT terms in root `LICENSE`. | Paired with Tools by glslang's `known_good.json`; supplied explicitly through `SPIRV-Headers_SOURCE_DIR`. Build-time grammar/header dependency only, not an RHI dependency. |
 | DXC | `v1.9.2609` / `01b62ad47db7dee3dd33f90e7339cf9e860b3f93` | `microsoft/DirectXShaderCompiler`; University of Illinois Open Source License and bundled LLVM/Clang/third-party notices in `LICENSE.TXT` / `ThirdPartyNotices.txt`. | Private optional in-process compiler/validator/container-reflection shared library. Isolated offline Ninja source build; only `dxcompiler` is built, tests/conversion tools/zlib/terminfo are disabled. Exported link closure includes the shared library, not public SDK headers. Apple Silicon build/consumer evidence; no upstream macOS release binary or silent binary fallback. |
 | DXC-nested SPIRV-Headers | `496543121ce6419f23d6fa5d7194ba66c36212d2` | `KhronosGroup/SPIRV-Headers`; Khronos MIT-style terms in `LICENSE`. | Exact DXC gitlink, separate from Truffle's emitted-output validator pair; private compiler-build grammar/headers. |
@@ -98,6 +102,22 @@ Vulkan/Metal/GL native fixture. Tools/Headers update as a compatible pair;
 the Cross SDK tag is separately tested against emitted SPIR-V 1.0/1.3.
 Enabled installs preserve their license texts under `share/licenses/Truffle`.
 Disabling all adapters removes these libraries and package requirements entirely.
+
+Tint additionally requires explicit `git submodule update --init vendor/dawn
+vendor/abseil`. `DAWN_FETCH_DEPENDENCIES` is forced OFF; no depot_tools, Go,
+Jinja, network configure, host Tint binary or expert system/SDK mode is needed
+for this bounded source build. Python 3 generates Tools tables; the platform
+C++20 SDK/toolchain remains required. Tint's upstream SPIR-V reader intentionally
+uses optimizer internal headers and generated tables through its own CMake
+dependency mechanism. Dawn's DEPS names older Tools
+`108b19e5c6979f496deffad4acbe354237afa7d3` and Headers
+`2a611a970fdbc41ac2e3e328802aed9985352dca`; Truffle reuses its existing pair
+above, with actual reader/writer compilation, graphics/compute import/validation
+and native output tests proving the selected compatibility. These are not
+misrepresented as Dawn's upstream DEPS pins. No header casts, stubs, source
+patches or dual incompatible Tools copies are used. Updating any of these pins
+requires repeating reader/writer/cache/CLI/native/install tests, because that
+internal reader dependency is not a stable upstream ABI.
 
 For DXC, also prepare its exact nested source dependencies explicitly:
 

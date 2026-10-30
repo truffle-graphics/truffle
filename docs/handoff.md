@@ -3,6 +3,65 @@
 Use this document as Truffle's rolling cross-machine handoff. Keep it useful to
 a human resuming work and to a fresh AI session reading the repository.
 
+## WGSL/Tint source routes — issue #191
+
+- Integration update: normally merged `origin/develop` at
+  `5852204c9f49c933c6a6fbbd6e1b3b560ac93bac` (HLSL PR #199) into this
+  branch without rebasing. Shared routes/API/CLI retain HLSL shader-model
+  fields, DXIL routes with no Vulkan intermediate, native output gates and
+  all WGSL routes. Tint reuses `compiler_inputs.hpp` key-field encoding and
+  `translation_provenance()`; shared GLSL validation remains used by GLSL/HLSL
+  outputs (Tint exposes no GLSL output route). Canonical SPIRV-Headers
+  reflection is compiled once for any enabled SPIR-V adapter.
+- Integration verification reused the existing compiler builds: Tint-only
+  with glslang OFF passed 12 focused tests; GLSL/Tint enabled integration
+  passed the same 12, including native exact Vulkan/Metal output, real
+  glslang-intermediate→WGSL conversion, CLI/library equality and installed
+  consumers. Warnings-as-errors remains enabled. DXC stayed OFF in these
+  WGSL builds: no second DXC source build or new HLSL execution claim.
+  Seven focused compiler-off route/CLI/Renderer/installed-consumer integration
+  checks also passed. HLSL's previously merged evidence remains with PR #199.
+- Implemented in the dedicated `feat/shader-wgsl` branch: pinned optional real
+  in-process Tint (Dawn `46b4670bc67cb4f6d34f6ce6a46ba7e1d6059abf`,
+  BSD-3-Clause) and Dawn's pinned Abseil
+  `04dc59d2c83238cb1fcb49083e5e416643a899ce` (Apache-2.0). No configure
+  downloads, source patches, system fallback, Dawn/WebGPU/browser/GUI runtime,
+  tests, compiler executable or irrelevant writer build.
+- Real advertised vertex/fragment/compute routes: WGSL→Vulkan 1.1/SPIR-V 1.3,
+  WGSL→WGSL, SPIR-V→WGSL and (with existing Cross) WGSL→macOS MSL 2.1.
+  WGSL output is experimentally gated in compile/load/CLI, reparsed by Tint,
+  and recompiled in tests. No direct source-language-to-WGSL claim beyond
+  WGSL and the explicit SPIR-V intermediate route.
+- Canonical emitted-SPIR-V reflection, source identity/hash, pinned compiler
+  provenance and cache/rebuild contracts are reused. Native entry/stage
+  selection uses Tint IR transforms. WGSL has no preprocessor/imports:
+  defines/include roots/resolver, debug-info requests and selected pipeline
+  overrides receive typed rejection, never silent substitution or omission.
+  Host-composed ordinary WGSL functions/constants are supported as one
+  exact-byte dependency; no new shader language.
+- Existing pinned Tools/Headers compile and validate Tint's real reader/writer.
+  Tint's reader legitimately requires Tools optimizer internals; the used
+  optimizer static closure is exported only with Tint. Exact pair differences
+  from Dawn DEPS and update risks are documented in the dependency policy.
+  Used Tint/Abseil static archives are exported privately without public Tint
+  headers; all-off installed prepared consumers have no compiler link closure.
+- Native Apple M3 Pro evidence: active Vulkan validation/MoltenVK and enabled
+  Metal API/GPU validation each read back all 256 resource-backed triangle
+  pixels as RGBA `(64,64,32,255)` and all four compute words as
+  `(12,13,14,15)`. Tint's automatic point-size output is disabled explicitly:
+  otherwise triangle MSL fails native pipeline creation. No point-topology,
+  WebGPU execution or backend maturity promotion is claimed.
+- Focused local evidence covers Tint-only builds (glslang OFF), combined
+  glslang/Tint builds, emitted WGSL and SPIR-V import, exact canonical
+  graphics/compute bindings/IO, invalid source/entry/stage/options,
+  source-edit cache/failure/recovery, CLI/library exact package equality,
+  experimental loading, enabled installation/static consumers, and
+  compiler-off route/package/Renderer/prepared-consumer isolation.
+- Delivery is a signed issue-scoped commit and immediate feature-branch push,
+  then a PR into `develop`; parent owns review/acceptance/merge. Do not close
+  #191 or merge independently. Shader-first remains in effect; Renderer
+  feature work stays paused. TSP remains unreleased draft 1.0.
+
 AI work that reaches a commit must update this handoff before that commit.
 Promote durable decisions into project context, architecture, roadmap, or ADRs
 rather than growing a historical transcript here.

@@ -47,6 +47,7 @@ struct Arguments {
     bool targetSettings = false;
     bool compile = false;
     bool experimentalMetal = false;
+    bool experimentalWgsl = false;
     std::string nativeVersionTarget;
 };
 
@@ -66,9 +67,9 @@ void usage(std::ostream& output) {
            "[--vulkan-version VERSION] [--spirv-version VERSION] "
            "[--hlsl-shader-model 6.0] "
            "[--msl-version 2.1|--glsl-version 410|--glsl-es-version 300] "
-           "[--allow-experimental-metal]]\n"
+           "[--allow-experimental-metal] [--allow-experimental-wgsl]]\n"
         << "       truffle-shaderc --routes\n"
-        << "       truffle-shaderc --inspect PACKAGE [--allow-experimental-metal]\n"
+        << "       truffle-shaderc --inspect PACKAGE [--allow-experimental-metal] [--allow-experimental-wgsl]\n"
         << "Targets: spirv, dxil, metallib, msl, wgsl, glsl, glsl-es\n"
         << "Stages: vertex, fragment, compute\n"
         << "Source languages: slang, hlsl, glsl, glsl-es, wgsl, msl, "
@@ -96,6 +97,10 @@ void usage(std::ostream& output) {
         }
         if (key == "--allow-experimental-metal") {
             result.experimentalMetal = true;
+            continue;
+        }
+        if (key == "--allow-experimental-wgsl") {
+            result.experimentalWgsl = true;
             continue;
         }
         if (index + 1 >= argc) {
@@ -328,8 +333,14 @@ int main(int argc, char** argv) {
     if (argc == 2 && std::string_view{argv[1]} == "--self-test") {
         return self_test();
     }
-    if ((argc == 3 || (argc == 4 && std::string_view{argv[3]} == "--allow-experimental-metal")) &&
-        std::string_view{argv[1]} == "--inspect") {
+    if (argc >= 3 && argc <= 5 && std::string_view{argv[1]} == "--inspect") {
+        truffle::rhi::ShaderPackageOptions options;
+        for (int i = 3; i < argc; ++i) {
+            const std::string_view flag{argv[i]};
+            if (flag == "--allow-experimental-metal") options.allowExperimentalMetalGeneration = true;
+            else if (flag == "--allow-experimental-wgsl") options.allowExperimentalWgslGeneration = true;
+            else { std::cerr << "invalid inspect option\n"; return 2; }
+        }
         auto bytesResult = read_file(argv[2]);
         if (!bytesResult.ok()) {
             std::cerr << bytesResult.status().message << '\n';
@@ -337,7 +348,7 @@ int main(int argc, char** argv) {
         }
         auto packageResult =
             ShaderPackage::load(std::move(bytesResult).value(),
-                                {.allowExperimentalMetalGeneration = argc == 4});
+                                options);
         if (!packageResult.ok()) {
             std::cerr << packageResult.status().message << '\n';
             return 2;
@@ -438,7 +449,8 @@ int main(int argc, char** argv) {
             return 2;
         }
         auto basePackage = ShaderPackage::load(std::move(baseBytes).value(),
-            {.allowExperimentalMetalGeneration = arguments.experimentalMetal});
+            {.allowExperimentalMetalGeneration = arguments.experimentalMetal,
+             .allowExperimentalWgslGeneration = arguments.experimentalWgsl});
         if (!basePackage.ok()) {
             std::cerr << basePackage.status().message << '\n';
             return 2;
@@ -469,6 +481,7 @@ int main(int argc, char** argv) {
         request.vulkanTarget = arguments.vulkanTarget;
         request.hlslShaderModel = arguments.hlslShaderModel;
         request.allowExperimentalMetalGeneration = arguments.experimentalMetal;
+        request.allowExperimentalWgslGeneration = arguments.experimentalWgsl;
         request.includeRoots = arguments.includeRoots;
         request.defines = arguments.defines;
         shader::Compiler compiler;
@@ -544,7 +557,8 @@ int main(int argc, char** argv) {
     }
     desc.diagnostics.insert(desc.diagnostics.end(), addition.diagnostics.begin(), addition.diagnostics.end());
     auto packageResult = ShaderPackage::create(std::move(desc),
-        {.allowExperimentalMetalGeneration = arguments.experimentalMetal});
+        {.allowExperimentalMetalGeneration = arguments.experimentalMetal,
+         .allowExperimentalWgslGeneration = arguments.experimentalWgsl});
     if (!packageResult.ok()) {
         std::cerr << packageResult.status().message << '\n';
         return 2;

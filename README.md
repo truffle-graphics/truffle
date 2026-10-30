@@ -161,6 +161,12 @@ See the [HLSL dependency preparation and limits](src/shader/README.md#hlsl-and-d
 the [shared native profiles and limits](src/shader/README.md#portable-native-generation-187)
 and [shaderc examples](docs/rhi1/shader-package.md#tool-usage).
 
+Optional WGSL compilation uses pinned in-process Tint with
+`-DTRUFFLE_SHADER_ENABLE_TINT=ON -DTRUFFLE_SHADER_ENABLE_SPIRV_TOOLS=ON`,
+independently of glslang. It supports WGSL to SPIR-V 1.3, selected WGSL
+regeneration, SPIR-V to WGSL, and optional existing MSL translation. See
+[WGSL/Tint routes and truthful language/configuration limits](src/shader/README.md#wgsl-and-tint-191).
+
 `truffle-rhi-doctor --strict --json <path>` records the declared matrix and the
 adapters that actually initialized on the current host. Strict mode fails when
 a built backend with a `native_smoke` host claim cannot expose its native

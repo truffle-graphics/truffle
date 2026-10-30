@@ -16,6 +16,12 @@
 [submodule "vendor/spirv-headers"]
 	path = vendor/spirv-headers
 	url = https://github.com/KhronosGroup/SPIRV-Headers.git
+[submodule "vendor/dawn"]
+	path = vendor/dawn
+	url = https://dawn.googlesource.com/dawn
+[submodule "vendor/abseil"]
+	path = vendor/abseil
+	url = https://chromium.googlesource.com/chromium/src/third_party/abseil-cpp
 [submodule "vendor/dxc"]
 	path = vendor/dxc
 	url = https://github.com/microsoft/DirectXShaderCompiler.git
