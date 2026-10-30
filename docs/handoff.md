@@ -3,7 +3,7 @@
 Use this document as Truffle's rolling cross-machine handoff. Keep it useful to
 a human resuming work and to a fresh AI session reading the repository.
 
-## Shared Shader mechanism audit (#192, in progress)
+## Shared Shader mechanism audit (#192, ready for integration review)
 
 - Added a runnable Shader-only workflow example with native GLSL transitive
   includes, explicit requested configurations, cache reuse, compile/reflection
@@ -24,11 +24,15 @@ a human resuming work and to a fresh AI session reading the repository.
   MSL: 29 focused enabled checks and nine exact-source compiler-off checks
   pass. Native MSL is accepted in merged PR #201; its `develop` merge
   `f833cafffd56753e0b4d74be23f2607ca6afc2ea` is integrated here without
-  rebasing. Final in-tree shared acceptance and completion #193 remain open.
+  rebasing. The integrated in-tree example, native rebuild/package failure
+  contract, routes, CLI, direct Renderer consumer and installed consumer pass
+  seven focused checks. Eight compiler-disabled package/tool/consumer checks
+  also pass; the disabled example explicitly exits nonzero. Architecture
+  guards pass. Final completion #193 remains open.
 - No public API or architecture boundary changes. Shader still owns CPU-side
   mechanisms; Renderer owns GPU publication and remains paused for features.
-  Verify the integrated in-tree example/regressions before closing #192.
-  This phase changes tests/examples/documentation only.
+  Merge the reviewed #192 PR and reconcile its issue/Project before final
+  audit #193. This phase changes tests/examples/documentation only.
 
 ## Native MSL parent acceptance (#188)
 
