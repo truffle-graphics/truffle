@@ -45,7 +45,7 @@ Shader completion proceeds through bounded, independently validated phases:
    pass. The unreleased draft keeps current `1.0` identifiers, without legacy
    readers or migrations. Do not promote the entire Shader module. Explicit
    representational limits remain in the Shader feature matrix.
-3. **Portable native generation (#187), active/review:** pinned private optional
+3. **Portable native generation (#187), done (PR #197):** pinned private optional
    SPIRV-Cross plus SPIRV-Tools/Headers; macOS MSL 2.1 (experimental), GLSL 410
    core and GLSL ES 300. Real generated TSP resource-backed graphics match exact
    output on Metal/Vulkan/OpenGL 4.1; compute Metal/Vulkan, GLES compiler
@@ -57,9 +57,9 @@ Shader completion proceeds through bounded, independently validated phases:
    separate optional offline `metal`/`metallib` output. Validate declared
    observable interface fields and retain explicit assertions for unavailable
    reflection. See the [native MSL evidence and limits](../src/shader/README.md#native-msl-source-and-libraries-188).
-   **HLSL (#189), done (PR #199)**; Slang and native module imports (#190),
-   WGSL (#191): remaining optional compiler routes require their own truthful
-   validation and native evidence, not capability placeholders.
+   **HLSL (#189), done (PR #199); WGSL/Tint (#191), done (PR #198)**.
+   Slang and native module imports (#190) remain optional compiler work and
+   require truthful validation and native evidence, not capability placeholders.
 5. **Shared behavior audit (#192):** composition, cache, rebuilding, and tools.
 6. **Completion audit (#193):** close #73 only after the required route,
    reflection, package-isolation, and native evidence gates are satisfied.

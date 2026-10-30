@@ -79,7 +79,7 @@ struct CompileRequest {
     MetalTarget metalTarget;
     GlslTarget glslTarget;
     GlslEsTarget glslEsTarget;
-    // Explicit consent is required both to produce and to load generated MSL.
+    // Explicit consent is required both to produce and to load generated MSL/WGSL.
     bool allowExperimentalMetalGeneration = false;
     // Ordered extra source units, resolved before the root through resolver/includeRoots.
     // Supported only for native MSL routes; other routes reject a non-empty list.
@@ -87,6 +87,7 @@ struct CompileRequest {
     // Required for native MSL. Metal-observable fields are checked; remaining values
     // are explicit caller assertions because Metal does not expose them in reflection.
     std::optional<rhi::ShaderReflection> interfaceDeclaration;
+    bool allowExperimentalWgslGeneration = false;
     std::vector<std::string> includeRoots;
     SourceResolver resolver;
     std::vector<rhi::ShaderDefine> defines;

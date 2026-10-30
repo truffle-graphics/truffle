@@ -3,6 +3,66 @@
 Use this document as Truffle's rolling cross-machine handoff. Keep it useful to
 a human resuming work and to a fresh AI session reading the repository.
 
+## WGSL/Tint source routes — issue #191
+
+- Integration update: HLSL PR #199 was merged in signed merge commit
+  `53c4b39` without rebasing. WGSL PR #198 at
+  `f2079307fd2cd5432d465c083cc0c416e0b1ec5f` is reconciled here. Shared
+  routes/API/CLI retain HLSL shader-model fields, DXIL routes with no Vulkan
+  intermediate, native output gates and all Tint routes. `Compiler::compile`
+  centrally accepts `sourceUnits` only for native MSL and rejects it before
+  dispatch on all other languages/adapters. Tint reuses `compiler_inputs.hpp`
+  key-field encoding and `translation_provenance()`; canonical SPIRV-Headers
+  reflection is included once for any enabled SPIR-V adapter.
+- Integration verification reused the existing compiler builds: Tint-only
+  with glslang OFF passed 12 focused tests; GLSL/Tint enabled integration
+  passed the same 12, including native exact Vulkan/Metal output, real
+  glslang-intermediate→WGSL conversion, CLI/library equality and installed
+  consumers. Warnings-as-errors remains enabled. DXC stayed OFF in these
+  WGSL builds: no second DXC source build or new HLSL execution claim.
+  Seven focused compiler-off route/CLI/Renderer/installed-consumer integration
+  checks also passed. HLSL's previously merged evidence remains with PR #199.
+- Implemented in the dedicated `feat/shader-wgsl` branch: pinned optional real
+  in-process Tint (Dawn `46b4670bc67cb4f6d34f6ce6a46ba7e1d6059abf`,
+  BSD-3-Clause) and Dawn's pinned Abseil
+  `04dc59d2c83238cb1fcb49083e5e416643a899ce` (Apache-2.0). No configure
+  downloads, source patches, system fallback, Dawn/WebGPU/browser/GUI runtime,
+  tests, compiler executable or irrelevant writer build.
+- Real advertised vertex/fragment/compute routes: WGSL→Vulkan 1.1/SPIR-V 1.3,
+  WGSL→WGSL, SPIR-V→WGSL and (with existing Cross) WGSL→macOS MSL 2.1.
+  WGSL output is experimentally gated in compile/load/CLI, reparsed by Tint,
+  and recompiled in tests. No direct source-language-to-WGSL claim beyond
+  WGSL and the explicit SPIR-V intermediate route.
+- Canonical emitted-SPIR-V reflection, source identity/hash, pinned compiler
+  provenance and cache/rebuild contracts are reused. Native entry/stage
+  selection uses Tint IR transforms. WGSL has no preprocessor/imports:
+  defines/include roots/resolver, debug-info requests and selected pipeline
+  overrides receive typed rejection, never silent substitution or omission.
+  Host-composed ordinary WGSL functions/constants are supported as one
+  exact-byte dependency; no new shader language.
+- Existing pinned Tools/Headers compile and validate Tint's real reader/writer.
+  Tint's reader legitimately requires Tools optimizer internals; the used
+  optimizer static closure is exported only with Tint. Exact pair differences
+  from Dawn DEPS and update risks are documented in the dependency policy.
+  Used Tint/Abseil static archives are exported privately without public Tint
+  headers; all-off installed prepared consumers have no compiler link closure.
+- Native Apple M3 Pro evidence: active Vulkan validation/MoltenVK and enabled
+  Metal API/GPU validation each read back all 256 resource-backed triangle
+  pixels as RGBA `(64,64,32,255)` and all four compute words as
+  `(12,13,14,15)`. Tint's automatic point-size output is disabled explicitly:
+  otherwise triangle MSL fails native pipeline creation. No point-topology,
+  WebGPU execution or backend maturity promotion is claimed.
+- Focused local evidence covers Tint-only builds (glslang OFF), combined
+  glslang/Tint builds, emitted WGSL and SPIR-V import, exact canonical
+  graphics/compute bindings/IO, invalid source/entry/stage/options,
+  source-edit cache/failure/recovery, CLI/library exact package equality,
+  experimental loading, enabled installation/static consumers, and
+  compiler-off route/package/Renderer/prepared-consumer isolation.
+- Delivery is a signed issue-scoped commit and immediate feature-branch push,
+  then a PR into `develop`; parent owns review/acceptance/merge. Do not close
+  #191 or merge independently. Shader-first remains in effect; Renderer
+  feature work stays paused. TSP remains unreleased draft 1.0.
+
 AI work that reaches a commit must update this handoff before that commit.
 Promote durable decisions into project context, architecture, roadmap, or ADRs
 rather than growing a historical transcript here.
@@ -47,16 +107,19 @@ rather than growing a historical transcript here.
   (override). Focused native/route/CLI tests pass; shaderc smoke compiles both
   source and metallib through `--source-unit` and `--interface-from`.
 - MSL implementation commit `173f2249ea96c032e63996a2ae2e535119a6aeb5` is
-  signed and pushed. HLSL #189 merged via PR #199 at
-  `5852204c9f49c933c6a6fbbd6e1b3b560ac93bac`; its DXC route/request/CMake/CLI
-  integration has been reconciled here. Shared compiler dispatch rejects
-  nonempty `sourceUnits` on DXC and every non-MSL route. The SPIR-V
-  `DrawParameters` capability guard from Slang work is retained.
-- WGSL #191 merged via PR #198; latest develop is
-  `f2079307fd2cd5432d465c083cc0c416e0b1ec5f`. Before delivery, merge that
-  revision normally, retaining Tint routes/opt-ins and the canonical
-  SPIRV-Headers include. Slang #200 is not merged yet; coordinate only the
-  shared source-unit API/gate when it is integrated.
+  signed and pushed. HLSL/DXC route/request/CMake/CLI integration is in signed
+  merge commit `53c4b39`; shared compiler dispatch rejects nonempty
+  `sourceUnits` on DXC and every non-MSL route. The SPIR-V `DrawParameters`
+  capability guard from Slang work is retained and covered by the shared
+  reflection test. Slang #200 is now accepted; final non-MSL develop is
+  `990f7e679f41f1dc9d55c7d5a31e3acbbac87381` and must be merged normally
+  before final delivery. Preserve its shared source-unit API without adding
+  adapter-private duplicate guards.
+- Current merge integration tests passed: Tint + native MSL/API build,
+  route tests, WGSL tests, exact WGSL native Vulkan/Metal readback, exact MSL
+  source/metallib readback, and shaderc MSL smoke (5/5); portable GLSL route,
+  native and unit tests (3/3); compiler-off route/package/Renderer/WGSL
+  consumers (5/5). Separate runtime-only Metal source builds passed 2/2.
 - Parent owns review/merge/tracking; #188 remains active until accepted. No
   TSP version bump, migration, legacy reader, or Shader-module completion claim.
 

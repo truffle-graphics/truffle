@@ -16,10 +16,9 @@ then reports `unsupported`.
 
 Enable `TRUFFLE_SHADER_ENABLE_GLSLANG=ON` to use the pinned GLSL/GLSL ES to
 Vulkan SPIR-V adapter. This does **not** require building shaderc.
-With all compiler options off, `Compiler::routes()` is empty, `available()` is
-false and `compile()` returns `unsupported`; prepared Truffle Shader Packages
-(TSP, `.tsp`) still work through RHI and Renderer without linking a compiler.
-No language/compiler is fetched.
+With all compiler adapters off, `Compiler::routes()` is empty, `available()` is false and `compile()` returns
+`unsupported`; prepared Truffle Shader Packages (TSP, `.tsp`) still work through
+RHI and Renderer without linking a compiler. No language/compiler is fetched.
 An enabled install bundles glslang's static libraries and CMake package so
 installed `Truffle::Shader` consumers resolve its private static link closure.
 `Truffle::RHI` never links those libraries. Renderer can depend directly on the
@@ -35,7 +34,7 @@ SPIR-V/DXIL and requires `TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS=ON`; the additional
 HLSL portable routes use the optional Cross/glslang closure.
 
 `TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS=ON` adds real in-process SPIR-V validation.
-`TRUFFLE_SHADER_ENABLE_SPIRV_CROSS=ON` requires both glslang and that validator,
+`TRUFFLE_SHADER_ENABLE_SPIRV_CROSS=ON` requires a SPIR-V source adapter and that validator,
 and adds portable Metal/GLSL output. All are private, optional dependencies.
 Prepare sources explicitly before configuring (configure never downloads):
 
@@ -46,7 +45,8 @@ git submodule update --init vendor/glslang vendor/spirv-tools \
 
 Compiler-enabled configure requires clean checked-out sources at the documented
 pins, so compiler provenance cannot silently describe different source.
-SPIRV-Tools' validation library alone is built/exported; optimizer and CLI
+Without Tint, SPIRV-Tools' validation library alone is built/exported; Tint's
+SPIR-V reader additionally requires its optimizer library. Compiler CLI
 libraries are not part of Shader's install closure. SPIRV-Cross installs its
 core/GLSL/MSL static closure and CMake configs. Enabled installs include the
 new dependencies' license notices; all-off consumers require none of them.
@@ -63,7 +63,8 @@ The Vulkan settings on these routes configure the **intermediate**, not the
 native output profile.
 The borrowed read-only spans have process lifetime. `available()` is the
 convenience test for any source route, useful to compiler-optional clients.
-`CompilerRoute::experimental` marks generated MSL's explicit safety requirement.
+`CompilerRoute::experimental` marks routes whose generated Metal/WGSL output
+requires explicit package safety consent.
 
 | Shader source acceptance | Emitted output | Enabled dependency | Status / verification |
 | --- | --- | --- | --- |
@@ -75,11 +76,89 @@ convenience test for any source route, useful to compiler-optional clients.
 | HLSL 2021, shader model 6.0, vertex/fragment/compute | Vulkan SPIR-V or DXIL | pinned DXC + SPIRV-Tools | In-process compile/validation and emitted-target reflection; Vulkan/MoltenVK graphics and compute execute on Apple M3 Pro |
 | HLSL, vertex/fragment/compute | Experimental macOS MSL 2.1 source | DXC + the portable adapters above | Generated graphics and compute execute on Apple M3 Pro |
 | HLSL, vertex/fragment | GLSL 410 core / GLSL ES 300 | same portable adapters | GL graphics executes on macOS 4.1; ES has real compiler validation, no native evidence |
+| WGSL, vertex/fragment/compute | Vulkan 1.1 / SPIR-V 1.3 | Tint + SPIRV-Tools | Real compiler validation and canonical reflection; native resource-backed graphics and compute exact readback on Vulkan/MoltenVK |
+| WGSL, vertex/fragment/compute | WGSL | Tint + SPIRV-Tools | Selected-entry IR emission, experimental opt-in, emitted WGSL reparsed by Tint and recompiled in tests |
+| Vulkan SPIR-V, vertex/fragment/compute | WGSL | Tint + SPIRV-Tools (including optimizer) | Real upstream reader, selected-entry emission and validation; bounded by Tint's representable input subset |
+| WGSL, vertex/fragment/compute | macOS MSL 2.1 | Tint + SPIRV-Tools + SPIRV-Cross | Experimental opt-in; native resource-backed graphics and compute exact readback on Metal |
 | MSL, vertex/fragment/compute | macOS MSL 2.1 source | optional Apple Metal framework adapter | #188; requires macOS 26+ runtime reflection API and Metal device; exact M3 Pro graphics/compute readback |
 | MSL, vertex/fragment/compute | macOS metallib | optional Apple Metal framework adapter plus installed Metal Toolchain | #188; actual `metal`/`metallib` compile and exact M3 Pro graphics/compute readback |
-| Slang, WGSL | Remaining outputs are route-specific | optional compiler adapters | Tracked #190-#191; not an all-input/all-output cross product |
-| SPIR-V, DXIL, Metal libraries, backend-native source | None through Shader today | none needed for assembly | Prepared TSP inputs, **not** source-compilation routes |
+| Slang | Remaining outputs are route-specific | optional compiler adapters | Tracked #190; not an all-input/all-output cross product |
+| DXIL, backend-native source | None through Shader today | none needed for assembly | Prepared TSP inputs, **not** source-compilation routes |
 
+### WGSL and Tint (#191)
+
+Tint is independent of glslang. Its source lives in the pinned Dawn tree, but
+Truffle builds no Dawn WebGPU implementation, GUI/window system, browser, test,
+benchmark, language-server or compiler executable. Prepare sources explicitly:
+
+```sh
+git submodule update --init vendor/dawn vendor/abseil \
+  vendor/spirv-tools vendor/spirv-headers
+cmake -S . -B build-wgsl -DTRUFFLE_BUILD_SHADERC=ON \
+  -DTRUFFLE_SHADER_ENABLE_TINT=ON -DTRUFFLE_SHADER_ENABLE_SPIRV_TOOLS=ON
+cmake --build build-wgsl --target truffle-shaderc --parallel 2
+```
+
+WGSL is an existing shader language, not a Truffle composition language.
+The host can compose standard WGSL declarations/functions into `Source::text`
+and supply one stable `Source::identity`; its exact assembled bytes are the
+single dependency. Truffle invents no include/import/preprocessor directives.
+Nonempty `defines`, `includeRoots`, or `resolver` return typed `unsupported`
+before the compiler or resolver runs. Pipeline `override` declarations used by
+the selected entry also return `unsupported`, including overrides with defaults:
+there is no hidden macro substitution or claim of preserved specialization.
+Use literal WGSL `const` configuration in composed source for this bounded
+adapter. `generateDebugInfo` is unsupported. Unsupported reflected resources,
+types, extensions or intermediate constructs fail with diagnostics rather than
+being accepted without metadata.
+
+Set `request.language = ShaderSourceLanguage::wgsl`. Stage and entry name must
+match a real WGSL entry point; all other entry points are removed by Tint's
+native IR transform. This pin emits SPIR-V 1.3 only, so every Tint route reports
+only `{VulkanVersion::v1_1, SpirvVersion::v1_3}` (the default). Tint's robustness
+and workgroup initialization defaults remain enabled. Automatic vertex
+`PointSize` emission is disabled consistently, avoiding an undeclared point-size
+output in triangle MSL pipelines. There is no new point-topology guarantee.
+SPIRV-Tools validates every intermediate before the shared canonical RHI
+reflection reader processes it; no independent WGSL resource/IO metadata model
+is introduced.
+
+For WGSL output use `request.target = ShaderTarget::wgsl` and
+`request.allowExperimentalWgslGeneration = true`; loading likewise requires
+`ShaderPackageOptions::allowExperimentalWgslGeneration = true`. Both writers
+receive separate lowered IR instances because Tint writers mutate their input.
+Generated WGSL is reparsed by Tint before a package is returned. SPIR-V input
+uses `ShaderSourceLanguage::spirv`, target `wgsl`, and the binary module's bytes
+in `Source::text` (including NULs); `read_source()` supports binary reads.
+This is the supported path from existing intermediates, not an advertised
+direct GLSL/HLSL/Slang-to-WGSL route. Tint may reject valid SPIR-V outside its
+WGSL-representable subset; such input is diagnosed. This includes no universal
+SPIR-V or arbitrary Vulkan extension compatibility promise.
+
+```sh
+truffle-shaderc --compile --name example --source-language wgsl --target spirv \
+  --stage compute --entry main --input example.wgsl --output example.tsp
+truffle-shaderc --compile --name example --source-language spirv --target wgsl \
+  --stage compute --entry main --input example.spv --output example-wgsl.tsp \
+  --allow-experimental-wgsl
+truffle-shaderc --inspect example-wgsl.tsp --allow-experimental-wgsl
+```
+
+Compiler revision, dependency pins, effective target, source identity/bytes,
+stage/entry and opt-ins distinguish cache entries. Failures never enter the
+cache or replace `RebuildState::last_good()`, and failed CLI attempts leave
+last-good files intact. Enabled installs export only the used private static
+Tint/Abseil/Tools closure, with licenses, without exporting Tint headers as a
+Truffle API. All adapters off leaves prepared TSP consumers compiler-free.
+
+Focused evidence: WGSL graphics IO, uniform/texture/sampler/storage bindings,
+compute size, selected entries, invalid source/stage/entry/options, emitted
+WGSL recompile, SPIR-V import, cache/edit/failure/recovery, CLI/library exact
+package equivalence, and installed consumers. Native Apple M3 Pro
+Vulkan/MoltenVK and Metal (validation enabled) each read back all 256 pixels as
+RGBA `(64,64,32,255)` and all four compute words as `(12,13,14,15)`.
+This is Shader-output consumption evidence, **not WebGPU backend/runtime
+execution or a backend maturity promotion**. TSP remains unreleased draft 1.0.
 Implemented typed `CompileRequest::vulkanTarget` configurations:
 
 | `VulkanVersion` environment | `SpirvVersion` emitted version |
@@ -203,7 +282,8 @@ by #192/#193; this route does not resume Renderer feature work.
 and their defaults. No arbitrary upstream target/version/stage is advertised.
 Set `request.target` to `metal_source`, `glsl`, or `glsl_es`. GLSL ES *input*
 uses Vulkan GLSL ES 310+ semantics; output ES 300 is a distinct conversion.
-MSL is macOS source only, not authoring MSL or producing a Metal library (#188).
+SPIRV-Cross-generated Metal is distinct from native MSL authoring and offline
+library compilation (#188).
 GL 410 and ES 300 do not advertise compute.
 
 Generated Metal remains experimental: set

@@ -106,12 +106,6 @@ Status validate_includes(std::span<const Source> units) {
     return Status::success();
 }
 
-template <typename Value>
-    requires std::is_integral_v<Value>
-void field(std::string& output, Value value) {
-    field(output, std::to_string(value));
-}
-
 std::string utf8(NSString* value) {
     if (value == nil) return {};
     const char* characters = [value UTF8String];

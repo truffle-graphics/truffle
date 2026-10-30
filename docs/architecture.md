@@ -290,7 +290,13 @@ polling); every attempt re-resolves includes, so the Shader compilation cache
 detects dependency changes. There is no watcher or service. The first compiler route
 reuses pinned glslang for GLSL/GLSL ES to SPIR-V; this does not claim that every
 language/target in #73 is implemented. Compiler-free package consumption and
-assembly remain supported.
+assembly remain supported. Optional Tint (#191) adds existing WGSL
+parse/lower/validate/emit and SPIR-V-to-WGSL inside the same Shader boundary,
+independently of glslang. Native Tint IR entry selection and canonical emitted
+SPIR-V reflection are reused; there is no second WGSL reflection model,
+invented preprocessor/import language, or WebGPU runtime dependency. Unsupported
+WGSL defines/includes/resolvers/overrides are explicitly diagnosed. Tint and
+its used Abseil/Tools static closure remain private optional dependencies.
 
 Shader's public capability query describes only enabled source routes and
 their stages/target configurations (#185). Shader validates those settings

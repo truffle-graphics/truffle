@@ -1,7 +1,6 @@
 #include "truffle/shader/compiler.hpp"
 
 #include <algorithm>
-#include <array>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -15,6 +14,9 @@ namespace truffle::shader {
 #if defined(TRUFFLE_SHADER_HAS_GLSLANG)
 rhi::Result<Compilation> compile_glslang(const CompileRequest& request,
                                        std::vector<Compilation>& cache);
+#endif
+#if defined(TRUFFLE_SHADER_HAS_TINT)
+rhi::Result<Compilation> compile_tint(const CompileRequest&, std::vector<Compilation>&);
 #endif
 #if defined(TRUFFLE_SHADER_HAS_DXC)
 rhi::Result<Compilation> compile_dxc(const CompileRequest& request,
@@ -52,21 +54,17 @@ std::string_view hlsl_shader_model_name(HlslShaderModel model) noexcept {
 }
 
 std::span<const CompilerRoute> Compiler::routes() noexcept {
-    struct RouteTable {
-        std::array<CompilerRoute, 16> values{};
-        std::size_t size = 0;
-    };
-    static const RouteTable table = [] {
-        RouteTable result;
-#if defined(TRUFFLE_SHADER_HAS_GLSLANG) || \
-    defined(TRUFFLE_SHADER_HAS_DXC) || \
+    static const std::vector<CompilerRoute> enabled = [] {
+        std::vector<CompilerRoute> result;
+#if defined(TRUFFLE_SHADER_HAS_GLSLANG) || defined(TRUFFLE_SHADER_HAS_DXC) || \
     defined(TRUFFLE_SHADER_HAS_METAL_COMPILER) || \
-    defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS)
+    defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS) || defined(TRUFFLE_SHADER_HAS_TINT)
         static constexpr rhi::ShaderStage stages[]{
             rhi::ShaderStage::vertex, rhi::ShaderStage::fragment,
             rhi::ShaderStage::compute};
 #endif
-#if defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS)
+#if defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS) && \
+    (defined(TRUFFLE_SHADER_HAS_GLSLANG) || defined(TRUFFLE_SHADER_HAS_DXC))
         static constexpr rhi::ShaderStage graphics[]{
             rhi::ShaderStage::vertex, rhi::ShaderStage::fragment};
 #endif
@@ -82,20 +80,24 @@ std::span<const CompilerRoute> Compiler::routes() noexcept {
             {VulkanVersion::v1_1, SpirvVersion::v1_3}};
         static constexpr HlslShaderModel hlslModels[]{HlslShaderModel::v6_0};
 #endif
+#if defined(TRUFFLE_SHADER_HAS_TINT)
+        static constexpr VulkanTarget tintTargets[]{
+            {VulkanVersion::v1_1, SpirvVersion::v1_3}};
+#endif
 #if defined(TRUFFLE_SHADER_HAS_METAL_COMPILER) || \
     defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS)
         static constexpr MetalTarget metal[]{{}};
 #endif
-#if defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS)
+#if defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS) && \
+    (defined(TRUFFLE_SHADER_HAS_GLSLANG) || defined(TRUFFLE_SHADER_HAS_DXC))
         static constexpr GlslTarget glsl[]{{}};
         static constexpr GlslEsTarget es[]{{}};
 #endif
-#if defined(TRUFFLE_SHADER_HAS_GLSLANG) || \
-    defined(TRUFFLE_SHADER_HAS_DXC) || \
+#if defined(TRUFFLE_SHADER_HAS_GLSLANG) || defined(TRUFFLE_SHADER_HAS_DXC) || \
     defined(TRUFFLE_SHADER_HAS_METAL_COMPILER) || \
-    defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS)
+    defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS) || defined(TRUFFLE_SHADER_HAS_TINT)
         const auto add = [&](CompilerRoute route) {
-            result.values[result.size++] = route;
+            result.push_back(route);
         };
 #endif
 #if defined(TRUFFLE_SHADER_HAS_GLSLANG)
@@ -116,6 +118,18 @@ std::span<const CompilerRoute> Compiler::routes() noexcept {
              graphics, targets, {}, {}, es});
         add({rhi::ShaderSourceLanguage::glsl_es, rhi::ShaderTarget::glsl_es,
              graphics, targets, {}, {}, es});
+#endif
+#endif
+#if defined(TRUFFLE_SHADER_HAS_TINT)
+        add({rhi::ShaderSourceLanguage::wgsl, rhi::ShaderTarget::spirv,
+             stages, tintTargets});
+        add({rhi::ShaderSourceLanguage::wgsl, rhi::ShaderTarget::wgsl,
+             stages, tintTargets, {}, {}, {}, true});
+        add({rhi::ShaderSourceLanguage::spirv, rhi::ShaderTarget::wgsl,
+             stages, tintTargets, {}, {}, {}, true});
+#if defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS)
+        add({rhi::ShaderSourceLanguage::wgsl, rhi::ShaderTarget::metal_source,
+             stages, tintTargets, metal, {}, {}, true});
 #endif
 #endif
 #if defined(TRUFFLE_SHADER_HAS_DXC)
@@ -167,7 +181,7 @@ std::span<const CompilerRoute> Compiler::routes() noexcept {
 #endif
         return result;
     }();
-    return {table.values.data(), table.size};
+    return enabled;
 }
 
 bool Compiler::available() noexcept { return !routes().empty(); }
@@ -205,7 +219,7 @@ rhi::Result<Compilation> Compiler::compile(const CompileRequest& request) {
     const auto enabled = routes();
     if (enabled.empty()) {
         return rhi::Status::failure(rhi::StatusCode::unsupported,
-                                   "No enabled Shader source-compilation routes are available in this build/runtime; enable TRUFFLE_SHADER_ENABLE_GLSLANG, TRUFFLE_SHADER_ENABLE_DXC or another supported optional adapter");
+                                   "No enabled Shader source-compilation routes are available in this build/runtime; enable an optional compiler adapter such as TRUFFLE_SHADER_ENABLE_GLSLANG, TRUFFLE_SHADER_ENABLE_DXC or TRUFFLE_SHADER_ENABLE_TINT");
     }
     const auto route = std::find_if(enabled.begin(), enabled.end(), [&](const auto& value) {
         return value.language == request.language && value.target == request.target;
@@ -228,6 +242,11 @@ rhi::Result<Compilation> Compiler::compile(const CompileRequest& request) {
         !request.allowExperimentalMetalGeneration) {
         return rhi::Status::failure(rhi::StatusCode::unsupported,
                                    "Generated Metal requires explicit experimental opt-in");
+    }
+    if (request.target == rhi::ShaderTarget::wgsl &&
+        !request.allowExperimentalWgslGeneration) {
+        return rhi::Status::failure(rhi::StatusCode::unsupported,
+                                   "Generated WGSL requires explicit experimental opt-in");
     }
     if (std::find(route->stages.begin(), route->stages.end(), request.stage) == route->stages.end()) {
         return rhi::Status::failure(rhi::StatusCode::unsupported,
@@ -257,6 +276,11 @@ rhi::Result<Compilation> Compiler::compile(const CompileRequest& request) {
         return rhi::Status::failure(rhi::StatusCode::invalid_argument,
                                    "DXIL does not accept Vulkan/SPIR-V settings");
     }
+#if defined(TRUFFLE_SHADER_HAS_TINT)
+    if (request.language == rhi::ShaderSourceLanguage::wgsl ||
+        request.language == rhi::ShaderSourceLanguage::spirv)
+        return compile_tint(request, impl_->cache);
+#endif
 #if defined(TRUFFLE_SHADER_HAS_DXC)
     if (request.language == rhi::ShaderSourceLanguage::hlsl) {
         return compile_dxc(request, impl_->cache);

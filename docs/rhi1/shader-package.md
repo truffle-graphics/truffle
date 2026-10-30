@@ -31,9 +31,10 @@ their pinned submodules and explicit enable flags.
 ## Inputs And Variants
 
 The package can record Slang, HLSL, GLSL, GLSL ES, WGSL, and MSL authoring
-provenance; Shader compiles GLSL/GLSL ES through Vulkan SPIR-V to the bounded
-native profiles above and optionally compiles native MSL directly to source or
-metallib when its Apple adapters are explicitly enabled.
+provenance. Shader provides bounded GLSL/GLSL ES routes through SPIR-V and
+HLSL routes to SPIR-V/DXIL, optional WGSL/Tint routes, and native MSL
+compilation when its Apple adapters are enabled; exact source/target
+combinations are listed in the route matrix.
 See the [implemented versus planned route matrix](../../src/shader/README.md#routes-and-target-configuration-73-185).
 Accepted prepared inputs are SPIR-V, DXIL, Metal libraries, and
 backend-native source variants.
@@ -113,16 +114,17 @@ compiler-validated, while unavailable IO/push/workgroup/default metadata stays
 an explicit caller assertion. Arbitrary user MSL includes are unsupported;
 compose reusable code through ordered source units.
 
-Remaining #73 routes may use Slang and Tint; route-specific DXC/HLSL work is
-tracked independently. They are not an all-input/all-output cross product.
+The remaining #73 source route is Slang (#190); HLSL/DXC (#189) and WGSL/Tint
+(#191) are implemented as bounded routes, not an all-input/all-output cross
+product.
 Pinned glslang is linked only by the explicitly
 enabled Shader adapter (`TRUFFLE_SHADER_ENABLE_GLSLANG`) and never by RHI,
 backends or compiler-disabled Renderer consumers. Slang is one planned authoring route, not Truffle's
 mandatory shader language. Generated Metal and WGSL variants are rejected by
 default and require an explicit experimental package option. The CLI exposes
-`--allow-experimental-metal` for generated MSL compilation, assembly, append
-and inspection; WGSL remains gated without a CLI opt-in. The compiler request's
-Metal opt-in does not implicitly opt future package loads in.
+`--allow-experimental-metal` and `--allow-experimental-wgsl` for the
+corresponding generated targets. Compiler request opt-ins do not implicitly opt
+future package loads in.
 
 The canonical manifest stores `entryPoint` as the logical selection/agreement
 key and `nativeEntryPoint` as the native function spelling. Different emitted
@@ -138,9 +140,10 @@ does not bind layout-visible but absent stage resources through native fallback
 slots. Precompiled/native-override variants and direct descriptors retain
 optional metadata by default; empty reflection alone is not proof of no use.
 See [binding semantics](bindings-and-pipelines.md#layout-and-reflection-agreement).
-Generated MSL rejects runtime storage-buffer `.length()` and other reported
-auxiliary-resource requirements until RHI owns the required bindings; ordinary
-runtime-tail indexing remains supported.
+SPIRV-Cross-generated MSL rejects runtime storage-buffer `.length()` and other
+reported auxiliary-resource requirements until RHI owns the required bindings;
+ordinary runtime-tail indexing remains supported. Native MSL authoring has its
+own Metal-reflection checks and declaration assertions.
 
 ## Runtime And Tool Evidence
 

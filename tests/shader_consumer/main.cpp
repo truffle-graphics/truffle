@@ -18,11 +18,25 @@ int main() {
         request.target = route.target;
         request.language = route.language;
         request.allowExperimentalMetalGeneration = true;
+        request.allowExperimentalWgslGeneration = true;
         request.source.text = route.language == rhi::ShaderSourceLanguage::hlsl
             ? "float4 main():SV_Position{return float4(0,0,0,1);}\n"
             : route.language == rhi::ShaderSourceLanguage::glsl_es
                 ? "#version 310 es\nvoid main(){gl_Position=vec4(0);}\n"
                 : "#version 450\nvoid main(){gl_Position=vec4(0);}\n";
+        if (route.language == rhi::ShaderSourceLanguage::wgsl ||
+            route.language == rhi::ShaderSourceLanguage::spirv) {
+            request.source.text = "@vertex fn main() -> @builtin(position) vec4f { return vec4f(0); }";
+            if (route.language == rhi::ShaderSourceLanguage::spirv) {
+                auto input = request;
+                input.language = rhi::ShaderSourceLanguage::wgsl;
+                input.target = rhi::ShaderTarget::spirv;
+                auto intermediate = compiler.compile(input);
+                if (!intermediate.ok()) return 7;
+                const auto& code = intermediate.value().package.desc().variants.front().code;
+                request.source.text.assign(reinterpret_cast<const char*>(code.data()), code.size());
+            }
+        }
         const auto check = [&]() {
             const auto result = compiler.compile(request);
             if (!result.ok()) {

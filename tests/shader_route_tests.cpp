@@ -69,6 +69,13 @@ int main() {
     invalidRequest.target = request.target;
     invalidRequest.sourceUnits.clear();
 #endif
+    invalidRequest.language = rhi::ShaderSourceLanguage::wgsl;
+    invalidRequest.target = rhi::ShaderTarget::spirv;
+    invalidRequest.sourceUnits = {"shared.wgsl"};
+    expect(invalidRequest, rhi::StatusCode::unsupported);
+    invalidRequest.language = request.language;
+    invalidRequest.target = request.target;
+    invalidRequest.sourceUnits.clear();
 
     constexpr rhi::ShaderSourceLanguage languages[]{
         rhi::ShaderSourceLanguage::slang, rhi::ShaderSourceLanguage::hlsl,
@@ -144,7 +151,8 @@ int main() {
           "DXC routes preserve exact HLSL stages and shader models");
 #endif
     if (std::none_of(routes.begin(), routes.end(), [](const auto& route) {
-            return route.target == rhi::ShaderTarget::spirv;
+            return route.language == rhi::ShaderSourceLanguage::glsl &&
+                   route.target == rhi::ShaderTarget::spirv;
         })) {
         return 0;
     }
