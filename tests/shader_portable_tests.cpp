@@ -13,7 +13,9 @@ int run() {
     std::set<std::string> keys;
     std::size_t count = 0;
     for (const auto& route : shader::Compiler::routes()) {
-        if (route.target == rhi::ShaderTarget::spirv) continue;
+        if (route.target == rhi::ShaderTarget::spirv ||
+            (route.language != rhi::ShaderSourceLanguage::glsl &&
+             route.language != rhi::ShaderSourceLanguage::glsl_es)) continue;
         TRUFFLE_SHADER_CHECK(route.experimental == (route.target == rhi::ShaderTarget::metal_source));
         TRUFFLE_SHADER_CHECK((route.target == rhi::ShaderTarget::metal_source && route.metalTargets.size() == 1) ||
             (route.target == rhi::ShaderTarget::glsl && route.glslTargets.size() == 1) ||

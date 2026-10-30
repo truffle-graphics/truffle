@@ -85,6 +85,26 @@ if(TRUFFLE_SHADER_ENABLE_SPIRV_CROSS)
     endif()
 endif()
 
+if(TRUFFLE_SHADER_ENABLE_DXC)
+    if(NOT TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS)
+        message(FATAL_ERROR "DXC routes require TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS")
+    endif()
+    include(TruffleDXC)
+    target_sources(truffle_shader PRIVATE dxc_adapter.cpp dxil_reflection.cpp)
+    target_link_libraries(truffle_shader PRIVATE Truffle::DXC)
+    target_include_directories(truffle_shader SYSTEM PRIVATE
+        "${PROJECT_SOURCE_DIR}/vendor/spirv-headers/include"
+        "${PROJECT_SOURCE_DIR}/vendor/dxc/external/DirectX-Headers/include/directx"
+        "${PROJECT_SOURCE_DIR}/vendor/dxc/external/DirectX-Headers/include/wsl/stubs")
+    target_compile_definitions(truffle_shader PRIVATE
+        TRUFFLE_SHADER_HAS_DXC=1
+        TRUFFLE_DXC_REVISION="01b62ad47db7dee3dd33f90e7339cf9e860b3f93")
+endif()
+
+if(TRUFFLE_SHADER_ENABLE_GLSLANG OR TRUFFLE_SHADER_ENABLE_DXC)
+    target_sources(truffle_shader PRIVATE spirv_reflection.cpp)
+endif()
+
 if(TRUFFLE_SHADER_ENABLE_GLSLANG)
     truffle_shader_require_pin(glslang a8d28bd082bff18ffbe80996e922b012f915cf07)
     set(BUILD_EXTERNAL OFF CACHE BOOL "" FORCE)
@@ -102,7 +122,7 @@ if(TRUFFLE_SHADER_ENABLE_GLSLANG)
     if(TRUFFLE_INSTALL AND NOT BUILD_SHARED_LIBS)
         add_dependencies(truffle_shader OSDependent MachineIndependent GenericCodeGen)
     endif()
-    target_sources(truffle_shader PRIVATE glslang_adapter.cpp spirv_reflection.cpp)
+    target_sources(truffle_shader PRIVATE glslang_adapter.cpp)
     target_link_libraries(truffle_shader PRIVATE
         glslang::SPIRV glslang::glslang-default-resource-limits)
     target_compile_definitions(truffle_shader PRIVATE

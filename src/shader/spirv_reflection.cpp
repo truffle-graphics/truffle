@@ -1,7 +1,11 @@
 #include "spirv_reflection.hpp"
 
 #define SPV_ENABLE_UTILITY_CODE
+#if defined(TRUFFLE_SHADER_HAS_GLSLANG)
 #include <SPIRV/spirv.hpp11>
+#else
+#include <spirv/unified1/spirv.hpp11>
+#endif
 
 #include <algorithm>
 #include <cstring>

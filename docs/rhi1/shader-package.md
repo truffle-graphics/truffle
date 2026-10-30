@@ -6,7 +6,7 @@ canonical manifest plus target blobs and can be created, serialized, loaded,
 capability-checked, and selected without a compiler dependency.
 
 The independent `Truffle::Shader` library optionally compiles configured
-multi-file GLSL/GLSL ES directly into an in-memory Truffle Shader Package
+multi-file GLSL/GLSL ES or HLSL directly into an in-memory Truffle Shader Package
 (TSP, `.tsp`). It owns dependency tracking, supported reflection, compilation
 caching and explicit rebuild state; Renderer owns GPU object lifetimes and
 replacement. See [the Shader API](../../src/shader/README.md).
@@ -14,13 +14,16 @@ replacement. See [the Shader API](../../src/shader/README.md).
 `truffle-shaderc` is an optional host tool. Its dependency-free path assembles
 precompiled or backend-native variants. Its separately enabled pinned glslang
 route consumes the shared Shader library to compile GLSL and GLSL ES to SPIR-V.
+The independent pinned DXC route compiles HLSL 2021/SM 6.0 to SPIR-V and DXIL,
+with in-process output validation and native emitted-binary reflection.
 Portable outputs additionally use pinned optional SPIRV-Cross and real
 SPIRV-Tools validation inside Shader, producing macOS MSL 2.1, desktop GLSL
-410 core, or GLSL ES 300 source. Both paths record authoring-language
+410 core, or GLSL ES 300 source. These paths record authoring-language
 provenance, source SHA-256 values, and compiler identity. Generated modules
 default to Vulkan 1.1 and SPIR-V 1.3, matching the current native Vulkan lane.
 Explicit Vulkan 1.0/SPIR-V 1.0 and Vulkan 1.1/SPIR-V 1.0 configurations are
-also supported by Shader; their CPU compilation evidence is not a new native
+also supported for GLSL; DXC supports the first pair but not Vulkan 1.1/SPIR-V 1.0.
+Additional configuration compilation evidence is not a new native
 backend claim. The tool never fetches or discovers a compiler
 implicitly. Additional source-to-target compiler adapters must arrive with
 their pinned submodules and explicit enable flags.
@@ -28,7 +31,7 @@ their pinned submodules and explicit enable flags.
 ## Inputs And Variants
 
 The package can record Slang, HLSL, GLSL, GLSL ES, WGSL, and MSL authoring
-provenance; Shader compiles GLSL/GLSL ES through Vulkan SPIR-V to the bounded
+provenance; Shader compiles GLSL/GLSL ES/HLSL through Vulkan SPIR-V to the bounded
 native profiles above when their adapters are explicitly enabled.
 See the [implemented versus planned route matrix](../../src/shader/README.md#routes-and-target-configuration-73-185).
 Accepted prepared inputs are SPIR-V, DXIL, Metal libraries, and
@@ -101,9 +104,9 @@ Prepared packages remain compiler-free. Offline and on-demand runtime source
 compilation share the optional Shader library; native backend compilation is a
 separate capability-reported route.
 
-Planned #73 routes may use Slang, DXC and Tint;
-they are not currently integrated or advertised. Pinned glslang is linked only by the explicitly
-enabled Shader adapter (`TRUFFLE_SHADER_ENABLE_GLSLANG`) and never by RHI,
+Planned #73 routes may use Slang and Tint;
+they are not currently integrated or advertised. Pinned glslang/DXC are linked only by explicitly
+enabled Shader adapters (`TRUFFLE_SHADER_ENABLE_GLSLANG` / `TRUFFLE_SHADER_ENABLE_DXC`) and never by RHI,
 backends or compiler-disabled Renderer consumers. Slang is one planned authoring route, not Truffle's
 mandatory shader language. Generated Metal and WGSL variants are rejected by
 default and require an explicit experimental package option. The CLI exposes
@@ -158,7 +161,8 @@ Recording a target blob does not by itself advance a backend maturity level.
 ## Tool Usage
 
 Build the package assembler with `TRUFFLE_BUILD_SHADERC=ON`. Independently
-enable source compilation with `TRUFFLE_SHADER_ENABLE_GLSLANG=ON`; the default
+enable GLSL source compilation with `TRUFFLE_SHADER_ENABLE_GLSLANG=ON`, or HLSL
+with `TRUFFLE_SHADER_ENABLE_DXC=ON` and `TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS=ON`; the default
 core Shader/RHI/Renderer configuration remains compiler-free, and runtime
 Shader clients can leave shaderc disabled.
 
@@ -168,6 +172,10 @@ truffle-shaderc --compile --name material --target spirv --stage fragment \
   --source-language glsl --input shaders/material.frag --output material.tsp \
   --include-root shaders/include --define USE_TEXTURE=1 --define QUALITY=2
 truffle-shaderc --inspect material.tsp
+truffle-shaderc --compile --name hlsl-material --target dxil --stage fragment \
+  --source-language hlsl --input shaders/material.hlsl --output material-dxil.tsp \
+  --entry fragmentMain --hlsl-shader-model 6.0 --include-root shaders/include \
+  --define USE_TEXTURE=1
 truffle-shaderc --compile --name legacy-target --target spirv --stage vertex \
   --source-language glsl --input shaders/triangle.vert --output triangle-vk10.tsp \
   --vulkan-version 1.0 --spirv-version 1.0
@@ -192,6 +200,9 @@ reported by `--inspect`. There is no CLI-owned compiler selection policy.
 Native version flags are compilation-only, validate the selected target, and
 accept exactly the corresponding typed Shader profile. Discovery marks Metal
 experimental and lists only graphics stages for GL 410/ES 300.
+`--hlsl-shader-model 6.0` is compilation-only and requires HLSL source.
+DXIL discovery has no Vulkan intermediate; its profile is selected by shader
+model and stage. See the [HLSL reflection and include contract](../../src/shader/README.md#hlsl-and-dxc-189).
 
 Inspection prints native entry names and every binding remap. Append preserves
 translator-owned remaps and rejects conflicting global target/stage mappings.

@@ -1,0 +1,55 @@
+file(MAKE_DIRECTORY "${TRUFFLE_SHADERC_TEST_DIR}")
+set(_targets spirv dxil)
+if(TRUFFLE_HLSL_PORTABLE)
+    list(APPEND _targets msl glsl glsl-es)
+endif()
+foreach(_target IN LISTS _targets)
+    foreach(_stage vertex fragment compute)
+        if((_target STREQUAL glsl OR _target STREQUAL glsl-es) AND _stage STREQUAL compute)
+            continue()
+        endif()
+        foreach(_vulkan 1.0 1.1)
+            if(_target STREQUAL dxil AND _vulkan STREQUAL "1.0")
+                continue()
+            endif()
+            set(_options)
+            if(NOT _target STREQUAL dxil)
+                if(_vulkan STREQUAL "1.0")
+                    set(_spirv 1.0)
+                else()
+                    set(_spirv 1.3)
+                endif()
+                if(_target STREQUAL msl)
+                    list(APPEND _options --allow-experimental-metal)
+                endif()
+                list(APPEND _options --vulkan-version "${_vulkan}" --spirv-version "${_spirv}")
+            endif()
+            set(_output "${TRUFFLE_SHADERC_TEST_DIR}/${_target}-${_stage}-${_vulkan}.tsp")
+            execute_process(COMMAND "${TRUFFLE_SHADERC}" --compile --name "hlsl-${_stage}"
+                --source-language hlsl --target "${_target}" --stage "${_stage}"
+                --entry "${_stage}Main" --input "${TRUFFLE_HLSL_FIXTURE_DIR}/${_stage}.hlsl"
+                --output "${_output}" --include-root "${TRUFFLE_HLSL_FIXTURE_DIR}"
+                --define QUALITY=7 --define SCALE=1.0 --hlsl-shader-model 6.0 ${_options}
+                RESULT_VARIABLE _result ERROR_VARIABLE _error)
+            if(NOT _result EQUAL 0)
+                message(FATAL_ERROR "HLSL CLI ${_target}/${_stage}/${_vulkan} failed: ${_error}")
+            endif()
+            execute_process(COMMAND "${TRUFFLE_SHADER_EQUIVALENCE}" "${_target}" "${_stage}"
+                "${_vulkan}" "${_output}" COMMAND_ERROR_IS_FATAL ANY)
+        endforeach()
+    endforeach()
+endforeach()
+execute_process(COMMAND "${TRUFFLE_SHADERC}" --routes
+    RESULT_VARIABLE _result OUTPUT_VARIABLE _routes)
+if(NOT _result EQUAL 0 OR NOT _routes MATCHES "source=hlsl target=dxil stage=compute hlsl-shader-model=6.0" OR
+   NOT _routes MATCHES "source=hlsl target=spirv stage=vertex vulkan=1.1 spirv=1.3 hlsl-shader-model=6.0")
+    message(FATAL_ERROR "HLSL target/profile discovery disagrees with compilation: ${_routes}")
+endif()
+file(SHA256 "${_output}" _before)
+execute_process(COMMAND "${TRUFFLE_SHADERC}" --compile --name rejected --source-language hlsl
+    --target spirv --stage compute --input "${TRUFFLE_HLSL_FIXTURE_DIR}/compute.hlsl"
+    --output "${_output}" --hlsl-shader-model 9.9 RESULT_VARIABLE _result ERROR_VARIABLE _error)
+file(SHA256 "${_output}" _after)
+if(_result EQUAL 0 OR NOT _error MATCHES "unsupported HLSL shader model" OR NOT _before STREQUAL _after)
+    message(FATAL_ERROR "Invalid HLSL profile was accepted or replaced a good output: ${_error}")
+endif()

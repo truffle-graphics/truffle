@@ -16,3 +16,6 @@
 [submodule "vendor/spirv-headers"]
 	path = vendor/spirv-headers
 	url = https://github.com/KhronosGroup/SPIRV-Headers.git
+[submodule "vendor/dxc"]
+	path = vendor/dxc
+	url = https://github.com/microsoft/DirectXShaderCompiler.git
