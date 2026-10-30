@@ -83,8 +83,18 @@ base::Status Renderer::render(const FrameGraph& graph, rhi::Swapchain* swapchain
         }
 
         const auto* render = static_cast<const RenderPassNode*>(node);
-        rhi::RenderPassDesc pass;
+        rhi::RenderPassDesc pass = render->explicit_desc() != nullptr
+            ? *render->explicit_desc() : rhi::RenderPassDesc{};
         if (render->uses_swapchain()) {
+            if (render->explicit_desc() != nullptr &&
+                (swapchain == nullptr || pass.colorAttachments.size() > 1 ||
+                 (!pass.colorAttachments.empty() &&
+                  (pass.colorAttachments.front().texture != nullptr ||
+                   pass.colorAttachments.front().resolveTexture != nullptr)))) {
+                return base::Status::failure(
+                    base::StatusCode::invalid_argument,
+                    "Renderer: explicit swapchain pass requires a swapchain and at most one implicit color attachment");
+            }
             if (swapchain != nullptr && !hasAcquiredImage) {
                 acquired = swapchain->acquire_next_image();
                 if (!acquired.ok()) {
@@ -108,12 +118,11 @@ base::Status Renderer::render(const FrameGraph& graph, rhi::Swapchain* swapchain
             }
             if (swapchain != nullptr) {
                 pass.extent = swapchain->desc().extent;
-                rhi::ColorAttachmentDesc attachment;
-                attachment.texture = acquired.image;
-                pass.colorAttachments.push_back(attachment);
+                if (pass.colorAttachments.empty()) {
+                    pass.colorAttachments.emplace_back();
+                }
+                pass.colorAttachments.front().texture = acquired.image;
             }
-        } else if (render->explicit_desc() != nullptr) {
-            pass = *render->explicit_desc();
         }
 
         if (auto status = cache_->prepare_render_pass(pass); !status.ok()) {

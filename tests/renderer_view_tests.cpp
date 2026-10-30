@@ -1,6 +1,7 @@
 #include "rhi_test_utils.hpp"
 #include "test_support.hpp"
 #include "truffle/renderer/depth_target.hpp"
+#include "truffle/renderer/renderer.hpp"
 #include "truffle/renderer/view.hpp"
 
 #include <cmath>
@@ -72,5 +73,14 @@ int main() {
     TRUFFLE_CHECK(depth.texture()->id() != original);
     TRUFFLE_CHECK(depth.texture()->desc().extent.width == 32);
     TRUFFLE_CHECK(depth.texture()->desc().extent.height == 24);
+    TRUFFLE_CHECK(depth.resize({16, 16}, rhi::TextureFormat::depth32_float_stencil8).ok());
+    renderer::Renderer renderer(context.device);
+    renderer::RenderBatch batch;
+    batch.instanceCount = 1;
+    renderer::FrameGraph missingSwapchain;
+    missingSwapchain.add_node(std::make_unique<renderer::RenderPassNode>(
+        rhi::RenderPassDesc{.depthStencilAttachment = {.texture = depth.texture()}},
+        std::vector{batch}, true));
+    TRUFFLE_CHECK(!renderer.render(missingSwapchain).ok());
     return 0;
 }

@@ -24,6 +24,11 @@ struct MeshUpload {
 // keep the Mesh alive and unmoved through render(). Recorded RHI payloads persist.
 class Mesh {
 public:
+    Mesh() = default;
+    Mesh(Mesh&&) noexcept = default;
+    Mesh& operator=(Mesh&&) noexcept = default;
+    Mesh(const Mesh&) = delete;
+    Mesh& operator=(const Mesh&) = delete;
     [[nodiscard]] static base::Result<Mesh> upload(rhi::Device& device,
                                                   const MeshUpload& desc);
     [[nodiscard]] RenderBatch batch(MaterialId program,

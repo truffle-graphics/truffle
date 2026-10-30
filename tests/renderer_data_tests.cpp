@@ -78,6 +78,9 @@ int main() {
     auto args = tests::make_buffer(context.device, 20, rhi::BufferUsage::indirect);
     bad.indirectBuffer = {&args, 0, 20};
     TRUFFLE_CHECK(renderer::validate_batch_data(bad, layout).ok());
+    bad.instanceCount = 0;
+    bad.vertexCount = 0;
+    TRUFFLE_CHECK(renderer::validate_batch_data(bad, layout).ok());
     layout[0].stepMode = rhi::VertexStepMode::instance;
     bad = batch;
     bad.instanceCount = 4;
