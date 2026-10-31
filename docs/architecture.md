@@ -44,6 +44,7 @@ planned, not implemented.
 ```text
 (Engine) --> Renderer
 (Engine) -.-> EnCom, (GUI), (Assets)
+(GUIDock) --> (GUI)
 (GUI) -----> Renderer          (no EnCom dependency; own lightweight hierarchy)
 EnComRenderer --> EnCom, Renderer
 Renderer --> Shader --> RHI --> Base
@@ -355,7 +356,11 @@ their own design issues.
   EnCom, GUI, and Assets. It supports a host-owned application loop; runner
   conveniences, use-case profiles, and scheduling are undecided.
 - **GUI**: a GUI library above Renderer that does not depend on EnCom and keeps
-  its own lightweight hierarchy. Its retained/immediate design is undecided.
+  its own lightweight hierarchy. [ADR 0013](adr/0013-truffle-gui-architecture.md)
+  (#217) records its design: a persistent element tree whose style, layout and
+  shapes are recomputed only where something changes, with an object API,
+  optional builder and immediate-style regions. The optional Truffle GUI Dock
+  library adds docking above it.
 - **Assets**: file loading and import, separate from GPU resources, which the
   Renderer owns. An asset-to-resource bridge is optional. The module's name,
   architecture, and the future of the provisional `truffle_assets` and

@@ -5,7 +5,23 @@ This is the rolling execution handoff, not an implementation transcript.
 issues/Project own accepted work. Earlier phase details remain in their PRs,
 the support matrix and Git history.
 
-## Current Delivery: Minimum Renderer (#206)
+## Current Direction: Truffle GUI Architecture (#217)
+
+The owner and agent designed the GUI module interactively; the decisions are
+recorded in [ADR 0013](adr/0013-truffle-gui-architecture.md). This is a
+docs-only change: no GUI code, CMake target or dependency exists yet.
+Working names are Truffle GUI (`Truffle::GUI`) and Truffle GUI Dock
+(`Truffle::GUIDock`). Key choices: persistent element tree with scoped
+invalidation; object API core with optional builder and immediate-style
+regions; theme values plus per-element overrides; bubbling callbacks; own text
+interface over FreeType/HarfBuzz (license review first); elements keep their
+shapes; row/column, stretching, grid and free layouts from the start; docking
+within one window first, OS windows later via a host interface.
+
+Next: decompose epic #217 into implementation sub-issues with Project fields,
+agreeing scope, order and delivery mode with the owner before production code.
+
+## Previous Delivery: Minimum Renderer (#206)
 
 Three owner-approved signed/pushed slices, merged after owner-authorized
 self-review: data/mesh #207, optional view/depth #208, host-window example

@@ -121,7 +121,8 @@ consumer selects concrete loading, upload, and backend behavior.
   framework, composed of independently usable libraries". Renderer
   (`truffle_renderer`), EnCom (`truffle_encom`, ENtity COMponent) and the
   optional EnCom–Renderer integration (`truffle_encom_renderer`) are the
-  current module names. GUI depends on Renderer but not EnCom; Engine
+  current module names. GUI depends on Renderer but not EnCom (design in
+  ADR 0013, #217; optional GUI Dock above it); Engine
   supports a host-owned loop with profiles/runners undecided; Assets is
   deferred with name and design undecided; Simple RHI and a windowing
   convenience are deferred; shaderc and rhi-doctor are tools, not modules.
@@ -204,7 +205,14 @@ included). GUI-readiness primitives (#213) follow it: clip rectangles,
 sampled-texture upload/update, streamed per-frame geometry and frames-in-flight
 pacing. Renderer remains independent of ECS and uses Shader directly.
 App-defined transforms, light/material semantics and buffer packing are not
-mandatory Renderer schemas. The GUI module itself, assets, a general material
+mandatory Renderer schemas. Pass transitions for render-to-texture and stable
+native MSL (#215) complete the pre-GUI Renderer work.
+
+The next direction is the GUI module (#217). Its architecture is accepted in
+[ADR 0013](docs/adr/0013-truffle-gui-architecture.md): a persistent element
+tree that recomputes style, layout and shapes only where something changes,
+plus optional Truffle GUI Dock. No GUI code exists yet; #217 is decomposed into
+implementation sub-issues before production work. Assets, a general material
 system and later application work are not started; the owner reviews the
 Renderer architecture later at their discretion, without committing to phases.
 Use signed issue-scoped phases, immediate pushes and reviewed merge-commit PRs.

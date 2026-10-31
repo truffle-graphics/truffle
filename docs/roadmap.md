@@ -58,9 +58,12 @@ helpers and composed example lighting (#208, PR #211), and a host-owned Metal
 window with resize (#209), above ADR PR #205, merged after owner-authorized
 self-review. GUI-readiness primitives (#213) add clip rectangles, sampled
 textures, streamed geometry and frame pacing so a GUI module can start above
-the Renderer. No GUI module, asset system, general materials, or later
-application phases are planned by this work. Reassess the next direction after the minimum
-Renderer. Delivery remains signed issue-scoped commits, immediate pushes and
+the Renderer. Pass transitions and stable native MSL (#215) complete the
+pre-GUI Renderer work. The GUI module (#217) is next: its architecture is
+accepted in [ADR 0013](adr/0013-truffle-gui-architecture.md), and the epic is
+decomposed into implementation sub-issues before production work. No asset
+system, general materials, or later application phases are planned by this
+work. Delivery remains signed issue-scoped commits, immediate pushes and
 owner-reviewed PRs.
 The common compiled-result boundary remains the existing RHI ShaderPackage;
 runtime compilation uses the Shader request/result contract. There is no
@@ -290,7 +293,9 @@ sequence commitment yet beyond the initial Shader/Renderer work above:
 - Renderer growth beyond its initial native slice, plus expanded optional
   EnCom–Renderer integration.
 - Engine with host-owned loop support; profiles and runners undecided.
-- GUI above Renderer, independent of EnCom.
+- GUI above Renderer, independent of EnCom: architecture accepted in
+  [ADR 0013](adr/0013-truffle-gui-architecture.md); epic #217 is decomposed into
+  implementation sub-issues before production work.
 - Assets module; name and design undecided.
 - Deferred conveniences: Simple RHI and an optional windowing wrapper.
 - Expanded diagnostics/profiling and further developer tools.
