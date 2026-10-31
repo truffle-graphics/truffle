@@ -188,5 +188,23 @@ int main() {
     const auto atlas = bytes(3 * 2, std::byte{9});
     TRUFFLE_CHECK(renderer::SampledTexture::upload(
         device, {.extent = {3, 2}, .format = rhi::TextureFormat::r8_unorm, .bytes = atlas}).ok());
+
+    // Texture bindings: one texture+sampler group usable as a batch bind group.
+    auto bindingLayout = renderer::TextureBindingLayout::create(device);
+    TRUFFLE_CHECK(bindingLayout.ok());
+    TRUFFLE_CHECK(bindingLayout.value().group_layout().valid());
+    TRUFFLE_CHECK(bindingLayout.value().pipeline_layout().valid());
+    auto binding = renderer::TextureBinding::create(device, bindingLayout.value(),
+                                                    texture.value(),
+                                                    {.minFilter = rhi::Filter::linear});
+    TRUFFLE_CHECK(binding.ok());
+    auto moved = std::move(binding).value();
+    const auto group = moved.batch_group(2);
+    TRUFFLE_CHECK(group.group == 2 && group.bindings == &moved.group());
+    TRUFFLE_CHECK(moved.group().valid() &&
+                  moved.group().layout_id() == bindingLayout.value().group_layout().id());
+    TRUFFLE_CHECK(!renderer::TextureBinding::create(device, bindingLayout.value(), empty).ok());
+    renderer::TextureBindingLayout missing;
+    TRUFFLE_CHECK(!renderer::TextureBinding::create(device, missing, texture.value()).ok());
     return 0;
 }

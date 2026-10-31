@@ -5,7 +5,18 @@ This is the rolling execution handoff, not an implementation transcript.
 issues/Project own accepted work. Earlier phase details remain in their PRs,
 the support matrix and Git history.
 
-## Current Delivery: GUI Layout (#222)
+## Current Delivery: Renderer Texture Binding (#238)
+
+Renderer gap found while starting GUI drawing (#223): sampling a
+`SampledTexture` required direct RHI calls, which ADR 0013 rules out for GUI.
+`renderer::TextureBindingLayout` (texture binding 0, sampler binding 1, plus a
+pipeline layout) and `renderer::TextureBinding` (owned sampler and bind group,
+`batch_group()`) close it. The Null primitives test covers creation, moves and
+invalid inputs; the native Metal GUI-primitives proof now uses the helper with
+unchanged exact pixel checks. Both pass in the local Debug `build/gui` tree,
+now configured with Metal and the Metal shader compiler. Next: #223.
+
+## Previous Delivery: GUI Layout (#222)
 
 Second GUI step of epic #217 (ADR 0013): a public measure/arrange layout
 interface on the persistent element tree.
@@ -31,7 +42,7 @@ weighted grow and shrink, min/max, free placement, custom layout, incremental
 counts, viewport change, stale handles) and `truffle_gui_element_tree_tests`
 pass in the local Debug `build/gui` tree with warnings as errors.
 `clang-format` is not installed locally; the package-consumer test was not
-rerun. Next: #223 element shapes and Renderer drawing.
+rerun.
 
 ## Previous Delivery: GUI Element Tree (#221)
 

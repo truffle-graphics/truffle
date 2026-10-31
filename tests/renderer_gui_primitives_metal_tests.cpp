@@ -246,15 +246,7 @@ int run() {
     auto adapter = tests::require(instance.adapter(0));
     auto device = tests::require(adapter.request_device());
 
-    auto bindings = tests::require(device.create_bind_group_layout({
-        .entries = {
-            {.binding = 0, .type = rhi::BindingType::sampled_texture,
-             .visibility = rhi::ShaderStageMask::fragment},
-            {.binding = 1, .type = rhi::BindingType::sampler,
-             .visibility = rhi::ShaderStageMask::fragment},
-        },
-    }));
-    auto layout = tests::require(device.create_pipeline_layout({.bindGroupLayouts = {&bindings}}));
+    auto bindings = tests::require(renderer::TextureBindingLayout::create(device));
 
     // 2x1 atlas: white | red; nearest sampling makes each half one texel.
     const std::array<std::byte, 8> texels{
@@ -263,16 +255,10 @@ int run() {
     auto atlas = tests::require(renderer::SampledTexture::upload(device, {
         .extent = {2, 1}, .bytes = texels,
     }));
-    auto sampler = tests::require(device.create_sampler({}));
-    auto arena = tests::require(device.create_descriptor_arena());
-    auto group = tests::require(device.create_bind_group({
-        .layout = &bindings, .arena = &arena,
-        .entries = {{.binding = 0, .textureView = &atlas.view()},
-                    {.binding = 1, .sampler = &sampler}},
-    }));
+    auto binding = tests::require(renderer::TextureBinding::create(device, bindings, atlas));
 
     rhi::PipelineDesc state;
-    state.layout = &layout;
+    state.layout = &bindings.pipeline_layout();
     state.vertexBuffers = {{
         .stride = sizeof(QuadVertex),
         .attributes = {{0, rhi::VertexFormat::float32x2, offsetof(QuadVertex, coordinate)},
@@ -319,7 +305,7 @@ int run() {
             batch.vertexElementCount = 4;
             batch.bindings[0] = tests::require(stream.write(std::as_bytes(std::span{draw.vertices})));
             batch.indexBuffer = tests::require(stream.write(std::as_bytes(std::span{indices}), 4));
-            batch.bindGroups = {{.group = 0, .bindings = &group}};
+            batch.bindGroups = {binding.batch_group()};
             batch.scissor = draw.scissor;
             batches.push_back(std::move(batch));
         }
