@@ -4,7 +4,7 @@
 
 Truffle keeps accepted work portable across maintainers, contributors,
 automation, and development machines. Repository issues and the
-[Truffle delivery project](https://github.com/users/loosewired/projects/5) are
+[Truffle delivery project](https://github.com/orgs/truffle-graphics/projects/1) are
 the durable execution record. Local notes, conversations, and the rolling
 handoff may provide working context, but they are not sufficient as the only
 record of an accepted plan.
@@ -36,16 +36,27 @@ rationale is important; they should not become misleading open work.
 
 Use the smallest hierarchy that remains understandable:
 
-- **Program:** a bounded multi-phase outcome or release.
-- **Epic:** a phase, backend, platform, or capability group that contains
-  multiple independently deliverable results.
+- **Epic:** a module-owned backend, platform, or capability group containing
+  multiple independently deliverable results. Epics are top-level; a module
+  may have several distinct epics.
 - **Implementation issue:** a focused, reviewable result with one owning module
   and a clear validation boundary.
 
-Programs and epics organize work. Implementation begins from an implementation
+Epics organize work. Implementation begins from an implementation
 issue, not directly from a broad epic. Use GitHub's parent/sub-issue feature so
 the hierarchy is machine-readable and visible in the Project. A textual parent
 reference may aid reading, but does not replace the structural relationship.
+
+Use a short ownership prefix in issue titles, such as `RHI:`, `Shader:`,
+`Renderer:`, `GUI:`, `Base:`, `CI:` or `Docs:`. Identify the module and,
+when applicable, the parent epic at the start of an open issue's body.
+The Module Project field records ownership; the epic/sub-issue hierarchy
+records the area within that module. The completed core RHI foundation (#25)
+is history, not a parent for ongoing module work.
+
+Apply the `epic` label to organizing epics, including those awaiting their first
+sub-issues. This keeps the overview independent of whether decomposition has
+started.
 
 Split an issue when it contains independently testable outcomes, different
 owners, incompatible platform evidence, or multiple changes that should be
@@ -80,15 +91,31 @@ the issue before implementation continues.
 All accepted Truffle issues belong in the delivery project. Use its fields as
 follows:
 
-- **Status:** `Todo` for accepted planned or deferred work, `In Progress` for
-  active work, and `Done` only after the issue's final disposition is recorded.
-- **Phase:** the roadmap phase or `Program` for cross-phase governance.
-- **Workstream:** the primary ownership area.
+- **Status:** `Backlog` for accepted work not queued, `Next` for deliberately
+  selected focus, `In Progress` for active work, `In Review` for work awaiting
+  pull-request review, and `Done` after the final disposition is recorded.
+- **Module:** `Base`, `RHI`, `Shader`, `Renderer`, `GUI`, `GUI Dock`, `EnCom`,
+  `Tooling & CI` or `Docs & Process`.
 - **Priority:** `P0` critical/next, `P1` required, `P2` planned, or `P3`
   opportunistic.
-- **Effort:** `S`, `M`, `L`, or `XL` as a planning estimate rather than a
+- **Size:** `S`, `M`, `L`, or `XL` as a planning estimate rather than a
   promise.
-- **Target evidence:** the evidence gate the issue is intended to establish.
+- **Target evidence:** `Contract`, `Cross-compiles`, `Native smoke`,
+  `Conformant`, `Supported` or `Release`, according to the intended evidence gate.
+
+There are no Phase or Workstream fields, fixed dates, or iterations. Use `Next`
+to choose focus without implying a calendar commitment. Project views are
+different presentations of the same items, not separate backlogs.
+
+The saved views provide complementary entry points:
+
+| View | Layout and purpose | Filter |
+| --- | --- | --- |
+| Work board | Priority-sorted Status board with Module slicing for all unfinished work | `-status:Done` |
+| By module | Module-grouped table with expandable hierarchy | None |
+| Epics | Module-grouped overview with sub-issue progress | `label:epic` |
+| Backlog | Module-grouped, priority-sorted flat planning table | `status:Backlog` |
+| Done | Module-grouped completion history | `status:Done` |
 
 Use the `deferred` label for accepted work intentionally scheduled after the
 current priorities. Deferred does not mean forgotten or accepted as complete.

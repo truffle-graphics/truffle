@@ -85,7 +85,7 @@ work that the project has decided to implement or deliberately defer.
 Before implementation begins:
 
 1. Create or refine a focused repository issue.
-2. Add it to the [Truffle delivery project](https://github.com/users/loosewired/projects/5)
+2. Add it to the [Truffle delivery project](https://github.com/orgs/truffle-graphics/projects/1)
    and the applicable milestone.
 3. Link it as a real sub-issue when it belongs to a roadmap epic.
 4. Record the context, required outcome, scope, non-goals, owning module,

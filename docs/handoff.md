@@ -5,7 +5,37 @@ This is the rolling execution handoff, not an implementation transcript.
 issues/Project own accepted work. Earlier phase details remain in their PRs,
 the support matrix and Git history.
 
-## Current Direction: Truffle GUI Architecture (#217)
+## Current Delivery: Organization Project Planning (#219)
+
+The delivery tracker is now the organization-owned
+[Truffle Project](https://github.com/orgs/truffle-graphics/projects/1).
+All 124 existing items were migrated; the personal Project is closed, not
+deleted. Module-owned epics are top-level; #25 is closed core-foundation
+history. Fields are Status (Backlog, Next, In Progress, In Review, Done),
+Module, Priority, Size and Target evidence; phase labels and Phase/Workstream
+fields are retired.
+
+Five saved views provide a priority-sorted Work board for all unfinished work,
+module hierarchy (By module), epic progress (Epics), Backlog and Done.
+The owner removed the redundant Next up view. Work board keeps Module slicing,
+deferral labels and parent links on cards; filters use supported qualifiers.
+The `epic` label includes organizing issues awaiting their first children, so GUI remains
+visible in the overview.
+
+This documentation-only delivery updates the four active tracker links and
+the issue-template contact link, and aligns planning/roadmap guidance with
+the live Project. No production contract, dependency, backend maturity or
+version changes. The owner approved one signed
+commit with immediate push and a review-first PR into develop. GUI architecture
+GUI architecture PR #218 is merged separately; no GUI implementation is included here.
+
+Validation: documentation diff, whitespace, obsolete-link search and the
+lightweight architecture guard pass. GitHub readback confirms the old Project
+is closed and #25 is Done. Browser readback confirms five saved views without
+filter warnings.
+Next: decompose GUI epic #217 into implementation sub-issues.
+
+## Previous Direction: Truffle GUI Architecture (#217)
 
 The owner and agent designed the GUI module interactively; the decisions are
 recorded in [ADR 0013](adr/0013-truffle-gui-architecture.md). This is a

@@ -11,10 +11,13 @@ The earlier Phase 1-12 labels described useful preliminary contracts and tests,
 but their “Complete” wording did not prove native GPU execution or platform
 support. They are historical inputs, not the current delivery gates.
 
-The [Truffle delivery project](https://github.com/users/loosewired/projects/5)
-is the cross-machine execution view. Issue #25 is the program parent; phase
-issues are epics, and their structurally linked sub-issues contain the
-executable scope, dependencies, acceptance criteria, and evidence requirements.
+The [Truffle delivery project](https://github.com/orgs/truffle-graphics/projects/1)
+is the cross-machine execution view. Module-owned epics are top-level:
+RHI native backends (#33), advanced GPU features (#34), and hardening/release
+(#35), Shader (#73), Renderer (#206), and GUI (#217). Issue #25 is the closed
+core-foundation history, not their program parent. Structurally linked
+sub-issues contain the executable scope, dependencies, acceptance criteria,
+and evidence requirements.
 See `docs/planning.md` for the durable tracking contract.
 
 ## Current Priorities
@@ -109,18 +112,18 @@ use, guided by what that use revealed about the RHI.
   and WebGL2 (#65-#68, #70), Vulkan Android (#59), OpenGL ES Android (#64),
   Metal on iOS/iPadOS/tvOS/visionOS (#71-#72), and MoltenVK packaging plus
   iOS-family Vulkan lanes (#172).
-- **Advanced GPU features (Phase 6):** ray tracing, mesh shaders,
+- **Advanced GPU features (#34):** ray tracing, mesh shaders,
   variable-rate shading, sparse resources, multiview, and extended queries
   (#75-#101). These need hardware that supports them.
-- **Hardening and optimization (Phase 7):** asynchronous submission,
+- **Hardening and optimization (#35):** asynchronous submission,
   allocation and memory optimization, object reuse, conformance harness,
   benchmarks, provenance, and backend promotion (#102-#128).
 
 Correctness problems found in the baseline backends (lifetime,
 synchronization, presentation) are fixed as active work, not deferred.
 
-The phase sections below remain the full record of what is done and what is
-outstanding.
+The core-foundation phases below are retained as history. Ongoing work is
+organized by independent epics, not phase labels or a single RHI umbrella.
 
 ## Phase 0: Restore Baseline And Project Truth — Complete
 
@@ -197,7 +200,7 @@ multi-queue ownership. Metal maps semaphores to shared events and passes
 validation-enabled native `CAMetalLayer` acquire/render/present, resize,
 suboptimal, out-of-date, and surface-loss proofs.
 
-## Phase 5: Native Backend And Platform Matrix — In Progress
+## Native Backends And Platforms (#33) — Backlog
 
 Tracked by #33.
 
@@ -210,7 +213,6 @@ Tracked by #33.
   smoke.
 - [x] Reconcile merged native resource evidence and public matrix claims in
   #48.
-- [x] Complete the agreed Shader library/compiler baseline in #73 (#193 audit).
 - [x] Complete D3D12 baseline resources and ShaderPackage-backed graphics and
   compute pipelines through #49-#50.
 - [x] Complete D3D12 synchronization, barrier, and query paths through #51.
@@ -239,14 +241,14 @@ Tracked by #33.
   (host window, readback for every advertised capability, documented
   fault-injection-only device loss); Apple cross-build and runtime evidence
   (#71-#72) is deferred.
-- [ ] Close the phase only through the evidence audit in #74, scoped to the
+- [ ] Close the epic only through the evidence audit in #74, scoped to the
   current priorities with deferred rows recorded truthfully.
 
 Every backend-platform pair advances from `source_only` through `supported`
 only when it meets the published evidence gate. Unsupported features fail
 explicitly and remain visible in capabilities.
 
-## Phase 6: Advanced Capability Tracks — Deferred
+## Advanced GPU Features (#34) — Deferred
 
 Tracked by #34.
 
@@ -259,13 +261,13 @@ Tracked by #34.
 - [ ] Multiview contracts and native/standardized implementations: #91-#94 and
   #98.
 - [ ] Query-family contracts and native/standardized implementations: #95-#100.
-- [ ] Close the phase only through the conformance audit in #101.
+- [ ] Close the epic only through the conformance audit in #101.
 
 Each subsystem has a distinct capability contract and native conformance suite.
 Standard/KHR/ARB GL-family features may participate; vendor-only extensions are
 deferred.
 
-## Phase 7: Harden, Package, And Promote — Deferred
+## Hardening, Packaging And Release (#35) — Deferred
 
 Tracked by #35.
 
