@@ -23,4 +23,5 @@ target_link_libraries(
         Truffle::BackendNull
         Truffle::Renderer
         Truffle::EnComRenderer
+        Truffle::GUI
         Truffle::Diagnostics)

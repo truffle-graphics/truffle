@@ -5,7 +5,35 @@ This is the rolling execution handoff, not an implementation transcript.
 issues/Project own accepted work. Earlier phase details remain in their PRs,
 the support matrix and Git history.
 
-## Current Delivery: Organization Project Planning (#219)
+## Current Delivery: GUI Element Tree (#221)
+
+First GUI implementation step of epic #217 (ADR 0013). Adds the
+`truffle_gui` / `Truffle::GUI` target depending only on Renderer, with its
+architecture-guard rule and package-consumer link check.
+
+- `truffle::gui::Context` owns a persistent element tree with a fixed root:
+  create, destroy (whole subtree), reparent and reorder children.
+- `ElementId` is a `base::Handle` packing slot index and generation; removed
+  handles are detected and rejected, and reused slots get new generations.
+- Dirty flags `style`, `measure`, `arrange` and `shape` are independent.
+  `measure` propagates `measure|arrange` to ancestors (stopping at an already
+  measured ancestor); `arrange` adds own `shape`; `style` and `shape` stay
+  local; structural changes mark the affected parents.
+- `dirty_elements()` lists only live dirty elements, and `clear_dirty(flags)`
+  clears selected stages, so later layout and shape passes can prove an idle
+  UI does no work.
+
+No layout, drawing, text, input or widgets yet (#222-#235). Not thread-safe.
+
+Validation: `truffle_gui_element_tree_tests` (structure, handle invalidation,
+invalidation propagation, idle state) passes in a fresh Debug Null-only build
+with warnings as errors; architecture guard passes. `clang-format` is not
+installed locally, so formatting was checked manually against the 90-column
+limit. The package-consumer install test was not rerun. The existing
+`build/dev` tree is stale (cached SDK path) and needs reconfiguring.
+Next: #222 layout interface.
+
+## Previous Delivery: Organization Project Planning (#219)
 
 The delivery tracker is now the organization-owned
 [Truffle Project](https://github.com/orgs/truffle-graphics/projects/1).
@@ -26,7 +54,7 @@ This documentation-only delivery updates the four active tracker links and
 the issue-template contact link, and aligns planning/roadmap guidance with
 the live Project. No production contract, dependency, backend maturity or
 version changes. The owner approved one signed
-commit with immediate push and a review-first PR into develop. GUI architecture
+commit with immediate push and a review-first PR into develop.
 GUI architecture PR #218 is merged separately; no GUI implementation is included here.
 
 Validation: documentation diff, whitespace, obsolete-link search and the

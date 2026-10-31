@@ -697,3 +697,8 @@ endif()
 add_executable(truffle_transform_compute_tests transform_compute_tests.cpp)
 target_link_libraries(truffle_transform_compute_tests PRIVATE truffle_backend_null truffle_renderer)
 add_test(NAME truffle_transform_compute_tests COMMAND truffle_transform_compute_tests)
+
+add_executable(truffle_gui_element_tree_tests gui_element_tree_tests.cpp)
+target_link_libraries(truffle_gui_element_tree_tests PRIVATE truffle_gui)
+truffle_target_warnings(truffle_gui_element_tree_tests)
+add_test(NAME truffle_gui_element_tree_tests COMMAND truffle_gui_element_tree_tests)

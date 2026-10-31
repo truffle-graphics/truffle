@@ -22,6 +22,7 @@ DIRECT_DEPENDENCIES = {
     "truffle_renderer": {"truffle_shader", "truffle_rhi"},
     "truffle_asset_render": {"truffle_assets", "truffle_renderer"},
     "truffle_encom_renderer": {"truffle_encom", "truffle_renderer"},
+    "truffle_gui": {"truffle_renderer"},
     "truffle_diagnostics": {
         "truffle_asset_render",
         "truffle_assets",
@@ -38,6 +39,7 @@ PUBLIC_MODULE_TARGETS = {
     "renderer": "truffle_renderer",
     "asset_render": "truffle_asset_render",
     "encom_renderer": "truffle_encom_renderer",
+    "gui": "truffle_gui",
     "diagnostics": "truffle_diagnostics",
 }
 

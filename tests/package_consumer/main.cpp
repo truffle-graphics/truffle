@@ -7,6 +7,7 @@
 #include "truffle/diagnostics/diagnostics.hpp"
 #include "truffle/rhi/null_backend.hpp"
 #include "truffle/encom_renderer/encom_render_adapter.hpp"
+#include "truffle/gui/context.hpp"
 #include "truffle/renderer/data_layout.hpp"
 #include "truffle/renderer/depth_target.hpp"
 #include "truffle/renderer/frame_stream.hpp"
@@ -26,6 +27,9 @@ int main() {
                   truffle::base::pack_api_version(truffle::base::kApiVersion));
     struct ConsumerHandleTag {};
     static_assert(!truffle::base::Handle<ConsumerHandleTag>{}.valid());
+
+    truffle::gui::Context gui;
+    if (!gui.create(gui.root()).ok()) return 1;
 
     truffle::assets::GeometryStreamDesc stream;
     stream.id = truffle::assets::AssetId{1};
