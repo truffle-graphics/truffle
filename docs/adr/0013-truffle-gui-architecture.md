@@ -2,8 +2,8 @@
 
 ## Status
 
-Accepted as direction (#217). No GUI code exists yet; implementation proceeds
-through focused sub-issues of #217.
+Accepted as direction (#217). Implementation proceeds through focused
+sub-issues of #217 (#221-#235), starting with the element tree (#221).
 
 ## Context
 

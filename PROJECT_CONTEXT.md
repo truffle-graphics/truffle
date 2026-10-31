@@ -211,8 +211,8 @@ native MSL (#215) complete the pre-GUI Renderer work.
 The next direction is the GUI module (#217). Its architecture is accepted in
 [ADR 0013](docs/adr/0013-truffle-gui-architecture.md): a persistent element
 tree that recomputes style, layout and shapes only where something changes,
-plus optional Truffle GUI Dock. No GUI code exists yet; #217 is decomposed into
-implementation sub-issues before production work. Assets, a general material
+plus optional Truffle GUI Dock. #217 is decomposed into sub-issues #221-#235;
+`Truffle::GUI` starts with the element tree and invalidation model (#221). Assets, a general material
 system and later application work are not started; the owner reviews the
 Renderer architecture later at their discretion, without committing to phases.
 Use signed issue-scoped phases, immediate pushes and reviewed merge-commit PRs.

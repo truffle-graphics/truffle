@@ -134,8 +134,8 @@ with composed application shaders, lighting and resize. Renderer owns no ECS
 schema or fixed transform/light/material model. GUI-readiness primitives add
 clip rectangles, sampled textures, streamed geometry and frame pacing. The GUI
 module's architecture is accepted in
-[ADR 0013](docs/adr/0013-truffle-gui-architecture.md) (#217) but no GUI code
-exists yet; assets, a general material system and later application work are
+[ADR 0013](docs/adr/0013-truffle-gui-architecture.md) (#217); `Truffle::GUI` currently provides the
+persistent element tree (#221), with layout and drawing next. Assets, a general material system and later application work are
 not started.
 [`docs/roadmap.md`](docs/roadmap.md) records the review and evidence boundaries.
 
