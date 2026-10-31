@@ -135,7 +135,8 @@ schema or fixed transform/light/material model. GUI-readiness primitives add
 clip rectangles, sampled textures, streamed geometry and frame pacing. The GUI
 module's architecture is accepted in
 [ADR 0013](docs/adr/0013-truffle-gui-architecture.md) (#217); `Truffle::GUI` currently provides the
-persistent element tree (#221) and incremental layout (#222), with drawing next. Assets, a general material system and later application work are
+persistent element tree (#221), incremental layout (#222) and persistent shape drawing
+through the Renderer (#223, Metal). Assets, a general material system and later application work are
 not started.
 [`docs/roadmap.md`](docs/roadmap.md) records the review and evidence boundaries.
 

@@ -4,6 +4,7 @@
 #include "truffle/gui/element.hpp"
 #include "truffle/gui/geometry.hpp"
 #include "truffle/gui/layout.hpp"
+#include "truffle/gui/shapes.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -33,6 +34,12 @@ namespace truffle::gui {
 //   touch its subtree. An element whose size changes is marked `shape`.
 // - Changing only `position` or `weight` re-arranges the parent without
 //   measuring anything.
+//
+// Drawing rules:
+// - `update_shapes` regenerates stored shapes only for elements marked
+//   `shape`: new, resized or redecorated ones. Shapes are element-local, so
+//   moving an element keeps them.
+// - Elements clip their children to their own bounds unless disabled.
 class Context {
 public:
     Context();
@@ -86,6 +93,26 @@ public:
     // Bounds relative to the root's origin.
     [[nodiscard]] base::Result<Rect> absolute_bounds(ElementId element) const;
 
+    // How the element's background is drawn; transparent by default.
+    [[nodiscard]] base::Status set_decoration(ElementId element, const Decoration& decoration);
+    [[nodiscard]] base::Result<Decoration> decoration(ElementId element) const;
+
+    // Whether children are clipped to this element's bounds (default true).
+    [[nodiscard]] base::Status set_clips_children(ElementId element, bool clips);
+    [[nodiscard]] bool clips_children(ElementId element) const noexcept;
+
+    // Replaces how the element's shapes are generated; `nullptr` restores
+    // DecorationBuilder.
+    [[nodiscard]] base::Status set_shape_builder(ElementId element,
+                                                 std::shared_ptr<const ShapeBuilder> builder);
+
+    // Regenerates shapes of `shape`-marked elements from their current bounds.
+    // Call after `update_layout`.
+    ShapeStats update_shapes();
+
+    // Shapes from the last `update_shapes`; null for invalid handles.
+    [[nodiscard]] const ElementShapes* shapes(ElementId element) const noexcept;
+
 private:
     friend class LayoutPass;
 
@@ -103,6 +130,10 @@ private:
         Constraints measured_under;
         Size desired;
         Rect rect;
+        bool clips = true;
+        Decoration decoration;
+        std::shared_ptr<const ShapeBuilder> builder;
+        ElementShapes shapes;
     };
 
     [[nodiscard]] Node* find(ElementId element) noexcept;

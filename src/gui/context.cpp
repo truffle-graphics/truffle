@@ -363,6 +363,76 @@ base::Result<Rect> Context::absolute_bounds(ElementId element) const {
     return rect;
 }
 
+base::Status Context::set_decoration(ElementId element, const Decoration& decoration) {
+    Node* node = find(element);
+    if (node == nullptr) {
+        return invalid_element();
+    }
+    if (node->decoration != decoration) {
+        node->decoration = decoration;
+        raise(element, *node, Dirty::shape);
+    }
+    return base::Status::success();
+}
+
+base::Result<Decoration> Context::decoration(ElementId element) const {
+    const Node* node = find(element);
+    if (node == nullptr) {
+        return invalid_element();
+    }
+    return node->decoration;
+}
+
+base::Status Context::set_clips_children(ElementId element, bool clips) {
+    Node* node = find(element);
+    if (node == nullptr) {
+        return invalid_element();
+    }
+    node->clips = clips;
+    return base::Status::success();
+}
+
+bool Context::clips_children(ElementId element) const noexcept {
+    const Node* node = find(element);
+    return node != nullptr && node->clips;
+}
+
+base::Status Context::set_shape_builder(ElementId element,
+                                        std::shared_ptr<const ShapeBuilder> builder) {
+    Node* node = find(element);
+    if (node == nullptr) {
+        return invalid_element();
+    }
+    node->builder = std::move(builder);
+    raise(element, *node, Dirty::shape);
+    return base::Status::success();
+}
+
+ShapeStats Context::update_shapes() {
+    static const DecorationBuilder fallback;
+    ShapeStats stats;
+    for (const ElementId element : dirty_queue_) {
+        Node* node = find(element);
+        if (node == nullptr || !has(node->dirty, Dirty::shape)) {
+            continue;
+        }
+        node->shapes.vertices.clear();
+        node->shapes.indices.clear();
+        node->shapes.segments.clear();
+        ShapeWriter writer(node->shapes);
+        const ShapeBuilder& builder = node->builder ? *node->builder : fallback;
+        builder.build(writer, node->rect.size(), node->decoration);
+        ++stats.regenerated;
+    }
+    clear_dirty(Dirty::shape);
+    return stats;
+}
+
+const ElementShapes* Context::shapes(ElementId element) const noexcept {
+    const Node* node = find(element);
+    return node == nullptr ? nullptr : &node->shapes;
+}
+
 const LayoutParams& Context::params_of(ElementId element) const noexcept {
     static const LayoutParams defaults;
     const Node* node = find(element);
