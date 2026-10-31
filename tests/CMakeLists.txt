@@ -702,3 +702,8 @@ add_executable(truffle_gui_element_tree_tests gui_element_tree_tests.cpp)
 target_link_libraries(truffle_gui_element_tree_tests PRIVATE truffle_gui)
 truffle_target_warnings(truffle_gui_element_tree_tests)
 add_test(NAME truffle_gui_element_tree_tests COMMAND truffle_gui_element_tree_tests)
+
+add_executable(truffle_gui_layout_tests gui_layout_tests.cpp)
+target_link_libraries(truffle_gui_layout_tests PRIVATE truffle_gui)
+truffle_target_warnings(truffle_gui_layout_tests)
+add_test(NAME truffle_gui_layout_tests COMMAND truffle_gui_layout_tests)

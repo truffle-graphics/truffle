@@ -24,6 +24,10 @@ constexpr std::uint32_t retired_generation = std::numeric_limits<std::uint32_t>:
     return ElementId{(static_cast<std::uint64_t>(generation) << 32U) | index};
 }
 
+[[nodiscard]] constexpr Dirty without(Dirty flags) noexcept {
+    return static_cast<Dirty>(~static_cast<std::uint8_t>(flags));
+}
+
 [[nodiscard]] base::Status invalid_element() {
     return base::Status::failure(base::StatusCode::invalid_argument,
                                  "GUI element handle is not alive");
@@ -78,12 +82,9 @@ base::Status Context::destroy(ElementId element) {
         pending.pop_back();
         Node& doomed = nodes_[index_of(current)];
         pending.insert(pending.end(), doomed.children.begin(), doomed.children.end());
-        doomed.children.clear();
-        doomed.alive = false;
-        doomed.queued = false;
-        doomed.dirty = Dirty::none;
-        doomed.parent = {};
-        ++doomed.generation;
+        const std::uint32_t generation = doomed.generation + 1;
+        doomed = Node{};
+        doomed.generation = generation;
         if (doomed.generation != retired_generation) {
             free_.push_back(index_of(current));
         }
@@ -229,11 +230,7 @@ void Context::mark(ElementId element, Dirty flags) {
     if (node == nullptr || !any(flags)) {
         return;
     }
-    node->dirty |= flags;
-    if (!node->queued) {
-        node->queued = true;
-        dirty_queue_.push_back(element);
-    }
+    raise(element, *node, flags);
     if (!has(flags, Dirty::measure)) {
         return;
     }
@@ -243,13 +240,207 @@ void Context::mark(ElementId element, Dirty flags) {
         if (has(above.dirty, Dirty::measure)) {
             break;
         }
-        above.dirty |= Dirty::measure | Dirty::arrange;
-        if (!above.queued) {
-            above.queued = true;
-            dirty_queue_.push_back(ancestor);
-        }
+        raise(ancestor, above, Dirty::measure | Dirty::arrange);
         ancestor = above.parent;
     }
+}
+
+void Context::raise(ElementId element, Node& node, Dirty flags) {
+    node.dirty |= flags;
+    if (!node.queued) {
+        node.queued = true;
+        dirty_queue_.push_back(element);
+    }
+}
+
+base::Status Context::set_layout(ElementId element, std::shared_ptr<const Layout> layout) {
+    Node* node = find(element);
+    if (node == nullptr) {
+        return invalid_element();
+    }
+    node->layout = std::move(layout);
+    mark(element, Dirty::measure);
+    return base::Status::success();
+}
+
+base::Status Context::set_layout_params(ElementId element, const LayoutParams& params) {
+    Node* node = find(element);
+    if (node == nullptr) {
+        return invalid_element();
+    }
+    if (node->params == params) {
+        return base::Status::success();
+    }
+    LayoutParams placement_only = node->params;
+    placement_only.position = params.position;
+    placement_only.weight = params.weight;
+    node->params = params;
+    if (placement_only == params) {
+        // Only the parent's placement changes; no size is measured again.
+        if (Node* parent = find(node->parent)) {
+            raise(node->parent, *parent, Dirty::arrange);
+        }
+    } else {
+        mark(element, Dirty::measure);
+    }
+    return base::Status::success();
+}
+
+base::Result<LayoutParams> Context::layout_params(ElementId element) const {
+    const Node* node = find(element);
+    if (node == nullptr) {
+        return invalid_element();
+    }
+    return node->params;
+}
+
+LayoutStats Context::update_layout(Size viewport) {
+    stats_ = {};
+    if (viewport != viewport_ || !find(root_)->measured) {
+        viewport_ = viewport;
+        mark(root_, Dirty::measure);
+    }
+    const bool pending_work =
+        std::any_of(dirty_queue_.begin(), dirty_queue_.end(), [this](ElementId element) {
+            return has(dirty(element), Dirty::measure | Dirty::arrange);
+        });
+    if (!pending_work) {
+        return stats_;
+    }
+
+    static_cast<void>(measure_element(root_, Constraints::tight(viewport_)));
+
+    // Arrange invalidated elements top-down; arranging a parent may already
+    // have consumed a descendant's work.
+    std::vector<std::pair<std::size_t, ElementId>> pending;
+    for (const ElementId element : dirty_queue_) {
+        const Node* node = find(element);
+        if (node == nullptr || !has(node->dirty, Dirty::arrange)) {
+            continue;
+        }
+        std::size_t depth = 0;
+        for (ElementId up = node->parent; up.valid(); up = find(up)->parent) {
+            ++depth;
+        }
+        pending.emplace_back(depth, element);
+    }
+    std::stable_sort(pending.begin(), pending.end(),
+                     [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
+    for (const auto& [depth, element] : pending) {
+        Node& node = *find(element);
+        if (!has(node.dirty, Dirty::arrange)) {
+            continue;
+        }
+        const Rect rect = element == root_
+                              ? Rect{0.0F, 0.0F, viewport_.width, viewport_.height}
+                              : node.rect;
+        arrange_element(element, rect);
+    }
+    clear_dirty(Dirty::measure | Dirty::arrange);
+    return stats_;
+}
+
+base::Result<Rect> Context::bounds(ElementId element) const {
+    const Node* node = find(element);
+    if (node == nullptr) {
+        return invalid_element();
+    }
+    return node->rect;
+}
+
+base::Result<Rect> Context::absolute_bounds(ElementId element) const {
+    const Node* node = find(element);
+    if (node == nullptr) {
+        return invalid_element();
+    }
+    Rect rect = node->rect;
+    for (ElementId up = node->parent; up.valid();) {
+        const Node& above = *find(up);
+        rect.x += above.rect.x;
+        rect.y += above.rect.y;
+        up = above.parent;
+    }
+    return rect;
+}
+
+const LayoutParams& Context::params_of(ElementId element) const noexcept {
+    static const LayoutParams defaults;
+    const Node* node = find(element);
+    return node == nullptr ? defaults : node->params;
+}
+
+Size Context::desired_of(ElementId element) const noexcept {
+    const Node* node = find(element);
+    return node == nullptr ? Size{} : node->desired;
+}
+
+Size Context::measure_element(ElementId element, Constraints constraints) {
+    Node* node = find(element);
+    if (node == nullptr) {
+        return {};
+    }
+    if (node->measured && !has(node->dirty, Dirty::measure) &&
+        node->measured_under == constraints) {
+        return node->desired;
+    }
+    ++stats_.measured;
+
+    const LayoutParams params = node->params;
+    const auto range = [](float low, float high, float own_min, float own_max,
+                          const std::optional<float>& fixed) {
+        const float lo = std::max(low, std::min(own_min, high));
+        const float hi = std::max(lo, std::min(high, own_max));
+        return fixed ? std::pair{std::clamp(*fixed, lo, hi), std::clamp(*fixed, lo, hi)}
+                     : std::pair{lo, hi};
+    };
+    const auto [min_w, max_w] = range(constraints.min.width, constraints.max.width,
+                                      params.min.width, params.max.width, params.width);
+    const auto [min_h, max_h] = range(constraints.min.height, constraints.max.height,
+                                      params.min.height, params.max.height, params.height);
+    const Constraints content{
+        {},
+        {std::max(0.0F, max_w - params.padding.horizontal()),
+         std::max(0.0F, max_h - params.padding.vertical())}};
+
+    static const FreeLayout fallback;
+    const std::shared_ptr<const Layout> layout = node->layout;
+    LayoutPass pass(*this);
+    const Size inner = (layout ? *layout : static_cast<const Layout&>(fallback))
+                           .measure(pass, element, content);
+
+    node = find(element);
+    node->desired = {std::clamp(inner.width + params.padding.horizontal(), min_w, max_w),
+                     std::clamp(inner.height + params.padding.vertical(), min_h, max_h)};
+    node->measured_under = constraints;
+    node->measured = true;
+    node->dirty = node->dirty & without(Dirty::measure);
+    return node->desired;
+}
+
+void Context::arrange_element(ElementId element, Rect rect) {
+    Node* node = find(element);
+    if (node == nullptr) {
+        return;
+    }
+    const bool resized = !node->arranged || node->rect.size() != rect.size();
+    node->rect = rect;
+    if (resized) {
+        raise(element, *node, Dirty::shape);
+    } else if (!has(node->dirty, Dirty::arrange)) {
+        return;
+    }
+    ++stats_.arranged;
+    node->arranged = true;
+    node->dirty = node->dirty & without(Dirty::arrange);
+
+    const Edges padding = node->params.padding;
+    const Rect content{padding.left, padding.top,
+                       std::max(0.0F, rect.width - padding.horizontal()),
+                       std::max(0.0F, rect.height - padding.vertical())};
+    static const FreeLayout fallback;
+    const std::shared_ptr<const Layout> layout = node->layout;
+    LayoutPass pass(*this);
+    (layout ? *layout : static_cast<const Layout&>(fallback)).arrange(pass, element, content);
 }
 
 void Context::detach(ElementId element, Node& node) {
