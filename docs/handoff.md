@@ -5,7 +5,35 @@ This is the rolling execution handoff, not an implementation transcript.
 issues/Project own accepted work. Earlier phase details remain in their PRs,
 the support matrix and Git history.
 
-## Current Delivery: GUI Element Tree (#221)
+## Current Delivery: GUI Layout (#222)
+
+Second GUI step of epic #217 (ADR 0013): a public measure/arrange layout
+interface on the persistent element tree.
+
+- `gui/geometry.hpp`: `Size`, `Point`, `Rect`, `Edges` and `Constraints`
+  (`unbounded` maximums).
+- `gui/layout.hpp`: per-element `LayoutParams` (optional fixed size, min/max,
+  padding, stretch weight, free position); an abstract `Layout` that
+  applications can implement through a `LayoutPass`; built-in `StackLayout`
+  (row/column, spacing, main/cross alignment, weighted stretching that freezes
+  at min/max, whole-unit edges) and `FreeLayout` (the default, explicit
+  positions). Layouts are immutable; replace one to reconfigure.
+- `Context::update_layout(viewport)` measures top-down with cached constraints
+  and arranges only arrange-dirty subtrees; bounds are parent-relative, so a
+  moved element keeps its subtree and shapes. Only resized elements gain
+  `shape`. A position- or weight-only change re-arranges the parent alone.
+  `LayoutStats` reports measured/arranged counts; an idle update does no work.
+
+Grid layout is deferred to #230. Not thread-safe.
+
+Validation: `truffle_gui_layout_tests` (stack padding/spacing/alignment,
+weighted grow and shrink, min/max, free placement, custom layout, incremental
+counts, viewport change, stale handles) and `truffle_gui_element_tree_tests`
+pass in the local Debug `build/gui` tree with warnings as errors.
+`clang-format` is not installed locally; the package-consumer test was not
+rerun. Next: #223 element shapes and Renderer drawing.
+
+## Previous Delivery: GUI Element Tree (#221)
 
 First GUI implementation step of epic #217 (ADR 0013). Adds the
 `truffle_gui` / `Truffle::GUI` target depending only on Renderer, with its
@@ -20,18 +48,9 @@ architecture-guard rule and package-consumer link check.
   measured ancestor); `arrange` adds own `shape`; `style` and `shape` stay
   local; structural changes mark the affected parents.
 - `dirty_elements()` lists only live dirty elements, and `clear_dirty(flags)`
-  clears selected stages, so later layout and shape passes can prove an idle
-  UI does no work.
+  clears selected stages.
 
-No layout, drawing, text, input or widgets yet (#222-#235). Not thread-safe.
-
-Validation: `truffle_gui_element_tree_tests` (structure, handle invalidation,
-invalidation propagation, idle state) passes in a fresh Debug Null-only build
-with warnings as errors; architecture guard passes. `clang-format` is not
-installed locally, so formatting was checked manually against the 90-column
-limit. The package-consumer install test was not rerun. The existing
-`build/dev` tree is stale (cached SDK path) and needs reconfiguring.
-Next: #222 layout interface.
+Validated by `truffle_gui_element_tree_tests` and the architecture guard.
 
 ## Previous Delivery: Organization Project Planning (#219)
 
