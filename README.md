@@ -193,7 +193,7 @@ See `docs/charter.md`, `docs/architecture.md`, `docs/roadmap.md`, and
 maturity evidence.
 
 Accepted and deliberately deferred work is tracked in the
-[Truffle delivery project](https://github.com/users/loosewired/projects/5) and
+[Truffle delivery project](https://github.com/orgs/truffle-graphics/projects/1) and
 repository issues. [`docs/planning.md`](docs/planning.md) defines the durable
 planning and traceability rules used by contributors and automation.
 
