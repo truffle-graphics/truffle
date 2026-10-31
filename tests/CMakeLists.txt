@@ -707,3 +707,20 @@ add_executable(truffle_gui_layout_tests gui_layout_tests.cpp)
 target_link_libraries(truffle_gui_layout_tests PRIVATE truffle_gui)
 truffle_target_warnings(truffle_gui_layout_tests)
 add_test(NAME truffle_gui_layout_tests COMMAND truffle_gui_layout_tests)
+
+add_executable(truffle_gui_drawing_tests gui_drawing_tests.cpp)
+target_link_libraries(truffle_gui_drawing_tests PRIVATE truffle_gui)
+truffle_target_warnings(truffle_gui_drawing_tests)
+add_test(NAME truffle_gui_drawing_tests COMMAND truffle_gui_drawing_tests)
+
+# The GUI program ships as prepared MSL, so no shader compiler is required.
+if(APPLE AND TRUFFLE_BUILD_BACKEND_METAL)
+    add_executable(truffle_gui_drawing_metal_tests gui_drawing_metal_tests.cpp)
+    target_link_libraries(truffle_gui_drawing_metal_tests PRIVATE
+        truffle_gui truffle_backend_metal)
+    truffle_target_warnings(truffle_gui_drawing_metal_tests)
+    add_test(NAME truffle_gui_drawing_metal_tests COMMAND truffle_gui_drawing_metal_tests)
+    set_tests_properties(truffle_gui_drawing_metal_tests PROPERTIES
+        LABELS "native-smoke;validation;gui" TIMEOUT 60
+        ENVIRONMENT "MTL_DEBUG_LAYER=1;MTL_SHADER_VALIDATION=1;METAL_DEVICE_WRAPPER_TYPE=1")
+endif()

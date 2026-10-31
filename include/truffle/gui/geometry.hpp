@@ -52,6 +52,16 @@ struct Edges {
     friend bool operator==(const Edges&, const Edges&) = default;
 };
 
+// Straight-alpha color with channels in [0, 1], in the render target's encoding.
+struct Color {
+    float r = 0.0F;
+    float g = 0.0F;
+    float b = 0.0F;
+    float a = 0.0F;
+
+    friend bool operator==(const Color&, const Color&) = default;
+};
+
 // Range of sizes a parent accepts from a child. `max` may be `unbounded`.
 struct Constraints {
     Size min;
