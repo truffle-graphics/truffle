@@ -3,9 +3,12 @@
 #include "truffle/base/status.hpp"
 #include "truffle/gui/element.hpp"
 #include "truffle/gui/geometry.hpp"
+#include "truffle/gui/host.hpp"
+#include "truffle/gui/input.hpp"
 #include "truffle/gui/layout.hpp"
 #include "truffle/gui/shapes.hpp"
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -14,6 +17,11 @@
 #include <vector>
 
 namespace truffle::gui {
+
+struct FrameStats {
+    LayoutStats layout;
+    ShapeStats shapes;
+};
 
 // Owns a persistent tree of elements. A context always has a root element.
 // It is not thread-safe; use it from one thread at a time.
@@ -40,8 +48,18 @@ namespace truffle::gui {
 //   `shape`: new, resized or redecorated ones. Shapes are element-local, so
 //   moving an element keeps them.
 // - Elements clip their children to their own bounds unless disabled.
+//
+// Host rules:
+// - The host owns the window, event loop and scheduling. It reports the
+//   viewport and content scale, forwards input with `handle`, and draws only
+//   when `needs_frame` says so, sleeping until input or `next_update`.
+// - Any visible change (dirty elements, viewport, scale, clipping or an
+//   explicit request) needs exactly one frame; `prepare_frame` consumes it.
+//   Input on its own changes nothing visible.
 class Context {
 public:
+    using Clock = std::chrono::steady_clock;
+
     Context();
 
     [[nodiscard]] ElementId root() const noexcept;
@@ -113,6 +131,34 @@ public:
     // Shapes from the last `update_shapes`; null for invalid handles.
     [[nodiscard]] const ElementShapes* shapes(ElementId element) const noexcept;
 
+    // Logical viewport and content scale (physical pixels per logical unit)
+    // from the host. The scale must be finite and positive.
+    [[nodiscard]] base::Status set_viewport(Size size, float scale = 1.0F);
+    [[nodiscard]] Size viewport() const noexcept;
+    [[nodiscard]] float scale() const noexcept;
+
+    // Records input forwarded by the host.
+    void handle(const InputEvent& event);
+    [[nodiscard]] const InputState& input() const noexcept;
+
+    // Asks for a frame now (for changes the GUI cannot see) or at `when`
+    // (timed updates such as animations or caret blinking).
+    void request_frame() noexcept;
+    void request_frame_at(Clock::time_point when);
+
+    [[nodiscard]] bool needs_frame(Clock::time_point now) const noexcept;
+    // Earliest pending timed update, if any.
+    [[nodiscard]] std::optional<Clock::time_point> next_update() const noexcept;
+
+    // Brings layout and shapes up to date for drawing at `now`, consuming the
+    // frame request, every dirty flag and timed updates that are due.
+    FrameStats prepare_frame(Clock::time_point now);
+
+    // Platform services; `nullptr` restores a host that does nothing. The host
+    // is borrowed and must outlive its use here.
+    void set_host(Host* host) noexcept;
+    [[nodiscard]] Host& host() const noexcept;
+
 private:
     friend class LayoutPass;
 
@@ -156,6 +202,12 @@ private:
     ElementId root_;
     Size viewport_;
     LayoutStats stats_;
+    Size host_viewport_;
+    float scale_ = 1.0F;
+    bool frame_requested_ = false;
+    std::vector<Clock::time_point> deadlines_;
+    InputState input_;
+    Host* host_ = nullptr;
 };
 
 } // namespace truffle::gui

@@ -165,10 +165,10 @@ base::Status Painter::remove_texture(TextureId texture) {
 }
 
 base::Result<std::vector<renderer::RenderBatch>> Painter::record(
-    const Context& context, std::uint32_t slot, rhi::Extent2D target, float scale) {
+    const Context& context, std::uint32_t slot, rhi::Extent2D target) {
     State& state = *state_;
     state.stats = {};
-    assemble(context, {.target = target, .scale = scale, .clip_y_up = true}, state.draw);
+    assemble(context, {.target = target, .scale = context.scale(), .clip_y_up = true}, state.draw);
     const DrawData& draw = state.draw;
     state.stats.elements = draw.elements;
     state.stats.clipped = draw.clipped;

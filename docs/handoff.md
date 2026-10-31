@@ -5,7 +5,35 @@ This is the rolling execution handoff, not an implementation transcript.
 issues/Project own accepted work. Earlier phase details remain in their PRs,
 the support matrix and Git history.
 
-## Current Delivery: GUI Drawing (#223)
+## Current Delivery: GUI Host Boundary (#224)
+
+Fourth GUI step of epic #217 (ADR 0013): the host-owned boundary.
+
+- `gui/input.hpp`: host-facing `PointerEvent`, `WheelEvent`, `KeyEvent`,
+  `TextEvent`, `CompositionEvent` and `FocusEvent` (variant `InputEvent`),
+  `Modifiers`, `Key` and the aggregated `InputState` (pointer, buttons,
+  modifiers, focus, composition). Routing to elements is #226.
+- `gui/host.hpp`: `Host` services with idle defaults: cursor, clipboard and
+  text-input (IME) placement. `Context::host()` never returns null.
+- `Context`: `set_viewport(size, scale)`, `handle(event)` (updates input state
+  only, never requests a frame), `request_frame()`, `request_frame_at(time)`,
+  `needs_frame(now)`, `next_update()` and `prepare_frame(now)` (layout,
+  shapes, clears dirt, the request and due timers). `Painter::record` now
+  takes the content scale from the Context.
+- `examples/gui_window`: a Cocoa window that translates AppKit events, sleeps
+  until input or the next timed update, and draws only when the GUI needs a
+  frame. Cursor and clipboard are real; IME placement waits for text editing.
+
+Validation: `truffle_gui_host_tests` (exactly one frame per change, idle,
+viewport and scale validation, timers, input state, host services) and the
+`truffle_gui_window --smoke` ctest (1 initial frame, idle, 1 timed update,
+pointer movement draws nothing, marker placement and window resize each draw
+one frame, 12 decorated elements) pass in the local Debug `build/gui` tree
+with Metal validation, along with the other GUI and Renderer GUI primitives
+tests. `clang-format` is not installed locally; the package-consumer test was
+not rerun.
+
+## Previous Delivery: GUI Drawing (#223)
 
 Third GUI step of epic #217 (ADR 0013): persistent shapes and Renderer drawing.
 
@@ -29,7 +57,7 @@ Third GUI step of epic #217 (ADR 0013): persistent shapes and Renderer drawing.
 
 Without remaps, Metal maps a native binding to slot `group * 8 + binding`, so
 the GUI sampler (binding 1) is `[[sampler(1)]]`. Overlays escaping clips are
-#231; DPI and the host window are #224.
+#231; DPI and the host window landed in #224.
 
 Validation: `truffle_gui_drawing_tests` (regeneration counts, rectangle
 geometry and clamps, builder segments, assembly order, clips, merging, scale
