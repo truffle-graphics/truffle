@@ -33,3 +33,7 @@ Architecture decisions that need long-term tradeoff history belong here.
   (mesh, buffer, texture, program, pass, view, draw) stay fixed, while
   per-object data, its interpretation, lights and materials are
   application-defined and matched to shader reflection.
+- `0013-truffle-gui-architecture.md` defines Truffle GUI and Truffle GUI
+  Dock: a persistent element tree updated only where things change, object
+  API with optional builder and immediate-style regions, layout, styling,
+  events, text, drawing, host and docking boundaries (#217).

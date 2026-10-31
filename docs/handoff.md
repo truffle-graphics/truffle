@@ -27,13 +27,29 @@ the issue-template contact link, and aligns planning/roadmap guidance with
 the live Project. No production contract, dependency, backend maturity or
 version changes. The owner approved one signed
 commit with immediate push and a review-first PR into develop. GUI architecture
-PR #218 remains separate and unmerged; no GUI implementation is included here.
+GUI architecture PR #218 is merged separately; no GUI implementation is included here.
 
 Validation: documentation diff, whitespace, obsolete-link search and the
 lightweight architecture guard pass. GitHub readback confirms the old Project
 is closed and #25 is Done. Browser readback confirms five saved views without
 filter warnings.
-Next: owner review of this docs PR and GUI architecture PR #218.
+Next: decompose GUI epic #217 into implementation sub-issues.
+
+## Previous Direction: Truffle GUI Architecture (#217)
+
+The owner and agent designed the GUI module interactively; the decisions are
+recorded in [ADR 0013](adr/0013-truffle-gui-architecture.md). This is a
+docs-only change: no GUI code, CMake target or dependency exists yet.
+Working names are Truffle GUI (`Truffle::GUI`) and Truffle GUI Dock
+(`Truffle::GUIDock`). Key choices: persistent element tree with scoped
+invalidation; object API core with optional builder and immediate-style
+regions; theme values plus per-element overrides; bubbling callbacks; own text
+interface over FreeType/HarfBuzz (license review first); elements keep their
+shapes; row/column, stretching, grid and free layouts from the start; docking
+within one window first, OS windows later via a host interface.
+
+Next: decompose epic #217 into implementation sub-issues with Project fields,
+agreeing scope, order and delivery mode with the owner before production code.
 
 ## Previous Delivery: Minimum Renderer (#206)
 
