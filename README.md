@@ -136,7 +136,8 @@ clip rectangles, sampled textures, streamed geometry and frame pacing. The GUI
 module's architecture is accepted in
 [ADR 0013](docs/adr/0013-truffle-gui-architecture.md) (#217); `Truffle::GUI` currently provides the
 persistent element tree (#221), incremental layout (#222) and persistent shape drawing
-through the Renderer (#223, Metal). Assets, a general material system and later application work are
+through the Renderer (#223, Metal) and a host boundary with on-demand frames (#224,
+see [`examples/gui_window`](examples/gui_window/README.md)). Assets, a general material system and later application work are
 not started.
 [`docs/roadmap.md`](docs/roadmap.md) records the review and evidence boundaries.
 

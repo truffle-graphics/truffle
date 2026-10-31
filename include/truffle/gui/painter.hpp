@@ -55,10 +55,10 @@ public:
 
     // Assembles the stored shapes of `context` and streams them into frame
     // `slot` (from FramePacer::begin_frame). Batches stay valid until the slot
-    // begins again. Fails if a shape uses an unregistered texture.
+    // begins again. Logical units map to `target` pixels through the
+    // context's scale. Fails if a shape uses an unregistered texture.
     [[nodiscard]] base::Result<std::vector<renderer::RenderBatch>> record(
-        const Context& context, std::uint32_t slot, rhi::Extent2D target,
-        float scale = 1.0F);
+        const Context& context, std::uint32_t slot, rhi::Extent2D target);
 
     [[nodiscard]] const PaintStats& last_stats() const noexcept;
 

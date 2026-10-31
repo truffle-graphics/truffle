@@ -1,7 +1,9 @@
 #include "truffle/gui/context.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
+#include <type_traits>
 #include <utility>
 
 namespace truffle::gui {
@@ -22,6 +24,10 @@ constexpr std::uint32_t retired_generation = std::numeric_limits<std::uint32_t>:
 [[nodiscard]] ElementId make_id(std::uint32_t index,
                                 std::uint32_t generation) noexcept {
     return ElementId{(static_cast<std::uint64_t>(generation) << 32U) | index};
+}
+
+[[nodiscard]] std::uint8_t button_bit(PointerButton button) noexcept {
+    return static_cast<std::uint8_t>(1U << static_cast<unsigned>(button));
 }
 
 [[nodiscard]] constexpr Dirty without(Dirty flags) noexcept {
@@ -388,7 +394,10 @@ base::Status Context::set_clips_children(ElementId element, bool clips) {
     if (node == nullptr) {
         return invalid_element();
     }
-    node->clips = clips;
+    if (node->clips != clips) {
+        node->clips = clips;
+        frame_requested_ = true;
+    }
     return base::Status::success();
 }
 
@@ -431,6 +440,124 @@ ShapeStats Context::update_shapes() {
 const ElementShapes* Context::shapes(ElementId element) const noexcept {
     const Node* node = find(element);
     return node == nullptr ? nullptr : &node->shapes;
+}
+
+base::Status Context::set_viewport(Size size, float scale) {
+    if (!std::isfinite(size.width) || !std::isfinite(size.height) || size.width < 0.0F ||
+        size.height < 0.0F || !std::isfinite(scale) || scale <= 0.0F) {
+        return base::Status::failure(base::StatusCode::invalid_argument,
+                                     "GUI viewport must be finite and non-negative, "
+                                     "and its scale positive");
+    }
+    if (size != host_viewport_ || scale != scale_) {
+        host_viewport_ = size;
+        scale_ = scale;
+        frame_requested_ = true;
+    }
+    return base::Status::success();
+}
+
+Size Context::viewport() const noexcept {
+    return host_viewport_;
+}
+
+float Context::scale() const noexcept {
+    return scale_;
+}
+
+void Context::handle(const InputEvent& event) {
+    std::visit(
+        [this](const auto& value) {
+            using Event = std::decay_t<decltype(value)>;
+            if constexpr (std::is_same_v<Event, PointerEvent>) {
+                input_.modifiers = value.modifiers;
+                switch (value.action) {
+                case PointerAction::move:
+                    input_.pointer = value.position;
+                    break;
+                case PointerAction::down:
+                    input_.pointer = value.position;
+                    input_.buttons |= button_bit(value.button);
+                    break;
+                case PointerAction::up:
+                    input_.pointer = value.position;
+                    input_.buttons &= static_cast<std::uint8_t>(~button_bit(value.button));
+                    break;
+                case PointerAction::leave:
+                    input_.pointer.reset();
+                    break;
+                case PointerAction::cancel:
+                    input_.pointer.reset();
+                    input_.buttons = 0;
+                    break;
+                }
+            } else if constexpr (std::is_same_v<Event, WheelEvent>) {
+                input_.pointer = value.position;
+                input_.modifiers = value.modifiers;
+            } else if constexpr (std::is_same_v<Event, KeyEvent>) {
+                input_.modifiers = value.modifiers;
+            } else if constexpr (std::is_same_v<Event, CompositionEvent>) {
+                const std::size_t size = value.preedit.size();
+                input_.composition.preedit = value.preedit;
+                input_.composition.selection_begin = std::min(value.selection_begin, size);
+                input_.composition.selection_end =
+                    std::clamp(value.selection_end, input_.composition.selection_begin, size);
+            } else if constexpr (std::is_same_v<Event, FocusEvent>) {
+                input_.focused = value.focused;
+                if (!value.focused) {
+                    input_.buttons = 0;
+                    input_.modifiers = Modifiers::none;
+                    input_.composition = {};
+                }
+            }
+        },
+        event);
+}
+
+const InputState& Context::input() const noexcept {
+    return input_;
+}
+
+void Context::request_frame() noexcept {
+    frame_requested_ = true;
+}
+
+void Context::request_frame_at(Clock::time_point when) {
+    deadlines_.push_back(when);
+}
+
+bool Context::needs_frame(Clock::time_point now) const noexcept {
+    if (frame_requested_ || has_dirty()) {
+        return true;
+    }
+    const auto next = next_update();
+    return next.has_value() && *next <= now;
+}
+
+std::optional<Context::Clock::time_point> Context::next_update() const noexcept {
+    if (deadlines_.empty()) {
+        return std::nullopt;
+    }
+    return *std::min_element(deadlines_.begin(), deadlines_.end());
+}
+
+FrameStats Context::prepare_frame(Clock::time_point now) {
+    FrameStats stats;
+    stats.layout = update_layout(host_viewport_);
+    stats.shapes = update_shapes();
+    clear_dirty();
+    frame_requested_ = false;
+    std::erase_if(deadlines_, [now](Clock::time_point when) { return when <= now; });
+    return stats;
+}
+
+void Context::set_host(Host* host) noexcept {
+    host_ = host;
+}
+
+Host& Context::host() const noexcept {
+    static Host idle;
+    return host_ == nullptr ? idle : *host_;
 }
 
 const LayoutParams& Context::params_of(ElementId element) const noexcept {
