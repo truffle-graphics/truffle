@@ -168,4 +168,64 @@ base::Status SampledTexture::update(rhi::Device& device, rhi::Origin3D origin,
     return copy_into(device, texture_, true, origin, extent, bytes, bytesPerRow);
 }
 
+base::Result<TextureBindingLayout> TextureBindingLayout::create(
+    rhi::Device& device, rhi::ShaderStageMask visibility) {
+    auto group = device.create_bind_group_layout({
+        .entries = {
+            {.binding = 0, .type = rhi::BindingType::sampled_texture, .visibility = visibility},
+            {.binding = 1, .type = rhi::BindingType::sampler, .visibility = visibility},
+        },
+        .debugName = "Renderer texture binding layout",
+    });
+    if (!group.ok()) {
+        return group.status();
+    }
+    TextureBindingLayout result;
+    result.group_ = std::move(group).value();
+    auto pipeline = device.create_pipeline_layout({
+        .bindGroupLayouts = {&result.group_},
+        .debugName = "Renderer texture pipeline layout",
+    });
+    if (!pipeline.ok()) {
+        return pipeline.status();
+    }
+    result.pipeline_ = std::move(pipeline).value();
+    return result;
+}
+
+base::Result<TextureBinding> TextureBinding::create(rhi::Device& device,
+                                                    TextureBindingLayout& layout,
+                                                    SampledTexture& texture,
+                                                    const rhi::SamplerDesc& sampler) {
+    if (!layout.group_layout().valid() || !texture.view().valid()) {
+        return invalid("TextureBinding: layout and texture must be created first");
+    }
+    TextureBinding result;
+    auto created = device.create_sampler(sampler);
+    if (!created.ok()) {
+        return created.status();
+    }
+    result.sampler_ = std::move(created).value();
+    auto arena = device.create_descriptor_arena({
+        .maxBindGroups = 1, .maxDescriptors = 2,
+        .debugName = "Renderer texture binding arena",
+    });
+    if (!arena.ok()) {
+        return arena.status();
+    }
+    result.arena_ = std::move(arena).value();
+    auto group = device.create_bind_group({
+        .layout = &layout.group_layout(), .arena = &result.arena_,
+        .entries = {{.binding = 0, .textureView = &texture.view()},
+                    {.binding = 1, .sampler = &result.sampler_}},
+        .debugName = "Renderer texture binding",
+    });
+    if (!group.ok()) {
+        return group.status();
+    }
+    result.group_ = std::move(group).value();
+    return result;
+}
+
 } // namespace truffle::renderer
+

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "truffle/renderer/render_batch.hpp"
 #include "truffle/rhi/rhi.hpp"
 
 #include <span>
@@ -42,6 +43,55 @@ public:
 private:
     rhi::Texture texture_;
     rhi::TextureView view_;
+};
+
+// Descriptor layout for one sampled texture (binding 0) and its sampler
+// (binding 1) in a single group, plus a pipeline layout holding only that group
+// for `rhi::PipelineDesc::layout`. Keep it alive while programs created with its
+// pipeline layout are staged and while bindings created from it are used.
+class TextureBindingLayout {
+public:
+    TextureBindingLayout() = default;
+    TextureBindingLayout(TextureBindingLayout&&) noexcept = default;
+    TextureBindingLayout& operator=(TextureBindingLayout&&) noexcept = default;
+    TextureBindingLayout(const TextureBindingLayout&) = delete;
+    TextureBindingLayout& operator=(const TextureBindingLayout&) = delete;
+
+    [[nodiscard]] static base::Result<TextureBindingLayout> create(
+        rhi::Device& device,
+        rhi::ShaderStageMask visibility = rhi::ShaderStageMask::fragment);
+    [[nodiscard]] rhi::BindGroupLayout& group_layout() noexcept { return group_; }
+    [[nodiscard]] rhi::PipelineLayout& pipeline_layout() noexcept { return pipeline_; }
+
+private:
+    rhi::BindGroupLayout group_;
+    rhi::PipelineLayout pipeline_;
+};
+
+// Owns a sampler and the bind group joining it with a SampledTexture under a
+// TextureBindingLayout. The texture must outlive it. Batches borrow its group:
+// keep it alive and unmoved while they reference it.
+class TextureBinding {
+public:
+    TextureBinding() = default;
+    TextureBinding(TextureBinding&&) noexcept = default;
+    TextureBinding& operator=(TextureBinding&&) noexcept = default;
+    TextureBinding(const TextureBinding&) = delete;
+    TextureBinding& operator=(const TextureBinding&) = delete;
+
+    [[nodiscard]] static base::Result<TextureBinding> create(
+        rhi::Device& device, TextureBindingLayout& layout, SampledTexture& texture,
+        const rhi::SamplerDesc& sampler = {});
+    [[nodiscard]] rhi::BindGroup& group() noexcept { return group_; }
+    // Ready to append to `RenderBatch::bindGroups` as group `index`.
+    [[nodiscard]] BatchBindGroup batch_group(std::uint32_t index = 0) noexcept {
+        return {.group = index, .bindings = &group_};
+    }
+
+private:
+    rhi::Sampler sampler_;
+    rhi::DescriptorArena arena_;
+    rhi::BindGroup group_;
 };
 
 } // namespace truffle::renderer

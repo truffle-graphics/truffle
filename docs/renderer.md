@@ -199,8 +199,11 @@ policy; vertex formats, atlas contents and shaders remain application-defined.
   uncompressed 2D color texture (r8, rg8, rgba8/srgb, bgra8/srgb, rgba16f,
   rgba32f) through a staging copy and waits for it; `update` replaces a
   sub-rectangle (for example a growing glyph atlas). The texture is left
-  shader-readable; bind `view()` with an application sampler in an RHI bind
-  group.
+  shader-readable. `TextureBindingLayout` declares one group with the texture
+  at binding 0 and a sampler at binding 1, plus a pipeline layout for the
+  program; `TextureBinding` owns the sampler and bind group for one texture and
+  returns a `BatchBindGroup`, so 2D consumers such as GUI need no RHI calls.
+  Keep bindings alive and unmoved while batches reference them.
 - **Streamed geometry.** `renderer::StreamBuffer` (`frame_stream.hpp`) copies
   per-frame bytes (vertices, indices, uniforms) into per-slot upload buffers
   and returns `BufferView`s for `RenderBatch` bindings or index buffers; slots
