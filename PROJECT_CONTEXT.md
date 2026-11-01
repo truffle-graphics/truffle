@@ -222,8 +222,8 @@ shape work on a 145-element tree and bounded dependent updates; see
 [`examples/gui_window/README.md`](examples/gui_window/README.md) for measured
 counts and native pixel evidence. This completes the interactive GUI baseline,
 not the whole module. Grid layout (#230) and placement overrides, canvas
-drawing, solid primitives and overlays (#231) followed; optional authoring
-layers, virtualization and docking (#232-#235) remain. Text editing and broader GUI
+drawing, solid primitives and overlays (#231) and the nested C++ builder (#232)
+and immediate-style regions (#233) followed; virtualization and docking (#234-#235) remain. Text editing and broader GUI
 backend evidence are not delivered here. Contexts have stable, non-movable
 ownership; application text engines/atlases outlive their elements.
 Assets, a general material system and later application work are not started; the owner reviews the

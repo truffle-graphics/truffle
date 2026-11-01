@@ -94,6 +94,9 @@ base::Status Context::destroy(ElementId element) {
         if (nodes_[index_of(current)].overlay) {
             --overlays_;
         }
+        std::erase_if(updaters_, [current](const UpdaterEntry& entry) {
+            return entry.element == current;
+        });
         Node& doomed = nodes_[index_of(current)];
         pending.insert(pending.end(), doomed.children.begin(), doomed.children.end());
         const std::uint32_t generation = doomed.generation + 1;
@@ -630,7 +633,7 @@ void Context::request_frame_at(Clock::time_point when) {
 }
 
 bool Context::needs_frame(Clock::time_point now) const noexcept {
-    if (frame_requested_ || has_dirty()) {
+    if (frame_requested_ || has_dirty() || updates_due()) {
         return true;
     }
     const auto next = next_update();
@@ -646,6 +649,10 @@ std::optional<Context::Clock::time_point> Context::next_update() const noexcept 
 
 FrameStats Context::prepare_frame(Clock::time_point now) {
     FrameStats stats;
+    stats.status = run_updaters(stats.updates);
+    if (!stats.status.ok()) {
+        return stats;
+    }
     auto styles = update_styles();
     if (!styles.ok()) {
         stats.status = styles.status();

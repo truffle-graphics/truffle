@@ -9,11 +9,47 @@ the support matrix and Git history.
 
 Maintainer decision: a branch and its PR cover a related batch of issues with
 one signed commit per issue, instead of a branch and PR per issue. Recorded in
-`AGENTS.md` and `CONTRIBUTING.md`. Latest batch: `feat/gui-layout-drawing`
-(#230–#231), the first of three batches finishing epic #217 (then
-`feat/gui-authoring` #232–#233 and `feat/gui-collections-dock` #234–#235).
+`AGENTS.md` and `CONTRIBUTING.md`. Latest batch: `feat/gui-authoring`
+(#232–#233), the second of three batches finishing epic #217 (after
+`feat/gui-layout-drawing` #230–#231, before `feat/gui-collections-dock`
+#234–#235).
 
-## Current Batch: GUI Layout And Drawing (#230-#231)
+## Current Batch: GUI Authoring (#232-#233)
+
+#232 adds `truffle/gui/builder.hpp`: plain nested C++ values (`BuildNode`
+from `ui::column`, `row`, `grid`, `panel`, `scroll`, `label`, `button`,
+`checkbox`, `slider`, `image`) with fluent size/weight/min/position/cell/
+padding/disabled/layout modifiers and `bind(Widget&)` outputs. `build` creates
+the same elements through `Widget::create` and the Context API; nothing is
+retained, there is no markup or generator. Unset fields keep widget defaults;
+padding is a property override so it wins over the bound theme value. Children
+of a scroll area go to its content. `BuildOptions` supplies a default text
+engine/font/atlas. A failure destroys the partial subtree and clears bound
+outputs.
+
+Validation: a built tree matches the object-API tree element by element
+(bounds, layout params, padding, shapes) and wires callbacks; grid cells and
+widget defaults; rollback on a failing descendant.
+
+#233 adds `Context::set_updater`/`request_update`/`set_update_live`: per-element
+updaters run at the start of `prepare_frame` (before styles) once when set or
+requested, or every frame while live, keep `needs_frame` true while due, stay
+pending on failure and die with their element (`updates.cpp`).
+`truffle/gui/region.hpp` builds on it: `Region::create` owns a column element
+whose body describes `label`, `button` (polled clicked), two-way `checkbox`/
+`slider` and nested `row`/`column` items by id per container. Items reuse
+their widgets (unchanged setters are no-ops), are reordered with `reparent`,
+recreated on kind/range change and destroyed when not described. Widget
+callbacks only record the action and request the region's update, so there is
+no ownership cycle. Repeated ids fail the frame.
+
+Validation: an unchanged rerun keeps identity with 0 shapes regenerated and 0
+measured; no rerun or frame without a request; click/toggle polling and model
+sync; insert/move/remove keep surviving elements; live mode; failure stays
+pending; updater removal with its element. All 13 GUI tests pass in the
+warning-as-error Debug build and 11 in the text-free build.
+
+## Previous Delivery: GUI Layout And Drawing (#230-#231)
 
 #230 adds `GridLayout`: declared columns/rows sized fixed, to content or by
 weight (each clamped to min/max), with spacing, implicit content-sized tracks
