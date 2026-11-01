@@ -9,11 +9,30 @@ the support matrix and Git history.
 
 Maintainer decision: a branch and its PR cover a related batch of issues with
 one signed commit per issue, instead of a branch and PR per issue. Recorded in
-`AGENTS.md` and `CONTRIBUTING.md`. Latest batch: `feat/gui-layout-drawing`
-(#230–#231), the first of three batches finishing epic #217 (then
-`feat/gui-authoring` #232–#233 and `feat/gui-collections-dock` #234–#235).
+`AGENTS.md` and `CONTRIBUTING.md`. Latest batch: `feat/gui-authoring`
+(#232–#233), the second of three batches finishing epic #217 (after
+`feat/gui-layout-drawing` #230–#231, before `feat/gui-collections-dock`
+#234–#235).
 
-## Current Batch: GUI Layout And Drawing (#230-#231)
+## Current Batch: GUI Authoring (#232-#233)
+
+#232 adds `truffle/gui/builder.hpp`: plain nested C++ values (`BuildNode`
+from `ui::column`, `row`, `grid`, `panel`, `scroll`, `label`, `button`,
+`checkbox`, `slider`, `image`) with fluent size/weight/min/position/cell/
+padding/disabled/layout modifiers and `bind(Widget&)` outputs. `build` creates
+the same elements through `Widget::create` and the Context API; nothing is
+retained, there is no markup or generator. Unset fields keep widget defaults;
+padding is a property override so it wins over the bound theme value. Children
+of a scroll area go to its content. `BuildOptions` supplies a default text
+engine/font/atlas. A failure destroys the partial subtree and clears bound
+outputs.
+
+Validation: a built tree matches the object-API tree element by element
+(bounds, layout params, padding, shapes) and wires callbacks; grid cells and
+widget defaults; rollback on a failing descendant. All 12 GUI tests pass in
+the warning-as-error Debug build and 10 in the text-free build.
+
+## Previous Delivery: GUI Layout And Drawing (#230-#231)
 
 #230 adds `GridLayout`: declared columns/rows sized fixed, to content or by
 weight (each clamped to min/max), with spacing, implicit content-sized tracks

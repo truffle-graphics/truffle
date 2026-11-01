@@ -137,10 +137,11 @@ module's architecture is accepted in
 [ADR 0013](docs/adr/0013-truffle-gui-architecture.md) (#217). `Truffle::GUI`
 provides the persistent tree, incremental layout, Renderer drawing (Metal),
 host boundary, text, event routing, themes and core widgets (#221-#229),
-plus grid layout, placement overrides, canvas drawing and overlays (#230-#231).
+plus grid layout, placement overrides, canvas drawing and overlays (#230-#231)
+and a nested C++ builder (#232).
 The [native widget demo](examples/gui_window/README.md) records idle and
-selective-update evidence. Authoring layers, virtualization and docking
-remain #232-#235; this is a usable baseline, not a finished GUI framework.
+selective-update evidence. Immediate-style regions, virtualization and docking
+remain #233-#235; this is a usable baseline, not a finished GUI framework.
 Assets, a general material system and later application work are not started.
 [`docs/roadmap.md`](docs/roadmap.md) records the review and evidence boundaries.
 GUI text support is enabled by default and uses the pinned FreeType/HarfBuzz

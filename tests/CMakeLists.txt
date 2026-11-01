@@ -737,6 +737,11 @@ target_compile_definitions(truffle_gui_widget_tests PRIVATE
 truffle_target_warnings(truffle_gui_widget_tests)
 add_test(NAME truffle_gui_widget_tests COMMAND truffle_gui_widget_tests)
 
+add_executable(truffle_gui_builder_tests gui_builder_tests.cpp)
+target_link_libraries(truffle_gui_builder_tests PRIVATE truffle_gui)
+truffle_target_warnings(truffle_gui_builder_tests)
+add_test(NAME truffle_gui_builder_tests COMMAND truffle_gui_builder_tests)
+
 add_executable(truffle_gui_text_tests gui_text_tests.cpp)
 target_link_libraries(truffle_gui_text_tests PRIVATE truffle_gui truffle_backend_null)
 target_compile_definitions(truffle_gui_text_tests PRIVATE
