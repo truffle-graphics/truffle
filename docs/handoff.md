@@ -5,7 +5,14 @@ This is the rolling execution handoff, not an implementation transcript.
 issues/Project own accepted work. Earlier phase details remain in their PRs,
 the support matrix and Git history.
 
-## Current Delivery: TFL_ Prefix (#244)
+## Workflow: Batch Branches
+
+Maintainer decision: a branch and its PR cover a related batch of issues with
+one signed commit per issue, instead of a branch and PR per issue. Recorded in
+`AGENTS.md` and `CONTRIBUTING.md`. Active batch: `feat/gui-interaction`
+(#226–#229).
+
+## Previous Delivery: TFL_ Prefix (#244)
 
 All `TRUFFLE_*` CMake options, cache/build variables, compile definitions,
 preprocessor macros, test macros, preset entries, CI references and docs are
