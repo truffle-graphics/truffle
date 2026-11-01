@@ -173,7 +173,7 @@ public:
 
     // Records host input and routes it through the current laid-out tree.
     // Input only requests a frame when a handler makes a visible change.
-    void handle(const InputEvent& event);
+    base::Status handle(const InputEvent& event);
     [[nodiscard]] const InputState& input() const noexcept;
 
     [[nodiscard]] base::Status set_interaction(ElementId element, Interaction interaction);
@@ -193,6 +193,21 @@ public:
     [[nodiscard]] ElementId captured(std::uint32_t pointer = 0) const noexcept;
     // No log storage or trace work when the optional sink is empty.
     void set_event_trace(EventTrace trace);
+    [[nodiscard]] const base::Status& last_event_status() const noexcept;
+
+    // Translates children for scrolling without changing layout or stored shapes.
+    [[nodiscard]] base::Status set_child_offset(ElementId element, Point offset);
+    [[nodiscard]] Point child_offset(ElementId element) const noexcept;
+
+    enum class Role : std::uint8_t { generic, panel, label, image, button, checkbox,
+                                    slider, scroll_area };
+    struct Semantics {
+        Role role = Role::generic;
+        std::string label;
+        friend bool operator==(const Semantics&, const Semantics&) = default;
+    };
+    [[nodiscard]] base::Status set_semantics(ElementId element, Semantics semantics);
+    [[nodiscard]] base::Result<Semantics> semantics(ElementId element) const;
 
     // Asks for a frame now (for changes the GUI cannot see) or at `when`
     // (timed updates such as animations or caret blinking).
@@ -247,6 +262,8 @@ private:
         ElementShapes shapes;
         Interaction interaction;
         EventHandler handler;
+        Point child_offset;
+        Semantics semantics;
         std::array<StyleBinding, static_cast<std::size_t>(Property::count)> styles;
         FontId font;
         Color text_color{1, 1, 1, 1};
@@ -291,6 +308,7 @@ private:
     std::unordered_map<std::uint32_t, ElementId> captures_;
     std::unordered_map<std::uint32_t, std::uint8_t> pointer_buttons_;
     EventTrace trace_;
+    base::Status event_status_;
     struct ThemeDependent { ElementId element; Property property; };
     std::unordered_map<std::string, ThemeValue> theme_;
     std::unordered_map<std::string, std::vector<ThemeDependent>> theme_dependents_;

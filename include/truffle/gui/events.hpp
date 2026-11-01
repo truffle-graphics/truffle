@@ -2,6 +2,7 @@
 
 #include "truffle/gui/element.hpp"
 #include "truffle/gui/input.hpp"
+#include "truffle/base/status.hpp"
 
 #include <functional>
 #include <variant>
@@ -29,6 +30,7 @@ struct RoutedEvent {
     RoutedPayload payload;
     bool stopped = false;
     bool handled = false;
+    base::Status status{};
 
     void stop_propagation() noexcept { stopped = true; }
     void prevent_default() noexcept { handled = true; }

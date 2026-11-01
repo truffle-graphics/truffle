@@ -156,6 +156,15 @@ explicitly and keeps work pending). Manual stages call `update_styles` first.
 `TextEngine`/atlas; direct `set_text` instead supplies already-shaped text.
 Theme bindings govern the named style properties; raw layout/decoration setters
 remain the low-level API, not implicit overrides of bindings.
+Core widgets (#228) are checked `Widget` references created with `WidgetDesc`:
+panel, label, image, button, checkbox, slider and scroll area. The Context owns
+their elements; destroying a reference does not remove the UI. User actions
+invoke the descriptor callbacks; programmatic setters do not. Use `element()`
+for layout/theme overrides and `content()` to add children to a scroll area.
+Widgets retain semantic roles/labels, not an accessibility implementation.
+`Context::handle` returns callback errors and `last_event_status` retains them.
+Scrolling translates children consistently in drawing, hit testing and
+absolute bounds without regenerating layout or shapes.
 Assets, a general material system and later application work are
 not started.
 [`docs/roadmap.md`](docs/roadmap.md) records the review and evidence boundaries.

@@ -7,6 +7,14 @@
 #include <vector>
 
 namespace truffle::gui {
+
+Point LayoutPass::child_offset(ElementId element) const noexcept {
+    return context_.child_offset(element);
+}
+
+void LayoutPass::set_child_offset(ElementId element, Point offset) {
+    static_cast<void>(context_.set_child_offset(element, offset));
+}
 namespace {
 
 [[nodiscard]] float main_of(Axis axis, Size size) noexcept {

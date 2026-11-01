@@ -2,6 +2,7 @@
 #include "gui_text_fixture.hpp"
 #include "truffle/gui/context.hpp"
 #include "truffle/gui/painter.hpp"
+#include "truffle/gui/widgets.hpp"
 #include "truffle/renderer/frame_stream.hpp"
 #include "truffle/rhi/metal_backend.hpp"
 
@@ -239,16 +240,17 @@ int run() {
     textured.texture = image_id;
     static_cast<void>(make(context, root, {18, 18, 8, 8}, textured));
 
-    const auto draw = [&](std::size_t expected_regenerated) {
-        static_cast<void>(context.update_layout({kSize, kSize}));
-        const auto shapes = context.update_shapes();
-        if (shapes.regenerated != expected_regenerated) {
-            throw std::runtime_error("regenerated " + std::to_string(shapes.regenerated) +
+    const auto render_context = [&](gui::Context& tree, std::size_t expected_regenerated) {
+        tests::require(tree.set_viewport({kSize, kSize}));
+        const auto frame = tree.prepare_frame(gui::Context::Clock::now());
+        tests::require(frame.status);
+        if (frame.shapes.regenerated != expected_regenerated) {
+            throw std::runtime_error("regenerated " + std::to_string(frame.shapes.regenerated) +
                                      " shapes, expected " +
                                      std::to_string(expected_regenerated));
         }
         const auto slot = tests::require(pacer.begin_frame());
-        auto batches = tests::require(painter.record(context, slot, {kSize, kSize}));
+        auto batches = tests::require(painter.record(tree, slot, {kSize, kSize}));
         renderer::FrameGraph graph;
         graph.add_node(std::make_unique<renderer::RenderPassNode>(
             rhi::RenderPassDesc{
@@ -261,6 +263,9 @@ int run() {
         tests::require(status);
         tests::require(pacer.wait_idle());
         return read_pixels(device, target);
+    };
+    const auto draw = [&](std::size_t expected_regenerated) {
+        return render_context(context, expected_regenerated);
     };
 
     const auto layers = [&](Layer c_layer) {
@@ -321,6 +326,128 @@ int run() {
     pixels = draw(0);
     expect_pixel(pixels, 3, 2, {0, 255, 255, 255}, "unchanged glyph retained in atlas");
 #endif
+
+    const auto widget_theme = [](gui::Context& tree) {
+        tests::require(tree.set_theme_value("gui.surface", Color{0, 0, 1, 1}));
+        tests::require(tree.set_theme_value("gui.control", Color{1, 0, 0, 1}));
+        tests::require(tree.set_theme_value("gui.hover", Color{0, 1, 0, 1}));
+        tests::require(tree.set_theme_value("gui.pressed", Color{0, 0, 1, 1}));
+        tests::require(tree.set_theme_value("gui.accent", Color{1, 1, 0, 1}));
+        tests::require(tree.set_theme_value("gui.text", Color{0, 1, 1, 1}));
+        tests::require(tree.set_theme_value("gui.radius", 0.0F));
+        tests::require(tree.set_theme_value("gui.border_width", 0.0F));
+        tests::require(tree.set_theme_value("gui.padding", gui::Edges{}));
+    };
+    const auto place_widget = [](gui::Context& tree, ElementId id, Rect rect) {
+        gui::LayoutParams params;
+        params.position = {rect.x, rect.y};
+        params.width = rect.width;
+        params.height = rect.height;
+        tests::require(tree.set_layout_params(id, params));
+    };
+    {
+        gui::Context tree;
+        widget_theme(tree);
+        auto panel = tests::require(gui::Widget::create(tree, tree.root()));
+        place_widget(tree, panel.element(), {2, 2, 20, 20});
+        pixels = render_context(tree, tree.element_count());
+        expect_pixel(pixels, 5, 5, {0, 0, 255, 255}, "panel widget");
+        expect_pixel(pixels, 24, 5, {0, 0, 0, 255}, "panel outside");
+    }
+#if TFL_TEST_GUI_TEXT
+    {
+        gui::Context tree;
+        widget_theme(tree);
+        auto label = tests::require(gui::Widget::create(tree, tree.root(), {
+            .kind = gui::WidgetKind::label, .text = "A", .text_engine = &text_engine,
+            .font = font, .atlas = atlas_id}));
+        place_widget(tree, label.element(), {2, 2, 10, 10});
+        pixels = render_context(tree, tree.element_count());
+        expect_pixel(pixels, 3, 2, {0, 255, 255, 255}, "label widget atlas glyph");
+        tests::require(label.set_text("B"));
+        pixels = render_context(tree, 1);
+        expect_pixel(pixels, 2, 2, {0, 255, 255, 255}, "label updated glyph");
+    }
+#endif
+    {
+        gui::Context tree;
+        widget_theme(tree);
+        auto image_widget = tests::require(gui::Widget::create(tree, tree.root(), {
+            .kind = gui::WidgetKind::image, .image = image_id, .image_size = {8, 8}}));
+        place_widget(tree, image_widget.element(), {2, 2, 8, 8});
+        pixels = render_context(tree, tree.element_count());
+        expect_pixel(pixels, 3, 4, {255, 255, 255, 255}, "image widget white texel");
+        expect_pixel(pixels, 8, 4, {255, 0, 0, 255}, "image widget red texel");
+    }
+    {
+        gui::Context tree;
+        widget_theme(tree);
+        int clicks = 0;
+        auto button = tests::require(gui::Widget::create(tree, tree.root(), {
+            .kind = gui::WidgetKind::button, .activated = [&] { ++clicks; }}));
+        place_widget(tree, button.element(), {2, 2, 24, 24});
+        pixels = render_context(tree, tree.element_count());
+        expect_pixel(pixels, 15, 15, {255, 0, 0, 255}, "button normal");
+        tests::require(tree.handle(gui::PointerEvent{.position = {15, 15}}));
+        pixels = render_context(tree, 1);
+        expect_pixel(pixels, 15, 15, {0, 255, 0, 255}, "button hovered");
+        tests::require(tree.handle(gui::PointerEvent{.action = gui::PointerAction::down,
+            .position = {15, 15}, .button = gui::PointerButton::primary}));
+        pixels = render_context(tree, 1);
+        expect_pixel(pixels, 15, 15, {0, 0, 255, 255}, "button pressed");
+        tests::require(tree.handle(gui::PointerEvent{.action = gui::PointerAction::up,
+            .position = {15, 15}, .button = gui::PointerButton::primary}));
+        pixels = render_context(tree, 1);
+        expect_pixel(pixels, 15, 15, {0, 255, 0, 255}, "button released");
+        if (clicks != 1) { throw std::runtime_error("native button did not activate once"); }
+    }
+    {
+        gui::Context tree;
+        widget_theme(tree);
+        auto check = tests::require(gui::Widget::create(tree, tree.root(),
+                                                       {.kind = gui::WidgetKind::checkbox}));
+        place_widget(tree, check.element(), {0, 0, 32, 24});
+        tests::require(tree.set_property_override(check.element(), gui::Property::padding,
+                                                  gui::Edges{24, 0, 0, 0}));
+        pixels = render_context(tree, tree.element_count());
+        expect_pixel(pixels, 6, 6, {255, 0, 0, 255}, "checkbox unchecked");
+        tests::require(check.set_checked(true));
+        pixels = render_context(tree, 1);
+        expect_pixel(pixels, 6, 6, {255, 255, 0, 255}, "checkbox checked");
+    }
+    {
+        gui::Context tree;
+        widget_theme(tree);
+        auto slider = tests::require(gui::Widget::create(tree, tree.root(),
+                                                         {.kind = gui::WidgetKind::slider}));
+        place_widget(tree, slider.element(), {2, 2, 24, 16});
+        pixels = render_context(tree, tree.element_count());
+        expect_pixel(pixels, 8, 10, {255, 255, 0, 255}, "slider at minimum");
+        tests::require(slider.set_value(1));
+        pixels = render_context(tree, 1);
+        expect_pixel(pixels, 20, 10, {255, 255, 0, 255}, "slider at maximum");
+    }
+    {
+        gui::Context tree;
+        widget_theme(tree);
+        auto scroll = tests::require(gui::Widget::create(tree, tree.root(),
+                                             {.kind = gui::WidgetKind::scroll_area}));
+        place_widget(tree, scroll.element(), {2, 2, 16, 16});
+        static_cast<void>(make(tree, scroll.content(), {0, 0, 16, 16}, fill({1, 0, 0, 1})));
+        static_cast<void>(make(tree, scroll.content(), {0, 16, 16, 16}, fill({0, 1, 0, 1})));
+        pixels = render_context(tree, tree.element_count());
+        expect_pixel(pixels, 4, 4, {255, 0, 0, 255}, "scroll area initial content");
+        expect_pixel(pixels, 4, 20, {0, 0, 0, 255}, "scroll area clips content");
+        tests::require(scroll.set_scroll({0, 16}));
+        pixels = render_context(tree, 0);
+        expect_pixel(pixels, 4, 4, {0, 255, 0, 255}, "scroll area translated content");
+        expect_pixel(pixels, 4, 20, {0, 0, 0, 255}, "translated content remains clipped");
+        if (tree.hit_test({4, 4}) != tree.children(scroll.content()).back()) {
+            throw std::runtime_error("scroll hit test disagrees with native drawing");
+        }
+    }
+    std::cout << "Core widgets: native panel, label, image, button, checkbox, slider "
+                 "and scroll-area pixel evidence\n";
 
     tests::require(painter.remove_texture(image_id));
     if (painter.record(context, tests::require(pacer.begin_frame()), {kSize, kSize}).ok()) {

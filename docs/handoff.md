@@ -39,6 +39,25 @@ rebinding/removal, invalid values, stack spacing and deterministic font changes
 including unloaded-font recovery. Next: #228 widgets and #229 native
 demo/persistence evidence on this branch.
 
+#228 adds checked non-owning Widget references for panel, label, image,
+button, checkbox, slider and scroll area. The tree keeps widget state and
+semantic roles/labels. Controls bind named theme values; direct property
+overrides survive hover/focus changes. Pointer capture, Space/Enter activation,
+slider keyboard/drag input and scroll wheel/keyboard behavior use #226.
+Programmatic setters never emit user-action callbacks. Input failures surface
+through `Context::handle` and `last_event_status`.
+
+Scroll children measure unconstrained and clip to their viewport. A child
+translation shared by drawing, hit testing and absolute bounds changes no
+stored shapes or layout. Resize/content changes clamp scroll offsets during
+arrangement. Immutable slider builders own only shape parameters.
+
+Validation: all nine GUI tests pass in the warning-as-error Debug build,
+including interaction tests and native Metal pixels for every widget,
+hover/press/release, checkbox/value changes, glyph updates and scrolling.
+Ownership remains GUI, with widget behavior in `widgets.cpp`; no lower layer
+acquires a GUI dependency. Next: #229 host demo and persistence evidence.
+
 ## Previous Delivery: TFL_ Prefix (#244)
 
 All `TRUFFLE_*` CMake options, cache/build variables, compile definitions,

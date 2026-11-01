@@ -366,6 +366,8 @@ base::Result<Rect> Context::absolute_bounds(ElementId element) const {
         const Node& above = *find(up);
         rect.x += above.rect.x;
         rect.y += above.rect.y;
+        rect.x += above.child_offset.x;
+        rect.y += above.child_offset.y;
         up = above.parent;
     }
     return rect;
@@ -522,7 +524,8 @@ float Context::scale() const noexcept {
     return scale_;
 }
 
-void Context::handle(const InputEvent& event) {
+base::Status Context::handle(const InputEvent& event) {
+    event_status_ = base::Status::success();
     std::visit(
         [this](const auto& value) {
             using Event = std::decay_t<decltype(value)>;
@@ -570,6 +573,39 @@ void Context::handle(const InputEvent& event) {
         },
         event);
     route_input(event);
+    return event_status_;
+}
+
+base::Status Context::set_child_offset(ElementId element, Point offset) {
+    Node* node = find(element);
+    if (node == nullptr) { return invalid_element(); }
+    if (!std::isfinite(offset.x) || !std::isfinite(offset.y)) {
+        return base::Status::failure(base::StatusCode::invalid_argument,
+                                     "GUI child offset must be finite");
+    }
+    if (node->child_offset != offset) {
+        node->child_offset = offset;
+        request_frame();
+    }
+    return base::Status::success();
+}
+
+Point Context::child_offset(ElementId element) const noexcept {
+    const Node* node = find(element);
+    return node == nullptr ? Point{} : node->child_offset;
+}
+
+base::Status Context::set_semantics(ElementId element, Semantics semantics) {
+    Node* node = find(element);
+    if (node == nullptr) { return invalid_element(); }
+    node->semantics = std::move(semantics);
+    return base::Status::success();
+}
+
+base::Result<Context::Semantics> Context::semantics(ElementId element) const {
+    const Node* node = find(element);
+    if (node == nullptr) { return invalid_element(); }
+    return node->semantics;
 }
 
 const InputState& Context::input() const noexcept {

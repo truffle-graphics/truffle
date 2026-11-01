@@ -109,7 +109,8 @@ ElementId Context::hit_test(Point position) const {
         const Rect clip = node->clips ? intersect(entry.clip, rect) : entry.clip;
         // The last drawn child is visited first.
         for (ElementId child : node->children) {
-            pending.push_back({child, {rect.x, rect.y}, clip, false});
+            pending.push_back({child, {rect.x + node->child_offset.x,
+                                      rect.y + node->child_offset.y}, clip, false});
         }
     }
     return {};
@@ -137,6 +138,10 @@ bool Context::dispatch(ElementId target, RoutedPayload payload, bool bubble) {
         const EventHandler handler = node->handler;
         if (handler) {
             handler(*this, event);
+        }
+        if (!event.status.ok()) {
+            event_status_ = event.status;
+            break;
         }
         const EventTrace trace = trace_;
         if (trace) {
@@ -256,6 +261,7 @@ void Context::forget_input(ElementId element) noexcept {
 }
 
 void Context::set_event_trace(EventTrace trace) { trace_ = std::move(trace); }
+const base::Status& Context::last_event_status() const noexcept { return event_status_; }
 
 void Context::route_input(const InputEvent& event) {
     if (const auto* pointer = std::get_if<PointerEvent>(&event)) {
