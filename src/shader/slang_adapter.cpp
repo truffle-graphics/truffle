@@ -285,10 +285,10 @@ rhi::Result<Compilation> compile_slang(const CompileRequest& request, std::vecto
 
     Compilation result;
     result.vulkanTarget = request.vulkanTarget;
-    result.compiler = {"slang", "2026.12.1", TRUFFLE_SLANG_REVISION
-        ";truffle-slang=1;provider=" TRUFFLE_SLANG_PROVIDER
+    result.compiler = {"slang", "2026.12.1", TFL_SLANG_REVISION
+        ";truffle-slang=1;provider=" TFL_SLANG_PROVIDER
         ";spirv=1.3;vulkan=1.1;direct;row-major;optimization=none;entry-name;native-link-only;root-slang-alias;"
-        "spirv-tools=" TRUFFLE_SPIRV_TOOLS_REVISION ";spirv-headers=" TRUFFLE_SPIRV_HEADERS_REVISION};
+        "spirv-tools=" TFL_SPIRV_TOOLS_REVISION ";spirv-headers=" TFL_SPIRV_HEADERS_REVISION};
     result.compiler.revision += std::string{";debug="} + (request.generateDebugInfo ? "1" : "0");
     std::string key;
     field(key, result.compiler.revision);

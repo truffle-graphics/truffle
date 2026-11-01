@@ -34,5 +34,5 @@ inline void shader_check(bool condition, const char* expression, int line) {
 }
 } // namespace truffle::tests
 
-#define TRUFFLE_SHADER_CHECK(condition) \
+#define TFL_SHADER_CHECK(condition) \
     ::truffle::tests::shader_check((condition), #condition, __LINE__)

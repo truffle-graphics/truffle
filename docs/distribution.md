@@ -8,11 +8,11 @@ Use a package-focused build when you want a quick distribution smoke test.
 
 ```sh
 cmake -S . -B build/package-smoke \
-  -DTRUFFLE_INSTALL=ON \
-  -DTRUFFLE_BUILD_TESTS=OFF \
-  -DTRUFFLE_BUILD_EXAMPLES=OFF \
-  -DTRUFFLE_BUILD_BACKEND_VULKAN=ON \
-  -DTRUFFLE_BUILD_BACKEND_OPENGL=ON
+  -DTFL_INSTALL=ON \
+  -DTFL_BUILD_TESTS=OFF \
+  -DTFL_BUILD_EXAMPLES=OFF \
+  -DTFL_BUILD_BACKEND_VULKAN=ON \
+  -DTFL_BUILD_BACKEND_OPENGL=ON
 cmake --build build/package-smoke
 cmake --install build/package-smoke --prefix build/package-smoke/install
 (cd build/package-smoke && cpack --verbose)
@@ -22,7 +22,7 @@ Expected output archive: `Truffle-<version>-<platform>.tar.gz`.
 
 ## Consumer Verification
 
-The install smoke gate is available in test presets when `TRUFFLE_INSTALL=ON`:
+The install smoke gate is available in test presets when `TFL_INSTALL=ON`:
 
 ```sh
 ctest --preset dev -R truffle_package_consumer --output-on-failure

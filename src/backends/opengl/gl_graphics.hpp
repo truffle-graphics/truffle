@@ -53,7 +53,7 @@ inline Status validate(const PipelineDesc& desc) {
         return Status::failure(StatusCode::unsupported,
                                "GL clamped depth bias and patches are unsupported");
     }
-#if defined(TRUFFLE_GL_API_ES)
+#if defined(TFL_GL_API_ES)
     if (desc.rasterization.polygonMode != PolygonMode::fill ||
         desc.rasterization.depthClampEnabled ||
         desc.multisample.sampleMask != 0xffffffffu) {
@@ -86,7 +86,7 @@ inline void viewport(const Viewport& value) {
     glViewport(static_cast<GLint>(value.x), static_cast<GLint>(value.y),
                static_cast<GLsizei>(value.width),
                static_cast<GLsizei>(value.height));
-#if defined(TRUFFLE_GL_API_DESKTOP)
+#if defined(TFL_GL_API_DESKTOP)
     glDepthRange(value.minimumDepth, value.maximumDepth);
 #else
     glDepthRangef(value.minimumDepth, value.maximumDepth);
@@ -129,7 +129,7 @@ inline void apply(const PipelineDesc& desc, Extent2D extent) {
         glCullFace(raster.cullMode == CullMode::front ? GL_FRONT : GL_BACK);
     }
     glFrontFace(raster.frontFace == FrontFace::clockwise ? GL_CW : GL_CCW);
-#if defined(TRUFFLE_GL_API_DESKTOP)
+#if defined(TFL_GL_API_DESKTOP)
     glPolygonMode(GL_FRONT_AND_BACK,
                   raster.polygonMode == PolygonMode::line ? GL_LINE :
                   raster.polygonMode == PolygonMode::point ? GL_POINT : GL_FILL);
@@ -158,7 +158,7 @@ inline void apply(const PipelineDesc& desc, Extent2D extent) {
     for (std::size_t index = 0; index < desc.colorTargets.size(); ++index) {
         const auto& target = desc.colorTargets[index];
         const auto& blend = target.blend;
-#if defined(TRUFFLE_GL_API_DESKTOP)
+#if defined(TFL_GL_API_DESKTOP)
         const auto slot = static_cast<GLuint>(index);
         if (blend.enabled) glEnablei(GL_BLEND, slot);
         else glDisablei(GL_BLEND, slot);

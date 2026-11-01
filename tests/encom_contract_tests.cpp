@@ -31,9 +31,9 @@ int main() {
             ++queryCount;
         });
 
-    TRUFFLE_CHECK(queryCount == 1);
-    TRUFFLE_CHECK(world.get<Position>(movingEntity)->x == 5.0F);
-    TRUFFLE_CHECK(world.get<Position>(staticEntity)->x == 9.0F);
+    TFL_CHECK(queryCount == 1);
+    TFL_CHECK(world.get<Position>(movingEntity)->x == 5.0F);
+    TFL_CHECK(world.get<Position>(staticEntity)->x == 9.0F);
 
     std::vector<truffle::encom::World::System> systems{
         [](truffle::encom::World& systemWorld, double deltaSeconds) {
@@ -44,14 +44,14 @@ int main() {
         },
     };
     world.run(systems, 0.5);
-    TRUFFLE_CHECK(world.get<Position>(movingEntity)->x == 5.5F);
+    TFL_CHECK(world.get<Position>(movingEntity)->x == 5.5F);
 
-    TRUFFLE_CHECK(world.destroy(movingEntity).ok());
-    TRUFFLE_CHECK(!world.alive(movingEntity));
-    TRUFFLE_CHECK(world.get<Position>(movingEntity) == nullptr);
+    TFL_CHECK(world.destroy(movingEntity).ok());
+    TFL_CHECK(!world.alive(movingEntity));
+    TFL_CHECK(world.get<Position>(movingEntity) == nullptr);
 
     const auto recycledEntity = world.create();
-    TRUFFLE_CHECK(recycledEntity.index == movingEntity.index);
-    TRUFFLE_CHECK(!world.has<Position>(recycledEntity));
+    TFL_CHECK(recycledEntity.index == movingEntity.index);
+    TFL_CHECK(!world.has<Position>(recycledEntity));
     return 0;
 }

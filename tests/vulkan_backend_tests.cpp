@@ -27,15 +27,15 @@
 #endif
 
 #if defined(__linux__) && !defined(__ANDROID__)
-#define TRUFFLE_VULKAN_TEST_XCB 1
+#define TFL_VULKAN_TEST_XCB 1
 #elif defined(__APPLE__) && TARGET_OS_OSX
-#define TRUFFLE_VULKAN_TEST_METAL_LAYER 1
+#define TFL_VULKAN_TEST_METAL_LAYER 1
 #include "vulkan_metal_layer.hpp"
 #endif
 
 namespace {
 
-#if defined(TRUFFLE_VULKAN_SHADER_PACKAGE_PATH)
+#if defined(TFL_VULKAN_SHADER_PACKAGE_PATH)
 [[nodiscard]] std::vector<std::byte> read_shader_package(const char* path) {
     std::ifstream input{path, std::ios::binary};
     assert(input);
@@ -120,9 +120,9 @@ void verify_vulkan_buffers() {
     assert(unsupportedPipelineCache.status().code ==
            rhi::StatusCode::unsupported);
 
-#if defined(TRUFFLE_VULKAN_SHADER_PACKAGE_PATH)
+#if defined(TFL_VULKAN_SHADER_PACKAGE_PATH)
     const auto packageBytes =
-        read_shader_package(TRUFFLE_VULKAN_SHADER_PACKAGE_PATH);
+        read_shader_package(TFL_VULKAN_SHADER_PACKAGE_PATH);
     auto packageResult = rhi::ShaderPackage::load(packageBytes);
     assert(packageResult.ok());
     auto shaderResult = device.create_shader(
@@ -131,9 +131,9 @@ void verify_vulkan_buffers() {
     assert(shaderResult.ok());
     auto vertexShader = std::move(shaderResult).value();
 
-#if defined(TRUFFLE_VULKAN_FRAGMENT_PACKAGE_PATH)
+#if defined(TFL_VULKAN_FRAGMENT_PACKAGE_PATH)
     const auto fragmentPackageBytes =
-        read_shader_package(TRUFFLE_VULKAN_FRAGMENT_PACKAGE_PATH);
+        read_shader_package(TFL_VULKAN_FRAGMENT_PACKAGE_PATH);
     auto fragmentPackageResult =
         rhi::ShaderPackage::load(fragmentPackageBytes);
     assert(fragmentPackageResult.ok());
@@ -561,9 +561,9 @@ void verify_vulkan_buffers() {
 
     const std::array<std::byte, 4> greenPixel{
         std::byte{0}, std::byte{255}, std::byte{0}, std::byte{255}};
-#if defined(TRUFFLE_VULKAN_TEXTURED_FRAGMENT_PACKAGE_PATH)
+#if defined(TFL_VULKAN_TEXTURED_FRAGMENT_PACKAGE_PATH)
     const auto texturedPackageBytes =
-        read_shader_package(TRUFFLE_VULKAN_TEXTURED_FRAGMENT_PACKAGE_PATH);
+        read_shader_package(TFL_VULKAN_TEXTURED_FRAGMENT_PACKAGE_PATH);
     auto texturedPackageResult =
         rhi::ShaderPackage::load(texturedPackageBytes);
     assert(texturedPackageResult.ok());
@@ -731,9 +731,9 @@ void verify_vulkan_buffers() {
         std::byte{0}, std::byte{0}, std::byte{0}, std::byte{255}};
     assert(render_with_depth(0.0F) == blackPixel);
 
-#if defined(TRUFFLE_VULKAN_MRT_FRAGMENT_PACKAGE_PATH)
+#if defined(TFL_VULKAN_MRT_FRAGMENT_PACKAGE_PATH)
     const auto mrtPackageBytes =
-        read_shader_package(TRUFFLE_VULKAN_MRT_FRAGMENT_PACKAGE_PATH);
+        read_shader_package(TFL_VULKAN_MRT_FRAGMENT_PACKAGE_PATH);
     auto mrtPackageResult = rhi::ShaderPackage::load(mrtPackageBytes);
     assert(mrtPackageResult.ok());
     auto mrtShaderResult = device.create_shader(
@@ -890,9 +890,9 @@ void verify_vulkan_buffers() {
            rhi::StatusCode::invalid_argument);
 #endif
 
-#if defined(TRUFFLE_VULKAN_COMPUTE_PACKAGE_PATH)
+#if defined(TFL_VULKAN_COMPUTE_PACKAGE_PATH)
     const auto generatedComputeBytes =
-        read_shader_package(TRUFFLE_VULKAN_COMPUTE_PACKAGE_PATH);
+        read_shader_package(TFL_VULKAN_COMPUTE_PACKAGE_PATH);
     auto generatedComputeResult =
         rhi::ShaderPackage::load(generatedComputeBytes);
     assert(generatedComputeResult.ok());
@@ -1120,11 +1120,11 @@ void verify_vulkan_buffers() {
     std::array<rhi::CommandList*, 1> replacementLists{&computeList};
     assert(computeQueue.submit(replacementLists).ok());
 
-#if defined(TRUFFLE_VULKAN_COMPUTE_COLOR_FRAGMENT_PACKAGE_PATH) &&            \
-    defined(TRUFFLE_VULKAN_FRAGMENT_PACKAGE_PATH) &&                          \
-    defined(TRUFFLE_VULKAN_SHADER_PACKAGE_PATH)
+#if defined(TFL_VULKAN_COMPUTE_COLOR_FRAGMENT_PACKAGE_PATH) &&            \
+    defined(TFL_VULKAN_FRAGMENT_PACKAGE_PATH) &&                          \
+    defined(TFL_VULKAN_SHADER_PACKAGE_PATH)
     const auto computeColorBytes =
-        read_shader_package(TRUFFLE_VULKAN_COMPUTE_COLOR_FRAGMENT_PACKAGE_PATH);
+        read_shader_package(TFL_VULKAN_COMPUTE_COLOR_FRAGMENT_PACKAGE_PATH);
     auto computeColorPackageResult =
         rhi::ShaderPackage::load(computeColorBytes);
     assert(computeColorPackageResult.ok());
@@ -1889,7 +1889,7 @@ void verify_vulkan_buffers() {
     assert(!recoveredDevice.value().lost());
 }
 
-#if defined(TRUFFLE_VULKAN_TEST_XCB)
+#if defined(TFL_VULKAN_TEST_XCB)
 class VulkanTestWindow {
 public:
     VulkanTestWindow(std::uint32_t width, std::uint32_t height) {
@@ -1966,7 +1966,7 @@ private:
     xcb_screen_t* screen_ = nullptr;
     xcb_window_t window_ = XCB_WINDOW_NONE;
 };
-#elif defined(TRUFFLE_VULKAN_TEST_METAL_LAYER)
+#elif defined(TFL_VULKAN_TEST_METAL_LAYER)
 class VulkanTestWindow {
 public:
     VulkanTestWindow(std::uint32_t width, std::uint32_t height)
@@ -1986,7 +1986,7 @@ private:
 };
 #endif
 
-#if defined(TRUFFLE_VULKAN_TEST_XCB) || defined(TRUFFLE_VULKAN_TEST_METAL_LAYER)
+#if defined(TFL_VULKAN_TEST_XCB) || defined(TFL_VULKAN_TEST_METAL_LAYER)
 
 struct VulkanPresentationContext {
     truffle::rhi::Instance instance;
@@ -2247,7 +2247,7 @@ void verify_vulkan_presentation() {
 } // namespace
 
 int main() {
-#if defined(TRUFFLE_VULKAN_TEST_XCB)
+#if defined(TFL_VULKAN_TEST_XCB)
     verify_vulkan_buffers();
     if (std::getenv("DISPLAY") != nullptr) {
         verify_vulkan_presentation();
@@ -2256,7 +2256,7 @@ int main() {
     auto result = truffle::rhi::create_vulkan_instance();
     if (!result.ok()) {
         truffle::tests::verify_unavailable_backend(result);
-#if defined(TRUFFLE_VULKAN_TEST_METAL_LAYER)
+#if defined(TFL_VULKAN_TEST_METAL_LAYER)
         // No Vulkan loader or MoltenVK driver is installed: report a skip.
         return 77;
 #else
@@ -2271,7 +2271,7 @@ int main() {
         assert(adapter.value().info().backend ==
                truffle::rhi::BackendKind::vulkan);
     }
-#if defined(TRUFFLE_VULKAN_TEST_METAL_LAYER)
+#if defined(TFL_VULKAN_TEST_METAL_LAYER)
     // A missing layer is an optional host prerequisite; an installed layer
     // that cannot load would silently drop validation evidence.
     const auto validation =
@@ -2286,7 +2286,7 @@ int main() {
         std::fprintf(stderr, "note: running without VK_LAYER_KHRONOS_validation\n");
     }
 #endif
-#if defined(TRUFFLE_VULKAN_TEST_METAL_LAYER)
+#if defined(TFL_VULKAN_TEST_METAL_LAYER)
     verify_vulkan_buffers();
     verify_vulkan_presentation();
 #endif

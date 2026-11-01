@@ -41,14 +41,14 @@ int main() {
     assetMesh.streams.push_back(assetStream);
 
     assets::AssetCatalog assetCatalog;
-    TRUFFLE_CHECK(assetCatalog.add_geometry_stream(assetStream).ok());
-    TRUFFLE_CHECK(assetCatalog.add_material(assetMaterial).ok());
-    TRUFFLE_CHECK(assetCatalog.add_mesh(assetMesh).ok());
+    TFL_CHECK(assetCatalog.add_geometry_stream(assetStream).ok());
+    TFL_CHECK(assetCatalog.add_material(assetMaterial).ok());
+    TFL_CHECK(assetCatalog.add_mesh(assetMesh).ok());
 
     auto missingMaterialMesh = assetMesh;
     missingMaterialMesh.id = assets::AssetId{13};
     missingMaterialMesh.material = assets::AssetId{99};
-    TRUFFLE_CHECK(assetCatalog.add_mesh(missingMaterialMesh).ok());
+    TFL_CHECK(assetCatalog.add_mesh(missingMaterialMesh).ok());
 
     assets::AssetGroupDesc assetGroup;
     assetGroup.id = assets::AssetId{15};
@@ -58,32 +58,32 @@ int main() {
     assetGroup.materials.push_back(assetMaterial.id);
     assetGroup.meshes.push_back(assetMesh.id);
     assetGroup.meshes.push_back(missingMaterialMesh.id);
-    TRUFFLE_CHECK(assetCatalog.add_group(assetGroup).ok());
+    TFL_CHECK(assetCatalog.add_group(assetGroup).ok());
 
     const auto assetSummary = diagnostics::summarize_asset_catalog(
         assetCatalog, {
             .name = "dense-asset-catalog",
             .includeGroups = true,
         });
-    TRUFFLE_CHECK(assetSummary.name == "dense-asset-catalog");
-    TRUFFLE_CHECK(assetSummary.stats.geometryStreamCount == 1);
-    TRUFFLE_CHECK(assetSummary.stats.externalGeometryStreamCount == 1);
-    TRUFFLE_CHECK(assetSummary.stats.totalGeometryBytes == 32'000'000);
-    TRUFFLE_CHECK(assetSummary.validation.issues.size() == 1);
-    TRUFFLE_CHECK(assetSummary.groups.size() == 1);
-    TRUFFLE_CHECK(assetSummary.groups.front().group == assetGroup.id);
-    TRUFFLE_CHECK(assetSummary.groups.front().validation.issues.size() == 1);
+    TFL_CHECK(assetSummary.name == "dense-asset-catalog");
+    TFL_CHECK(assetSummary.stats.geometryStreamCount == 1);
+    TFL_CHECK(assetSummary.stats.externalGeometryStreamCount == 1);
+    TFL_CHECK(assetSummary.stats.totalGeometryBytes == 32'000'000);
+    TFL_CHECK(assetSummary.validation.issues.size() == 1);
+    TFL_CHECK(assetSummary.groups.size() == 1);
+    TFL_CHECK(assetSummary.groups.front().group == assetGroup.id);
+    TFL_CHECK(assetSummary.groups.front().validation.issues.size() == 1);
     const auto assetReport =
         diagnostics::format_asset_catalog_summary(assetSummary);
-    TRUFFLE_CHECK(assetReport.find("name=dense-asset-catalog") !=
+    TFL_CHECK(assetReport.find("name=dense-asset-catalog") !=
                   std::string::npos);
-    TRUFFLE_CHECK(assetReport.find("bytes=32000000") != std::string::npos);
-    TRUFFLE_CHECK(assetReport.find("kind=MissingMaterial") !=
+    TFL_CHECK(assetReport.find("bytes=32000000") != std::string::npos);
+    TFL_CHECK(assetReport.find("kind=MissingMaterial") !=
                   std::string::npos);
-    TRUFFLE_CHECK(assetReport.find("attribute=Custom") != std::string::npos);
-    TRUFFLE_CHECK(assetReport.find("asset_group id=15 name=lidar-detections") !=
+    TFL_CHECK(assetReport.find("attribute=Custom") != std::string::npos);
+    TFL_CHECK(assetReport.find("asset_group id=15 name=lidar-detections") !=
                   std::string::npos);
-    TRUFFLE_CHECK(assetReport.find("tag lidar") != std::string::npos);
+    TFL_CHECK(assetReport.find("tag lidar") != std::string::npos);
 
     asset_render::RenderBatchPlanOptions assetRenderOptions;
     assetRenderOptions.channelMappings.push_back({
@@ -92,36 +92,36 @@ int main() {
     });
     auto assetRenderPlanResult = asset_render::plan_render_batch(
         assetMesh, assetMaterial, assetRenderOptions);
-    TRUFFLE_CHECK(assetRenderPlanResult.ok());
+    TFL_CHECK(assetRenderPlanResult.ok());
     const auto assetRenderSummary =
         diagnostics::summarize_asset_render_batch_plan(
             assetRenderPlanResult.value());
-    TRUFFLE_CHECK(assetRenderSummary.mesh == assetMesh.id);
-    TRUFFLE_CHECK(assetRenderSummary.material == assetMaterial.id);
-    TRUFFLE_CHECK(assetRenderSummary.instanceCount ==
+    TFL_CHECK(assetRenderSummary.mesh == assetMesh.id);
+    TFL_CHECK(assetRenderSummary.material == assetMaterial.id);
+    TFL_CHECK(assetRenderSummary.instanceCount ==
                   assetStream.elementCount);
-    TRUFFLE_CHECK(assetRenderSummary.attributes.size() == 1);
-    TRUFFLE_CHECK(assetRenderSummary.attributes.front().stream ==
+    TFL_CHECK(assetRenderSummary.attributes.size() == 1);
+    TFL_CHECK(assetRenderSummary.attributes.front().stream ==
                   assetStream.id);
-    TRUFFLE_CHECK(assetRenderSummary.attributes.front().semantic ==
+    TFL_CHECK(assetRenderSummary.attributes.front().semantic ==
                   assets::AttributeSemantic::Position);
-    TRUFFLE_CHECK(assetRenderSummary.attributes.front().channel ==
+    TFL_CHECK(assetRenderSummary.attributes.front().channel ==
                   renderer::ChannelKind::CustomFloat4);
-    TRUFFLE_CHECK(assetRenderSummary.bindings.size() == 1);
-    TRUFFLE_CHECK(assetRenderSummary.bindings.front().byteSize ==
+    TFL_CHECK(assetRenderSummary.bindings.size() == 1);
+    TFL_CHECK(assetRenderSummary.bindings.front().byteSize ==
                   assetStream.byteSize);
-    TRUFFLE_CHECK(assetRenderSummary.totalBindingBytes ==
+    TFL_CHECK(assetRenderSummary.totalBindingBytes ==
                   assetStream.byteSize);
     const auto assetRenderReport =
         diagnostics::format_asset_render_batch_plan_summary(
             assetRenderSummary);
-    TRUFFLE_CHECK(assetRenderReport.find("AssetRenderBatchPlan mesh=11") !=
+    TFL_CHECK(assetRenderReport.find("AssetRenderBatchPlan mesh=11") !=
                   std::string::npos);
-    TRUFFLE_CHECK(assetRenderReport.find("semantic=Position") !=
+    TFL_CHECK(assetRenderReport.find("semantic=Position") !=
                   std::string::npos);
-    TRUFFLE_CHECK(assetRenderReport.find("channel=CustomFloat4") !=
+    TFL_CHECK(assetRenderReport.find("channel=CustomFloat4") !=
                   std::string::npos);
-    TRUFFLE_CHECK(assetRenderReport.find("planned_binding binding=0") !=
+    TFL_CHECK(assetRenderReport.find("planned_binding binding=0") !=
                   std::string::npos);
 
     asset_render::AssetGroupRenderPlan assetRenderGroupPlan;
@@ -129,18 +129,18 @@ int main() {
     assetRenderGroupPlan.batches.push_back(assetRenderPlanResult.value());
     const auto assetRenderGroupSummary =
         diagnostics::summarize_asset_render_group_plan(assetRenderGroupPlan);
-    TRUFFLE_CHECK(assetRenderGroupSummary.group == assetRenderGroupPlan.group);
-    TRUFFLE_CHECK(assetRenderGroupSummary.batchCount == 1);
-    TRUFFLE_CHECK(assetRenderGroupSummary.totalInstanceCount ==
+    TFL_CHECK(assetRenderGroupSummary.group == assetRenderGroupPlan.group);
+    TFL_CHECK(assetRenderGroupSummary.batchCount == 1);
+    TFL_CHECK(assetRenderGroupSummary.totalInstanceCount ==
                   assetStream.elementCount);
-    TRUFFLE_CHECK(assetRenderGroupSummary.totalBindingBytes ==
+    TFL_CHECK(assetRenderGroupSummary.totalBindingBytes ==
                   assetStream.byteSize);
     const auto assetRenderGroupReport =
         diagnostics::format_asset_render_group_plan_summary(
             assetRenderGroupSummary);
-    TRUFFLE_CHECK(assetRenderGroupReport.find("AssetRenderGroupPlan group=17") !=
+    TFL_CHECK(assetRenderGroupReport.find("AssetRenderGroupPlan group=17") !=
                   std::string::npos);
-    TRUFFLE_CHECK(assetRenderGroupReport.find("instances=1000000") !=
+    TFL_CHECK(assetRenderGroupReport.find("instances=1000000") !=
                   std::string::npos);
 
     diagnostics::DebugOverlayLayer overlay;
@@ -196,27 +196,27 @@ int main() {
     });
 
     const auto overlaySummary = diagnostics::summarize_debug_overlay(overlay);
-    TRUFFLE_CHECK(overlaySummary.primitiveCount == 5);
-    TRUFFLE_CHECK(overlaySummary.pointCount == 1);
-    TRUFFLE_CHECK(overlaySummary.bounds.valid);
-    TRUFFLE_CHECK(overlaySummary.bounds.max.x == 100.0F);
-    TRUFFLE_CHECK(overlaySummary.groups.size() == 1);
+    TFL_CHECK(overlaySummary.primitiveCount == 5);
+    TFL_CHECK(overlaySummary.pointCount == 1);
+    TFL_CHECK(overlaySummary.bounds.valid);
+    TFL_CHECK(overlaySummary.bounds.max.x == 100.0F);
+    TFL_CHECK(overlaySummary.groups.size() == 1);
 
     const auto lidarOverlaySummary = diagnostics::summarize_debug_overlay(
         overlay, {
             .tags = {"lidar"},
         });
-    TRUFFLE_CHECK(lidarOverlaySummary.primitiveCount == 4);
-    TRUFFLE_CHECK(lidarOverlaySummary.pointCount == 0);
-    TRUFFLE_CHECK(lidarOverlaySummary.bounds.max.x == 10.0F);
-    TRUFFLE_CHECK(lidarOverlaySummary.tags.size() == 2);
+    TFL_CHECK(lidarOverlaySummary.primitiveCount == 4);
+    TFL_CHECK(lidarOverlaySummary.pointCount == 0);
+    TFL_CHECK(lidarOverlaySummary.bounds.max.x == 10.0F);
+    TFL_CHECK(lidarOverlaySummary.tags.size() == 2);
     const auto overlayReport =
         diagnostics::format_debug_overlay_summary(lidarOverlaySummary);
-    TRUFFLE_CHECK(overlayReport.find("DebugOverlay name=tool-overlay") !=
+    TFL_CHECK(overlayReport.find("DebugOverlay name=tool-overlay") !=
                   std::string::npos);
-    TRUFFLE_CHECK(overlayReport.find("primitives=4") != std::string::npos);
-    TRUFFLE_CHECK(overlayReport.find("pickTargets=1") != std::string::npos);
-    TRUFFLE_CHECK(overlayReport.find("group 15") != std::string::npos);
+    TFL_CHECK(overlayReport.find("primitives=4") != std::string::npos);
+    TFL_CHECK(overlayReport.find("pickTargets=1") != std::string::npos);
+    TFL_CHECK(overlayReport.find("group 15") != std::string::npos);
 
     auto rhiContext = tests::make_null_context();
     auto instanceBufferResult = rhiContext.device.create_buffer({
@@ -225,7 +225,7 @@ int main() {
         .memory = rhi::MemoryDomain::upload,
         .debugName = "dense_detection_instances",
     });
-    TRUFFLE_CHECK(instanceBufferResult.ok());
+    TFL_CHECK(instanceBufferResult.ok());
     auto instanceBuffer = std::move(instanceBufferResult).value();
 
     renderer::RenderBatch batch;
@@ -254,14 +254,14 @@ int main() {
     const auto batchSummary = diagnostics::summarize_render_batch(batch, {
         .name = "dense-detection-batch",
     });
-    TRUFFLE_CHECK(batchSummary.name == "dense-detection-batch");
-    TRUFFLE_CHECK(batchSummary.instanceCount == 1'000'000);
-    TRUFFLE_CHECK(batchSummary.vertexCount == 1);
-    TRUFFLE_CHECK(batchSummary.material == 42);
-    TRUFFLE_CHECK(batchSummary.channels.size() == 2);
-    TRUFFLE_CHECK(batchSummary.bindings.size() == 1);
-    TRUFFLE_CHECK(batchSummary.totalBindingBytes == 32'000'000);
-    TRUFFLE_CHECK(diagnostics::evaluate_render_batch_budget(
+    TFL_CHECK(batchSummary.name == "dense-detection-batch");
+    TFL_CHECK(batchSummary.instanceCount == 1'000'000);
+    TFL_CHECK(batchSummary.vertexCount == 1);
+    TFL_CHECK(batchSummary.material == 42);
+    TFL_CHECK(batchSummary.channels.size() == 2);
+    TFL_CHECK(batchSummary.bindings.size() == 1);
+    TFL_CHECK(batchSummary.totalBindingBytes == 32'000'000);
+    TFL_CHECK(diagnostics::evaluate_render_batch_budget(
         batchSummary, {}).empty());
     const auto batchFindings = diagnostics::evaluate_render_batch_budget(
         batchSummary, {
@@ -269,21 +269,21 @@ int main() {
             .maxChannels = 1,
             .maxBindingBytes = 1,
         });
-    TRUFFLE_CHECK(batchFindings.size() == 3);
-    TRUFFLE_CHECK(batchFindings.front().code == "render_batch.instances");
+    TFL_CHECK(batchFindings.size() == 3);
+    TFL_CHECK(batchFindings.front().code == "render_batch.instances");
 
     const auto batchReport =
         diagnostics::format_render_batch_summary(batchSummary);
-    TRUFFLE_CHECK(batchReport.find("name=dense-detection-batch") !=
+    TFL_CHECK(batchReport.find("name=dense-detection-batch") !=
                   std::string::npos);
-    TRUFFLE_CHECK(batchReport.find("instances=1000000") != std::string::npos);
-    TRUFFLE_CHECK(batchReport.find("bindingBytes=32000000") !=
+    TFL_CHECK(batchReport.find("instances=1000000") != std::string::npos);
+    TFL_CHECK(batchReport.find("bindingBytes=32000000") !=
                   std::string::npos);
     const auto batchFindingsReport =
         diagnostics::format_diagnostic_findings(batchFindings);
-    TRUFFLE_CHECK(batchFindingsReport.find("DiagnosticFindings count=3") !=
+    TFL_CHECK(batchFindingsReport.find("DiagnosticFindings count=3") !=
                   std::string::npos);
-    TRUFFLE_CHECK(batchFindingsReport.find("render_batch.binding_bytes") !=
+    TFL_CHECK(batchFindingsReport.find("render_batch.binding_bytes") !=
                   std::string::npos);
 
     rhi::RenderPassDesc passDesc;
@@ -292,17 +292,17 @@ int main() {
     renderer::FrameGraph graph;
     const auto nodeId = graph.add_node(std::make_unique<renderer::RenderPassNode>(
         passDesc, std::vector<renderer::RenderBatch>{batch}));
-    TRUFFLE_CHECK(nodeId == 0);
+    TFL_CHECK(nodeId == 0);
     const auto presentNodeId = graph.add_node(
         std::make_unique<renderer::RenderPassNode>(
             true, std::vector<renderer::RenderBatch>{}));
-    TRUFFLE_CHECK(presentNodeId == 1);
-    TRUFFLE_CHECK(graph.add_dependency(nodeId, presentNodeId).ok());
-    TRUFFLE_CHECK(graph.add_resource_usage(nodeId, {
+    TFL_CHECK(presentNodeId == 1);
+    TFL_CHECK(graph.add_dependency(nodeId, presentNodeId).ok());
+    TFL_CHECK(graph.add_resource_usage(nodeId, {
         .resourceId = 99,
         .access = renderer::ResourceAccess::Write,
     }).ok());
-    TRUFFLE_CHECK(graph.add_resource_usage(presentNodeId, {
+    TFL_CHECK(graph.add_resource_usage(presentNodeId, {
         .resourceId = 99,
         .access = renderer::ResourceAccess::Read,
     }).ok());
@@ -322,22 +322,22 @@ int main() {
     });
 
     auto graphSummaryResult = diagnostics::summarize_frame_graph(graph, options);
-    TRUFFLE_CHECK(graphSummaryResult.ok());
+    TFL_CHECK(graphSummaryResult.ok());
     const auto& graphSummary = graphSummaryResult.value();
-    TRUFFLE_CHECK(graphSummary.nodes.size() == 2);
-    TRUFFLE_CHECK(graphSummary.nodes.front().name == "dense-detection-render");
-    TRUFFLE_CHECK(graphSummary.resourceLabels.size() == 1);
-    TRUFFLE_CHECK(graphSummary.dependencies.size() == 1);
-    TRUFFLE_CHECK(graphSummary.dependencies.front().before == nodeId);
-    TRUFFLE_CHECK(graphSummary.dependencies.front().after == presentNodeId);
-    TRUFFLE_CHECK(graphSummary.resourceUsages.size() == 2);
-    TRUFFLE_CHECK(graphSummary.resourceUsages.front().resourceName ==
+    TFL_CHECK(graphSummary.nodes.size() == 2);
+    TFL_CHECK(graphSummary.nodes.front().name == "dense-detection-render");
+    TFL_CHECK(graphSummary.resourceLabels.size() == 1);
+    TFL_CHECK(graphSummary.dependencies.size() == 1);
+    TFL_CHECK(graphSummary.dependencies.front().before == nodeId);
+    TFL_CHECK(graphSummary.dependencies.front().after == presentNodeId);
+    TFL_CHECK(graphSummary.resourceUsages.size() == 2);
+    TFL_CHECK(graphSummary.resourceUsages.front().resourceName ==
                   "dense-detection-buffer");
-    TRUFFLE_CHECK(graphSummary.executionOrder.size() == 2);
-    TRUFFLE_CHECK(graphSummary.renderNodeCount == 2);
-    TRUFFLE_CHECK(graphSummary.renderBatchCount == 1);
-    TRUFFLE_CHECK(graphSummary.totalInstanceCount == 1'000'000);
-    TRUFFLE_CHECK(diagnostics::evaluate_frame_graph_budget(
+    TFL_CHECK(graphSummary.executionOrder.size() == 2);
+    TFL_CHECK(graphSummary.renderNodeCount == 2);
+    TFL_CHECK(graphSummary.renderBatchCount == 1);
+    TFL_CHECK(graphSummary.totalInstanceCount == 1'000'000);
+    TFL_CHECK(diagnostics::evaluate_frame_graph_budget(
         graphSummary, {}).empty());
     const auto graphFindings = diagnostics::evaluate_frame_graph_budget(
         graphSummary, {
@@ -345,23 +345,23 @@ int main() {
             .maxInstances = 999'999,
             .maxResourceUsages = 1,
         });
-    TRUFFLE_CHECK(graphFindings.size() == 3);
+    TFL_CHECK(graphFindings.size() == 3);
 
     const auto graphReport =
         diagnostics::format_frame_graph_summary(graphSummary);
-    TRUFFLE_CHECK(graphReport.find("name=dense-detection-render") !=
+    TFL_CHECK(graphReport.find("name=dense-detection-render") !=
                   std::string::npos);
-    TRUFFLE_CHECK(graphReport.find("name=dense-detection-buffer") !=
+    TFL_CHECK(graphReport.find("name=dense-detection-buffer") !=
                   std::string::npos);
-    TRUFFLE_CHECK(graphReport.find("dependency 0->1") != std::string::npos);
-    TRUFFLE_CHECK(graphReport.find("access=Write") != std::string::npos);
-    TRUFFLE_CHECK(graphReport.find("access=Read") != std::string::npos);
-    TRUFFLE_CHECK(graphReport.find("instances=1000000") != std::string::npos);
+    TFL_CHECK(graphReport.find("dependency 0->1") != std::string::npos);
+    TFL_CHECK(graphReport.find("access=Write") != std::string::npos);
+    TFL_CHECK(graphReport.find("access=Read") != std::string::npos);
+    TFL_CHECK(graphReport.find("instances=1000000") != std::string::npos);
     const auto graphFindingsReport =
         diagnostics::format_diagnostic_findings(graphFindings);
-    TRUFFLE_CHECK(graphFindingsReport.find("frame_graph.render_nodes") !=
+    TFL_CHECK(graphFindingsReport.find("frame_graph.render_nodes") !=
                   std::string::npos);
-    TRUFFLE_CHECK(graphFindingsReport.find("frame_graph.resource_usages") !=
+    TFL_CHECK(graphFindingsReport.find("frame_graph.resource_usages") !=
                   std::string::npos);
 
     const auto statsSummary = diagnostics::summarize_renderer_stats({
@@ -370,11 +370,11 @@ int main() {
         .renderBatchesExecuted = 3,
         .presented = true,
     });
-    TRUFFLE_CHECK(statsSummary.computeNodesExecuted == 1);
-    TRUFFLE_CHECK(statsSummary.presented);
+    TFL_CHECK(statsSummary.computeNodesExecuted == 1);
+    TFL_CHECK(statsSummary.presented);
     const auto statsReport =
         diagnostics::format_renderer_stats_summary(statsSummary);
-    TRUFFLE_CHECK(statsReport.find("presented=true") != std::string::npos);
+    TFL_CHECK(statsReport.find("presented=true") != std::string::npos);
 
     renderer::RendererFrameStats frameStats;
     frameStats.computeNodesExecuted = 1;
@@ -402,41 +402,41 @@ int main() {
 
     auto bundleResult =
         diagnostics::collect_diagnostics_bundle(bundleOptions);
-    TRUFFLE_CHECK(bundleResult.ok());
+    TFL_CHECK(bundleResult.ok());
     const auto& bundle = bundleResult.value();
-    TRUFFLE_CHECK(bundle.hasAssetCatalog);
-    TRUFFLE_CHECK(bundle.assetCatalog.validation.issues.size() == 1);
-    TRUFFLE_CHECK(bundle.assetCatalog.groups.size() == 1);
-    TRUFFLE_CHECK(bundle.assetCatalog.groups.front().name ==
+    TFL_CHECK(bundle.hasAssetCatalog);
+    TFL_CHECK(bundle.assetCatalog.validation.issues.size() == 1);
+    TFL_CHECK(bundle.assetCatalog.groups.size() == 1);
+    TFL_CHECK(bundle.assetCatalog.groups.front().name ==
                   "lidar-detections");
-    TRUFFLE_CHECK(bundle.renderBatches.size() == 1);
-    TRUFFLE_CHECK(bundle.hasFrameGraph);
-    TRUFFLE_CHECK(bundle.hasRendererStats);
-    TRUFFLE_CHECK(bundle.hasDebugOverlay);
-    TRUFFLE_CHECK(bundle.debugOverlay.primitiveCount == 4);
-    TRUFFLE_CHECK(bundle.findings.size() == 2);
+    TFL_CHECK(bundle.renderBatches.size() == 1);
+    TFL_CHECK(bundle.hasFrameGraph);
+    TFL_CHECK(bundle.hasRendererStats);
+    TFL_CHECK(bundle.hasDebugOverlay);
+    TFL_CHECK(bundle.debugOverlay.primitiveCount == 4);
+    TFL_CHECK(bundle.findings.size() == 2);
 
     const auto bundleReport = diagnostics::format_diagnostics_bundle(bundle);
-    TRUFFLE_CHECK(bundleReport.find("DiagnosticsBundle assetCatalog=true") !=
+    TFL_CHECK(bundleReport.find("DiagnosticsBundle assetCatalog=true") !=
                   std::string::npos);
-    TRUFFLE_CHECK(bundleReport.find("AssetCatalog name=dense-asset-catalog") !=
+    TFL_CHECK(bundleReport.find("AssetCatalog name=dense-asset-catalog") !=
                   std::string::npos);
-    TRUFFLE_CHECK(bundleReport.find("RenderBatch name=dense-detection-batch") !=
+    TFL_CHECK(bundleReport.find("RenderBatch name=dense-detection-batch") !=
                   std::string::npos);
-    TRUFFLE_CHECK(bundleReport.find("FrameGraph nodes=2") != std::string::npos);
-    TRUFFLE_CHECK(bundleReport.find("RendererStats computeNodes=1") !=
+    TFL_CHECK(bundleReport.find("FrameGraph nodes=2") != std::string::npos);
+    TFL_CHECK(bundleReport.find("RendererStats computeNodes=1") !=
                   std::string::npos);
-    TRUFFLE_CHECK(bundleReport.find("DebugOverlay name=tool-overlay") !=
+    TFL_CHECK(bundleReport.find("DebugOverlay name=tool-overlay") !=
                   std::string::npos);
-    TRUFFLE_CHECK(bundleReport.find("DiagnosticFindings count=2") !=
+    TFL_CHECK(bundleReport.find("DiagnosticFindings count=2") !=
                   std::string::npos);
 
     diagnostics::DiagnosticsBundleOptions invalidBundleOptions;
     invalidBundleOptions.renderBatches.push_back({});
     const auto invalidBundleResult =
         diagnostics::collect_diagnostics_bundle(invalidBundleOptions);
-    TRUFFLE_CHECK(!invalidBundleResult.ok());
-    TRUFFLE_CHECK(invalidBundleResult.status().code ==
+    TFL_CHECK(!invalidBundleResult.ok());
+    TFL_CHECK(invalidBundleResult.status().code ==
                   base::StatusCode::invalid_argument);
 
     return 0;

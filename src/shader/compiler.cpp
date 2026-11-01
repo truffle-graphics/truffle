@@ -5,24 +5,24 @@
 #include <fstream>
 #include <iterator>
 
-#if defined(TRUFFLE_SHADER_HAS_METAL_COMPILER)
+#if defined(TFL_SHADER_HAS_METAL_COMPILER)
 #include "metal_adapter.hpp"
 #endif
 
 namespace truffle::shader {
 
-#if defined(TRUFFLE_SHADER_HAS_GLSLANG)
+#if defined(TFL_SHADER_HAS_GLSLANG)
 rhi::Result<Compilation> compile_glslang(const CompileRequest& request,
                                        std::vector<Compilation>& cache);
 #endif
-#if defined(TRUFFLE_SHADER_HAS_SLANG)
+#if defined(TFL_SHADER_HAS_SLANG)
 rhi::Result<Compilation> compile_slang(const CompileRequest& request,
                                      std::vector<Compilation>& cache);
 #endif
-#if defined(TRUFFLE_SHADER_HAS_TINT)
+#if defined(TFL_SHADER_HAS_TINT)
 rhi::Result<Compilation> compile_tint(const CompileRequest&, std::vector<Compilation>&);
 #endif
-#if defined(TRUFFLE_SHADER_HAS_DXC)
+#if defined(TFL_SHADER_HAS_DXC)
 rhi::Result<Compilation> compile_dxc(const CompileRequest& request,
                                    std::vector<Compilation>& cache);
 #endif
@@ -60,62 +60,62 @@ std::string_view hlsl_shader_model_name(HlslShaderModel model) noexcept {
 std::span<const CompilerRoute> Compiler::routes() noexcept {
     static const std::vector<CompilerRoute> enabled = [] {
         std::vector<CompilerRoute> result;
-#if defined(TRUFFLE_SHADER_HAS_GLSLANG) || defined(TRUFFLE_SHADER_HAS_DXC) || \
-    defined(TRUFFLE_SHADER_HAS_METAL_COMPILER) || \
-    defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS) || defined(TRUFFLE_SHADER_HAS_TINT) || \
-    defined(TRUFFLE_SHADER_HAS_SLANG)
+#if defined(TFL_SHADER_HAS_GLSLANG) || defined(TFL_SHADER_HAS_DXC) || \
+    defined(TFL_SHADER_HAS_METAL_COMPILER) || \
+    defined(TFL_SHADER_HAS_SPIRV_CROSS) || defined(TFL_SHADER_HAS_TINT) || \
+    defined(TFL_SHADER_HAS_SLANG)
         static constexpr rhi::ShaderStage stages[]{
             rhi::ShaderStage::vertex, rhi::ShaderStage::fragment,
             rhi::ShaderStage::compute};
 #endif
-#if defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS) && \
-    (defined(TRUFFLE_SHADER_HAS_GLSLANG) || defined(TRUFFLE_SHADER_HAS_DXC))
+#if defined(TFL_SHADER_HAS_SPIRV_CROSS) && \
+    (defined(TFL_SHADER_HAS_GLSLANG) || defined(TFL_SHADER_HAS_DXC))
         static constexpr rhi::ShaderStage graphics[]{
             rhi::ShaderStage::vertex, rhi::ShaderStage::fragment};
 #endif
-#if defined(TRUFFLE_SHADER_HAS_GLSLANG)
+#if defined(TFL_SHADER_HAS_GLSLANG)
         static constexpr VulkanTarget targets[]{
             {VulkanVersion::v1_0, SpirvVersion::v1_0},
             {VulkanVersion::v1_1, SpirvVersion::v1_0},
             {VulkanVersion::v1_1, SpirvVersion::v1_3}};
 #endif
-#if defined(TRUFFLE_SHADER_HAS_SLANG)
+#if defined(TFL_SHADER_HAS_SLANG)
         static constexpr VulkanTarget slangTargets[]{
             {VulkanVersion::v1_1, SpirvVersion::v1_3}};
 #endif
-#if defined(TRUFFLE_SHADER_HAS_DXC)
+#if defined(TFL_SHADER_HAS_DXC)
         static constexpr VulkanTarget dxcTargets[]{
             {VulkanVersion::v1_0, SpirvVersion::v1_0},
             {VulkanVersion::v1_1, SpirvVersion::v1_3}};
         static constexpr HlslShaderModel hlslModels[]{HlslShaderModel::v6_0};
 #endif
-#if defined(TRUFFLE_SHADER_HAS_TINT)
+#if defined(TFL_SHADER_HAS_TINT)
         static constexpr VulkanTarget tintTargets[]{
             {VulkanVersion::v1_1, SpirvVersion::v1_3}};
 #endif
-#if defined(TRUFFLE_SHADER_HAS_METAL_COMPILER) || \
-    defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS)
+#if defined(TFL_SHADER_HAS_METAL_COMPILER) || \
+    defined(TFL_SHADER_HAS_SPIRV_CROSS)
         static constexpr MetalTarget metal[]{{}};
 #endif
-#if defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS) && \
-    (defined(TRUFFLE_SHADER_HAS_GLSLANG) || defined(TRUFFLE_SHADER_HAS_DXC))
+#if defined(TFL_SHADER_HAS_SPIRV_CROSS) && \
+    (defined(TFL_SHADER_HAS_GLSLANG) || defined(TFL_SHADER_HAS_DXC))
         static constexpr GlslTarget glsl[]{{}};
         static constexpr GlslEsTarget es[]{{}};
 #endif
-#if defined(TRUFFLE_SHADER_HAS_GLSLANG) || defined(TRUFFLE_SHADER_HAS_DXC) || \
-    defined(TRUFFLE_SHADER_HAS_METAL_COMPILER) || \
-    defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS) || defined(TRUFFLE_SHADER_HAS_TINT) || \
-    defined(TRUFFLE_SHADER_HAS_SLANG)
+#if defined(TFL_SHADER_HAS_GLSLANG) || defined(TFL_SHADER_HAS_DXC) || \
+    defined(TFL_SHADER_HAS_METAL_COMPILER) || \
+    defined(TFL_SHADER_HAS_SPIRV_CROSS) || defined(TFL_SHADER_HAS_TINT) || \
+    defined(TFL_SHADER_HAS_SLANG)
         const auto add = [&](CompilerRoute route) {
             result.push_back(route);
         };
 #endif
-#if defined(TRUFFLE_SHADER_HAS_GLSLANG)
+#if defined(TFL_SHADER_HAS_GLSLANG)
         add({rhi::ShaderSourceLanguage::glsl, rhi::ShaderTarget::spirv,
              stages, targets});
         add({rhi::ShaderSourceLanguage::glsl_es, rhi::ShaderTarget::spirv,
              stages, targets});
-#if defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS)
+#if defined(TFL_SHADER_HAS_SPIRV_CROSS)
         add({rhi::ShaderSourceLanguage::glsl, rhi::ShaderTarget::metal_source,
              stages, targets, metal, {}, {}, true});
         add({rhi::ShaderSourceLanguage::glsl_es, rhi::ShaderTarget::metal_source,
@@ -130,23 +130,23 @@ std::span<const CompilerRoute> Compiler::routes() noexcept {
              graphics, targets, {}, {}, es});
 #endif
 #endif
-#if defined(TRUFFLE_SHADER_HAS_SLANG)
+#if defined(TFL_SHADER_HAS_SLANG)
         add({rhi::ShaderSourceLanguage::slang, rhi::ShaderTarget::spirv,
              stages, slangTargets});
 #endif
-#if defined(TRUFFLE_SHADER_HAS_TINT)
+#if defined(TFL_SHADER_HAS_TINT)
         add({rhi::ShaderSourceLanguage::wgsl, rhi::ShaderTarget::spirv,
              stages, tintTargets});
         add({rhi::ShaderSourceLanguage::wgsl, rhi::ShaderTarget::wgsl,
              stages, tintTargets, {}, {}, {}, true});
         add({rhi::ShaderSourceLanguage::spirv, rhi::ShaderTarget::wgsl,
              stages, tintTargets, {}, {}, {}, true});
-#if defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS)
+#if defined(TFL_SHADER_HAS_SPIRV_CROSS)
         add({rhi::ShaderSourceLanguage::wgsl, rhi::ShaderTarget::metal_source,
              stages, tintTargets, metal, {}, {}, true});
 #endif
 #endif
-#if defined(TRUFFLE_SHADER_HAS_DXC)
+#if defined(TFL_SHADER_HAS_DXC)
         add({.language = rhi::ShaderSourceLanguage::hlsl,
              .target = rhi::ShaderTarget::spirv,
              .stages = stages,
@@ -156,7 +156,7 @@ std::span<const CompilerRoute> Compiler::routes() noexcept {
              .target = rhi::ShaderTarget::dxil,
              .stages = stages,
              .hlslShaderModels = hlslModels});
-#if defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS)
+#if defined(TFL_SHADER_HAS_SPIRV_CROSS)
         add({.language = rhi::ShaderSourceLanguage::hlsl,
              .target = rhi::ShaderTarget::metal_source,
              .stages = stages,
@@ -178,12 +178,12 @@ std::span<const CompilerRoute> Compiler::routes() noexcept {
              .hlslShaderModels = hlslModels});
 #endif
 #endif
-#if defined(TRUFFLE_SHADER_HAS_METAL_COMPILER)
+#if defined(TFL_SHADER_HAS_METAL_COMPILER)
         static constexpr CompilerRoute nativeSource{
             rhi::ShaderSourceLanguage::msl, rhi::ShaderTarget::metal_source,
             stages, {}, metal, {}, {}, false};
         if (detail::native_msl_available()) add(nativeSource);
-#if defined(TRUFFLE_SHADER_HAS_METALLIB_COMPILER)
+#if defined(TFL_SHADER_HAS_METALLIB_COMPILER)
         static constexpr CompilerRoute offlineLibrary{
             rhi::ShaderSourceLanguage::msl, rhi::ShaderTarget::metal_library,
             stages, {}, metal, {}, {}, false};
@@ -233,7 +233,7 @@ rhi::Result<Compilation> Compiler::compile(const CompileRequest& request) {
     const auto enabled = routes();
     if (enabled.empty()) {
         return rhi::Status::failure(rhi::StatusCode::unsupported,
-                                   "No enabled Shader source-compilation routes are available in this build/runtime; enable an optional compiler adapter such as TRUFFLE_SHADER_ENABLE_GLSLANG, TRUFFLE_SHADER_ENABLE_DXC, TRUFFLE_SHADER_ENABLE_TINT or TRUFFLE_SHADER_ENABLE_SLANG");
+                                   "No enabled Shader source-compilation routes are available in this build/runtime; enable an optional compiler adapter such as TFL_SHADER_ENABLE_GLSLANG, TFL_SHADER_ENABLE_DXC, TFL_SHADER_ENABLE_TINT or TFL_SHADER_ENABLE_SLANG");
     }
     const auto route = std::find_if(enabled.begin(), enabled.end(), [&](const auto& value) {
         return value.language == request.language && value.target == request.target;
@@ -275,7 +275,7 @@ rhi::Result<Compilation> Compiler::compile(const CompileRequest& request) {
             std::string{vulkan_version_name(request.vulkanTarget.environment)} + " / SPIR-V " +
             std::string{spirv_version_name(request.vulkanTarget.spirv)});
     }
-#if defined(TRUFFLE_SHADER_HAS_METAL_COMPILER)
+#if defined(TFL_SHADER_HAS_METAL_COMPILER)
     if (nativeMslRequest) {
         return detail::compile_msl(request, impl_->cache);
     }
@@ -291,22 +291,22 @@ rhi::Result<Compilation> Compiler::compile(const CompileRequest& request) {
         return rhi::Status::failure(rhi::StatusCode::invalid_argument,
                                    "DXIL does not accept Vulkan/SPIR-V settings");
     }
-#if defined(TRUFFLE_SHADER_HAS_TINT)
+#if defined(TFL_SHADER_HAS_TINT)
     if (request.language == rhi::ShaderSourceLanguage::wgsl ||
         request.language == rhi::ShaderSourceLanguage::spirv)
         return compile_tint(request, impl_->cache);
 #endif
-#if defined(TRUFFLE_SHADER_HAS_DXC)
+#if defined(TFL_SHADER_HAS_DXC)
     if (request.language == rhi::ShaderSourceLanguage::hlsl) {
         return compile_dxc(request, impl_->cache);
     }
 #endif
-#if defined(TRUFFLE_SHADER_HAS_GLSLANG)
+#if defined(TFL_SHADER_HAS_GLSLANG)
     if (request.language == rhi::ShaderSourceLanguage::glsl ||
         request.language == rhi::ShaderSourceLanguage::glsl_es)
         return compile_glslang(request, impl_->cache);
 #endif
-#if defined(TRUFFLE_SHADER_HAS_SLANG)
+#if defined(TFL_SHADER_HAS_SLANG)
     if (request.language == rhi::ShaderSourceLanguage::slang)
         return compile_slang(request, impl_->cache);
 #endif

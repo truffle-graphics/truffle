@@ -1,5 +1,5 @@
-#ifndef TRUFFLE_HLSL_COMMON
-#define TRUFFLE_HLSL_COMMON
+#ifndef TFL_HLSL_COMMON
+#define TFL_HLSL_COMMON
 
 #include "configuration.hlsli"
 

@@ -196,7 +196,7 @@ int run() {
     auto adapter = tests::require(instance.adapter(0));
     auto device = tests::require(adapter.request_device());
 
-#if TRUFFLE_TEST_GUI_TEXT
+#if TFL_TEST_GUI_TEXT
     auto text_engine = tests::require(gui::TextEngine::create(device, {{64, 64}}));
     const auto font_bytes = tests::gui_test_font();
     const auto font = tests::require(text_engine.load_font(font_bytes, 7.0F));
@@ -215,7 +215,7 @@ int run() {
     auto image = tests::require(renderer::SampledTexture::upload(device, {
         .extent = {2, 1}, .bytes = texels}));
     const gui::TextureId image_id = tests::require(painter.add_texture(image));
-#if TRUFFLE_TEST_GUI_TEXT
+#if TFL_TEST_GUI_TEXT
     const gui::TextureId atlas_id =
         tests::require(painter.add_texture(tests::require(text_engine.atlas_texture()).get()));
 #endif
@@ -310,7 +310,7 @@ int run() {
     compare(pixels, reference(layers({{20, 20, 8, 8}, fill({0, 0, 1, 1})})),
             "moved element keeps its shapes");
 
-#if TRUFFLE_TEST_GUI_TEXT
+#if TFL_TEST_GUI_TEXT
     const ElementId text_element = tests::require(context.create(root));
     gui::LayoutParams text_params;
     text_params.position = {2, 2};

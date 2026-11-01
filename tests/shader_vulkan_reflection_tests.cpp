@@ -28,10 +28,10 @@ void main() {
     auto compiled = tests::require(compiler.compile(request));
     auto package = tests::require(rhi::ShaderPackage::load(compiled.package.bytes()));
     const auto& reflection = package.desc().variants[0].reflection;
-    TRUFFLE_SHADER_CHECK(reflection.workgroupSpecializationIds ==
+    TFL_SHADER_CHECK(reflection.workgroupSpecializationIds ==
                         rhi::WorkgroupSpecializationIds({0, 7, std::nullopt}));
-    TRUFFLE_SHADER_CHECK(reflection.requiredWorkgroupSize == rhi::Extent3D(2, 1, 2));
-    TRUFFLE_SHADER_CHECK(reflection.bindings[0].minimumSize == 128);
+    TFL_SHADER_CHECK(reflection.requiredWorkgroupSize == rhi::Extent3D(2, 1, 2));
+    TFL_SHADER_CHECK(reflection.bindings[0].minimumSize == 128);
     auto shader = tests::require(device.create_shader(package, rhi::ShaderTarget::spirv,
                                                       "main", rhi::ShaderStage::compute));
     auto sharedRequest = request;
@@ -40,7 +40,7 @@ void main() {
         std::string{body}};
     auto shared = tests::require(compiler.compile(sharedRequest));
     auto sharedPackage = tests::require(rhi::ShaderPackage::load(shared.package.bytes()));
-    TRUFFLE_SHADER_CHECK(sharedPackage.desc().variants[0].reflection.specializationConstants.size() == 1);
+    TFL_SHADER_CHECK(sharedPackage.desc().variants[0].reflection.specializationConstants.size() == 1);
     auto sharedShader = tests::require(device.create_shader(sharedPackage, rhi::ShaderTarget::spirv,
                                                             "main", rhi::ShaderStage::compute));
     auto groupLayout = tests::require(device.create_bind_group_layout({
@@ -60,7 +60,7 @@ void main() {
         auto pipeline = tests::require(device.create_compute_pipeline({
             .computeShader = pass == 2 ? &sharedShader : &shader,
             .layout = &layout, .requiredWorkgroupSize = dimensions, .specializationConstants = values}));
-        TRUFFLE_SHADER_CHECK(pipeline.preferred_workgroup_size() == dimensions);
+        TFL_SHADER_CHECK(pipeline.preferred_workgroup_size() == dimensions);
         auto output = tests::require(device.create_buffer({
             .size = 128, .usage = rhi::BufferUsage::storage, .memory = rhi::MemoryDomain::readback}));
         std::array<std::uint32_t, 32> actual;
@@ -82,16 +82,16 @@ void main() {
         const auto written = 2 * dimensions.width * dimensions.height * dimensions.depth;
         const auto base = dimensions.width * 100 + dimensions.height * 1000 + dimensions.depth * 10000;
         for (std::size_t index = 0; index < actual.size(); ++index)
-            TRUFFLE_SHADER_CHECK(actual[index] == (index < written ? base + index : 0xdeadbeefu));
+            TFL_SHADER_CHECK(actual[index] == (index < written ? base + index : 0xdeadbeefu));
     }
-    TRUFFLE_SHADER_CHECK(!device.create_compute_pipeline({
+    TFL_SHADER_CHECK(!device.create_compute_pipeline({
         .computeShader = &shader, .layout = &layout,
         .requiredWorkgroupSize = {2, 1, 2},
         .specializationConstants = {{0, rhi::ShaderValueType::uint32, 3}}}).ok());
     const auto outOfLimits = device.create_compute_pipeline({
         .computeShader = &shader, .layout = &layout,
         .specializationConstants = {{0, rhi::ShaderValueType::uint32, 0xffffffffu}}});
-    TRUFFLE_SHADER_CHECK(!outOfLimits.ok() && outOfLimits.status().code == rhi::StatusCode::unsupported);
+    TFL_SHADER_CHECK(!outOfLimits.ok() && outOfLimits.status().code == rhi::StatusCode::unsupported);
     std::cout << "specialized workgroups: 2x1x2 -> 3x2x2 + shared-ID 2x2x2; "
                  "exact 8/24/16 invocations and untouched tail passed\n";
 }
@@ -104,9 +104,9 @@ int run() {
     }
     auto instance = std::move(created).value();
     const auto validation = rhi::detail::last_vulkan_validation_state_for_testing();
-    TRUFFLE_SHADER_CHECK(validation != rhi::detail::VulkanValidationState::failed_to_load);
+    TFL_SHADER_CHECK(validation != rhi::detail::VulkanValidationState::failed_to_load);
     auto adapter = tests::require(instance.adapter(0));
-    TRUFFLE_SHADER_CHECK(adapter.info().native);
+    TFL_SHADER_CHECK(adapter.info().native);
     std::cout << "adapter: " << adapter.info().name << "; validation "
               << (validation == rhi::detail::VulkanValidationState::active ? "active" : "not installed") << '\n';
     auto device = tests::require(adapter.request_device());
@@ -141,17 +141,17 @@ void main() {
     auto compiled = tests::require(compiler.compile(request));
     auto package = tests::require(rhi::ShaderPackage::load(compiled.package.bytes()));
     const auto& reflection = package.desc().variants[0].reflection;
-    TRUFFLE_SHADER_CHECK(reflection.pushConstants ==
+    TFL_SHADER_CHECK(reflection.pushConstants ==
         std::vector<rhi::PushConstantRange>({{rhi::ShaderStage::compute, 16, 44}}));
-    TRUFFLE_SHADER_CHECK(reflection.specializationConstants.size() == 4);
-    TRUFFLE_SHADER_CHECK(reflection.bindings.size() == 5);
+    TFL_SHADER_CHECK(reflection.specializationConstants.size() == 4);
+    TFL_SHADER_CHECK(reflection.bindings.size() == 5);
     for (const auto& binding : reflection.bindings)
-        TRUFFLE_SHADER_CHECK(binding.arrayCount == 2);
-    TRUFFLE_SHADER_CHECK(reflection.bindings[0].minimumSize == 16 &&
+        TFL_SHADER_CHECK(binding.arrayCount == 2);
+    TFL_SHADER_CHECK(reflection.bindings[0].minimumSize == 16 &&
                         !reflection.bindings[0].readOnly);
-    TRUFFLE_SHADER_CHECK(reflection.bindings[1].minimumSize == 4 &&
+    TFL_SHADER_CHECK(reflection.bindings[1].minimumSize == 4 &&
                         reflection.bindings[1].readOnly);
-    TRUFFLE_SHADER_CHECK(reflection.bindings[2].minimumSize == 4 &&
+    TFL_SHADER_CHECK(reflection.bindings[2].minimumSize == 4 &&
                         reflection.bindings[2].readOnly);
     auto shader = tests::require(device.create_shader(package, rhi::ShaderTarget::spirv,
                                                       "main", rhi::ShaderStage::compute));
@@ -177,13 +177,13 @@ void main() {
         {4, rhi::ShaderValueType::boolean, 0}};
     auto specialized = tests::require(device.create_compute_pipeline({
         .computeShader = &shader, .layout = &layout, .specializationConstants = overrides}));
-    TRUFFLE_SHADER_CHECK(!device.create_compute_pipeline({
+    TFL_SHADER_CHECK(!device.create_compute_pipeline({
         .computeShader = &shader, .layout = &layout,
         .specializationConstants = {{1, rhi::ShaderValueType::float32, 0}}}).ok());
     auto tooShortLayout = tests::require(device.create_pipeline_layout({
         .bindGroupLayouts = {&groupLayout},
         .pushConstants = {{rhi::ShaderStage::compute, 16, 40}}}));
-    TRUFFLE_SHADER_CHECK(!device.create_compute_pipeline({
+    TFL_SHADER_CHECK(!device.create_compute_pipeline({
         .computeShader = &shader, .layout = &tooShortLayout}).ok());
 
     std::array<rhi::Buffer, 2> output, uniform, input;
@@ -258,7 +258,7 @@ void main() {
             tests::require(output[index].read(0, std::as_writable_bytes(std::span{actual})));
             const auto base = (pass == 0 ? 186u : 292u) + (index == 0 ? 60u : 31u);
             const std::array expected{base, base + 1, base + 2, base + 3};
-            TRUFFLE_SHADER_CHECK(actual == expected);
+            TFL_SHADER_CHECK(actual == expected);
         }
     }
     std::cout << "exact scalar defaults/overrides + offset push + buffer/image/sampler-array readback passed\n";

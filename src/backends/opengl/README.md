@@ -11,9 +11,9 @@ context seam selected by `gl_api.hpp`:
 | CGL offscreen | `cgl_context.hpp` | macOS | GL 4.1 core |
 | NSOpenGLContext on a host `NSView` | `cgl_view.hpp`/`.mm`, `gl_present.hpp` | macOS presentation | GL 4.1 core, shared with the device context |
 
-`gl_api.hpp` also defines feature macros (`TRUFFLE_GL_HAS_COMPUTE`,
-`TRUFFLE_GL_HAS_TEXTURE_STORAGE`, `TRUFFLE_GL_HAS_TEXTURE_VIEWS`,
-`TRUFFLE_GL_HAS_BASE_INSTANCE`, `TRUFFLE_GL_HAS_DEBUG_OUTPUT`). Code needing a
+`gl_api.hpp` also defines feature macros (`TFL_GL_HAS_COMPUTE`,
+`TFL_GL_HAS_TEXTURE_STORAGE`, `TFL_GL_HAS_TEXTURE_VIEWS`,
+`TFL_GL_HAS_BASE_INSTANCE`, `TFL_GL_HAS_DEBUG_OUTPUT`). Code needing a
 newer entry point is compiled only where the headers declare it; capabilities
 report the rest as unsupported instead of simulating them.
 

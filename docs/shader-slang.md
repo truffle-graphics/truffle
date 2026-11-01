@@ -1,6 +1,6 @@
 # Native Slang modules (#190)
 
-`TRUFFLE_SHADER_ENABLE_SLANG=ON` enables the optional in-process Slang adapter
+`TFL_SHADER_ENABLE_SLANG=ON` enables the optional in-process Slang adapter
 owned by `truffle_shader`. `truffle-shaderc` is a client of the same API.
 There is no Shader dependency on a backend or Renderer, and no new reflection
 model or package version: output uses canonical RHI reflection and TSP 1.0.
@@ -48,8 +48,8 @@ git submodule update --init vendor/slang vendor/spirv-tools vendor/spirv-headers
 git -C vendor/slang submodule update --init external/miniz external/lz4 \
   external/unordered_dense external/spirv-headers external/vulkan external/lua \
   external/cmark external/fast_float
-cmake -S . -B build-slang -DTRUFFLE_SHADER_ENABLE_SLANG=ON \
-  -DTRUFFLE_SHADER_ENABLE_SPIRV_TOOLS=ON -DTRUFFLE_BUILD_SHADERC=ON
+cmake -S . -B build-slang -DTFL_SHADER_ENABLE_SLANG=ON \
+  -DTFL_SHADER_ENABLE_SPIRV_TOOLS=ON -DTFL_BUILD_SHADERC=ON
 cmake --build build-slang --target truffle-shaderc --parallel 2
 ```
 
@@ -155,7 +155,7 @@ routes/options and native empty-intermediate listing are retained; revalidation
 keeps DXC/Tint disabled rather than creating another compiler source build. Slang reuses
 the shared define normalization and length-delimited cache-key input helpers.
 Installed-tool smoke checks run the actual `--self-test` and `--routes` with
-loader override paths unset, gated explicitly by `TRUFFLE_BUILD_SHADERC`.
+loader override paths unset, gated explicitly by `TFL_BUILD_SHADERC`.
 The shared DXC/Slang CLI runtime path respects configured bin/lib destinations:
 `@loader_path` on macOS and `$ORIGIN` on Linux. Nested directory installation
 passes using the existing Slang build; `shaderc=OFF` skips a retained stale tool.

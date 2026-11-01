@@ -533,7 +533,7 @@ inline void count_native_diagnostic(const rhi::BackendDiagnostic&, void* data) {
 
 // Desktop GL fixtures target the newest GLSL the expected context accepts.
 inline constexpr std::string_view desktop_glsl_version =
-#ifdef TRUFFLE_EXPECT_CGL_OPENGL
+#ifdef TFL_EXPECT_CGL_OPENGL
     "#version 410 core\n";
 #else
     "#version 450 core\n";

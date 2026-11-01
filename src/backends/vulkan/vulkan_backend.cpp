@@ -10,9 +10,9 @@
 #endif
 
 #if defined(VK_USE_PLATFORM_XCB_KHR) || defined(VK_USE_PLATFORM_METAL_EXT)
-#define TRUFFLE_VULKAN_HAS_WSI 1
+#define TFL_VULKAN_HAS_WSI 1
 #else
-#define TRUFFLE_VULKAN_HAS_WSI 0
+#define TFL_VULKAN_HAS_WSI 0
 #endif
 
 #include <algorithm>
@@ -707,7 +707,7 @@ struct VulkanTextureResource {
     std::mutex mutex;
 };
 
-#if TRUFFLE_VULKAN_HAS_WSI
+#if TFL_VULKAN_HAS_WSI
 struct VulkanSurfaceResource {
     VulkanSurfaceResource(std::shared_ptr<VulkanContext> contextValue,
                           VkSurfaceKHR surfaceValue)
@@ -4694,7 +4694,7 @@ void prepare_vulkan_binding_images(VulkanContext& context,
         context, pool, desc.type, desc.count));
 }
 
-#if TRUFFLE_VULKAN_HAS_WSI
+#if TFL_VULKAN_HAS_WSI
 [[nodiscard]] Status vulkan_wsi_failure(std::string message, VkResult result) {
     StatusCode code = StatusCode::backend_error;
     switch (result) {
@@ -5462,7 +5462,7 @@ void prepare_vulkan_binding_images(VulkanContext& context,
                 extensions.push_back(
                     VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
             }
-#if TRUFFLE_VULKAN_HAS_WSI
+#if TFL_VULKAN_HAS_WSI
             const auto has_extension = [&](const char* name) {
                 return std::any_of(
                     availableExtensions.begin(), availableExtensions.end(),
@@ -5715,7 +5715,7 @@ void prepare_vulkan_binding_images(VulkanContext& context,
                                VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME) == 0;
                 });
             timelineExtension = timeline != availableDeviceExtensions.end();
-#if TRUFFLE_VULKAN_HAS_WSI
+#if TFL_VULKAN_HAS_WSI
             const auto swapchain = std::find_if(
                 availableDeviceExtensions.begin(),
                 availableDeviceExtensions.end(),
@@ -5876,7 +5876,7 @@ Result<Instance> create_vulkan_instance(const InstanceDesc& desc) {
         config.queueKinds.push_back(QueueKind::transfer);
     }
     config.supportedFeatures = {Feature::transfer, Feature::memory_budget};
-#if TRUFFLE_VULKAN_HAS_WSI
+#if TFL_VULKAN_HAS_WSI
     if (native.context->surfaceWsi) {
         config.supportedFeatures.push_back(Feature::presentation);
     }
@@ -5943,7 +5943,7 @@ Result<Instance> create_vulkan_instance(const InstanceDesc& desc) {
     };
     config.deviceLocalBudgetBytes = native.deviceLocalBudget;
     config.native = true;
-#if TRUFFLE_VULKAN_HAS_WSI
+#if TFL_VULKAN_HAS_WSI
     config.presentation = native.context->surfaceWsi;
 #endif
     config.nativeContext = std::move(native.context);
@@ -5964,7 +5964,7 @@ Result<Instance> create_vulkan_instance(const InstanceDesc& desc) {
     config.createComputePipeline = &create_vulkan_compute_pipeline;
     config.createSemaphore = &create_vulkan_semaphore;
     config.createQueryPool = &create_vulkan_query_pool;
-#if TRUFFLE_VULKAN_HAS_WSI
+#if TFL_VULKAN_HAS_WSI
     config.createSurface = &create_vulkan_surface;
     config.createSwapchain = &create_vulkan_swapchain;
     config.acquireSwapchain = &acquire_vulkan_swapchain;

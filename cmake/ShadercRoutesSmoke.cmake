@@ -1,35 +1,35 @@
-execute_process(COMMAND "${TRUFFLE_SHADERC}" --routes
+execute_process(COMMAND "${TFL_SHADERC}" --routes
     RESULT_VARIABLE _result OUTPUT_VARIABLE _routes ERROR_VARIABLE _error)
 if(NOT _result EQUAL 0)
     message(FATAL_ERROR "Route discovery failed: ${_error}")
 endif()
-file(MAKE_DIRECTORY "${TRUFFLE_SHADERC_TEST_DIR}")
-set(_source "${TRUFFLE_SHADERC_TEST_DIR}/route.glsl")
-set(_package "${TRUFFLE_SHADERC_TEST_DIR}/route.tsp")
+file(MAKE_DIRECTORY "${TFL_SHADERC_TEST_DIR}")
+set(_source "${TFL_SHADERC_TEST_DIR}/route.glsl")
+set(_package "${TFL_SHADERC_TEST_DIR}/route.tsp")
 set(_args --compile --name route --source-language glsl --target spirv
     --stage vertex --input "${_source}" --output "${_package}")
 file(WRITE "${_source}" "#version 450\nvoid main(){ gl_Position=vec4(0); }\n")
 function(expect_failure expected)
-    execute_process(COMMAND "${TRUFFLE_SHADERC}" ${_args} ${ARGN}
+    execute_process(COMMAND "${TFL_SHADERC}" ${_args} ${ARGN}
         RESULT_VARIABLE _result ERROR_VARIABLE _error)
     if(_result EQUAL 0 OR NOT _error MATCHES "${expected}")
         message(FATAL_ERROR "Expected '${expected}', got ${_result}: ${_error}")
     endif()
 endfunction()
 
-if(NOT TRUFFLE_EXPECT_COMPILER)
-    if(TRUFFLE_EXPECT_TINT AND
+if(NOT TFL_EXPECT_COMPILER)
+    if(TFL_EXPECT_TINT AND
        (NOT _routes MATCHES "source=wgsl target=spirv" OR
         NOT _routes MATCHES "source=spirv target=wgsl"))
         message(FATAL_ERROR "Tint routes missing: ${_routes}")
     endif()
-    if(TRUFFLE_EXPECT_DXC)
+    if(TFL_EXPECT_DXC)
         if(NOT _routes MATCHES "source=hlsl target=spirv" OR
            NOT _routes MATCHES "source=hlsl target=dxil")
             message(FATAL_ERROR "Enabled DXC did not advertise HLSL routes: ${_routes}")
         endif()
     endif()
-    if(TRUFFLE_EXPECT_DXC OR TRUFFLE_EXPECT_TINT)
+    if(TFL_EXPECT_DXC OR TFL_EXPECT_TINT)
         expect_failure("No enabled Shader compiler route")
         return()
     elseif(NOT _routes STREQUAL "source-routes=0\n")
@@ -79,14 +79,14 @@ foreach(_line IN LISTS _lines)
             "void main(){ data.value=gl_GlobalInvocationID.x; }\n")
     endif()
     file(WRITE "${_source}" "${_text}")
-    execute_process(COMMAND "${TRUFFLE_SHADERC}" ${_args}
+    execute_process(COMMAND "${TFL_SHADERC}" ${_args}
         --source-language "${_language}" --stage "${_stage}"
         --vulkan-version "${_vulkan}" --spirv-version "${_spirv}"
         RESULT_VARIABLE _result ERROR_VARIABLE _error)
     if(NOT _result EQUAL 0)
         message(FATAL_ERROR "Advertised route failed: ${_line}: ${_error}")
     endif()
-    execute_process(COMMAND "${TRUFFLE_SHADERC}" --inspect "${_package}"
+    execute_process(COMMAND "${TFL_SHADERC}" --inspect "${_package}"
         RESULT_VARIABLE _result OUTPUT_VARIABLE _inspection)
     string(FIND "${_inspection}" ";vulkan=${_vulkan};spirv=${_spirv}" _provenance)
     if(NOT _result EQUAL 0 OR _provenance EQUAL -1 OR NOT _inspection MATCHES "bindings=1")
@@ -101,7 +101,7 @@ file(SHA256 "${_package}" _good)
 expect_failure("Unsupported Vulkan/SPIR-V configuration" --vulkan-version 1.0 --spirv-version 1.3)
 expect_failure("unknown Vulkan version" --vulkan-version 9.9)
 expect_failure("unknown SPIR-V version" --spirv-version 9.9)
-if(NOT TRUFFLE_EXPECT_DXC)
+if(NOT TFL_EXPECT_DXC)
     expect_failure("No enabled Shader compiler route" --source-language hlsl)
 endif()
 if(_routes MATCHES "source=glsl target=msl")
@@ -113,7 +113,7 @@ file(SHA256 "${_package}" _retained)
 if(NOT _good STREQUAL _retained)
     message(FATAL_ERROR "Rejected target/route replaced the last successful output")
 endif()
-execute_process(COMMAND "${TRUFFLE_SHADERC}"
+execute_process(COMMAND "${TFL_SHADERC}"
     --name assembly --target spirv --stage vertex --input "${_source}" --output "${_package}"
     --source-language glsl --source-hash
     0000000000000000000000000000000000000000000000000000000000000000

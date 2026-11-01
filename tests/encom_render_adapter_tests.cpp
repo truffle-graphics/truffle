@@ -10,7 +10,7 @@ int main() {
     auto context = truffle::tests::make_null_context();
 
     auto ringResult = context.device.create_upload_ring(2, 1024 * 1024);
-    TRUFFLE_CHECK(ringResult.ok());
+    TFL_CHECK(ringResult.ok());
     auto ring = std::move(ringResult).value();
 
     // --- Populate EnCom world ---
@@ -38,22 +38,22 @@ int main() {
     truffle::encom_renderer::EnComRenderAdapter adapter;
     auto frame = adapter.extract(world, ring);
 
-    TRUFFLE_CHECK(frame.cameras.size() == 1);
-    TRUFFLE_CHECK(frame.lights.size() == 1);
-    TRUFFLE_CHECK(frame.meshBatches.size() == 1);
+    TFL_CHECK(frame.cameras.size() == 1);
+    TFL_CHECK(frame.lights.size() == 1);
+    TFL_CHECK(frame.meshBatches.size() == 1);
 
     const auto& batch = frame.meshBatches[0];
-    TRUFFLE_CHECK(batch.instanceCount == 3);
-    TRUFFLE_CHECK(batch.vertexCount == 6);
-    TRUFFLE_CHECK(batch.bindings[0].buffer != nullptr);
+    TFL_CHECK(batch.instanceCount == 3);
+    TFL_CHECK(batch.vertexCount == 6);
+    TFL_CHECK(batch.bindings[0].buffer != nullptr);
 
     // Verify ring backing pointer is valid (data was written)
-    TRUFFLE_CHECK(batch.bindings[0].size == 3 * 64);
+    TFL_CHECK(batch.bindings[0].size == 3 * 64);
 
     // --- Render the extracted batches ---
-    TRUFFLE_CHECK(truffle::renderer::Renderer{context.device}.render([&]() { truffle::renderer::FrameGraph fg; fg.add_node(std::make_unique<truffle::renderer::RenderPassNode>(true, frame.meshBatches)); return fg; }()).ok());
-    TRUFFLE_CHECK(context.instance.stats().drawsRecorded == 1);
-    TRUFFLE_CHECK(context.instance.stats().submissions == 1);
+    TFL_CHECK(truffle::renderer::Renderer{context.device}.render([&]() { truffle::renderer::FrameGraph fg; fg.add_node(std::make_unique<truffle::renderer::RenderPassNode>(true, frame.meshBatches)); return fg; }()).ok());
+    TFL_CHECK(context.instance.stats().drawsRecorded == 1);
+    TFL_CHECK(context.instance.stats().submissions == 1);
 
     return 0;
 }

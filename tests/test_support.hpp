@@ -2,7 +2,7 @@
 
 #include <iostream>
 
-#define TRUFFLE_CHECK(condition)                                               \
+#define TFL_CHECK(condition)                                               \
     do {                                                                       \
         if (!(condition)) {                                                     \
             std::cerr << "check failed: " #condition << " at " << __FILE__    \

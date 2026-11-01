@@ -48,20 +48,20 @@ int main() {
     auto context = tests::make_null_context();
     renderer::PipelineCache cache(context.device);
     auto missing = cache.get_or_create({}, 7);
-    TRUFFLE_CHECK(!missing.ok());
-    TRUFFLE_CHECK(missing.status().code == base::StatusCode::invalid_argument);
+    TFL_CHECK(!missing.ok());
+    TFL_CHECK(missing.status().code == base::StatusCode::invalid_argument);
 
     {
         auto package = make_package();
-        TRUFFLE_CHECK(cache.register_program(7, program_desc(package)).ok());
+        TFL_CHECK(cache.register_program(7, program_desc(package)).ok());
     }
     const auto first = cache.get_or_create({}, 7).value()->id();
     const auto created = context.instance.stats().pipelinesCreated;
     renderer::InstanceLayout metadata;
     metadata.channels.push_back({renderer::ChannelKind::Color, 3, 0, 16});
-    TRUFFLE_CHECK(cache.get_or_create(metadata, 7).value()->id() == first);
-    TRUFFLE_CHECK(context.instance.stats().pipelinesCreated == created);
-    TRUFFLE_CHECK(!cache.get_or_create({}, 7, 42).ok());
+    TFL_CHECK(cache.get_or_create(metadata, 7).value()->id() == first);
+    TFL_CHECK(context.instance.stats().pipelinesCreated == created);
+    TFL_CHECK(!cache.get_or_create({}, 7, 42).ok());
 
     auto package = make_package();
     auto desc = program_desc(package);
@@ -76,67 +76,67 @@ int main() {
         });
         auto vertexPackage = rhi::ShaderPackage::create(std::move(vertexDesc));
         auto fragmentPackage = rhi::ShaderPackage::create(std::move(fragmentDesc));
-        TRUFFLE_CHECK(vertexPackage.ok() && fragmentPackage.ok());
+        TFL_CHECK(vertexPackage.ok() && fragmentPackage.ok());
         auto split = desc;
         split.vertex.package = &vertexPackage.value();
         split.fragment.package = &fragmentPackage.value();
-        TRUFFLE_CHECK(cache.register_program(9, split).ok());
+        TFL_CHECK(cache.register_program(9, split).ok());
     }
-    TRUFFLE_CHECK(cache.get_or_create({}, 9).ok());
+    TFL_CHECK(cache.get_or_create({}, 9).ok());
     auto requiredDesc = package.desc();
     requiredDesc.requiredFeatures = {rhi::Feature::external_memory};
     auto requiredPackage = rhi::ShaderPackage::create(std::move(requiredDesc));
-    TRUFFLE_CHECK(requiredPackage.ok());
+    TFL_CHECK(requiredPackage.ok());
     const auto unsupported = cache.register_program(7, program_desc(requiredPackage.value()));
-    TRUFFLE_CHECK(unsupported.code == base::StatusCode::unsupported);
+    TFL_CHECK(unsupported.code == base::StatusCode::unsupported);
     auto pushDesc = package.desc();
     for (auto& variant : pushDesc.variants) {
         variant.reflection.pushConstants = {{.stage = variant.stage, .size = 16}};
     }
     auto pushPackage = rhi::ShaderPackage::create(std::move(pushDesc));
-    TRUFFLE_CHECK(pushPackage.ok());
-    TRUFFLE_CHECK(cache.register_program(7, program_desc(pushPackage.value())).code ==
+    TFL_CHECK(pushPackage.ok());
+    TFL_CHECK(cache.register_program(7, program_desc(pushPackage.value())).code ==
                    base::StatusCode::unsupported);
     auto bad = desc;
     bad.fragment.package = nullptr;
-    TRUFFLE_CHECK(!cache.register_program(7, bad).ok());
+    TFL_CHECK(!cache.register_program(7, bad).ok());
     bad = desc;
     bad.fragment.target = rhi::ShaderTarget::spirv;
-    TRUFFLE_CHECK(!cache.register_program(7, bad).ok());
+    TFL_CHECK(!cache.register_program(7, bad).ok());
     bad = desc;
     bad.fragment.entryPoint = "missing";
-    TRUFFLE_CHECK(!cache.register_program(7, bad).ok());
+    TFL_CHECK(!cache.register_program(7, bad).ok());
     bad = desc;
     bad.vertex.permutation = "missing";
-    TRUFFLE_CHECK(!cache.register_program(7, bad).ok());
+    TFL_CHECK(!cache.register_program(7, bad).ok());
     bad = desc;
     bad.vertex.stage = rhi::ShaderStage::compute;
-    TRUFFLE_CHECK(!cache.register_program(7, bad).ok());
+    TFL_CHECK(!cache.register_program(7, bad).ok());
     bad = desc;
     bad.pipeline.colorTargets = {{.writeMask = 0x40}};
-    TRUFFLE_CHECK(!cache.register_program(7, bad).ok());
+    TFL_CHECK(!cache.register_program(7, bad).ok());
     bad = desc;
     bad.pipeline.dynamicState = rhi::DynamicState::viewport;
-    TRUFFLE_CHECK(cache.register_program(7, bad).code == base::StatusCode::unsupported);
-    TRUFFLE_CHECK(cache.get_or_create({}, 7).value()->id() == first);
+    TFL_CHECK(cache.register_program(7, bad).code == base::StatusCode::unsupported);
+    TFL_CHECK(cache.get_or_create({}, 7).value()->id() == first);
 
     auto candidate = cache.stage_program(desc);
-    TRUFFLE_CHECK(candidate.ok());
-    TRUFFLE_CHECK(cache.get_or_create({}, 7).value()->id() == first);
+    TFL_CHECK(candidate.ok());
+    TFL_CHECK(cache.get_or_create({}, 7).value()->id() == first);
     renderer::PipelineCache otherCache(context.device);
-    TRUFFLE_CHECK(!otherCache.commit_program(7, std::move(candidate).value()).ok());
-    TRUFFLE_CHECK(cache.commit_program(7, std::move(candidate).value()).ok());
+    TFL_CHECK(!otherCache.commit_program(7, std::move(candidate).value()).ok());
+    TFL_CHECK(cache.commit_program(7, std::move(candidate).value()).ok());
     const auto second = cache.get_or_create({}, 7).value()->id();
-    TRUFFLE_CHECK(second != first);
-    TRUFFLE_CHECK(!cache.commit_program(7, std::move(candidate).value()).ok());
-    TRUFFLE_CHECK(cache.register_program(7, desc, 42).ok());
-    TRUFFLE_CHECK(cache.get_or_create({}, 7, 42).value()->id() != second);
+    TFL_CHECK(second != first);
+    TFL_CHECK(!cache.commit_program(7, std::move(candidate).value()).ok());
+    TFL_CHECK(cache.register_program(7, desc, 42).ok());
+    TFL_CHECK(cache.get_or_create({}, 7, 42).value()->id() != second);
 
     auto wrongStages = renderer::ShaderBinding{
         tests::make_shader(context.device, rhi::ShaderStage::compute),
         tests::make_shader(context.device, rhi::ShaderStage::fragment)};
-    TRUFFLE_CHECK(!cache.register_shaders(7, std::move(wrongStages), {}).ok());
-    TRUFFLE_CHECK(cache.get_or_create({}, 7).value()->id() == second);
+    TFL_CHECK(!cache.register_shaders(7, std::move(wrongStages), {}).ok());
+    TFL_CHECK(cache.get_or_create({}, 7).value()->id() == second);
 
     auto layoutResult = context.device.create_bind_group_layout({
         .group = 0,
@@ -144,12 +144,12 @@ int main() {
                      .visibility = rhi::ShaderStageMask::fragment,
                      .minimumBufferSize = 16}},
     });
-    TRUFFLE_CHECK(layoutResult.ok());
+    TFL_CHECK(layoutResult.ok());
     auto layout = std::move(layoutResult).value();
     auto pipelineLayoutResult = context.device.create_pipeline_layout({
         .bindGroupLayouts = {&layout},
     });
-    TRUFFLE_CHECK(pipelineLayoutResult.ok());
+    TFL_CHECK(pipelineLayoutResult.ok());
     auto pipelineLayout = std::move(pipelineLayoutResult).value();
     const auto shaders = [&](std::size_t minimumSize = 16) {
         return renderer::ShaderBinding{
@@ -159,32 +159,32 @@ int main() {
                                  .binding = 0, .minimumSize = minimumSize}})};
     };
     // Missing reflection layout fails before changing the working material.
-    TRUFFLE_CHECK(!cache.register_shaders(7, shaders(), {}).ok());
+    TFL_CHECK(!cache.register_shaders(7, shaders(), {}).ok());
     // A different pipeline-layout identity is rejected at commit.
     auto changedLayout = cache.stage_shaders(shaders(), {.layout = &pipelineLayout});
-    TRUFFLE_CHECK(changedLayout.ok());
-    TRUFFLE_CHECK(!cache.commit_program(7, std::move(changedLayout).value()).ok());
-    TRUFFLE_CHECK(cache.get_or_create({}, 7).value()->id() == second);
-    TRUFFLE_CHECK(cache.commit_program(8, std::move(changedLayout).value()).ok());
+    TFL_CHECK(changedLayout.ok());
+    TFL_CHECK(!cache.commit_program(7, std::move(changedLayout).value()).ok());
+    TFL_CHECK(cache.get_or_create({}, 7).value()->id() == second);
+    TFL_CHECK(cache.commit_program(8, std::move(changedLayout).value()).ok());
     // Both signatures fit the same layout, but publication must compare the
     // reflected binding contents, not just layout identity or binding count.
     const auto boundProgramId = cache.get_or_create({}, 8).value()->id();
     auto changedBindings = cache.stage_shaders(shaders(4), {.layout = &pipelineLayout});
-    TRUFFLE_CHECK(changedBindings.ok());
+    TFL_CHECK(changedBindings.ok());
     const auto bindingStatus =
         cache.commit_program(8, std::move(changedBindings).value());
-    TRUFFLE_CHECK(bindingStatus.code == base::StatusCode::invalid_argument);
-    TRUFFLE_CHECK(cache.get_or_create({}, 8).value()->id() == boundProgramId);
+    TFL_CHECK(bindingStatus.code == base::StatusCode::invalid_argument);
+    TFL_CHECK(cache.get_or_create({}, 8).value()->id() == boundProgramId);
 
     auto arenaResult = context.device.create_descriptor_arena();
-    TRUFFLE_CHECK(arenaResult.ok());
+    TFL_CHECK(arenaResult.ok());
     auto arena = std::move(arenaResult).value();
     auto uniform = tests::make_buffer(context.device, 16, rhi::BufferUsage::uniform);
     auto groupResult = context.device.create_bind_group({
         .layout = &layout, .arena = &arena,
         .entries = {{.binding = 0, .buffer = &uniform, .size = 16}},
     });
-    TRUFFLE_CHECK(groupResult.ok());
+    TFL_CHECK(groupResult.ok());
     auto group = std::move(groupResult).value();
 
     renderer::Renderer renderer(context.device, &cache);
@@ -197,36 +197,36 @@ int main() {
             rhi::RenderPassDesc{}, std::vector<renderer::RenderBatch>{batch}));
         return result;
     };
-    TRUFFLE_CHECK(!renderer.render(graph()).ok());
+    TFL_CHECK(!renderer.render(graph()).ok());
     batch.bindGroups = {{.bindings = &group}};
-    TRUFFLE_CHECK(renderer.render(graph()).ok());
+    TFL_CHECK(renderer.render(graph()).ok());
     batch.bindGroups.push_back({.bindings = &group});
-    TRUFFLE_CHECK(!renderer.render(graph()).ok());
+    TFL_CHECK(!renderer.render(graph()).ok());
     batch.bindGroups.clear();
     batch.material = 404;
     const auto status = renderer.render(graph());
-    TRUFFLE_CHECK(status.code == base::StatusCode::invalid_argument);
-    TRUFFLE_CHECK(status.message.find("not registered") != std::string::npos);
+    TFL_CHECK(status.code == base::StatusCode::invalid_argument);
+    TFL_CHECK(status.message.find("not registered") != std::string::npos);
 
     // Pass attachment signatures are checked, not used as lossy hash keys.
     auto targetResult = context.device.create_texture({
         .extent = {16, 16, 1}, .format = rhi::TextureFormat::rgba8_unorm,
         .usage = rhi::TextureUsage::color_attachment,
     });
-    TRUFFLE_CHECK(targetResult.ok());
+    TFL_CHECK(targetResult.ok());
     auto target = std::move(targetResult).value();
-    TRUFFLE_CHECK(cache.prepare_render_pass({
+    TFL_CHECK(cache.prepare_render_pass({
         .extent = {16, 16}, .colorAttachments = {{.texture = &target}}}).ok());
-    TRUFFLE_CHECK(!cache.get_or_create({}, 7).ok());
-    TRUFFLE_CHECK(!cache.prepare_render_pass({
+    TFL_CHECK(!cache.get_or_create({}, 7).ok());
+    TFL_CHECK(!cache.prepare_render_pass({
         .colorAttachments = {{.texture = nullptr}}}).ok());
-    TRUFFLE_CHECK(cache.prepare_render_pass({}).ok());
-    TRUFFLE_CHECK(cache.get_or_create({}, 7).ok());
+    TFL_CHECK(cache.prepare_render_pass({}).ok());
+    TFL_CHECK(cache.get_or_create({}, 7).ok());
     cache.invalidate(7);
-    TRUFFLE_CHECK(!cache.get_or_create({}, 7).ok());
-    TRUFFLE_CHECK(!cache.get_or_create({}, 7, 42).ok());
-    TRUFFLE_CHECK(cache.get_or_create({}, 8).ok());
+    TFL_CHECK(!cache.get_or_create({}, 7).ok());
+    TFL_CHECK(!cache.get_or_create({}, 7, 42).ok());
+    TFL_CHECK(cache.get_or_create({}, 8).ok());
     cache.invalidate_all();
-    TRUFFLE_CHECK(!cache.get_or_create({}, 8).ok());
+    TFL_CHECK(!cache.get_or_create({}, 8).ok());
     return 0;
 }

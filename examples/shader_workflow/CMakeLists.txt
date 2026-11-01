@@ -15,7 +15,7 @@ if(COMMAND truffle_target_warnings)
     truffle_target_warnings(truffle_shader_workflow)
 endif()
 
-if(TRUFFLE_BUILD_TESTS AND TRUFFLE_SHADER_ENABLE_GLSLANG)
+if(TFL_BUILD_TESTS AND TFL_SHADER_ENABLE_GLSLANG)
     add_test(NAME truffle_shader_workflow
         COMMAND truffle_shader_workflow "${CMAKE_CURRENT_SOURCE_DIR}/shader.frag")
 endif()

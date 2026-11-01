@@ -14,19 +14,19 @@
       "binaryDir": "${sourceDir}/build/dev",
       "cacheVariables": {
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
-        "TRUFFLE_BUILD_BACKEND_NULL": "ON",
-        "TRUFFLE_BUILD_BACKEND_METAL": "ON",
-        "TRUFFLE_BUILD_BACKEND_VULKAN": "ON",
-        "TRUFFLE_BUILD_BACKEND_OPENGL": "ON",
-        "TRUFFLE_BUILD_BACKEND_OPENGLES": "ON",
-        "TRUFFLE_BUILD_BACKEND_DIRECT3D": "ON",
-        "TRUFFLE_BUILD_BACKEND_WEBGPU": "ON",
-        "TRUFFLE_BUILD_BACKEND_WEBGL2": "ON",
-        "TRUFFLE_BUILD_EXAMPLES": "ON",
-        "TRUFFLE_BUILD_TESTS": "ON",
-        "TRUFFLE_BUILD_SHADERC": "ON",
-        "TRUFFLE_SHADER_ENABLE_GLSLANG": "ON",
-        "TRUFFLE_INSTALL": "ON"
+        "TFL_BUILD_BACKEND_NULL": "ON",
+        "TFL_BUILD_BACKEND_METAL": "ON",
+        "TFL_BUILD_BACKEND_VULKAN": "ON",
+        "TFL_BUILD_BACKEND_OPENGL": "ON",
+        "TFL_BUILD_BACKEND_OPENGLES": "ON",
+        "TFL_BUILD_BACKEND_DIRECT3D": "ON",
+        "TFL_BUILD_BACKEND_WEBGPU": "ON",
+        "TFL_BUILD_BACKEND_WEBGL2": "ON",
+        "TFL_BUILD_EXAMPLES": "ON",
+        "TFL_BUILD_TESTS": "ON",
+        "TFL_BUILD_SHADERC": "ON",
+        "TFL_SHADER_ENABLE_GLSLANG": "ON",
+        "TFL_INSTALL": "ON"
       }
     },
     {
@@ -35,7 +35,7 @@
       "inherits": "dev",
       "binaryDir": "${sourceDir}/build/ci",
       "cacheVariables": {
-        "TRUFFLE_WARNINGS_AS_ERRORS": "ON"
+        "TFL_WARNINGS_AS_ERRORS": "ON"
       }
     }
   ],

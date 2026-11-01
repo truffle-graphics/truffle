@@ -15,13 +15,13 @@ set(_host_workspace_sources
     src/simulation_workspace.cpp
     src/workspace.cpp)
 
-if(APPLE AND TRUFFLE_BUILD_BACKEND_METAL)
+if(APPLE AND TFL_BUILD_BACKEND_METAL)
     list(APPEND _host_workspace_sources src/host_window_metal.mm)
 endif()
-if(APPLE AND TRUFFLE_BUILD_BACKEND_OPENGL)
+if(APPLE AND TFL_BUILD_BACKEND_OPENGL)
     list(APPEND _host_workspace_sources src/host_window_cocoa_view.mm)
 endif()
-if(APPLE AND (TRUFFLE_BUILD_BACKEND_METAL OR TRUFFLE_BUILD_BACKEND_OPENGL))
+if(APPLE AND (TFL_BUILD_BACKEND_METAL OR TFL_BUILD_BACKEND_OPENGL))
     list(APPEND _host_workspace_sources src/host_presenter.cpp)
 endif()
 
@@ -29,22 +29,22 @@ add_executable(truffle_host_workspace_example ${_host_workspace_sources})
 target_include_directories(truffle_host_workspace_example PRIVATE src)
 
 set(_host_workspace_libs glfw truffle_backend_null truffle_encom_renderer truffle_renderer)
-if(APPLE AND TRUFFLE_BUILD_BACKEND_METAL)
+if(APPLE AND TFL_BUILD_BACKEND_METAL)
     list(APPEND _host_workspace_libs truffle_backend_metal)
-    target_compile_definitions(truffle_host_workspace_example PRIVATE TRUFFLE_HOST_WORKSPACE_METAL=1)
+    target_compile_definitions(truffle_host_workspace_example PRIVATE TFL_HOST_WORKSPACE_METAL=1)
 endif()
-if(APPLE AND TRUFFLE_BUILD_BACKEND_OPENGL)
+if(APPLE AND TFL_BUILD_BACKEND_OPENGL)
     list(APPEND _host_workspace_libs truffle_backend_opengl)
-    target_compile_definitions(truffle_host_workspace_example PRIVATE TRUFFLE_HOST_WORKSPACE_OPENGL=1)
+    target_compile_definitions(truffle_host_workspace_example PRIVATE TFL_HOST_WORKSPACE_OPENGL=1)
 endif()
-if(TRUFFLE_BUILD_BACKEND_VULKAN)
+if(TFL_BUILD_BACKEND_VULKAN)
     list(APPEND _host_workspace_libs truffle_backend_vulkan)
-    target_compile_definitions(truffle_host_workspace_example PRIVATE TRUFFLE_BUILD_BACKEND_VULKAN=1)
+    target_compile_definitions(truffle_host_workspace_example PRIVATE TFL_BUILD_BACKEND_VULKAN=1)
 endif()
 
 target_link_libraries(truffle_host_workspace_example PRIVATE ${_host_workspace_libs})
 
-if(TRUFFLE_BUILD_TESTS)
+if(TFL_BUILD_TESTS)
     add_test(
         NAME truffle_host_workspace_editor_smoke
         COMMAND truffle_host_workspace_example --smoke --workspace editor)
@@ -54,7 +54,7 @@ if(TRUFFLE_BUILD_TESTS)
     add_test(
         NAME truffle_host_workspace_simulation_smoke
         COMMAND truffle_host_workspace_example --smoke --workspace simulation)
-    if(APPLE AND TRUFFLE_BUILD_BACKEND_METAL)
+    if(APPLE AND TFL_BUILD_BACKEND_METAL)
         # Opens a real window, so it needs a logged-in macOS GUI session.
         add_test(
             NAME truffle_host_workspace_metal_window
@@ -63,7 +63,7 @@ if(TRUFFLE_BUILD_TESTS)
                              LABELS "presentation;host-window;validation"
                              TIMEOUT 60)
     endif()
-    if(APPLE AND TRUFFLE_BUILD_BACKEND_OPENGL)
+    if(APPLE AND TFL_BUILD_BACKEND_OPENGL)
         # Presents into the host's NSView; needs a logged-in macOS GUI session.
         add_test(
             NAME truffle_host_workspace_opengl_window

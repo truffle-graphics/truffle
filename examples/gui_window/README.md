@@ -20,8 +20,8 @@ ships as prepared MSL, so no shader compiler is needed.
 
 ```sh
 cmake -S . -B build/gui-window \
-  -DTRUFFLE_BUILD_BACKEND_METAL=ON \
-  -DTRUFFLE_BUILD_EXAMPLES=ON
+  -DTFL_BUILD_BACKEND_METAL=ON \
+  -DTFL_BUILD_EXAMPLES=ON
 cmake --build build/gui-window --target truffle_gui_window
 ./build/gui-window/examples/gui_window/truffle_gui_window
 ```

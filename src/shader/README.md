@@ -18,7 +18,7 @@ public types, configuration, dependency records, cache ownership, and rebuild
 state build and link with every compiler adapter disabled; source compilation
 then reports `unsupported`.
 
-Enable `TRUFFLE_SHADER_ENABLE_GLSLANG=ON` to use the pinned GLSL/GLSL ES to
+Enable `TFL_SHADER_ENABLE_GLSLANG=ON` to use the pinned GLSL/GLSL ES to
 Vulkan SPIR-V adapter. This does **not** require building shaderc.
 Canonical SPIR-V reflection also requires pinned `vendor/spirv-headers`, even
 when optional SPIRV-Tools validation is disabled; its license notices are installed.
@@ -30,20 +30,20 @@ installed `Truffle::Shader` consumers resolve its private static link closure.
 `Truffle::RHI` never links those libraries. Renderer can depend directly on the
 compiler-disabled Shader core without acquiring any compiler link dependency.
 
-`TRUFFLE_SHADER_ENABLE_METAL_COMPILER=ON` optionally enables in-process native
-MSL compilation on supported Apple runtimes; `TRUFFLE_SHADER_ENABLE_METALLIB_COMPILER=ON`
+`TFL_SHADER_ENABLE_METAL_COMPILER=ON` optionally enables in-process native
+MSL compilation on supported Apple runtimes; `TFL_SHADER_ENABLE_METALLIB_COMPILER=ON`
 adds offline library output and requires the installed Apple Metal Toolchain.
 These are private, separate capabilities; neither is required for prepared
 package consumers.
-`TRUFFLE_SHADER_ENABLE_DXC=ON` independently enables HLSL 2021 compilation to
-SPIR-V/DXIL and requires `TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS=ON`; the additional
+`TFL_SHADER_ENABLE_DXC=ON` independently enables HLSL 2021 compilation to
+SPIR-V/DXIL and requires `TFL_SHADER_ENABLE_SPIRV_TOOLS=ON`; the additional
 HLSL portable routes use the optional Cross/glslang closure.
-`TRUFFLE_SHADER_ENABLE_SLANG=ON` independently enables native Slang
+`TFL_SHADER_ENABLE_SLANG=ON` independently enables native Slang
 modules/imports to validated Vulkan 1.1 / SPIR-V 1.3, without glslang.
 See [native Slang configuration, pins, limits and tests](../../docs/shader-slang.md).
 
-`TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS=ON` adds real in-process SPIR-V validation.
-`TRUFFLE_SHADER_ENABLE_SPIRV_CROSS=ON` requires a SPIR-V source adapter and that validator,
+`TFL_SHADER_ENABLE_SPIRV_TOOLS=ON` adds real in-process SPIR-V validation.
+`TFL_SHADER_ENABLE_SPIRV_CROSS=ON` requires a SPIR-V source adapter and that validator,
 and adds portable Metal/GLSL output. All are private, optional dependencies.
 Prepare sources explicitly before configuring (configure never downloads):
 
@@ -192,8 +192,8 @@ benchmark, language-server or compiler executable. Prepare sources explicitly:
 ```sh
 git submodule update --init vendor/dawn vendor/abseil \
   vendor/spirv-tools vendor/spirv-headers
-cmake -S . -B build-wgsl -DTRUFFLE_BUILD_SHADERC=ON \
-  -DTRUFFLE_SHADER_ENABLE_TINT=ON -DTRUFFLE_SHADER_ENABLE_SPIRV_TOOLS=ON
+cmake -S . -B build-wgsl -DTFL_BUILD_SHADERC=ON \
+  -DTFL_SHADER_ENABLE_TINT=ON -DTFL_SHADER_ENABLE_SPIRV_TOOLS=ON
 cmake --build build-wgsl --target truffle-shaderc --parallel 2
 ```
 
@@ -293,8 +293,8 @@ No backend maturity is promoted.
 
 ### HLSL and DXC (#189)
 
-Enable `TRUFFLE_SHADER_ENABLE_DXC=ON` and
-`TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS=ON`. glslang is **not** required for
+Enable `TFL_SHADER_ENABLE_DXC=ON` and
+`TFL_SHADER_ENABLE_SPIRV_TOOLS=ON`. glslang is **not** required for
 HLSL-to-SPIR-V/DXIL; the additional portable MSL/GL/ES targets require the
 existing Cross/glslang options. DXC runs in process for both runtime clients
 and shaderc. No compiler executable or subprocess is involved.
@@ -303,8 +303,8 @@ and shaderc. No compiler executable or subprocess is involved.
 git submodule update --init vendor/dxc vendor/spirv-tools vendor/spirv-headers
 git -C vendor/dxc submodule update --init external/SPIRV-Headers \
   external/SPIRV-Tools external/DirectX-Headers
-cmake -S . -B build/hlsl -G Ninja -DTRUFFLE_SHADER_ENABLE_DXC=ON \
-  -DTRUFFLE_SHADER_ENABLE_SPIRV_TOOLS=ON -DTRUFFLE_BUILD_SHADERC=ON
+cmake -S . -B build/hlsl -G Ninja -DTFL_SHADER_ENABLE_DXC=ON \
+  -DTFL_SHADER_ENABLE_SPIRV_TOOLS=ON -DTFL_BUILD_SHADERC=ON
 ```
 
 The source build is deliberately isolated from Truffle's CMake target namespace,
@@ -477,8 +477,8 @@ RHI, Renderer or prepared-package consumers:
 
 | CMake option | Capability |
 | --- | --- |
-| `TRUFFLE_SHADER_ENABLE_METAL_COMPILER=ON` | Optional in-process Metal source compilation and reflection. Requires Apple frameworks, a Metal device, and macOS 26+ at runtime for the reflection API. |
-| `TRUFFLE_SHADER_ENABLE_METALLIB_COMPILER=ON` | Adds offline `metal`/`metallib` output. Requires the first option and the installed Apple Metal Toolchain (`xcrun --find metal` and `xcrun --find metallib`). |
+| `TFL_SHADER_ENABLE_METAL_COMPILER=ON` | Optional in-process Metal source compilation and reflection. Requires Apple frameworks, a Metal device, and macOS 26+ at runtime for the reflection API. |
+| `TFL_SHADER_ENABLE_METALLIB_COMPILER=ON` | Adds offline `metal`/`metallib` output. Requires the first option and the installed Apple Metal Toolchain (`xcrun --find metal` and `xcrun --find metallib`). |
 
 `Compiler::routes()` reports native source only when the runtime Metal/reflection
 capability exists; it reports the separate `metallib` target only when the

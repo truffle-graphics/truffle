@@ -105,9 +105,9 @@ guarantees begin with release, per the linked specification's compatibility poli
 Prepared packages remain compiler-free. Offline and on-demand runtime source
 compilation share the optional Shader library; native backend compilation is a
 separate capability-reported route. Native MSL source/reflection is enabled
-with `TRUFFLE_SHADER_ENABLE_METAL_COMPILER=ON` and requires the macOS 26+
+with `TFL_SHADER_ENABLE_METAL_COMPILER=ON` and requires the macOS 26+
 reflection API at runtime. Offline `metallib` output is a separate capability,
-enabled with `TRUFFLE_SHADER_ENABLE_METALLIB_COMPILER=ON` and the installed
+enabled with `TFL_SHADER_ENABLE_METALLIB_COMPILER=ON` and the installed
 Apple Metal Toolchain. Both native targets require an `interfaceDeclaration`
 but no experimental opt-in (#215); only observable Metal reflection is
 compiler-validated, while unavailable IO/push/workgroup/default metadata stays
@@ -118,7 +118,7 @@ The remaining #73 source route is Slang (#190); HLSL/DXC (#189) and WGSL/Tint
 (#191) are implemented as bounded routes, not an all-input/all-output cross
 product.
 Pinned glslang is linked only by the explicitly
-enabled Shader adapter (`TRUFFLE_SHADER_ENABLE_GLSLANG`) and never by RHI,
+enabled Shader adapter (`TFL_SHADER_ENABLE_GLSLANG`) and never by RHI,
 backends or compiler-disabled Renderer consumers. Slang is one planned authoring route, not Truffle's
 mandatory shader language. Generated Metal and WGSL variants are rejected by
 default and require an explicit experimental package option. The CLI exposes
@@ -164,8 +164,8 @@ own Metal-reflection checks and declaration assertions.
   dispatch with exact storage-buffer readback. Graphics pipeline capability
   remains separately gated.
 - `truffle-shaderc` self-test and file-based assemble/inspect smoke tests run in
-  CI when `TRUFFLE_BUILD_SHADERC=ON`.
-- With `TRUFFLE_SHADER_ENABLE_GLSLANG=ON`, local tests compile a representative shader
+  CI when `TFL_BUILD_SHADERC=ON`.
+- With `TFL_SHADER_ENABLE_GLSLANG=ON`, local tests compile a representative shader
   twice to prove deterministic SPIR-V packages and requires invalid GLSL to
   return bounded compiler diagnostics.
 
@@ -174,8 +174,8 @@ Recording a target blob does not by itself advance a backend maturity level.
 
 ## Tool Usage
 
-Build the package assembler with `TRUFFLE_BUILD_SHADERC=ON`. Independently
-enable source compilation with `TRUFFLE_SHADER_ENABLE_GLSLANG=ON`; the default
+Build the package assembler with `TFL_BUILD_SHADERC=ON`. Independently
+enable source compilation with `TFL_SHADER_ENABLE_GLSLANG=ON`; the default
 core Shader/RHI/Renderer configuration remains compiler-free, and runtime
 Shader clients can leave shaderc disabled.
 

@@ -9,8 +9,8 @@ function(truffle_add_format_targets)
         "${PROJECT_SOURCE_DIR}/examples/host_workspace/src/*.cpp"
         "${PROJECT_SOURCE_DIR}/examples/host_workspace/src/*.hpp")
 
-    find_program(TRUFFLE_CLANG_FORMAT clang-format)
-    if(NOT TRUFFLE_CLANG_FORMAT)
+    find_program(TFL_CLANG_FORMAT clang-format)
+    if(NOT TFL_CLANG_FORMAT)
         add_custom_target(
             truffle_format
             COMMAND "${CMAKE_COMMAND}" -E echo
@@ -26,12 +26,12 @@ function(truffle_add_format_targets)
 
     add_custom_target(
         truffle_format
-        COMMAND "${TRUFFLE_CLANG_FORMAT}" -i ${truffle_format_files}
+        COMMAND "${TFL_CLANG_FORMAT}" -i ${truffle_format_files}
         COMMAND_EXPAND_LISTS
         VERBATIM)
     add_custom_target(
         truffle_format_check
-        COMMAND "${TRUFFLE_CLANG_FORMAT}" --dry-run --Werror ${truffle_format_files}
+        COMMAND "${TFL_CLANG_FORMAT}" --dry-run --Werror ${truffle_format_files}
         COMMAND_EXPAND_LISTS
         VERBATIM)
 endfunction()

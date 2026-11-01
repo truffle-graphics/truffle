@@ -1,5 +1,5 @@
-#ifndef TRUFFLE_EXAMPLE_COLOR
-#define TRUFFLE_EXAMPLE_COLOR
+#ifndef TFL_EXAMPLE_COLOR
+#define TFL_EXAMPLE_COLOR
 #include "tint.glsl"
 
 vec4 shade() {

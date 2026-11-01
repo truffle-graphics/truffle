@@ -1,9 +1,9 @@
 #include <metal_stdlib>
 using namespace metal;
-#ifndef TRUFFLE_MSL_CONFIG
+#ifndef TFL_MSL_CONFIG
 #error MSL configuration was not supplied
 #endif
-#if TRUFFLE_MSL_CONFIG != 1
+#if TFL_MSL_CONFIG != 1
 #error MSL configuration mismatch
 #endif
 struct VertexInput {

@@ -28,7 +28,7 @@ int main(int argc, char** argv) {
                    route.target == rhi::ShaderTarget::spirv;
         })) {
         return failure("GLSL-to-SPIR-V compilation is unavailable; enable "
-                       "TRUFFLE_SHADER_ENABLE_GLSLANG for this example");
+                       "TFL_SHADER_ENABLE_GLSLANG for this example");
     }
 
     auto source = shader::read_source(argv[1]);

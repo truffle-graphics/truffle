@@ -70,9 +70,9 @@ Local evidence (2026-10-29, Apple M3 Pro, macOS 27.0.1, Homebrew MoltenVK
 ```sh
 cmake -S . -B build/vulkan -G Ninja -DCMAKE_BUILD_TYPE=Debug \
   -DCMAKE_OSX_SYSROOT="$(xcrun --sdk macosx --show-sdk-path)" \
-  -DTRUFFLE_WARNINGS_AS_ERRORS=ON -DTRUFFLE_BUILD_TESTS=ON \
-  -DTRUFFLE_BUILD_BACKEND_VULKAN=ON -DTRUFFLE_BUILD_SHADERC=ON \
-  -DTRUFFLE_SHADER_ENABLE_GLSLANG=ON
+  -DTFL_WARNINGS_AS_ERRORS=ON -DTFL_BUILD_TESTS=ON \
+  -DTFL_BUILD_BACKEND_VULKAN=ON -DTFL_BUILD_SHADERC=ON \
+  -DTFL_SHADER_ENABLE_GLSLANG=ON
 cmake --build build/vulkan
 ctest --test-dir build/vulkan --output-on-failure
 ```

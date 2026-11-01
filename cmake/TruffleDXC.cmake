@@ -64,7 +64,7 @@ if(WIN32)
 endif()
 add_dependencies(Truffle::DXC truffle_dxc_build)
 
-if(TRUFFLE_INSTALL)
+if(TFL_INSTALL)
     install(DIRECTORY "${_truffle_dxc_binary}/lib/"
             DESTINATION "${CMAKE_INSTALL_LIBDIR}"
             FILES_MATCHING PATTERN "*dxcompiler*")

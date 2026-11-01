@@ -37,84 +37,84 @@ Decoration filled(Color color) {
 int frame_scheduling() {
     Context context;
     const auto t0 = Clock::now();
-    TRUFFLE_CHECK(context.needs_frame(t0)); // a new tree has never been drawn
-    TRUFFLE_CHECK(context.set_viewport({100, 80}).ok());
+    TFL_CHECK(context.needs_frame(t0)); // a new tree has never been drawn
+    TFL_CHECK(context.set_viewport({100, 80}).ok());
     const auto first = context.prepare_frame(t0);
-    TRUFFLE_CHECK(first.layout.measured == 1 && first.shapes.regenerated == 1);
-    TRUFFLE_CHECK(!context.needs_frame(t0));
-    TRUFFLE_CHECK(!context.has_dirty());
+    TFL_CHECK(first.layout.measured == 1 && first.shapes.regenerated == 1);
+    TFL_CHECK(!context.needs_frame(t0));
+    TFL_CHECK(!context.has_dirty());
 
     // Idle: nothing to draw and no work when a frame is prepared anyway.
-    TRUFFLE_CHECK(!context.needs_frame(t0 + milliseconds(500)));
+    TFL_CHECK(!context.needs_frame(t0 + milliseconds(500)));
     const auto idle = context.prepare_frame(t0);
-    TRUFFLE_CHECK(idle.layout.measured == 0 && idle.layout.arranged == 0 &&
+    TFL_CHECK(idle.layout.measured == 0 && idle.layout.arranged == 0 &&
                   idle.shapes.regenerated == 0);
 
     // Every kind of visible change needs exactly one frame.
     const ElementId panel = context.create(context.root()).value();
-    TRUFFLE_CHECK(context.needs_frame(t0));
+    TFL_CHECK(context.needs_frame(t0));
     static_cast<void>(context.prepare_frame(t0));
-    TRUFFLE_CHECK(!context.needs_frame(t0));
+    TFL_CHECK(!context.needs_frame(t0));
 
-    TRUFFLE_CHECK(context.set_decoration(panel, filled({1, 0, 0, 1})).ok());
-    TRUFFLE_CHECK(context.needs_frame(t0));
-    TRUFFLE_CHECK(context.prepare_frame(t0).shapes.regenerated == 1);
-    TRUFFLE_CHECK(!context.needs_frame(t0));
-    TRUFFLE_CHECK(context.set_decoration(panel, filled({1, 0, 0, 1})).ok());
-    TRUFFLE_CHECK(!context.needs_frame(t0));
+    TFL_CHECK(context.set_decoration(panel, filled({1, 0, 0, 1})).ok());
+    TFL_CHECK(context.needs_frame(t0));
+    TFL_CHECK(context.prepare_frame(t0).shapes.regenerated == 1);
+    TFL_CHECK(!context.needs_frame(t0));
+    TFL_CHECK(context.set_decoration(panel, filled({1, 0, 0, 1})).ok());
+    TFL_CHECK(!context.needs_frame(t0));
 
-    TRUFFLE_CHECK(context.set_clips_children(panel, false).ok());
-    TRUFFLE_CHECK(context.needs_frame(t0));
+    TFL_CHECK(context.set_clips_children(panel, false).ok());
+    TFL_CHECK(context.needs_frame(t0));
     static_cast<void>(context.prepare_frame(t0));
-    TRUFFLE_CHECK(context.set_clips_children(panel, false).ok());
-    TRUFFLE_CHECK(!context.needs_frame(t0));
+    TFL_CHECK(context.set_clips_children(panel, false).ok());
+    TFL_CHECK(!context.needs_frame(t0));
 
     LayoutParams moved;
     moved.width = 10;
     moved.height = 10;
     moved.position = {5, 5};
-    TRUFFLE_CHECK(context.set_layout_params(panel, moved).ok());
-    TRUFFLE_CHECK(context.needs_frame(t0));
+    TFL_CHECK(context.set_layout_params(panel, moved).ok());
+    TFL_CHECK(context.needs_frame(t0));
     static_cast<void>(context.prepare_frame(t0));
-    TRUFFLE_CHECK(!context.needs_frame(t0));
+    TFL_CHECK(!context.needs_frame(t0));
 
     context.request_frame();
-    TRUFFLE_CHECK(context.needs_frame(t0));
+    TFL_CHECK(context.needs_frame(t0));
     static_cast<void>(context.prepare_frame(t0));
-    TRUFFLE_CHECK(!context.needs_frame(t0));
+    TFL_CHECK(!context.needs_frame(t0));
 
     // The viewport resizes the root; the scale changes pixels, not shapes.
-    TRUFFLE_CHECK(context.set_viewport({120, 90}).ok());
-    TRUFFLE_CHECK(context.needs_frame(t0));
-    TRUFFLE_CHECK(context.prepare_frame(t0).shapes.regenerated == 1);
-    TRUFFLE_CHECK(context.set_viewport({120, 90}, 2).ok());
-    TRUFFLE_CHECK(context.needs_frame(t0) && context.scale() == 2.0F);
+    TFL_CHECK(context.set_viewport({120, 90}).ok());
+    TFL_CHECK(context.needs_frame(t0));
+    TFL_CHECK(context.prepare_frame(t0).shapes.regenerated == 1);
+    TFL_CHECK(context.set_viewport({120, 90}, 2).ok());
+    TFL_CHECK(context.needs_frame(t0) && context.scale() == 2.0F);
     const auto rescaled = context.prepare_frame(t0);
-    TRUFFLE_CHECK(rescaled.layout.measured == 0 && rescaled.shapes.regenerated == 0);
-    TRUFFLE_CHECK(context.set_viewport({120, 90}, 2).ok());
-    TRUFFLE_CHECK(!context.needs_frame(t0));
-    TRUFFLE_CHECK((context.viewport() == Size{120, 90}));
+    TFL_CHECK(rescaled.layout.measured == 0 && rescaled.shapes.regenerated == 0);
+    TFL_CHECK(context.set_viewport({120, 90}, 2).ok());
+    TFL_CHECK(!context.needs_frame(t0));
+    TFL_CHECK((context.viewport() == Size{120, 90}));
 
     const float nan = std::numeric_limits<float>::quiet_NaN();
-    TRUFFLE_CHECK(!context.set_viewport({-1, 10}).ok());
-    TRUFFLE_CHECK(!context.set_viewport({10, nan}).ok());
-    TRUFFLE_CHECK(!context.set_viewport({10, 10}, 0).ok());
-    TRUFFLE_CHECK(!context.set_viewport({10, 10}, nan).ok());
-    TRUFFLE_CHECK(!context.needs_frame(t0) && context.scale() == 2.0F);
+    TFL_CHECK(!context.set_viewport({-1, 10}).ok());
+    TFL_CHECK(!context.set_viewport({10, nan}).ok());
+    TFL_CHECK(!context.set_viewport({10, 10}, 0).ok());
+    TFL_CHECK(!context.set_viewport({10, 10}, nan).ok());
+    TFL_CHECK(!context.needs_frame(t0) && context.scale() == 2.0F);
 
     // Timed updates: the earliest is reported; due ones are consumed.
-    TRUFFLE_CHECK(!context.next_update().has_value());
+    TFL_CHECK(!context.next_update().has_value());
     context.request_frame_at(t0 + milliseconds(10));
     context.request_frame_at(t0 + milliseconds(5));
-    TRUFFLE_CHECK(context.next_update() == t0 + milliseconds(5));
-    TRUFFLE_CHECK(!context.needs_frame(t0 + milliseconds(4)));
-    TRUFFLE_CHECK(context.needs_frame(t0 + milliseconds(5)));
+    TFL_CHECK(context.next_update() == t0 + milliseconds(5));
+    TFL_CHECK(!context.needs_frame(t0 + milliseconds(4)));
+    TFL_CHECK(context.needs_frame(t0 + milliseconds(5)));
     static_cast<void>(context.prepare_frame(t0 + milliseconds(5)));
-    TRUFFLE_CHECK(context.next_update() == t0 + milliseconds(10));
-    TRUFFLE_CHECK(!context.needs_frame(t0 + milliseconds(6)));
+    TFL_CHECK(context.next_update() == t0 + milliseconds(10));
+    TFL_CHECK(!context.needs_frame(t0 + milliseconds(6)));
     static_cast<void>(context.prepare_frame(t0 + milliseconds(20)));
-    TRUFFLE_CHECK(!context.next_update().has_value());
-    TRUFFLE_CHECK(!context.needs_frame(t0 + milliseconds(30)));
+    TFL_CHECK(!context.next_update().has_value());
+    TFL_CHECK(!context.needs_frame(t0 + milliseconds(30)));
     return 0;
 }
 
@@ -123,60 +123,60 @@ int input_state() {
     static_cast<void>(context.prepare_frame(Clock::now()));
     const auto now = Clock::now();
     const auto& input = context.input();
-    TRUFFLE_CHECK(!input.pointer.has_value() && input.focused);
+    TFL_CHECK(!input.pointer.has_value() && input.focused);
 
     context.handle(PointerEvent{.action = PointerAction::move, .position = {3, 4}});
-    TRUFFLE_CHECK(input.pointer.has_value() && input.pointer->x == 3 && input.pointer->y == 4);
+    TFL_CHECK(input.pointer.has_value() && input.pointer->x == 3 && input.pointer->y == 4);
     context.handle(PointerEvent{.action = PointerAction::down,
                                 .position = {5, 6},
                                 .button = PointerButton::primary,
                                 .modifiers = Modifiers::shift});
-    TRUFFLE_CHECK(input.pressed(PointerButton::primary));
-    TRUFFLE_CHECK(!input.pressed(PointerButton::secondary));
-    TRUFFLE_CHECK(truffle::gui::has(input.modifiers, Modifiers::shift));
+    TFL_CHECK(input.pressed(PointerButton::primary));
+    TFL_CHECK(!input.pressed(PointerButton::secondary));
+    TFL_CHECK(truffle::gui::has(input.modifiers, Modifiers::shift));
     context.handle(PointerEvent{.action = PointerAction::down,
                                 .position = {5, 6},
                                 .button = PointerButton::secondary});
     context.handle(PointerEvent{.action = PointerAction::up,
                                 .position = {7, 6},
                                 .button = PointerButton::primary});
-    TRUFFLE_CHECK(!input.pressed(PointerButton::primary));
-    TRUFFLE_CHECK(input.pressed(PointerButton::secondary));
-    TRUFFLE_CHECK(input.pointer->x == 7 && input.modifiers == Modifiers::none);
+    TFL_CHECK(!input.pressed(PointerButton::primary));
+    TFL_CHECK(input.pressed(PointerButton::secondary));
+    TFL_CHECK(input.pointer->x == 7 && input.modifiers == Modifiers::none);
     context.handle(PointerEvent{.action = PointerAction::cancel});
-    TRUFFLE_CHECK(input.buttons == 0 && !input.pointer.has_value());
+    TFL_CHECK(input.buttons == 0 && !input.pointer.has_value());
 
     context.handle(WheelEvent{.position = {8, 9}, .delta_y = -3, .precise = true});
-    TRUFFLE_CHECK(input.pointer->x == 8);
+    TFL_CHECK(input.pointer->x == 8);
     context.handle(PointerEvent{.action = PointerAction::leave});
-    TRUFFLE_CHECK(!input.pointer.has_value());
+    TFL_CHECK(!input.pointer.has_value());
 
     context.handle(KeyEvent{.key = Key::a,
                             .modifiers = Modifiers::control | Modifiers::super});
-    TRUFFLE_CHECK(truffle::gui::has(input.modifiers, Modifiers::super) &&
+    TFL_CHECK(truffle::gui::has(input.modifiers, Modifiers::super) &&
                   !truffle::gui::has(input.modifiers, Modifiers::alt));
     context.handle(TextEvent{"\xC3\xA9"});
 
     context.handle(CompositionEvent{.preedit = "abc", .selection_begin = 2,
                                     .selection_end = 9});
-    TRUFFLE_CHECK(input.composition.preedit == "abc");
-    TRUFFLE_CHECK(input.composition.selection_begin == 2 &&
+    TFL_CHECK(input.composition.preedit == "abc");
+    TFL_CHECK(input.composition.selection_begin == 2 &&
                   input.composition.selection_end == 3);
     context.handle(CompositionEvent{.preedit = "x", .selection_begin = 4,
                                     .selection_end = 0});
-    TRUFFLE_CHECK(input.composition.selection_begin == 1 &&
+    TFL_CHECK(input.composition.selection_begin == 1 &&
                   input.composition.selection_end == 1);
 
     context.handle(PointerEvent{.action = PointerAction::down,
                                 .button = PointerButton::middle});
     context.handle(FocusEvent{.focused = false});
-    TRUFFLE_CHECK(!input.focused && input.buttons == 0 &&
+    TFL_CHECK(!input.focused && input.buttons == 0 &&
                   input.modifiers == Modifiers::none && input.composition.preedit.empty());
     context.handle(FocusEvent{.focused = true});
-    TRUFFLE_CHECK(input.focused);
+    TFL_CHECK(input.focused);
 
     // Input alone changes nothing visible, so it needs no frame.
-    TRUFFLE_CHECK(!context.needs_frame(now));
+    TFL_CHECK(!context.needs_frame(now));
     return 0;
 }
 
@@ -200,19 +200,19 @@ int host_services() {
     context.host().set_cursor(Cursor::hand);
     context.host().set_clipboard_text("lost");
     context.host().set_text_input_area(truffle::gui::Rect{1, 2, 3, 4});
-    TRUFFLE_CHECK(context.host().clipboard_text().empty());
+    TFL_CHECK(context.host().clipboard_text().empty());
 
     RecordingHost recording;
     context.set_host(&recording);
     context.host().set_cursor(Cursor::text);
     context.host().set_clipboard_text("copied");
     context.host().set_text_input_area(truffle::gui::Rect{1, 2, 3, 4});
-    TRUFFLE_CHECK(recording.cursor == Cursor::text);
-    TRUFFLE_CHECK(context.host().clipboard_text() == "copied");
-    TRUFFLE_CHECK(recording.area.has_value() && recording.area->width == 3);
+    TFL_CHECK(recording.cursor == Cursor::text);
+    TFL_CHECK(context.host().clipboard_text() == "copied");
+    TFL_CHECK(recording.area.has_value() && recording.area->width == 3);
 
     context.set_host(nullptr);
-    TRUFFLE_CHECK(context.host().clipboard_text().empty());
+    TFL_CHECK(context.host().clipboard_text().empty());
     return 0;
 }
 

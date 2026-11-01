@@ -22,9 +22,9 @@ From the repository root, using an existing suitable build directory or a new on
 
 ```sh
 cmake -S . -B build/minimum-renderer \
-  -DTRUFFLE_BUILD_BACKEND_METAL=ON \
-  -DTRUFFLE_SHADER_ENABLE_METAL_COMPILER=ON \
-  -DTRUFFLE_BUILD_EXAMPLES=ON
+  -DTFL_BUILD_BACKEND_METAL=ON \
+  -DTFL_SHADER_ENABLE_METAL_COMPILER=ON \
+  -DTFL_BUILD_EXAMPLES=ON
 cmake --build build/minimum-renderer --target truffle_minimum_renderer
 ./build/minimum-renderer/examples/minimum_renderer/truffle_minimum_renderer
 ```

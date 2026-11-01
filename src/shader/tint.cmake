@@ -33,9 +33,9 @@ target_sources(truffle_shader PRIVATE tint_adapter.cpp)
 target_link_libraries(truffle_shader PRIVATE tint_lang_wgsl_reader
     tint_lang_wgsl_inspector tint_lang_wgsl_writer tint_lang_spirv_writer
     tint_lang_spirv_writer_helpers tint_lang_spirv_reader)
-target_compile_definitions(truffle_shader PRIVATE TRUFFLE_SHADER_HAS_TINT=1
-    TRUFFLE_TINT_REVISION="46b4670bc67cb4f6d34f6ce6a46ba7e1d6059abf"
-    TRUFFLE_ABSEIL_REVISION="04dc59d2c83238cb1fcb49083e5e416643a899ce")
+target_compile_definitions(truffle_shader PRIVATE TFL_SHADER_HAS_TINT=1
+    TFL_TINT_REVISION="46b4670bc67cb4f6d34f6ce6a46ba7e1d6059abf"
+    TFL_ABSEIL_REVISION="04dc59d2c83238cb1fcb49083e5e416643a899ce")
 
 # Tint exposes many granular static archives, but no upstream CMake export.
 # Export only the transitive closure used here; headers stay build-private.
@@ -47,11 +47,11 @@ function(truffle_install_tint_closure target)
     if(alias)
         set(target "${alias}")
     endif()
-    get_property(visited GLOBAL PROPERTY TRUFFLE_TINT_EXPORTS)
+    get_property(visited GLOBAL PROPERTY TFL_TINT_EXPORTS)
     if(target IN_LIST visited)
         return()
     endif()
-    set_property(GLOBAL APPEND PROPERTY TRUFFLE_TINT_EXPORTS "${target}")
+    set_property(GLOBAL APPEND PROPERTY TFL_TINT_EXPORTS "${target}")
     if(target MATCHES "^tint_" OR target MATCHES "^dawn_" OR target MATCHES "^absl_")
         get_target_property(includes "${target}" INTERFACE_INCLUDE_DIRECTORIES)
         if(includes)
@@ -79,7 +79,7 @@ function(truffle_install_tint_closure target)
                 ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}")
     endif()
 endfunction()
-if(TRUFFLE_INSTALL)
+if(TFL_INSTALL)
     foreach(root tint_lang_wgsl_reader tint_lang_wgsl_inspector tint_lang_wgsl_writer
                  tint_lang_spirv_writer tint_lang_spirv_writer_helpers tint_lang_spirv_reader)
         truffle_install_tint_closure("${root}")

@@ -11,7 +11,7 @@ namespace {
 using namespace truffle;
 
 rhi::ShaderPackage make_package(bool invalidSource = false) {
-    const auto path = std::string(TRUFFLE_RENDERER_FIXTURE_DIR) +
+    const auto path = std::string(TFL_RENDERER_FIXTURE_DIR) +
                       (invalidSource ? "/invalid.metal" : "/prepared.metal");
     std::ifstream input(path, std::ios::binary);
     if (!input) {
@@ -73,7 +73,7 @@ int run() {
     // Native availability is required: failure on this supported host is not a skip.
     auto instance = tests::require(rhi::create_metal_instance());
     auto adapter = tests::require(instance.adapter(0));
-    TRUFFLE_CHECK(adapter.info().native);
+    TFL_CHECK(adapter.info().native);
     auto device = tests::require(adapter.request_device());
     renderer::PipelineCache programs(device);
     renderer::Renderer renderer(device, &programs);
@@ -85,12 +85,12 @@ int run() {
     {
         auto package = make_package();
         {
-            std::ofstream output(std::string(TRUFFLE_RENDERER_PACKAGE_OUTPUT_DIR) +
+            std::ofstream output(std::string(TFL_RENDERER_PACKAGE_OUTPUT_DIR) +
                                  "/prepared.tsp", std::ios::binary);
             const auto bytes = package.bytes();
             output.write(reinterpret_cast<const char*>(bytes.data()),
                          static_cast<std::streamsize>(bytes.size()));
-            TRUFFLE_CHECK(output.good());
+            TFL_CHECK(output.good());
         }
         tests::require(programs.register_program(material, program_desc(package)));
     }
@@ -107,10 +107,10 @@ int run() {
     const auto initialId = tests::require(programs.get_or_create({}, material))->id();
     const auto pipelineCount = instance.stats().pipelinesCreated;
     render(red, "cached program reuse");
-    TRUFFLE_CHECK(tests::require(programs.get_or_create({}, material))->id() == initialId);
-    TRUFFLE_CHECK(instance.stats().pipelinesCreated == pipelineCount);
-    TRUFFLE_CHECK(renderer.last_frame_stats().renderNodesExecuted == 1);
-    TRUFFLE_CHECK(renderer.last_frame_stats().renderBatchesExecuted == 1);
+    TFL_CHECK(tests::require(programs.get_or_create({}, material))->id() == initialId);
+    TFL_CHECK(instance.stats().pipelinesCreated == pipelineCount);
+    TFL_CHECK(renderer.last_frame_stats().renderNodesExecuted == 1);
+    TFL_CHECK(renderer.last_frame_stats().renderBatchesExecuted == 1);
 
     auto package = make_package();
     auto greenDesc = program_desc(package, "green_fragment");
@@ -131,7 +131,7 @@ int run() {
     tests::require(encoder.end());
     tests::require(list.end());
     tests::require(programs.commit_program(material, std::move(candidate)));
-    TRUFFLE_CHECK(tests::require(programs.get_or_create({}, material))->id() != initialId);
+    TFL_CHECK(tests::require(programs.get_or_create({}, material))->id() != initialId);
     tests::submit_graphics(device, list);
     tests::check_color(device, target, red, "recorded old pipeline survives replacement");
     render(green, "committed replacement");
@@ -139,38 +139,38 @@ int run() {
     const auto greenId = tests::require(programs.get_or_create({}, material))->id();
     auto bad = greenDesc;
     bad.fragment.entryPoint = "missing";
-    TRUFFLE_CHECK(!programs.register_program(material, bad).ok());
+    TFL_CHECK(!programs.register_program(material, bad).ok());
     render(green, "missing entry preserves output");
     bad = greenDesc;
     bad.fragment.target = rhi::ShaderTarget::spirv;
-    TRUFFLE_CHECK(!programs.register_program(material, bad).ok());
+    TFL_CHECK(!programs.register_program(material, bad).ok());
     bad = greenDesc;
     bad.fragment.permutation = "missing";
-    TRUFFLE_CHECK(!programs.register_program(material, bad).ok());
+    TFL_CHECK(!programs.register_program(material, bad).ok());
     bad = greenDesc;
     bad.vertex.stage = rhi::ShaderStage::compute;
-    TRUFFLE_CHECK(!programs.register_program(material, bad).ok());
+    TFL_CHECK(!programs.register_program(material, bad).ok());
     render(green, "missing target/permutation and wrong stage preserve output");
 
     auto invalidPackage = make_package(true);
     const auto shaderFailure = programs.register_program(material, program_desc(invalidPackage));
-    TRUFFLE_CHECK(!shaderFailure.ok() && !shaderFailure.message.empty());
-    TRUFFLE_CHECK(shaderFailure.code == base::StatusCode::backend_error);
-    TRUFFLE_CHECK(shaderFailure.detail.has_value());
+    TFL_CHECK(!shaderFailure.ok() && !shaderFailure.message.empty());
+    TFL_CHECK(shaderFailure.code == base::StatusCode::backend_error);
+    TFL_CHECK(shaderFailure.detail.has_value());
     std::cout << "native shader failure: " << shaderFailure.message << '\n';
     render(green, "native shader failure preserves output");
     bad = greenDesc;
     bad.vertex.entryPoint = "attribute_vertex";
     const auto pipelineFailure = programs.register_program(material, bad);
-    TRUFFLE_CHECK(!pipelineFailure.ok() && !pipelineFailure.message.empty());
-    TRUFFLE_CHECK(pipelineFailure.code == base::StatusCode::backend_error);
-    TRUFFLE_CHECK(pipelineFailure.detail.has_value());
+    TFL_CHECK(!pipelineFailure.ok() && !pipelineFailure.message.empty());
+    TFL_CHECK(pipelineFailure.code == base::StatusCode::backend_error);
+    TFL_CHECK(pipelineFailure.detail.has_value());
     std::cout << "native pipeline failure: " << pipelineFailure.message << '\n';
     render(green, "native pipeline failure preserves output");
-    TRUFFLE_CHECK(tests::require(programs.get_or_create({}, material))->id() == greenId);
+    TFL_CHECK(tests::require(programs.get_or_create({}, material))->id() == greenId);
     bad = greenDesc;
     bad.pipeline.colorTargets[0].format = rhi::TextureFormat::bgra8_unorm;
-    TRUFFLE_CHECK(!programs.register_program(material, bad).ok());
+    TFL_CHECK(!programs.register_program(material, bad).ok());
     render(green, "incompatible attachment replacement preserves output");
 
     // Prepared configuration slots are independent; static state is never lost
@@ -197,11 +197,11 @@ int run() {
         .bindGroupLayouts = {&layout},
     }));
     auto tintDesc = program_desc(package, "tinted_fragment");
-    TRUFFLE_CHECK(!programs.register_program(material, tintDesc).ok());
+    TFL_CHECK(!programs.register_program(material, tintDesc).ok());
     render(green, "missing reflection layout preserves output");
     tintDesc.pipeline.layout = &pipelineLayout;
     auto changedLayout = tests::require(programs.stage_program(tintDesc));
-    TRUFFLE_CHECK(!programs.commit_program(material, std::move(changedLayout)).ok());
+    TFL_CHECK(!programs.commit_program(material, std::move(changedLayout)).ok());
     render(green, "pipeline-layout mismatch preserves output");
     tests::require(programs.commit_program(18, std::move(changedLayout)));
     const auto boundProgramId = tests::require(programs.get_or_create({}, 18))->id();
@@ -211,8 +211,8 @@ int run() {
     // buffer size. Both pipelines are native-valid under the layout's 16 bytes.
     auto changedBindings = tests::require(programs.stage_program(scalarDesc));
     const auto bindingStatus = programs.commit_program(18, std::move(changedBindings));
-    TRUFFLE_CHECK(bindingStatus.code == base::StatusCode::invalid_argument);
-    TRUFFLE_CHECK(tests::require(programs.get_or_create({}, 18))->id() == boundProgramId);
+    TFL_CHECK(bindingStatus.code == base::StatusCode::invalid_argument);
+    TFL_CHECK(tests::require(programs.get_or_create({}, 18))->id() == boundProgramId);
 
     auto arena = tests::require(device.create_descriptor_arena());
     auto uniform = tests::require(device.create_buffer({
@@ -229,7 +229,7 @@ int run() {
     pipelineLayout = {};
     layout = {};
     batch.material = 18;
-    TRUFFLE_CHECK(!renderer.render(tests::color_graph(target, batch)).ok());
+    TFL_CHECK(!renderer.render(tests::color_graph(target, batch)).ok());
     batch.bindGroups = {{.bindings = &group}};
     render(blue, "reflected uniform survives same-layout reflection rejection");
     auto otherLayout = tests::require(device.create_bind_group_layout({
@@ -242,12 +242,12 @@ int run() {
         .entries = {{.binding = 0, .buffer = &uniform, .size = 16}},
     }));
     batch.bindGroups = {{.bindings = &otherGroup}};
-    TRUFFLE_CHECK(!renderer.render(tests::color_graph(target, batch)).ok());
+    TFL_CHECK(!renderer.render(tests::color_graph(target, batch)).ok());
     batch.bindGroups = {{.bindings = nullptr}};
-    TRUFFLE_CHECK(!renderer.render(tests::color_graph(target, batch)).ok());
+    TFL_CHECK(!renderer.render(tests::color_graph(target, batch)).ok());
     batch.bindGroups.clear();
     batch.material = 404;
-    TRUFFLE_CHECK(!renderer.render(tests::color_graph(target, batch)).ok());
+    TFL_CHECK(!renderer.render(tests::color_graph(target, batch)).ok());
     batch.material = material;
     render(green, "recovery after missing resources/material");
     auto meshProgram = program_desc(package, "green_fragment");
@@ -273,7 +273,7 @@ int run() {
     render(green, "uploaded indexed mesh with application-defined layout");
     auto validBatch = batch;
     batch.bindings[0].size = 16;
-    TRUFFLE_CHECK(!renderer.render(tests::color_graph(target, batch)).ok());
+    TFL_CHECK(!renderer.render(tests::color_graph(target, batch)).ok());
     batch = validBatch;
     render(green, "mesh recovery after rejected byte range");
     const std::array<std::uint32_t, 5> arguments{3, 1, 0, 0, 0};
@@ -287,7 +287,7 @@ int run() {
     render(green, "indexed indirect mesh binds its index buffer");
     auto incompatibleMesh = meshProgram;
     incompatibleMesh.pipeline.vertexBuffers[0].stride = 32;
-    TRUFFLE_CHECK(!programs.register_program(19, incompatibleMesh).ok());
+    TFL_CHECK(!programs.register_program(19, incompatibleMesh).ok());
     return 0;
 }
 

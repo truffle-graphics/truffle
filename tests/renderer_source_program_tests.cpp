@@ -55,11 +55,11 @@ int main() {
                        rhi::ShaderStage::vertex, "configured"};
         desc.fragment = {&package, rhi::ShaderTarget::metal_source, "main",
                          rhi::ShaderStage::fragment, "configured"};
-        TRUFFLE_CHECK(cache.register_program(prepared, desc).ok());
+        TFL_CHECK(cache.register_program(prepared, desc).ok());
     }
     const auto preparedId = cache.published(prepared)->id();
-    TRUFFLE_CHECK(cache.get_or_create({}, prepared).value()->id() == preparedId);
-    TRUFFLE_CHECK(cache.published(compiled) == nullptr);
+    TFL_CHECK(cache.get_or_create({}, prepared).value()->id() == preparedId);
+    TFL_CHECK(cache.published(compiled) == nullptr);
 
     std::map<std::string, std::string> files{
         {"color.glsl", "vec4 shade() { return vec4(COLOR, 1.0); }\n"}};
@@ -93,42 +93,42 @@ void main() { color = shade() * tint; }
     if (!tests::shader_route_enabled()) {
         // Prepared programs remain usable without this source-language adapter.
         auto attempt = program.rebuild(compiler, request);
-        TRUFFLE_CHECK(!attempt.ok());
-        TRUFFLE_CHECK(attempt.status().code == base::StatusCode::unsupported);
-        TRUFFLE_CHECK(program.published_vertex() == nullptr);
-        TRUFFLE_CHECK(cache.published(compiled) == nullptr);
+        TFL_CHECK(!attempt.ok());
+        TFL_CHECK(attempt.status().code == base::StatusCode::unsupported);
+        TFL_CHECK(program.published_vertex() == nullptr);
+        TFL_CHECK(cache.published(compiled) == nullptr);
         renderer::SourceProgram over(cache, prepared, {});
-        TRUFFLE_CHECK(over.rebuild(compiler, request).status().code ==
+        TFL_CHECK(over.rebuild(compiler, request).status().code ==
                       base::StatusCode::unsupported);
-        TRUFFLE_CHECK(cache.published(prepared)->id() == preparedId);
+        TFL_CHECK(cache.published(prepared)->id() == preparedId);
         return 0;
     }
 
     auto first = program.rebuild(compiler, request);
-    TRUFFLE_CHECK(first.ok());
-    TRUFFLE_CHECK(first.value().published && !first.value().fragmentCacheHit);
+    TFL_CHECK(first.ok());
+    TFL_CHECK(first.value().published && !first.value().fragmentCacheHit);
     const auto firstId = cache.published(compiled)->id();
-    TRUFFLE_CHECK(program.published_fragment()->package.desc().variants.size() == 1);
-    TRUFFLE_CHECK(program.published_fragment()->dependencies.size() == 2);
+    TFL_CHECK(program.published_fragment()->package.desc().variants.size() == 1);
+    TFL_CHECK(program.published_fragment()->dependencies.size() == 2);
     const auto created = context.instance.stats().pipelinesCreated;
 
     auto unchanged = program.rebuild(compiler, request);
-    TRUFFLE_CHECK(unchanged.ok() && !unchanged.value().published);
-    TRUFFLE_CHECK(unchanged.value().vertexCacheHit && unchanged.value().fragmentCacheHit);
-    TRUFFLE_CHECK(context.instance.stats().pipelinesCreated == created);
-    TRUFFLE_CHECK(cache.published(compiled)->id() == firstId);
+    TFL_CHECK(unchanged.ok() && !unchanged.value().published);
+    TFL_CHECK(unchanged.value().vertexCacheHit && unchanged.value().fragmentCacheHit);
+    TFL_CHECK(context.instance.stats().pipelinesCreated == created);
+    TFL_CHECK(cache.published(compiled)->id() == firstId);
 
     // A slot changed behind the source program is republished from cached results.
     cache.invalidate(compiled);
     auto restored = program.rebuild(compiler, request);
-    TRUFFLE_CHECK(restored.ok() && restored.value().published &&
+    TFL_CHECK(restored.ok() && restored.value().published &&
                   restored.value().fragmentCacheHit);
     const auto restoredId = cache.published(compiled)->id();
-    TRUFFLE_CHECK(restoredId != firstId);
+    TFL_CHECK(restoredId != firstId);
 
     files["color.glsl"] = "vec4 shade() { return vec4(COLOR.bgr, 1.0); }\n";
     auto changed = program.rebuild(compiler, request);
-    TRUFFLE_CHECK(changed.ok() && changed.value().published &&
+    TFL_CHECK(changed.ok() && changed.value().published &&
                   changed.value().vertexCacheHit && !changed.value().fragmentCacheHit);
     const auto changedId = cache.published(compiled)->id();
     const auto changedKey = program.published_fragment()->cacheKey;
@@ -145,7 +145,7 @@ void main() { color = shade() * tint; }
     };
     auto bad = request;
     bad.fragment.defines.push_back({"EXTRA_INPUT", "1"});
-    TRUFFLE_CHECK(rejected(bad, base::StatusCode::invalid_argument).find("location 1") !=
+    TFL_CHECK(rejected(bad, base::StatusCode::invalid_argument).find("location 1") !=
                   std::string::npos);
     bad = request;
     bad.vertex.source.text = R"(#version 450
@@ -153,7 +153,7 @@ layout(location=0) in vec4 position;
 layout(location=0) flat out vec4 tint;
 void main() { gl_Position = position; tint = vec4(1); }
 )";
-    TRUFFLE_CHECK(rejected(bad, base::StatusCode::invalid_argument).find("vertex input") !=
+    TFL_CHECK(rejected(bad, base::StatusCode::invalid_argument).find("vertex input") !=
                   std::string::npos);
     bad = request;
     bad.fragment.stage = rhi::ShaderStage::vertex;
@@ -164,17 +164,17 @@ void main() { gl_Position = position; tint = vec4(1); }
         "layout(set=0,binding=0) uniform Tint { vec4 value; } extra;\n"
         "layout(location=0) out vec4 color;\n"
         "void main() { color = shade() * tint * extra.value; }\n";
-    TRUFFLE_CHECK(!program.rebuild(compiler, bad).ok());
-    TRUFFLE_CHECK(cache.published(compiled)->id() == changedId);
+    TFL_CHECK(!program.rebuild(compiler, bad).ok());
+    TFL_CHECK(cache.published(compiled)->id() == changedId);
     files["color.glsl"] = "#error deliberate include failure\n";
-    TRUFFLE_CHECK(rejected(request, base::StatusCode::invalid_argument)
+    TFL_CHECK(rejected(request, base::StatusCode::invalid_argument)
                       .find("deliberate include failure") != std::string::npos);
 
     files["color.glsl"] = "vec4 shade() { return vec4(COLOR, 0.5); }\n";
     auto recovered = program.rebuild(compiler, request);
-    TRUFFLE_CHECK(recovered.ok() && recovered.value().published);
-    TRUFFLE_CHECK(cache.published(compiled)->id() != changedId);
-    TRUFFLE_CHECK(cache.published(prepared)->id() == preparedId);
+    TFL_CHECK(recovered.ok() && recovered.value().published);
+    TFL_CHECK(cache.published(compiled)->id() != changedId);
+    TFL_CHECK(cache.published(prepared)->id() == preparedId);
 
     // Matrix/block spelling and plain arrays have the same location footprint.
     renderer::SourceProgramRequest normalized;
@@ -190,31 +190,31 @@ layout(location=0) out vec4 color;
 void main() { color=vec4(renamed[0]+vec3(tail[1],0),1); }
 )"};
     renderer::SourceProgram linked(cache, 9, {});
-    TRUFFLE_CHECK(linked.rebuild(compiler, normalized).ok());
+    TFL_CHECK(linked.rebuild(compiler, normalized).ok());
     const auto normalizedId = cache.published(9)->id();
     auto vertexPackage = rhi::ShaderPackage::load(linked.published_vertex()->package.bytes());
     auto fragmentPackage = rhi::ShaderPackage::load(linked.published_fragment()->package.bytes());
-    TRUFFLE_CHECK(vertexPackage.ok() && fragmentPackage.ok());
+    TFL_CHECK(vertexPackage.ok() && fragmentPackage.ok());
     const auto& fragmentVariant = fragmentPackage.value().desc().variants[0];
-    TRUFFLE_CHECK(fragmentVariant.reflection.interfaces.size() == 5);
-    TRUFFLE_CHECK(fragmentVariant.reflection.interfaces[0].direction == rhi::ShaderInterfaceDirection::input);
-    TRUFFLE_CHECK(fragmentVariant.reflection.interfaces[4].direction == rhi::ShaderInterfaceDirection::output);
-    TRUFFLE_CHECK(fragmentVariant.reflection.interfaces[0].location == 0 &&
+    TFL_CHECK(fragmentVariant.reflection.interfaces.size() == 5);
+    TFL_CHECK(fragmentVariant.reflection.interfaces[0].direction == rhi::ShaderInterfaceDirection::input);
+    TFL_CHECK(fragmentVariant.reflection.interfaces[4].direction == rhi::ShaderInterfaceDirection::output);
+    TFL_CHECK(fragmentVariant.reflection.interfaces[0].location == 0 &&
                   fragmentVariant.reflection.interfaces[4].location == 0);
     renderer::ProgramDesc serialized;
     serialized.vertex = {&vertexPackage.value(), rhi::ShaderTarget::spirv, "main", rhi::ShaderStage::vertex,
                          vertexPackage.value().desc().variants[0].permutation};
     serialized.fragment = {&fragmentPackage.value(), rhi::ShaderTarget::spirv, "main", rhi::ShaderStage::fragment,
                            fragmentVariant.permutation};
-    TRUFFLE_CHECK(cache.register_program(10, serialized).ok());
+    TFL_CHECK(cache.register_program(10, serialized).ok());
     const auto serializedId = cache.published(10)->id();
     auto mismatch = fragmentPackage.value().desc();
     mismatch.variants[0].reflection.interfaces[0].type = "vec4";
     auto mismatchedPackage = rhi::ShaderPackage::create(mismatch);
-    TRUFFLE_CHECK(mismatchedPackage.ok());
+    TFL_CHECK(mismatchedPackage.ok());
     serialized.fragment.package = &mismatchedPackage.value();
-    TRUFFLE_CHECK(!cache.register_program(10, serialized).ok());
-    TRUFFLE_CHECK(cache.published(10)->id() == serializedId);
+    TFL_CHECK(!cache.register_program(10, serialized).ok());
+    TFL_CHECK(cache.published(10)->id() == serializedId);
     const auto rejectsNormalized = [&](const char* fragment) {
         auto wrong = normalized;
         wrong.fragment.source.text = fragment;
@@ -222,13 +222,13 @@ void main() { color=vec4(renamed[0]+vec3(tail[1],0),1); }
         return !result.ok() && result.status().code == base::StatusCode::invalid_argument &&
                cache.published(9)->id() == normalizedId;
     };
-    TRUFFLE_CHECK(rejectsNormalized(R"(#version 450
+    TFL_CHECK(rejectsNormalized(R"(#version 450
 layout(location=0) in vec3 renamed[2];
 layout(location=2) in mat2x3 tail;
 layout(location=0) out vec4 color;
 void main() { color=vec4(renamed[0]+tail[1],1); }
 )"));
-    TRUFFLE_CHECK(rejectsNormalized(R"(#version 450
+    TFL_CHECK(rejectsNormalized(R"(#version 450
 layout(location=0) in vec3 renamed[2];
 layout(location=2) in vec2 tail[3];
 layout(location=0) out vec4 color;

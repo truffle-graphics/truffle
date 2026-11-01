@@ -8,7 +8,7 @@
 #include <unordered_map>
 #include <utility>
 
-#if TRUFFLE_GUI_HAS_TEXT
+#if TFL_GUI_HAS_TEXT
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include <hb-ft.h>
@@ -22,7 +22,7 @@ namespace {
     return base::Status::failure(code, std::move(message));
 }
 
-#if TRUFFLE_GUI_HAS_TEXT
+#if TFL_GUI_HAS_TEXT
 [[nodiscard]] std::uint32_t font_index(FontId font) noexcept {
     return static_cast<std::uint32_t>(font.value() & 0xFFFF'FFFFU);
 }
@@ -80,7 +80,7 @@ struct FontSlot {
 } // namespace
 
 struct TextEngine::State {
-#if TRUFFLE_GUI_HAS_TEXT
+#if TFL_GUI_HAS_TEXT
     struct Atlas {
         rhi::Device* device = nullptr;
         renderer::SampledTexture texture;
@@ -228,7 +228,7 @@ TextEngine::TextEngine(TextEngine&&) noexcept = default;
 TextEngine& TextEngine::operator=(TextEngine&&) noexcept = default;
 
 bool TextEngine::available() noexcept {
-#if TRUFFLE_GUI_HAS_TEXT
+#if TFL_GUI_HAS_TEXT
     return true;
 #else
     return false;
@@ -236,7 +236,7 @@ bool TextEngine::available() noexcept {
 }
 
 base::Result<TextEngine> TextEngine::create(rhi::Device& device, const TextEngineDesc& desc) {
-#if TRUFFLE_GUI_HAS_TEXT
+#if TFL_GUI_HAS_TEXT
     if (desc.atlas_extent.width < 8 || desc.atlas_extent.height < 8 ||
         desc.atlas_extent.width > 4096 || desc.atlas_extent.height > 4096) {
         return failure(base::StatusCode::invalid_argument,
@@ -268,12 +268,12 @@ base::Result<TextEngine> TextEngine::create(rhi::Device& device, const TextEngin
     static_cast<void>(desc);
     return failure(base::StatusCode::unsupported,
                    "Truffle GUI text is unavailable; configure with "
-                   "TRUFFLE_GUI_ENABLE_TEXT=ON");
+                   "TFL_GUI_ENABLE_TEXT=ON");
 #endif
 }
 
 base::Result<FontId> TextEngine::load_font(std::span<const std::byte> bytes, float size) {
-#if TRUFFLE_GUI_HAS_TEXT
+#if TFL_GUI_HAS_TEXT
     if (!state_) {
         return failure(base::StatusCode::invalid_state, "GUI text engine is not initialized");
     }
@@ -314,12 +314,12 @@ base::Result<FontId> TextEngine::load_font(std::span<const std::byte> bytes, flo
     static_cast<void>(size);
     return failure(base::StatusCode::unsupported,
                    "Truffle GUI text is unavailable; configure with "
-                   "TRUFFLE_GUI_ENABLE_TEXT=ON");
+                   "TFL_GUI_ENABLE_TEXT=ON");
 #endif
 }
 
 base::Status TextEngine::unload_font(FontId font) {
-#if TRUFFLE_GUI_HAS_TEXT
+#if TFL_GUI_HAS_TEXT
     if (!state_) {
         return failure(base::StatusCode::invalid_state, "GUI text engine is not initialized");
     }
@@ -338,12 +338,12 @@ base::Status TextEngine::unload_font(FontId font) {
     static_cast<void>(font);
     return failure(base::StatusCode::unsupported,
                    "Truffle GUI text is unavailable; configure with "
-                   "TRUFFLE_GUI_ENABLE_TEXT=ON");
+                   "TFL_GUI_ENABLE_TEXT=ON");
 #endif
 }
 
 base::Result<TextLayout> TextEngine::shape(FontId font, std::string_view utf8) {
-#if TRUFFLE_GUI_HAS_TEXT
+#if TFL_GUI_HAS_TEXT
     if (!state_) {
         return failure(base::StatusCode::invalid_state, "GUI text engine is not initialized");
     }
@@ -405,13 +405,13 @@ base::Result<TextLayout> TextEngine::shape(FontId font, std::string_view utf8) {
     static_cast<void>(utf8);
     return failure(base::StatusCode::unsupported,
                    "Truffle GUI text is unavailable; configure with "
-                   "TRUFFLE_GUI_ENABLE_TEXT=ON");
+                   "TFL_GUI_ENABLE_TEXT=ON");
 #endif
 }
 
 base::Result<std::reference_wrapper<renderer::SampledTexture>>
 TextEngine::atlas_texture() noexcept {
-#if TRUFFLE_GUI_HAS_TEXT
+#if TFL_GUI_HAS_TEXT
     if (!state_) {
         return failure(base::StatusCode::invalid_state, "GUI text engine is not initialized");
     }
@@ -419,12 +419,12 @@ TextEngine::atlas_texture() noexcept {
 #else
     return failure(base::StatusCode::unsupported,
                    "Truffle GUI text is unavailable; configure with "
-                   "TRUFFLE_GUI_ENABLE_TEXT=ON");
+                   "TFL_GUI_ENABLE_TEXT=ON");
 #endif
 }
 
 const TextStats& TextEngine::last_stats() const noexcept {
-#if TRUFFLE_GUI_HAS_TEXT
+#if TFL_GUI_HAS_TEXT
     static const TextStats empty;
     return state_ ? state_->stats : empty;
 #else

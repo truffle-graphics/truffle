@@ -2,23 +2,23 @@
 
 #include "foundation_backend.hpp"
 
-#if defined(TRUFFLE_HAS_EGL_OPENGL) || defined(TRUFFLE_HAS_CGL_OPENGL)
-#define TRUFFLE_HAS_NATIVE_OPENGL 1
-#define TRUFFLE_GL_API_DESKTOP 1
-#if defined(TRUFFLE_HAS_CGL_OPENGL)
-#define TRUFFLE_GL_CONTEXT_CGL 1
+#if defined(TFL_HAS_EGL_OPENGL) || defined(TFL_HAS_CGL_OPENGL)
+#define TFL_HAS_NATIVE_OPENGL 1
+#define TFL_GL_API_DESKTOP 1
+#if defined(TFL_HAS_CGL_OPENGL)
+#define TFL_GL_CONTEXT_CGL 1
 #else
-#define TRUFFLE_GL_CONTEXT_EGL 1
+#define TFL_GL_CONTEXT_EGL 1
 #endif
 #include "gl_probe.hpp"
 #endif
-#if defined(TRUFFLE_GL_CONTEXT_CGL)
+#if defined(TFL_GL_CONTEXT_CGL)
 #include "gl_present.hpp"
 #endif
 
 namespace truffle::rhi {
 
-#if defined(TRUFFLE_GL_CONTEXT_CGL)
+#if defined(TFL_GL_CONTEXT_CGL)
 namespace detail {
 
 void set_opengl_present_capture_for_testing(bool enabled) noexcept {
@@ -35,7 +35,7 @@ OpenGLPresentCapture opengl_last_present_capture_for_testing() {
 #endif
 
 Result<Instance> create_opengl_instance(const InstanceDesc& desc) {
-#ifdef TRUFFLE_HAS_NATIVE_OPENGL
+#ifdef TFL_HAS_NATIVE_OPENGL
     auto probe = detail::gl_probe::initialize(desc);
     if (!probe.ok()) {
         return probe.status();
@@ -43,7 +43,7 @@ Result<Instance> create_opengl_instance(const InstanceDesc& desc) {
     auto native = std::move(probe).value();
     detail::FoundationBackendConfig config;
     config.kind = BackendKind::opengl;
-#if defined(TRUFFLE_GL_CONTEXT_CGL)
+#if defined(TFL_GL_CONTEXT_CGL)
     config.platform = PlatformKind::macos;
 #else
     config.platform = PlatformKind::linux_host;
@@ -51,11 +51,11 @@ Result<Instance> create_opengl_instance(const InstanceDesc& desc) {
     config.maturity = BackendMaturity::native_smoke;
     config.adapterName = std::move(native.adapterName);
     config.queueKinds = {QueueKind::graphics};
-#if defined(TRUFFLE_GL_HAS_COMPUTE)
+#if defined(TFL_GL_HAS_COMPUTE)
     config.supportedFeatures = {Feature::transfer, Feature::compute,
                                 Feature::descriptor_arrays, Feature::dynamic_offsets,
                                 Feature::push_constants};
-#elif defined(TRUFFLE_GL_CONTEXT_CGL)
+#elif defined(TFL_GL_CONTEXT_CGL)
     config.supportedFeatures = {Feature::presentation, Feature::transfer,
                                 Feature::descriptor_arrays,
                                 Feature::dynamic_offsets, Feature::push_constants};
@@ -92,7 +92,7 @@ Result<Instance> create_opengl_instance(const InstanceDesc& desc) {
     };
     config.pipelineCapabilities = {
         .graphics = true,
-#if defined(TRUFFLE_GL_HAS_COMPUTE)
+#if defined(TFL_GL_HAS_COMPUTE)
         .compute = true,
 #else
         .compute = false,
@@ -125,11 +125,11 @@ Result<Instance> create_opengl_instance(const InstanceDesc& desc) {
     config.createPipeline = &detail::gl_probe::create_pipeline;
     config.createComputePipeline = &detail::gl_probe::create_compute_pipeline;
     config.nativeSubmit = &detail::gl_probe::submit;
-#if defined(TRUFFLE_GL_HAS_SYNC_OBJECTS)
+#if defined(TFL_GL_HAS_SYNC_OBJECTS)
     config.createSemaphore = &detail::gl_probe::create_semaphore;
     config.createQueryPool = &detail::gl_probe::create_query_pool;
 #endif
-#if defined(TRUFFLE_GL_CONTEXT_CGL)
+#if defined(TFL_GL_CONTEXT_CGL)
     config.createSurface = &detail::gl_probe::create_surface;
     config.createSwapchain = &detail::gl_probe::create_swapchain;
     config.acquireSwapchain = &detail::gl_probe::acquire_swapchain;

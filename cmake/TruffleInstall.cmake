@@ -12,7 +12,7 @@ function(truffle_configure_target target export_name)
     truffle_target_warnings(${target})
     set_target_properties(${target} PROPERTIES EXPORT_NAME ${export_name})
 
-    if(TRUFFLE_INSTALL)
+    if(TFL_INSTALL)
         install(
             TARGETS ${target}
             EXPORT TruffleTargets

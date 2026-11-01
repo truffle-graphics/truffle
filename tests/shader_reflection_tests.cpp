@@ -4,13 +4,13 @@
 #include <algorithm>
 #include <bit>
 #include <iostream>
-#if defined(TRUFFLE_TEST_SPIRV_REFLECTION)
+#if defined(TFL_TEST_SPIRV_REFLECTION)
 #include "spirv_reflection.hpp"
 #include <spirv/unified1/spirv.hpp11>
 #include <cstring>
 #endif
 
-#define TRUFFLE_CHECK(condition) TRUFFLE_SHADER_CHECK(condition)
+#define TFL_CHECK(condition) TFL_SHADER_CHECK(condition)
 
 namespace {
 using namespace truffle;
@@ -31,8 +31,8 @@ void reject(shader::Compiler& compiler, const std::string& source,
     request.source = {"negative.glsl", source};
     request.stage = stage;
     const auto result = compiler.compile(request);
-    TRUFFLE_CHECK(!result.ok());
-    TRUFFLE_CHECK(result.status().code == rhi::StatusCode::unsupported);
+    TFL_CHECK(!result.ok());
+    TFL_CHECK(result.status().code == rhi::StatusCode::unsupported);
     if (result.status().message.find(diagnostic) == std::string::npos)
         throw std::runtime_error(result.status().message);
 }
@@ -72,9 +72,9 @@ void main() {
 }
 )");
     const auto& reflection = result.package.desc().variants[0].reflection;
-    TRUFFLE_CHECK(reflection.requiredWorkgroupSize == rhi::Extent3D(4, 2, 3));
-    TRUFFLE_CHECK(reflection.preferredWorkgroupSize == rhi::Extent3D(4, 2, 3));
-    TRUFFLE_CHECK(reflection.pushConstants ==
+    TFL_CHECK(reflection.requiredWorkgroupSize == rhi::Extent3D(4, 2, 3));
+    TFL_CHECK(reflection.preferredWorkgroupSize == rhi::Extent3D(4, 2, 3));
+    TFL_CHECK(reflection.pushConstants ==
                   std::vector<rhi::PushConstantRange>({{rhi::ShaderStage::compute, 16, 72}}));
     const std::vector<rhi::ShaderSpecializationConstant> expected{
         {1, "enabled", rhi::ShaderValueType::boolean, 1},
@@ -82,15 +82,15 @@ void main() {
         {3, "signedValue", rhi::ShaderValueType::sint32, std::bit_cast<std::uint32_t>(-17)},
         {5, "disabled", rhi::ShaderValueType::boolean, 0},
         {9, "unsignedValue", rhi::ShaderValueType::uint32, 0xfedcba98u}};
-    TRUFFLE_CHECK(reflection.specializationConstants == expected);
-    TRUFFLE_CHECK(reflection.bindings.size() == 7);
+    TFL_CHECK(reflection.specializationConstants == expected);
+    TFL_CHECK(reflection.bindings.size() == 7);
     const auto binding = [&](std::size_t index, std::uint32_t group, std::uint32_t slot,
                              rhi::ResourceBindingType type, std::uint32_t count,
                              std::size_t bytes, bool readOnly) {
         const auto& b = reflection.bindings[index];
-        TRUFFLE_CHECK(b.stage == rhi::ShaderStage::compute && b.group == group && b.binding == slot);
-        TRUFFLE_CHECK(b.type == type && b.arrayCount == count);
-        TRUFFLE_CHECK(b.minimumSize == bytes && b.readOnly == readOnly);
+        TFL_CHECK(b.stage == rhi::ShaderStage::compute && b.group == group && b.binding == slot);
+        TFL_CHECK(b.type == type && b.arrayCount == count);
+        TFL_CHECK(b.minimumSize == bytes && b.readOnly == readOnly);
     };
     binding(0, 1, 4, rhi::ResourceBindingType::buffer, 2, 84, true);
     binding(1, 1, 5, rhi::ResourceBindingType::buffer, 3, 64, true);
@@ -100,15 +100,15 @@ void main() {
     binding(5, 3, 4, rhi::ResourceBindingType::texture, 1, 0, true);
     binding(6, 3, 5, rhi::ResourceBindingType::texture, 1, 0, false);
     auto loaded = tests::require(rhi::ShaderPackage::load(result.package.bytes()));
-    TRUFFLE_CHECK(loaded.bytes().size() == result.package.bytes().size());
+    TFL_CHECK(loaded.bytes().size() == result.package.bytes().size());
     const auto& roundtrip = loaded.desc().variants[0].reflection;
-    TRUFFLE_CHECK(roundtrip.pushConstants == reflection.pushConstants);
-    TRUFFLE_CHECK(roundtrip.specializationConstants == expected);
-    TRUFFLE_CHECK(roundtrip.bindings.size() == reflection.bindings.size());
+    TFL_CHECK(roundtrip.pushConstants == reflection.pushConstants);
+    TFL_CHECK(roundtrip.specializationConstants == expected);
+    TFL_CHECK(roundtrip.bindings.size() == reflection.bindings.size());
     for (std::size_t i = 0; i < reflection.bindings.size(); ++i) {
         const auto& a = reflection.bindings[i];
         const auto& b = roundtrip.bindings[i];
-        TRUFFLE_CHECK(a.name == b.name && a.arrayCount == b.arrayCount &&
+        TFL_CHECK(a.name == b.name && a.arrayCount == b.arrayCount &&
                       a.minimumSize == b.minimumSize && a.readOnly == b.readOnly);
     }
 
@@ -121,11 +121,11 @@ layout(set=0,binding=0) readonly buffer Input { float values[2]; } data[2];
 void main() {}
 )", rhi::ShaderStage::compute, target);
         const auto& r = legacy.package.desc().variants[0].reflection;
-        TRUFFLE_CHECK(r.bindings[0].minimumSize == 8 && r.bindings[0].arrayCount == 2 &&
+        TFL_CHECK(r.bindings[0].minimumSize == 8 && r.bindings[0].arrayCount == 2 &&
                       r.bindings[0].readOnly);
-        TRUFFLE_CHECK(r.pushConstants ==
+        TFL_CHECK(r.pushConstants ==
                       std::vector<rhi::PushConstantRange>({{rhi::ShaderStage::compute, 16, 4}}));
-        TRUFFLE_CHECK(r.specializationConstants ==
+        TFL_CHECK(r.specializationConstants ==
                       std::vector<rhi::ShaderSpecializationConstant>({{0, "N", rhi::ShaderValueType::uint32, 2}}));
     }
     auto nested = compile(compiler, R"(#version 450
@@ -134,7 +134,7 @@ struct Value { mat2 matrix; vec3 vector; };
 layout(set=0,binding=0,std140) uniform Data { layout(offset=16) Value values[2]; } data;
 void main() {}
 )");
-    TRUFFLE_CHECK(nested.package.desc().variants[0].reflection.bindings[0].minimumSize == 108);
+    TFL_CHECK(nested.package.desc().variants[0].reflection.bindings[0].minimumSize == 108);
 }
 
 void interfaces(shader::Compiler& compiler) {
@@ -147,25 +147,25 @@ void main() { gl_Position=vec4(transforms[0][0],1); outputs.basis=transforms[0];
               outputs.uv[0]=uv; outputs.uv[1]=basis[0]; }
 )", rhi::ShaderStage::vertex);
     const auto& edges = vertex.package.desc().variants[0].reflection.interfaces;
-    TRUFFLE_CHECK(edges.size() == 11 && vertex.interfaces().size() == 11);
-    TRUFFLE_CHECK(vertex.interfaces().data() == edges.data());
+    TFL_CHECK(edges.size() == 11 && vertex.interfaces().size() == 11);
+    TFL_CHECK(vertex.interfaces().data() == edges.data());
     for (std::uint32_t i = 0; i < 7; ++i) {
-        TRUFFLE_CHECK(edges[i].stage == rhi::ShaderStage::vertex && edges[i].location == i);
-        TRUFFLE_CHECK(edges[i].direction == rhi::ShaderInterfaceDirection::input);
-        TRUFFLE_CHECK(edges[i].type == (i < 4 ? "vec3" : "vec2"));
-        TRUFFLE_CHECK(edges[i].interpolation == "smooth");
+        TFL_CHECK(edges[i].stage == rhi::ShaderStage::vertex && edges[i].location == i);
+        TFL_CHECK(edges[i].direction == rhi::ShaderInterfaceDirection::input);
+        TFL_CHECK(edges[i].type == (i < 4 ? "vec3" : "vec2"));
+        TFL_CHECK(edges[i].interpolation == "smooth");
     }
-    TRUFFLE_CHECK(edges[0].name == "transforms[0][0]");
-    TRUFFLE_CHECK(edges[3].name == "transforms[1][1]");
-    TRUFFLE_CHECK(edges[4].name == "uv");
-    TRUFFLE_CHECK(edges[6].name == "basis[1]");
+    TFL_CHECK(edges[0].name == "transforms[0][0]");
+    TFL_CHECK(edges[3].name == "transforms[1][1]");
+    TFL_CHECK(edges[4].name == "uv");
+    TFL_CHECK(edges[6].name == "basis[1]");
     for (std::size_t i = 7; i < edges.size(); ++i) {
-        TRUFFLE_CHECK(edges[i].direction == rhi::ShaderInterfaceDirection::output);
-        TRUFFLE_CHECK(edges[i].location == i - 7);
-        TRUFFLE_CHECK(edges[i].interpolation == "centroid smooth");
+        TFL_CHECK(edges[i].direction == rhi::ShaderInterfaceDirection::output);
+        TFL_CHECK(edges[i].location == i - 7);
+        TFL_CHECK(edges[i].interpolation == "centroid smooth");
     }
     auto loaded = tests::require(rhi::ShaderPackage::load(vertex.package.bytes()));
-    TRUFFLE_CHECK(loaded.desc().variants[0].reflection.interfaces == edges);
+    TFL_CHECK(loaded.desc().variants[0].reflection.interfaces == edges);
 
     auto fragment = compile(compiler, R"(#version 450
 layout(location=0) centroid in vec3 renamed[2];
@@ -178,35 +178,35 @@ void main() { color=vec4(renamed[0]+vec3(renamedMatrix[0],0),1); }
         const auto found = std::find_if(vertex.interfaces().begin(), vertex.interfaces().end(),
             [&](const auto& output) { return output.direction == rhi::ShaderInterfaceDirection::output &&
                 output.location == input.location; });
-        TRUFFLE_CHECK(found != vertex.interfaces().end());
-        TRUFFLE_CHECK(found->type == input.type);
-        TRUFFLE_CHECK(found->interpolation == input.interpolation);
+        TFL_CHECK(found != vertex.interfaces().end());
+        TFL_CHECK(found->type == input.type);
+        TFL_CHECK(found->interpolation == input.interpolation);
     }
     auto members = compile(compiler, R"(#version 450
 in Input { layout(location=3) flat ivec2 id; layout(location=7) noperspective vec2 uv; } values;
 layout(location=0) out vec4 color;
 void main() { color=vec4(values.id,values.uv); }
 )", rhi::ShaderStage::fragment);
-    TRUFFLE_CHECK(members.interfaces()[0].direction == rhi::ShaderInterfaceDirection::input &&
+    TFL_CHECK(members.interfaces()[0].direction == rhi::ShaderInterfaceDirection::input &&
                   members.interfaces()[0].location == 3);
-    TRUFFLE_CHECK(members.interfaces()[0].type == "ivec2");
-    TRUFFLE_CHECK(members.interfaces()[0].interpolation == "flat");
-    TRUFFLE_CHECK(members.interfaces()[1].location == 7);
-    TRUFFLE_CHECK(members.interfaces()[1].interpolation == "noperspective");
+    TFL_CHECK(members.interfaces()[0].type == "ivec2");
+    TFL_CHECK(members.interfaces()[0].interpolation == "flat");
+    TFL_CHECK(members.interfaces()[1].location == 7);
+    TFL_CHECK(members.interfaces()[1].interpolation == "noperspective");
     auto nested = compile(compiler, R"(#version 450
 struct Nested { mat2x3 basis; vec2 tail[2]; };
 layout(location=2) in Block { sample Nested values[2]; } data;
 layout(location=0) out vec4 color;
 void main() { color=vec4(data.values[1].basis[1]+vec3(data.values[0].tail[0],0),1); }
 )", rhi::ShaderStage::fragment);
-    TRUFFLE_CHECK(nested.interfaces().size() == 9);
+    TFL_CHECK(nested.interfaces().size() == 9);
     for (std::size_t i = 0; i < 8; ++i) {
         const auto& leaf = nested.interfaces()[i];
-        TRUFFLE_CHECK(leaf.direction == rhi::ShaderInterfaceDirection::input && leaf.location == i + 2);
-        TRUFFLE_CHECK(leaf.type == (i % 4 < 2 ? "vec3" : "vec2"));
-        TRUFFLE_CHECK(leaf.interpolation == "sample smooth");
+        TFL_CHECK(leaf.direction == rhi::ShaderInterfaceDirection::input && leaf.location == i + 2);
+        TFL_CHECK(leaf.type == (i % 4 < 2 ? "vec3" : "vec2"));
+        TFL_CHECK(leaf.interpolation == "sample smooth");
     }
-    TRUFFLE_CHECK(nested.interfaces()[5].name == "data.values[1].basis[1]");
+    TFL_CHECK(nested.interfaces()[5].name == "data.values[1].basis[1]");
 }
 
 void workgroups(shader::Compiler& compiler) {
@@ -216,32 +216,32 @@ layout(local_size_x=4,local_size_y=4,local_size_z=2,
 void main() {}
 )");
     const auto& reflected = compiled.package.desc().variants[0].reflection;
-    TRUFFLE_CHECK(reflected.requiredWorkgroupSize == rhi::Extent3D(4, 4, 2));
-    TRUFFLE_CHECK(reflected.preferredWorkgroupSize == rhi::Extent3D(4, 4, 2));
-    TRUFFLE_CHECK(reflected.workgroupSpecializationIds == rhi::WorkgroupSpecializationIds({7, 7, 0}));
-    TRUFFLE_CHECK(reflected.specializationConstants.size() == 2);
-    TRUFFLE_CHECK(reflected.specializationConstants[0].id == 0 &&
+    TFL_CHECK(reflected.requiredWorkgroupSize == rhi::Extent3D(4, 4, 2));
+    TFL_CHECK(reflected.preferredWorkgroupSize == rhi::Extent3D(4, 4, 2));
+    TFL_CHECK(reflected.workgroupSpecializationIds == rhi::WorkgroupSpecializationIds({7, 7, 0}));
+    TFL_CHECK(reflected.specializationConstants.size() == 2);
+    TFL_CHECK(reflected.specializationConstants[0].id == 0 &&
                   reflected.specializationConstants[0].type == rhi::ShaderValueType::uint32 &&
                   reflected.specializationConstants[0].defaultValueBits == 2);
-    TRUFFLE_CHECK(reflected.specializationConstants[1].id == 7 &&
+    TFL_CHECK(reflected.specializationConstants[1].id == 7 &&
                   reflected.specializationConstants[1].defaultValueBits == 4);
     auto loaded = tests::require(rhi::ShaderPackage::load(compiled.package.bytes()));
     const auto& roundtrip = loaded.desc().variants[0].reflection;
-    TRUFFLE_CHECK(roundtrip.workgroupSpecializationIds == reflected.workgroupSpecializationIds);
-    TRUFFLE_CHECK(roundtrip.requiredWorkgroupSize == reflected.requiredWorkgroupSize);
-    TRUFFLE_CHECK(roundtrip.preferredWorkgroupSize == reflected.preferredWorkgroupSize);
-    TRUFFLE_CHECK(roundtrip.specializationConstants == reflected.specializationConstants);
+    TFL_CHECK(roundtrip.workgroupSpecializationIds == reflected.workgroupSpecializationIds);
+    TFL_CHECK(roundtrip.requiredWorkgroupSize == reflected.requiredWorkgroupSize);
+    TFL_CHECK(roundtrip.preferredWorkgroupSize == reflected.preferredWorkgroupSize);
+    TFL_CHECK(roundtrip.specializationConstants == reflected.specializationConstants);
     auto fixed = compile(compiler, R"(#version 450
 layout(local_size_x=3,local_size_y=2,local_size_x_id=9) in;
 void main() {}
 )");
-    TRUFFLE_CHECK(fixed.package.desc().variants[0].reflection.workgroupSpecializationIds ==
+    TFL_CHECK(fixed.package.desc().variants[0].reflection.workgroupSpecializationIds ==
                   rhi::WorkgroupSpecializationIds({9, std::nullopt, std::nullopt}));
     reject(compiler, R"(#version 450
 layout(local_size_x=4,local_size_y=2,local_size_x_id=7,local_size_y_id=7) in;
 void main() {}
 )", "inconsistent scalar types/defaults");
-#if defined(TRUFFLE_TEST_SPIRV_REFLECTION)
+#if defined(TFL_TEST_SPIRV_REFLECTION)
     const auto& code = fixed.package.desc().variants[0].code;
     std::vector<unsigned int> words(code.size() / sizeof(unsigned int));
     std::memcpy(words.data(), code.data(), code.size());
@@ -255,7 +255,7 @@ void main() {}
         }
         if (op == spv::Op::OpSpecConstantComposite) composite = i;
     }
-    TRUFFLE_CHECK(typeId != 0 && scalarId != 0 && composite != 0);
+    TFL_CHECK(typeId != 0 && scalarId != 0 && composite != 0);
     auto expression = words;
     const auto expressionId = expression[3]++;
     expression[composite + 3] = expressionId;
@@ -265,8 +265,8 @@ void main() {}
                       operation.begin(), operation.end());
     rhi::ShaderReflection result;
     const auto rejected = shader::detail::reflect_spirv(expression, rhi::ShaderStage::compute, result);
-    TRUFFLE_CHECK(!rejected.ok() && rejected.code == rhi::StatusCode::unsupported);
-    TRUFFLE_CHECK(rejected.message.find("not expressions") != std::string::npos);
+    TFL_CHECK(!rejected.ok() && rejected.code == rhi::StatusCode::unsupported);
+    TFL_CHECK(rejected.message.find("not expressions") != std::string::npos);
     // Exercise LocalSizeId as well as glslang's WorkgroupSize composite encoding.
     const std::array axisIds{words[composite + 3], words[composite + 4], words[composite + 5]};
     for (std::size_t i = 5; i < words.size();) {
@@ -289,8 +289,8 @@ void main() {}
     }
     rhi::ShaderReflection localSizeId;
     tests::require(shader::detail::reflect_spirv(words, rhi::ShaderStage::compute, localSizeId));
-    TRUFFLE_CHECK(localSizeId.requiredWorkgroupSize == rhi::Extent3D(3, 2, 1));
-    TRUFFLE_CHECK(localSizeId.workgroupSpecializationIds ==
+    TFL_CHECK(localSizeId.requiredWorkgroupSize == rhi::Extent3D(3, 2, 1));
+    TFL_CHECK(localSizeId.workgroupSpecializationIds ==
                   rhi::WorkgroupSpecializationIds({9, std::nullopt, std::nullopt}));
 #endif
 }
@@ -367,7 +367,7 @@ void main() {}
 )", "minimum size");
 }
 
-#if defined(TRUFFLE_TEST_SPIRV_REFLECTION)
+#if defined(TFL_TEST_SPIRV_REFLECTION)
 void unsupported_spirv_capabilities() {
     const std::array<unsigned int, 7> drawParameters{
         spv::MagicNumber, 0x00010300u, 0, 1, 0,
@@ -376,15 +376,15 @@ void unsupported_spirv_capabilities() {
     rhi::ShaderReflection reflection;
     const auto status = shader::detail::reflect_spirv(
         drawParameters, rhi::ShaderStage::vertex, reflection);
-    TRUFFLE_CHECK(!status.ok() && status.code == rhi::StatusCode::unsupported);
-    TRUFFLE_CHECK(status.message.find("DrawParameters") != std::string::npos);
+    TFL_CHECK(!status.ok() && status.code == rhi::StatusCode::unsupported);
+    TFL_CHECK(status.message.find("DrawParameters") != std::string::npos);
 }
 #endif
 }
 
 int main() {
     try {
-#if defined(TRUFFLE_TEST_SPIRV_REFLECTION)
+#if defined(TFL_TEST_SPIRV_REFLECTION)
         unsupported_spirv_capabilities();
 #endif
         if (!truffle::tests::shader_route_enabled()) return 0;

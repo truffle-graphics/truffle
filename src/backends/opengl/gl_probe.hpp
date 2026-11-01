@@ -3,7 +3,7 @@
 #include "foundation_backend.hpp"
 
 #include "gl_api.hpp"
-#if defined(TRUFFLE_GL_CONTEXT_CGL)
+#if defined(TFL_GL_CONTEXT_CGL)
 #include "cgl_context.hpp"
 #else
 #include "egl_context.hpp"
@@ -25,7 +25,7 @@
 
 namespace truffle::rhi::detail::gl_probe {
 
-#if defined(TRUFFLE_GL_API_DESKTOP)
+#if defined(TFL_GL_API_DESKTOP)
 inline constexpr GLenum packImageHeight = GL_PACK_IMAGE_HEIGHT;
 inline constexpr GLenum stencilIndex = GL_STENCIL_INDEX;
 #else
@@ -33,8 +33,8 @@ inline constexpr GLenum packImageHeight = 0;
 inline constexpr GLenum stencilIndex = 0x1901;
 #endif
 
-#if defined(TRUFFLE_GL_HAS_DEBUG_OUTPUT)
-#if defined(TRUFFLE_GL_API_DESKTOP)
+#if defined(TFL_GL_HAS_DEBUG_OUTPUT)
+#if defined(TFL_GL_API_DESKTOP)
 inline constexpr GLenum debugOutput = GL_DEBUG_OUTPUT;
 inline constexpr GLenum debugOutputSynchronous = GL_DEBUG_OUTPUT_SYNCHRONOUS;
 inline constexpr GLenum debugTypeError = GL_DEBUG_TYPE_ERROR;
@@ -126,7 +126,7 @@ struct TextureFormatInfo {
     case TextureFormat::depth24_unorm_stencil8:
         return {GL_DEPTH24_STENCIL8, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, 4,
                 TextureAspect::depth | TextureAspect::stencil};
-#if defined(TRUFFLE_GL_API_DESKTOP)
+#if defined(TFL_GL_API_DESKTOP)
     // Desktop GL stores BGRA texels as RGBA8 and swizzles GL_BGRA transfers.
     case TextureFormat::bgra8_unorm:
         return {GL_RGBA8, GL_BGRA, GL_UNSIGNED_BYTE, 4, TextureAspect::color};
@@ -183,7 +183,7 @@ struct TextureResource {
 [[nodiscard]] inline GLenum texture_target(const TextureDesc& desc) noexcept {
     switch (desc.dimension) {
     case TextureDimension::d2:
-#if defined(TRUFFLE_GL_API_DESKTOP)
+#if defined(TFL_GL_API_DESKTOP)
         if (desc.sampleCount > 1) {
             return desc.arrayLayers == 1 ? GL_TEXTURE_2D_MULTISAMPLE
                                          : GL_TEXTURE_2D_MULTISAMPLE_ARRAY;
@@ -193,7 +193,7 @@ struct TextureResource {
     case TextureDimension::d3:
         return GL_TEXTURE_3D;
     case TextureDimension::cube:
-#if defined(TRUFFLE_GL_API_DESKTOP)
+#if defined(TFL_GL_API_DESKTOP)
         return desc.arrayLayers == 6 ? GL_TEXTURE_CUBE_MAP
                                      : GL_TEXTURE_CUBE_MAP_ARRAY;
 #else
@@ -263,7 +263,7 @@ struct PipelineResource {
     case ShaderStage::fragment:
         return GL_FRAGMENT_SHADER;
     case ShaderStage::compute:
-#if defined(TRUFFLE_GL_HAS_COMPUTE)
+#if defined(TFL_GL_HAS_COMPUTE)
         return GL_COMPUTE_SHADER;
 #else
         return 0;
@@ -451,7 +451,7 @@ struct PipelineResource {
         return bindings.status();
     }
     pipeline->bindings = std::move(bindings).value();
-#if defined(TRUFFLE_GL_HAS_COMPUTE)
+#if defined(TFL_GL_HAS_COMPUTE)
     std::array<GLint, 3> workgroup{};
     glGetProgramiv(pipeline->program, GL_COMPUTE_WORK_GROUP_SIZE, workgroup.data());
     if (workgroup[0] != static_cast<GLint>(desc.requiredWorkgroupSize.width) ||
@@ -502,7 +502,7 @@ struct PipelineResource {
                                        "GL buffer binding size disagrees with reflection");
             }
             GLenum target = GL_UNIFORM_BUFFER;
-#if defined(TRUFFLE_GL_HAS_COMPUTE)
+#if defined(TFL_GL_HAS_COMPUTE)
             if (binding.type == BindingType::storage_buffer) target = GL_SHADER_STORAGE_BUFFER;
 #endif
             glBindBufferRange(target, binding.slot, buffer->name,
@@ -559,7 +559,7 @@ inline void allocate_texture(const TextureResource& resource) {
     const auto& desc = resource.desc;
     const auto& format = resource.format;
     if (desc.sampleCount > 1) {
-#if defined(TRUFFLE_GL_API_DESKTOP) && defined(TRUFFLE_GL_HAS_TEXTURE_STORAGE)
+#if defined(TFL_GL_API_DESKTOP) && defined(TFL_GL_HAS_TEXTURE_STORAGE)
         if (desc.arrayLayers == 1) {
             glTexStorage2DMultisample(
                 resource.target, static_cast<GLsizei>(desc.sampleCount),
@@ -572,7 +572,7 @@ inline void allocate_texture(const TextureResource& resource) {
                 static_cast<GLsizei>(desc.extent.height),
                 static_cast<GLsizei>(desc.arrayLayers), GL_TRUE);
         }
-#elif defined(TRUFFLE_GL_API_DESKTOP)
+#elif defined(TFL_GL_API_DESKTOP)
         if (desc.arrayLayers == 1) {
             glTexImage2DMultisample(
                 resource.target, static_cast<GLsizei>(desc.sampleCount),
@@ -595,7 +595,7 @@ inline void allocate_texture(const TextureResource& resource) {
                           desc.arrayLayers != 1) ||
                          (desc.dimension == TextureDimension::cube &&
                           desc.arrayLayers != 6);
-#if defined(TRUFFLE_GL_HAS_TEXTURE_STORAGE)
+#if defined(TFL_GL_HAS_TEXTURE_STORAGE)
     if (layered) {
         const auto depth = desc.dimension == TextureDimension::d3
                                ? desc.extent.depth
@@ -651,7 +651,7 @@ inline void allocate_texture(const TextureResource& resource) {
     }
     const auto target = texture_target(desc);
     if (target == 0 || format.internalFormat == 0
-#if defined(TRUFFLE_GL_API_ES)
+#if defined(TFL_GL_API_ES)
         || desc.sampleCount != 1
 #endif
     ) {
@@ -698,7 +698,7 @@ inline void allocate_texture(const TextureResource& resource) {
         return Status::failure(StatusCode::unsupported,
                                "GL multisample texture views are disabled");
     }
-#if !defined(TRUFFLE_GL_HAS_TEXTURE_VIEWS)
+#if !defined(TFL_GL_HAS_TEXTURE_VIEWS)
     if (desc.dimension != parent->desc.dimension || desc.format != parent->desc.format ||
         desc.range.baseMipLevel != 0 || desc.range.mipLevelCount != parent->desc.mipLevels ||
         desc.range.baseArrayLayer != 0 ||
@@ -1348,9 +1348,9 @@ struct Probe {
 
     native->debugCallback = desc.debugCallback;
     native->debugUserData = desc.debugUserData;
-#if defined(TRUFFLE_GL_HAS_DEBUG_OUTPUT)
+#if defined(TFL_GL_HAS_DEBUG_OUTPUT)
     if (desc.enableValidation) {
-#if defined(TRUFFLE_GL_API_DESKTOP)
+#if defined(TFL_GL_API_DESKTOP)
         constexpr auto callbackName = "glDebugMessageCallback";
 #else
         constexpr auto callbackName = "glDebugMessageCallbackKHR";
@@ -1380,7 +1380,7 @@ struct Probe {
     if (native->debugOutput) {
         name += " [KHR_debug]";
     }
-#if defined(TRUFFLE_GL_HAS_TEXTURE_VIEWS)
+#if defined(TFL_GL_HAS_TEXTURE_VIEWS)
     GLint majorVersion = 0;
     GLint minorVersion = 0;
     glGetIntegerv(GL_MAJOR_VERSION, &majorVersion);
@@ -1396,7 +1396,7 @@ struct Probe {
     GLint invocations = 0;
     std::array<GLint, 3> workgroup{};
     glGetIntegerv(GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT, &uniformAlignment);
-#if defined(TRUFFLE_GL_HAS_COMPUTE)
+#if defined(TFL_GL_HAS_COMPUTE)
     glGetIntegerv(GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT, &storageAlignment);
     glGetIntegerv(GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS, &invocations);
     for (GLuint index = 0; index < 3; ++index) {
@@ -1734,7 +1734,7 @@ struct Probe {
     };
     for (const auto& command : commands) {
         if (command.kind == NativeCommandKind::barrier) {
-#if defined(TRUFFLE_GL_HAS_COMPUTE)
+#if defined(TFL_GL_HAS_COMPUTE)
             glMemoryBarrier(GL_ALL_BARRIER_BITS);
 #endif
             continue;
@@ -1743,7 +1743,7 @@ struct Probe {
             command.kind == NativeCommandKind::begin_occlusion_query ||
             command.kind == NativeCommandKind::end_occlusion_query ||
             command.kind == NativeCommandKind::resolve_queries) {
-#if defined(TRUFFLE_GL_HAS_SYNC_OBJECTS)
+#if defined(TFL_GL_HAS_SYNC_OBJECTS)
             const auto destination =
                 std::static_pointer_cast<BufferResource>(command.secondaryObject);
             if (auto status = execute_query(
@@ -1758,7 +1758,7 @@ struct Probe {
 #endif
         }
         if (command.kind == NativeCommandKind::begin_compute) {
-#if defined(TRUFFLE_GL_HAS_COMPUTE)
+#if defined(TFL_GL_HAS_COMPUTE)
             if (renderActive || computeActive) {
                 return fail(Status::failure(StatusCode::invalid_state,
                                              "GL compute scope overlaps another encoder"));
@@ -1837,7 +1837,7 @@ struct Probe {
         }
         if (command.kind == NativeCommandKind::dispatch ||
             command.kind == NativeCommandKind::dispatch_indirect) {
-#if defined(TRUFFLE_GL_HAS_COMPUTE)
+#if defined(TFL_GL_HAS_COMPUTE)
             if (!computeActive || !computePipeline) {
                 return fail(Status::failure(StatusCode::invalid_state,
                                              "GL dispatch requires a compute pipeline"));
@@ -1918,7 +1918,7 @@ struct Probe {
             glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
             for (std::size_t index = 0;
                  index < command.colorAttachments.size(); ++index) {
-#if defined(TRUFFLE_GL_API_DESKTOP)
+#if defined(TFL_GL_API_DESKTOP)
                 glColorMaski(static_cast<GLuint>(index), GL_TRUE, GL_TRUE,
                              GL_TRUE, GL_TRUE);
 #endif
@@ -2082,12 +2082,12 @@ struct Probe {
             const auto indexType = input.indexFormat == IndexFormat::uint16
                                        ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT;
             if (command.kind == NativeCommandKind::draw_indirect) {
-#if defined(TRUFFLE_GL_API_DESKTOP)
+#if defined(TFL_GL_API_DESKTOP)
                 const auto buffer = std::static_pointer_cast<BufferResource>(command.object);
                 glBindBuffer(GL_DRAW_INDIRECT_BUFFER, buffer->name);
                 for (std::uint64_t index = 0; index < command.arguments[2]; ++index) {
                     const auto offset = command.arguments[0] + index * command.arguments[3];
-#if !defined(TRUFFLE_GL_HAS_BASE_INSTANCE)
+#if !defined(TFL_GL_HAS_BASE_INSTANCE)
                     // GL 4.1 reserves the indirect first-instance word and
                     // requires it to be zero; reject records that set it.
                     GLuint firstInstance = 0;
@@ -2136,11 +2136,11 @@ struct Probe {
                 const auto* offset = reinterpret_cast<const void*>(
                     input.indexOffset + first * indexBytes);
                 const auto baseVertex = static_cast<std::int32_t>(command.arguments[3]);
-#if defined(TRUFFLE_GL_HAS_BASE_INSTANCE)
+#if defined(TFL_GL_HAS_BASE_INSTANCE)
                 glDrawElementsInstancedBaseVertexBaseInstance(
                     mode, count, indexType, offset, instances, baseVertex,
                     static_cast<GLuint>(command.arguments[4]));
-#elif defined(TRUFFLE_GL_API_DESKTOP)
+#elif defined(TFL_GL_API_DESKTOP)
                 if (command.arguments[4] != 0) {
                     return fail(Status::failure(
                         StatusCode::unsupported,
@@ -2157,7 +2157,7 @@ struct Probe {
                 glDrawElementsInstanced(mode, count, indexType, offset, instances);
 #endif
             } else {
-#if defined(TRUFFLE_GL_HAS_BASE_INSTANCE)
+#if defined(TFL_GL_HAS_BASE_INSTANCE)
                 glDrawArraysInstancedBaseInstance(
                     mode, static_cast<GLint>(command.arguments[2]), count, instances,
                     static_cast<GLuint>(command.arguments[3]));
@@ -2165,7 +2165,7 @@ struct Probe {
                 if (command.arguments[3] != 0) {
                     return fail(Status::failure(
                         StatusCode::unsupported,
-#if defined(TRUFFLE_GL_API_ES)
+#if defined(TFL_GL_API_ES)
                         "GLES base instance is unsupported"));
 #else
                         "GL base instance requires a GL 4.2 or newer context"));

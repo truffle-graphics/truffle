@@ -56,7 +56,7 @@ jobs:
             xvfb
 
       - name: Configure
-        run: cmake --preset ci -DTRUFFLE_BUILD_BACKEND_METAL=${{ matrix.metal }}
+        run: cmake --preset ci -DTFL_BUILD_BACKEND_METAL=${{ matrix.metal }}
 
       - name: Build
         run: cmake --build --preset ci
@@ -83,7 +83,7 @@ jobs:
         run: ./build/ci/tools/rhi-doctor/truffle-rhi-doctor${{ runner.os == 'Windows' && '.exe' || '' }} --strict --json build/ci/rhi-doctor.json
 
       - name: Generate backend parity report
-        run: cmake -DTRUFFLE_BUILD_DIR="${{ github.workspace }}/build/ci" -DTRUFFLE_REPORT_OUT="${{ github.workspace }}/build/ci/parity-matrix.md" -P cmake/GenerateParityReport.cmake
+        run: cmake -DTFL_BUILD_DIR="${{ github.workspace }}/build/ci" -DTFL_REPORT_OUT="${{ github.workspace }}/build/ci/parity-matrix.md" -P cmake/GenerateParityReport.cmake
 
       - name: Upload backend parity report
         uses: actions/upload-artifact@v4
@@ -107,10 +107,10 @@ jobs:
       - name: Configure package build
         run: |
           cmake -S . -B build/package \
-            -DTRUFFLE_INSTALL=ON \
-            -DTRUFFLE_BUILD_RHI_DOCTOR=OFF \
-            -DTRUFFLE_BUILD_TESTS=OFF \
-            -DTRUFFLE_BUILD_EXAMPLES=OFF
+            -DTFL_INSTALL=ON \
+            -DTFL_BUILD_RHI_DOCTOR=OFF \
+            -DTFL_BUILD_TESTS=OFF \
+            -DTFL_BUILD_EXAMPLES=OFF
 
       - name: Build package targets
         run: cmake --build build/package

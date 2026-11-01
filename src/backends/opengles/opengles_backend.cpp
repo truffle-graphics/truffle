@@ -2,15 +2,15 @@
 
 #include "foundation_backend.hpp"
 
-#ifdef TRUFFLE_HAS_EGL_OPENGLES
-#define TRUFFLE_GL_API_ES 1
+#ifdef TFL_HAS_EGL_OPENGLES
+#define TFL_GL_API_ES 1
 #include "gl_probe.hpp"
 #endif
 
 namespace truffle::rhi {
 
 Result<Instance> create_opengles_instance(const InstanceDesc& desc) {
-#ifdef TRUFFLE_HAS_EGL_OPENGLES
+#ifdef TFL_HAS_EGL_OPENGLES
     auto probe = detail::gl_probe::initialize(desc);
     if (!probe.ok()) {
         return probe.status();

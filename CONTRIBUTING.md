@@ -217,5 +217,9 @@ Examples:
   `clang-format` is available; use `truffle_format` to apply the repository
   formatting baseline.
 - Keep module boundaries explicit and public contracts documented.
+- Prefix CMake options, cache/build variables and preprocessor macros with
+  `TFL_` (for example `TFL_GUI_ENABLE_TEXT`). Targets, namespaces and the
+  CMake package keep the full Truffle name (`truffle_gui`, `truffle::`,
+  `Truffle::GUI`).
 - Keep the default CMake build path reproducible and optional tooling
   non-blocking.
