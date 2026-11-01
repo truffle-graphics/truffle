@@ -240,15 +240,15 @@ rhi::Result<Compilation> compile_dxc(const CompileRequest& request,
     if (FAILED(versionStatus) || !version || FAILED(version->GetVersion(&major, &minor)))
         return invalid("Compiler version information unavailable");
     result.compiler = {"dxc", std::to_string(major) + "." + std::to_string(minor),
-        TRUFFLE_DXC_REVISION ";truffle-dxc=1;hlsl=2021;shader-model=6.0;" +
+        TFL_DXC_REVISION ";truffle-dxc=1;hlsl=2021;shader-model=6.0;" +
         (dxil ? std::string{"dxil;validator=dxc"} :
             "gl-layout;vulkan=" + std::string{vulkan_version_name(request.vulkanTarget.environment)} +
             ";spirv=" + std::string{spirv_version_name(request.vulkanTarget.spirv)} +
-            ";spirv-tools=" TRUFFLE_SPIRV_TOOLS_REVISION)};
+            ";spirv-tools=" TFL_SPIRV_TOOLS_REVISION)};
     result.compiler.revision += ";target=" + std::string{rhi::shader_target_name(request.target)} +
         ";debug=" + (request.generateDebugInfo ? "1" : "0") +
         ";experimental-metal=" + (request.allowExperimentalMetalGeneration ? "1" : "0");
-#if defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS)
+#if defined(TFL_SHADER_HAS_SPIRV_CROSS)
     if (!dxil && request.target != rhi::ShaderTarget::spirv)
         result.compiler.revision += detail::translation_provenance();
 #endif
@@ -301,7 +301,7 @@ rhi::Result<Compilation> compile_dxc(const CompileRequest& request,
         if (!validation.ok()) return validation;
         const auto reflected = detail::reflect_spirv(words, request.stage, variant.reflection);
         if (!reflected.ok()) return reflected;
-#if defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS)
+#if defined(TFL_SHADER_HAS_SPIRV_CROSS)
         if (request.target != rhi::ShaderTarget::spirv) {
             const auto translated = detail::translate_spirv(words, request, variant, desc.remaps);
             if (!translated.ok()) return translated;

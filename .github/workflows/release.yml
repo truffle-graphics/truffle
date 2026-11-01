@@ -27,9 +27,9 @@ jobs:
       - name: Configure package build
         run: |
           cmake -S . -B build/release-package \
-            -DTRUFFLE_INSTALL=ON \
-            -DTRUFFLE_BUILD_TESTS=ON \
-            -DTRUFFLE_BUILD_EXAMPLES=OFF
+            -DTFL_INSTALL=ON \
+            -DTFL_BUILD_TESTS=ON \
+            -DTFL_BUILD_EXAMPLES=OFF
 
       - name: Build package
         run: cmake --build build/release-package
@@ -44,8 +44,8 @@ jobs:
       - name: Generate backend parity report
         run: |
           cmake \
-            -DTRUFFLE_BUILD_DIR=${{ github.workspace }}/build/release-package \
-            -DTRUFFLE_REPORT_OUT=${{ github.workspace }}/build/release-package/parity-matrix.md \
+            -DTFL_BUILD_DIR=${{ github.workspace }}/build/release-package \
+            -DTFL_REPORT_OUT=${{ github.workspace }}/build/release-package/parity-matrix.md \
             -P cmake/GenerateParityReport.cmake
 
       - name: Upload parity report artifact

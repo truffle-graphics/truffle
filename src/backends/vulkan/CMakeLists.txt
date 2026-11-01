@@ -3,7 +3,7 @@ set(_truffle_volk_dir "${PROJECT_SOURCE_DIR}/vendor/volk")
 if(NOT EXISTS "${_truffle_vulkan_headers_dir}/include/vulkan/vulkan.h" OR
    NOT EXISTS "${_truffle_volk_dir}/volk.c")
     message(FATAL_ERROR
-        "TRUFFLE_BUILD_BACKEND_VULKAN requires the pinned Vulkan dependency group. "
+        "TFL_BUILD_BACKEND_VULKAN requires the pinned Vulkan dependency group. "
         "Run: git submodule update --init vendor/vulkan-headers vendor/volk")
 endif()
 

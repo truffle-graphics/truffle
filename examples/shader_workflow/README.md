@@ -10,8 +10,8 @@ language. The default filesystem resolver tracks all three canonical source
 identities and their content. `USE_TINT` selects the requested configuration.
 Only the two configurations explicitly requested by this example are compiled.
 
-From a repository build configured with `TRUFFLE_BUILD_EXAMPLES=ON` and
-`TRUFFLE_SHADER_ENABLE_GLSLANG=ON`:
+From a repository build configured with `TFL_BUILD_EXAMPLES=ON` and
+`TFL_SHADER_ENABLE_GLSLANG=ON`:
 
 ```sh
 cmake --build build --target truffle_shader_workflow --parallel 2

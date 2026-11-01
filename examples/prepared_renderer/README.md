@@ -10,7 +10,7 @@ The shader must generate triangle vertices from vertex IDs and need no descripto
 resources; this intentionally keeps the example focused on package consumption.
 `docs/renderer.md` describes descriptor-group batches and safe replacement.
 
-Configure with `TRUFFLE_BUILD_EXAMPLES=ON` and Metal and/or Vulkan enabled, then:
+Configure with `TFL_BUILD_EXAMPLES=ON` and Metal and/or Vulkan enabled, then:
 
 ```bash
 cmake --build build/renderer --parallel 4 --target truffle_prepared_renderer

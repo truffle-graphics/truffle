@@ -19,7 +19,7 @@ shader::CompileRequest request(rhi::ShaderStage stage) {
     shader::CompileRequest result;
     result.name = "minimum Renderer application shader";
     result.source = require(shader::read_source(
-        std::string(TRUFFLE_MINIMUM_RENDERER_SHADER_DIR) + "/draw.metal"));
+        std::string(TFL_MINIMUM_RENDERER_SHADER_DIR) + "/draw.metal"));
     result.language = rhi::ShaderSourceLanguage::msl;
     result.target = rhi::ShaderTarget::metal_source;
     result.stage = stage;
@@ -30,7 +30,7 @@ shader::CompileRequest request(rhi::ShaderStage stage) {
             return base::Status::failure(base::StatusCode::invalid_argument,
                                          "minimum Renderer: unexpected shader unit");
         }
-        return shader::read_source(std::string(TRUFFLE_MINIMUM_RENDERER_SHADER_DIR) +
+        return shader::read_source(std::string(TFL_MINIMUM_RENDERER_SHADER_DIR) +
                                     "/" + std::string(name));
     };
     rhi::ShaderReflection reflection;

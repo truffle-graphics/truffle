@@ -8,7 +8,7 @@
 // serialized. A submission completes on the GPU before it returns, so RHI
 // fences and semaphores are host timeline values reached at submit.
 //
-// With TRUFFLE_GL_HAS_SYNC_OBJECTS (GL 3.2 sync objects; macOS GL 4.1),
+// With TFL_GL_HAS_SYNC_OBJECTS (GL 3.2 sync objects; macOS GL 4.1),
 // completion is a glFenceSync waited with glClientWaitSync and a bounded
 // timeout, and occlusion query pools map to GL_SAMPLES_PASSED. Timestamp
 // query pools are unsupported: Apple's GL 4.1 reports zero
@@ -18,7 +18,7 @@
 #include "foundation_backend.hpp"
 
 #include "gl_api.hpp"
-#if defined(TRUFFLE_GL_CONTEXT_CGL)
+#if defined(TFL_GL_CONTEXT_CGL)
 #include "cgl_context.hpp"
 #else
 #include "egl_context.hpp"
@@ -39,7 +39,7 @@ inline constexpr std::uint64_t kCompletionTimeoutNanoseconds =
 
 // Waits until all GL work issued on the current context has completed.
 [[nodiscard]] inline Status wait_for_completion(std::string_view what) {
-#if defined(TRUFFLE_GL_HAS_SYNC_OBJECTS)
+#if defined(TFL_GL_HAS_SYNC_OBJECTS)
     GLsync sync = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
     if (sync == nullptr) {
         return Status::failure(StatusCode::backend_validation_failed,
@@ -69,7 +69,7 @@ inline constexpr std::uint64_t kCompletionTimeoutNanoseconds =
 #endif
 }
 
-#if defined(TRUFFLE_GL_HAS_SYNC_OBJECTS)
+#if defined(TFL_GL_HAS_SYNC_OBJECTS)
 
 // Semaphores are host timeline values. The foundation waits for them before
 // native submission, and the single GL queue completes each submission

@@ -1,17 +1,17 @@
-if(NOT DEFINED TRUFFLE_BUILD_DIR)
-    message(FATAL_ERROR "TRUFFLE_BUILD_DIR is required")
+if(NOT DEFINED TFL_BUILD_DIR)
+    message(FATAL_ERROR "TFL_BUILD_DIR is required")
 endif()
 
-if(NOT DEFINED TRUFFLE_REPORT_OUT)
-    message(FATAL_ERROR "TRUFFLE_REPORT_OUT is required")
+if(NOT DEFINED TFL_REPORT_OUT)
+    message(FATAL_ERROR "TFL_REPORT_OUT is required")
 endif()
 
-if(NOT DEFINED TRUFFLE_REPORT_JSON_OUT)
-    string(REGEX REPLACE "\\.[^.]*$" ".json" TRUFFLE_REPORT_JSON_OUT "${TRUFFLE_REPORT_OUT}")
+if(NOT DEFINED TFL_REPORT_JSON_OUT)
+    string(REGEX REPLACE "\\.[^.]*$" ".json" TFL_REPORT_JSON_OUT "${TFL_REPORT_OUT}")
 endif()
 
-if(NOT DEFINED TRUFFLE_RHI_PARITY_JSON_OUT)
-    set(TRUFFLE_RHI_PARITY_JSON_OUT "${TRUFFLE_BUILD_DIR}/rhi-parity-report.json")
+if(NOT DEFINED TFL_RHI_PARITY_JSON_OUT)
+    set(TFL_RHI_PARITY_JSON_OUT "${TFL_BUILD_DIR}/rhi-parity-report.json")
 endif()
 
 function(_truffle_json_escape out input)
@@ -34,9 +34,9 @@ set(_tracked_tests
     truffle_backend_support_tests
 )
 
-get_filename_component(_report_dir "${TRUFFLE_REPORT_OUT}" DIRECTORY)
-get_filename_component(_json_report_dir "${TRUFFLE_REPORT_JSON_OUT}" DIRECTORY)
-get_filename_component(_rhi_json_report_dir "${TRUFFLE_RHI_PARITY_JSON_OUT}" DIRECTORY)
+get_filename_component(_report_dir "${TFL_REPORT_OUT}" DIRECTORY)
+get_filename_component(_json_report_dir "${TFL_REPORT_JSON_OUT}" DIRECTORY)
+get_filename_component(_rhi_json_report_dir "${TFL_RHI_PARITY_JSON_OUT}" DIRECTORY)
 if(_report_dir)
     file(MAKE_DIRECTORY "${_report_dir}")
 endif()
@@ -48,7 +48,7 @@ if(_rhi_json_report_dir)
 endif()
 
 execute_process(
-    COMMAND ctest --test-dir "${TRUFFLE_BUILD_DIR}" -N
+    COMMAND ctest --test-dir "${TFL_BUILD_DIR}" -N
     RESULT_VARIABLE _list_result
     OUTPUT_VARIABLE _list_output
     ERROR_VARIABLE _list_error
@@ -56,17 +56,17 @@ execute_process(
 )
 
 if(NOT _list_result EQUAL 0)
-    message(FATAL_ERROR "Failed to list tests in ${TRUFFLE_BUILD_DIR}: ${_list_error}")
+    message(FATAL_ERROR "Failed to list tests in ${TFL_BUILD_DIR}: ${_list_error}")
 endif()
 
 set(_report "# Backend Parity Matrix\n\n")
-string(APPEND _report "- Build directory: ${TRUFFLE_BUILD_DIR}\n")
+string(APPEND _report "- Build directory: ${TFL_BUILD_DIR}\n")
 string(TIMESTAMP _ts UTC)
 string(APPEND _report "- Generated (UTC): ${_ts}\n\n")
 string(APPEND _report "| Test | Status | Notes |\n")
 string(APPEND _report "|---|---|---|\n")
 
-_truffle_json_escape(_json_build_dir "${TRUFFLE_BUILD_DIR}")
+_truffle_json_escape(_json_build_dir "${TFL_BUILD_DIR}")
 _truffle_json_escape(_json_generated "${_ts}")
 set(_json "{\n")
 string(APPEND _json "  \"buildDirectory\": \"${_json_build_dir}\",\n")
@@ -98,7 +98,7 @@ foreach(_test IN LISTS _tracked_tests)
     endif()
 
     execute_process(
-        COMMAND ctest --test-dir "${TRUFFLE_BUILD_DIR}" -R "^${_test}$" --output-on-failure
+        COMMAND ctest --test-dir "${TFL_BUILD_DIR}" -R "^${_test}$" --output-on-failure
         RESULT_VARIABLE _run_result
         OUTPUT_VARIABLE _run_output
         ERROR_VARIABLE _run_error
@@ -111,19 +111,19 @@ foreach(_test IN LISTS _tracked_tests)
     else()
         string(APPEND _report "| ${_test} | fail | see CI logs for output |\n")
         _truffle_append_json_test("${_test}" "fail" "see CI logs for output")
-        file(MAKE_DIRECTORY "${TRUFFLE_BUILD_DIR}")
-        file(WRITE "${TRUFFLE_BUILD_DIR}/${_test}.parity.log"
+        file(MAKE_DIRECTORY "${TFL_BUILD_DIR}")
+        file(WRITE "${TFL_BUILD_DIR}/${_test}.parity.log"
             "--- ctest stdout ---\n${_run_output}\n\n--- ctest stderr ---\n${_run_error}\n")
-        file(WRITE "${TRUFFLE_REPORT_OUT}" "${_report}")
+        file(WRITE "${TFL_REPORT_OUT}" "${_report}")
         string(APPEND _json "\n  ]\n}\n")
-        file(WRITE "${TRUFFLE_REPORT_JSON_OUT}" "${_json}")
+        file(WRITE "${TFL_REPORT_JSON_OUT}" "${_json}")
         message(FATAL_ERROR "Parity test ${_test} failed")
     endif()
 endforeach()
 
-file(WRITE "${TRUFFLE_REPORT_OUT}" "${_report}")
+file(WRITE "${TFL_REPORT_OUT}" "${_report}")
 string(APPEND _json "\n  ]\n}\n")
-file(WRITE "${TRUFFLE_REPORT_JSON_OUT}" "${_json}")
+file(WRITE "${TFL_REPORT_JSON_OUT}" "${_json}")
 
 if(CMAKE_HOST_WIN32)
     set(_truffle_exe_suffix ".exe")
@@ -132,10 +132,10 @@ else()
 endif()
 
 set(_rhi_parity_report_exe
-    "${TRUFFLE_BUILD_DIR}/tests/truffle_rhi_parity_report${_truffle_exe_suffix}")
+    "${TFL_BUILD_DIR}/tests/truffle_rhi_parity_report${_truffle_exe_suffix}")
 if(EXISTS "${_rhi_parity_report_exe}")
     execute_process(
-        COMMAND "${_rhi_parity_report_exe}" "${TRUFFLE_RHI_PARITY_JSON_OUT}"
+        COMMAND "${_rhi_parity_report_exe}" "${TFL_RHI_PARITY_JSON_OUT}"
         RESULT_VARIABLE _rhi_report_result
         OUTPUT_VARIABLE _rhi_report_output
         ERROR_VARIABLE _rhi_report_error
@@ -147,10 +147,10 @@ if(EXISTS "${_rhi_parity_report_exe}")
             "Failed to write live RHI parity report with ${_rhi_parity_report_exe}: "
             "${_rhi_report_error}")
     endif()
-    message(STATUS "Wrote live RHI parity JSON to ${TRUFFLE_RHI_PARITY_JSON_OUT}")
+    message(STATUS "Wrote live RHI parity JSON to ${TFL_RHI_PARITY_JSON_OUT}")
 else()
-    message(STATUS "Live RHI parity reporter not built in ${TRUFFLE_BUILD_DIR}")
+    message(STATUS "Live RHI parity reporter not built in ${TFL_BUILD_DIR}")
 endif()
 
-message(STATUS "Wrote backend parity report to ${TRUFFLE_REPORT_OUT}")
-message(STATUS "Wrote backend parity JSON to ${TRUFFLE_REPORT_JSON_OUT}")
+message(STATUS "Wrote backend parity report to ${TFL_REPORT_OUT}")
+message(STATUS "Wrote backend parity JSON to ${TFL_REPORT_JSON_OUT}")

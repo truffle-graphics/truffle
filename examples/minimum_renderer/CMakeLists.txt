@@ -1,13 +1,13 @@
-if(APPLE AND TRUFFLE_BUILD_BACKEND_METAL AND TRUFFLE_SHADER_ENABLE_METAL_COMPILER)
+if(APPLE AND TFL_BUILD_BACKEND_METAL AND TFL_SHADER_ENABLE_METAL_COMPILER)
     add_executable(truffle_minimum_renderer main.mm scene.cpp)
     target_link_libraries(truffle_minimum_renderer PRIVATE truffle_renderer
         truffle_backend_metal "-framework AppKit" "-framework QuartzCore")
     target_compile_options(truffle_minimum_renderer PRIVATE
         "$<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>")
     target_compile_definitions(truffle_minimum_renderer PRIVATE
-        "TRUFFLE_MINIMUM_RENDERER_SHADER_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/shaders\"")
+        "TFL_MINIMUM_RENDERER_SHADER_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/shaders\"")
     truffle_target_warnings(truffle_minimum_renderer)
-    if(TRUFFLE_BUILD_TESTS)
+    if(TFL_BUILD_TESTS)
         add_test(NAME truffle_minimum_renderer_window
             COMMAND truffle_minimum_renderer --smoke)
         set_tests_properties(truffle_minimum_renderer_window PROPERTIES

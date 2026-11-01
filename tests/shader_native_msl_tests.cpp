@@ -22,10 +22,10 @@ using namespace truffle;
 
 std::string commonSource = R"MSL(#include <metal_stdlib>
 using namespace metal;
-#ifndef TRUFFLE_MSL_CONFIG
+#ifndef TFL_MSL_CONFIG
 #error MSL configuration was not supplied
 #endif
-#if TRUFFLE_MSL_CONFIG != 1
+#if TFL_MSL_CONFIG != 1
 #error MSL configuration mismatch
 #endif
 struct VertexInput {
@@ -136,7 +136,7 @@ shader::CompileRequest request_for(
     request.target = target;
     request.sourceUnits = {"common.metal"};
     request.interfaceDeclaration = std::move(reflection);
-    request.defines = {{"TRUFFLE_MSL_CONFIG", "1"}};
+    request.defines = {{"TFL_MSL_CONFIG", "1"}};
     request.resolver = [&](std::string_view requested, std::string_view,
                            bool) -> rhi::Result<shader::Source> {
         if (requested != "common.metal") {
@@ -381,23 +381,23 @@ void source_contract(shader::Compiler& compiler) {
         first.value().package.desc().variants.front().code;
     const std::string packagedSource(
         reinterpret_cast<const char*>(packageCode.data()), packageCode.size());
-    check(packagedSource.starts_with("#define TRUFFLE_MSL_CONFIG 1\n"),
+    check(packagedSource.starts_with("#define TFL_MSL_CONFIG 1\n"),
           "Native MSL package preserves compiler defines for runtime compilation");
     auto hit = rebuild.rebuild(compiler, request);
     check(hit.ok() && hit.value().cacheHit,
           "Unchanged MSL composition must hit its cache");
     auto fileRootRequest = request;
     fileRootRequest.resolver = {};
-    fileRootRequest.includeRoots = {TRUFFLE_NATIVE_MSL_FIXTURE_DIR};
+    fileRootRequest.includeRoots = {TFL_NATIVE_MSL_FIXTURE_DIR};
     auto fileRootCompilation = compiler.compile(fileRootRequest);
     check(fileRootCompilation.ok() &&
               fileRootCompilation.value().dependencies.size() == 2 &&
               fileRootCompilation.value().dependencies.front().identity.find(
                   "common.metal") != std::string::npos,
           "MSL source units resolve through the shared include-root mechanism");
-    std::filesystem::create_directories(TRUFFLE_NATIVE_MSL_TEST_OUTPUT_DIR);
+    std::filesystem::create_directories(TFL_NATIVE_MSL_TEST_OUTPUT_DIR);
     const auto interfacePath = std::filesystem::path{
-        TRUFFLE_NATIVE_MSL_TEST_OUTPUT_DIR} / "interface.tsp";
+        TFL_NATIVE_MSL_TEST_OUTPUT_DIR} / "interface.tsp";
     std::ofstream interfaceFile{interfacePath, std::ios::binary};
     const auto interfaceBytes = fileRootCompilation.value().package.bytes();
     interfaceFile.write(
@@ -420,7 +420,7 @@ void source_contract(shader::Compiler& compiler) {
             std::move(desc),
             {}));
         const auto path =
-            std::filesystem::path{TRUFFLE_NATIVE_MSL_TEST_OUTPUT_DIR} /
+            std::filesystem::path{TFL_NATIVE_MSL_TEST_OUTPUT_DIR} /
             filename;
         std::ofstream file{path, std::ios::binary};
         const auto bytes = package.bytes();
@@ -563,7 +563,7 @@ int run() {
         compute(device, compiler, rhi::ShaderTarget::metal_library);
 
         const auto dependencyHeader =
-            std::filesystem::path{TRUFFLE_NATIVE_MSL_TEST_OUTPUT_DIR} /
+            std::filesystem::path{TFL_NATIVE_MSL_TEST_OUTPUT_DIR} /
             "dependency-added-after-cache.metal";
         std::error_code removeError;
         std::filesystem::remove(dependencyHeader, removeError);
@@ -587,12 +587,12 @@ int run() {
 lude )MSL";
         cachedDependencySource += quotedHeader;
         cachedDependencySource += R"MSL(
-#define TRUFFLE_HAS_OPTIONAL_HEADER 1
+#define TFL_HAS_OPTIONAL_HEADER 1
 #endif
 kernel void compute_main(
     device uint* output [[buffer(17)]],
     uint tid [[thread_position_in_grid]]) {
-#if defined(TRUFFLE_HAS_OPTIONAL_HEADER)
+#if defined(TFL_HAS_OPTIONAL_HEADER)
     output[tid] = optional_value();
 #else
     output[tid] = tid;

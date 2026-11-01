@@ -6,8 +6,8 @@
 #include "gl_sync_tests.hpp"
 
 int main() {
-#if defined(TRUFFLE_EXPECT_EGL_OPENGL) || defined(TRUFFLE_EXPECT_CGL_OPENGL)
-#if defined(TRUFFLE_EXPECT_CGL_OPENGL)
+#if defined(TFL_EXPECT_EGL_OPENGL) || defined(TFL_EXPECT_CGL_OPENGL)
+#if defined(TFL_EXPECT_CGL_OPENGL)
     constexpr auto platform = truffle::rhi::PlatformKind::macos;
 #else
     constexpr auto platform = truffle::rhi::PlatformKind::linux_host;
@@ -43,7 +43,7 @@ int main() {
         truffle::rhi::create_opengl_instance({
             .debugCallback = &truffle::tests::count_native_diagnostic,
             .debugUserData = &diagnostics}), true, &diagnostics);
-#if defined(TRUFFLE_EXPECT_CGL_OPENGL)
+#if defined(TFL_EXPECT_CGL_OPENGL)
     constexpr bool expectSync = true;
 #else
     constexpr bool expectSync = false;

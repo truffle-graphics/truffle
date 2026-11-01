@@ -20,8 +20,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#ifndef TRUFFLE_XCRUN_EXECUTABLE
-#define TRUFFLE_XCRUN_EXECUTABLE "xcrun"
+#ifndef TFL_XCRUN_EXECUTABLE
+#define TFL_XCRUN_EXECUTABLE "xcrun"
 #endif
 
 #ifndef POSIX_SPAWN_CLOEXEC_DEFAULT
@@ -310,7 +310,7 @@ CommandOutput run_capture(std::vector<std::string> arguments,
     return result;
 }
 
-#if defined(TRUFFLE_SHADER_HAS_METALLIB_COMPILER)
+#if defined(TFL_SHADER_HAS_METALLIB_COMPILER)
 std::string first_line(std::string_view value) {
     const auto end = value.find_first_of("\r\n");
     auto result = std::string{value.substr(0, end)};
@@ -320,17 +320,17 @@ std::string first_line(std::string_view value) {
 #endif
 
 rhi::Result<OfflineMetalToolchain> query_toolchain() {
-#if !defined(TRUFFLE_SHADER_HAS_METALLIB_COMPILER)
+#if !defined(TFL_SHADER_HAS_METALLIB_COMPILER)
     return unsupported(
         "Offline metallib output requires the installed Apple Metal Toolchain");
 #else
-    if (access(TRUFFLE_XCRUN_EXECUTABLE, X_OK) != 0) {
+    if (access(TFL_XCRUN_EXECUTABLE, X_OK) != 0) {
         return unsupported("The configured xcrun executable is unavailable");
     }
     auto metal = run_capture(
-        {TRUFFLE_XCRUN_EXECUTABLE, "--find", "metal"});
+        {TFL_XCRUN_EXECUTABLE, "--find", "metal"});
     auto metallib = run_capture(
-        {TRUFFLE_XCRUN_EXECUTABLE, "--find", "metallib"});
+        {TFL_XCRUN_EXECUTABLE, "--find", "metallib"});
     if (metal.status != 0 || metallib.status != 0 ||
         !metal.error.empty() || !metallib.error.empty()) {
         return unsupported("Unable to locate the installed Apple Metal Toolchain");
@@ -453,7 +453,7 @@ bool within(const std::filesystem::path& path,
 Status validate_native_dependencies(const OfflineMetalToolchain& toolchain,
                                     std::string_view source) {
     auto dependencies = run_capture(
-        {TRUFFLE_XCRUN_EXECUTABLE, "metal", "-x", "metal",
+        {TFL_XCRUN_EXECUTABLE, "metal", "-x", "metal",
          "-std=macos-metal2.1", "-target", "air64-apple-macos13.0",
          "-M", "-"},
         source);
@@ -533,7 +533,7 @@ rhi::Result<OfflineMetalResult> compile_metallib(
         metalErrorPipe.write, metallibErrorPipe.read, metallibErrorPipe.write};
 
     std::vector<std::string> metalArguments{
-        TRUFFLE_XCRUN_EXECUTABLE, "metal", "-x", "metal",
+        TFL_XCRUN_EXECUTABLE, "metal", "-x", "metal",
         "-std=macos-metal2.1", "-target", "air64-apple-macos13.0"};
     if (debugInfo) metalArguments.emplace_back("-g");
     metalArguments.insert(metalArguments.end(), {"-c", "-", "-o", "-"});

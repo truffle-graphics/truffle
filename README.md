@@ -141,7 +141,7 @@ see [`examples/gui_window`](examples/gui_window/README.md)). Assets, a general m
 not started.
 [`docs/roadmap.md`](docs/roadmap.md) records the review and evidence boundaries.
 GUI text support is enabled by default and uses the pinned FreeType/HarfBuzz
-submodules; `-DTRUFFLE_GUI_ENABLE_TEXT=OFF` builds a text-free GUI. No font is
+submodules; `-DTFL_GUI_ENABLE_TEXT=OFF` builds a text-free GUI. No font is
 bundled, and applications supply font data with its associated license.
 
 ## Build
@@ -163,22 +163,22 @@ ctest --preset dev
 
 The checked-in presets build the optional `truffle-shaderc` package assembler
 and its pinned offline GLSL/GLSL ES to SPIR-V route. Other consumers can opt in
-to the dependency-free assembler with `-DTRUFFLE_BUILD_SHADERC=ON`, then enable
+to the dependency-free assembler with `-DTFL_BUILD_SHADERC=ON`, then enable
 the Shader module's glslang adapter explicitly with
-`-DTRUFFLE_SHADER_ENABLE_GLSLANG=ON`; the runtime RHI never gains a compiler
+`-DTFL_SHADER_ENABLE_GLSLANG=ON`; the runtime RHI never gains a compiler
 dependency.
 Native Slang modules/imports can independently opt in with
-`-DTRUFFLE_SHADER_ENABLE_SLANG=ON -DTRUFFLE_SHADER_ENABLE_SPIRV_TOOLS=ON`;
+`-DTFL_SHADER_ENABLE_SLANG=ON -DTFL_SHADER_ENABLE_SPIRV_TOOLS=ON`;
 see [Slang's pinned source build and bounded target matrix](docs/shader-slang.md).
 HLSL compilation is independently enabled with
-`-DTRUFFLE_SHADER_ENABLE_DXC=ON -DTRUFFLE_SHADER_ENABLE_SPIRV_TOOLS=ON`;
+`-DTFL_SHADER_ENABLE_DXC=ON -DTFL_SHADER_ENABLE_SPIRV_TOOLS=ON`;
 it uses pinned in-process DXC for SPIR-V and DXIL, without requiring glslang.
 Portable native outputs additionally require
-`-DTRUFFLE_SHADER_ENABLE_SPIRV_TOOLS=ON -DTRUFFLE_SHADER_ENABLE_SPIRV_CROSS=ON`.
+`-DTFL_SHADER_ENABLE_SPIRV_TOOLS=ON -DTFL_SHADER_ENABLE_SPIRV_CROSS=ON`.
 Explicitly prepare their pinned submodules first; configure never downloads.
 Native MSL source/reflection is independently enabled with
-`-DTRUFFLE_SHADER_ENABLE_METAL_COMPILER=ON` on Apple. Offline `metallib` output
-additionally needs `-DTRUFFLE_SHADER_ENABLE_METALLIB_COMPILER=ON` and the
+`-DTFL_SHADER_ENABLE_METAL_COMPILER=ON` on Apple. Offline `metallib` output
+additionally needs `-DTFL_SHADER_ENABLE_METALLIB_COMPILER=ON` and the
 installed Xcode Metal Toolchain. These flags are disabled by default; prepared
 package consumers do not link the compiler.
 See the [native MSL and portable Shader target profiles and limits](src/shader/README.md#native-msl-source-and-libraries-188)
@@ -186,7 +186,7 @@ and [shaderc examples](docs/rhi1/shader-package.md#tool-usage).
 
 GUI text uses pinned FreeType and HarfBuzz sources and is enabled by default;
 prepare them with `git submodule update --init vendor/freetype vendor/harfbuzz`.
-With `-DTRUFFLE_GUI_ENABLE_TEXT=OFF`, `gui::TextEngine::available()` is false
+With `-DTFL_GUI_ENABLE_TEXT=OFF`, `gui::TextEngine::available()` is false
 and the GUI has no text-library build dependency. FreeType attribution and
 license notices are documented in
 [`docs/rhi1/dependencies.md`](docs/rhi1/dependencies.md#gui-text).
@@ -195,7 +195,7 @@ documentation: "This software is based in part on the work of the FreeType
 Team." The enabled install also places it beside the license texts.
 
 Optional WGSL compilation uses pinned in-process Tint with
-`-DTRUFFLE_SHADER_ENABLE_TINT=ON -DTRUFFLE_SHADER_ENABLE_SPIRV_TOOLS=ON`,
+`-DTFL_SHADER_ENABLE_TINT=ON -DTFL_SHADER_ENABLE_SPIRV_TOOLS=ON`,
 independently of glslang. It supports WGSL to SPIR-V 1.3, selected WGSL
 regeneration, SPIR-V to WGSL, and optional existing MSL translation. See
 [WGSL/Tint routes and truthful language/configuration limits](src/shader/README.md#wgsl-and-tint-191).

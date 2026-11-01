@@ -99,7 +99,7 @@ using ContextProc = void (*)();
                            "EGL display initialization failed");
     }
 
-#if defined(TRUFFLE_GL_API_DESKTOP)
+#if defined(TFL_GL_API_DESKTOP)
     constexpr EGLenum api = EGL_OPENGL_API;
     constexpr EGLint renderable = EGL_OPENGL_BIT;
 #else
@@ -137,7 +137,7 @@ using ContextProc = void (*)();
                            "EGL pbuffer creation failed");
     }
 
-#if defined(TRUFFLE_GL_API_DESKTOP)
+#if defined(TFL_GL_API_DESKTOP)
     const std::array<EGLint, 7> contextAttributes{
         EGL_CONTEXT_MAJOR_VERSION_KHR, 4, EGL_CONTEXT_MINOR_VERSION_KHR, 5,
         EGL_CONTEXT_OPENGL_PROFILE_MASK_KHR,

@@ -1,8 +1,8 @@
 #include "truffle/renderer/renderer.hpp"
-#if defined(TRUFFLE_EXAMPLE_METAL)
+#if defined(TFL_EXAMPLE_METAL)
 #include "truffle/rhi/metal_backend.hpp"
 #endif
-#if defined(TRUFFLE_EXAMPLE_VULKAN)
+#if defined(TFL_EXAMPLE_VULKAN)
 #include "truffle/rhi/vulkan_backend.hpp"
 #endif
 
@@ -42,13 +42,13 @@ rhi::ShaderPackage load_package(const char* path) {
 }
 
 base::Result<rhi::Instance> create_instance(rhi::ShaderTarget target) {
-#if defined(TRUFFLE_EXAMPLE_METAL)
+#if defined(TFL_EXAMPLE_METAL)
     if (target == rhi::ShaderTarget::metal_source ||
         target == rhi::ShaderTarget::metal_library) {
         return rhi::create_metal_instance();
     }
 #endif
-#if defined(TRUFFLE_EXAMPLE_VULKAN)
+#if defined(TFL_EXAMPLE_VULKAN)
     if (target == rhi::ShaderTarget::spirv) {
         return rhi::create_vulkan_instance();
     }

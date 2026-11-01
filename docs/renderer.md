@@ -303,7 +303,7 @@ creation are validated. Any failure—compile error, include error, interface
 mismatch, layout mismatch or native pipeline failure—returns the error and
 keeps the last working program; `published_vertex()`/`published_fragment()`
 expose the compilations currently in use. Without a compiler adapter
-(`TRUFFLE_SHADER_ENABLE_GLSLANG=OFF`) `rebuild` returns `unsupported` and
+(`TFL_SHADER_ENABLE_GLSLANG=OFF`) `rebuild` returns `unsupported` and
 prepared TSPs keep working.
 
 The host owns the rebuild policy and timing; Shader owns sources, includes,
@@ -342,7 +342,7 @@ republish after invalidation, include changes, interface/attribute/stage/
 layout/include failures that keep the published program, and recovery.
 
 `tests/renderer_vulkan_source_tests.cpp` (built with Vulkan and
-`TRUFFLE_SHADER_ENABLE_GLSLANG=ON`, validation layers required) writes a
+`TFL_SHADER_ENABLE_GLSLANG=ON`, validation layers required) writes a
 multi-file GLSL program with nested includes, compiles one configured define at
 runtime to SPIR-V and reads back exact 16×16 RGBA8 output: red initial, an
 unchanged cache hit reusing the same pipeline, a red list recorded before an
@@ -356,9 +356,9 @@ not by this Vulkan source test.
 cmake -S . -B build/renderer -G Ninja \
   -DCMAKE_BUILD_TYPE=Debug \
   -DCMAKE_OSX_SYSROOT="$(xcrun --sdk macosx --show-sdk-path)" \
-  -DTRUFFLE_WARNINGS_AS_ERRORS=ON -DTRUFFLE_BUILD_TESTS=ON \
-  -DTRUFFLE_BUILD_BACKEND_METAL=ON -DTRUFFLE_BUILD_SHADERC=OFF \
-  -DTRUFFLE_SHADER_ENABLE_GLSLANG=OFF
+  -DTFL_WARNINGS_AS_ERRORS=ON -DTFL_BUILD_TESTS=ON \
+  -DTFL_BUILD_BACKEND_METAL=ON -DTFL_BUILD_SHADERC=OFF \
+  -DTFL_SHADER_ENABLE_GLSLANG=OFF
 cmake --build build/renderer --parallel 4 --target \
   truffle_renderer_program_tests truffle_renderer_source_program_tests \
   truffle_renderer_metal_tests
@@ -369,9 +369,9 @@ MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 METAL_DEVICE_WRAPPER_TYPE=1 \
 cmake -S . -B build/renderer-shader -G Ninja \
   -DCMAKE_BUILD_TYPE=Debug \
   -DCMAKE_OSX_SYSROOT="$(xcrun --sdk macosx --show-sdk-path)" \
-  -DTRUFFLE_WARNINGS_AS_ERRORS=ON -DTRUFFLE_BUILD_TESTS=ON \
-  -DTRUFFLE_BUILD_BACKEND_VULKAN=ON -DTRUFFLE_BUILD_BACKEND_METAL=OFF \
-  -DTRUFFLE_SHADER_ENABLE_GLSLANG=ON
+  -DTFL_WARNINGS_AS_ERRORS=ON -DTFL_BUILD_TESTS=ON \
+  -DTFL_BUILD_BACKEND_VULKAN=ON -DTFL_BUILD_BACKEND_METAL=OFF \
+  -DTFL_SHADER_ENABLE_GLSLANG=ON
 cmake --build build/renderer-shader --parallel 4
 ctest --test-dir build/renderer-shader --output-on-failure \
   -R '^truffle_renderer_(source_program|vulkan_source)_tests$'

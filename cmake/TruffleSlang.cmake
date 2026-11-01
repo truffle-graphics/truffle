@@ -41,8 +41,8 @@ set(SLANG_STANDARD_MODULE_DEVELOP_BUILD OFF CACHE BOOL "" FORCE)
 add_subdirectory("${PROJECT_SOURCE_DIR}/vendor/slang"
                  "${PROJECT_BINARY_DIR}/dependencies/slang" EXCLUDE_FROM_ALL)
 target_link_libraries(truffle_shader PRIVATE slang)
-target_compile_definitions(truffle_shader PRIVATE TRUFFLE_SLANG_PROVIDER="bundled-source")
-if(TRUFFLE_INSTALL)
+target_compile_definitions(truffle_shader PRIVATE TFL_SLANG_PROVIDER="bundled-source")
+if(TFL_INSTALL)
     # Export only the compiler runtime used by Shader, not the upstream SDK,
     # optional plugins, generator executables or unrelated targets.
     set_target_properties(slang PROPERTIES EXPORT_NAME SlangCompiler PUBLIC_HEADER "")
@@ -67,5 +67,5 @@ if(TRUFFLE_INSTALL)
 endif()
 target_sources(truffle_shader PRIVATE slang_adapter.cpp)
 target_compile_definitions(truffle_shader PRIVATE
-    TRUFFLE_SHADER_HAS_SLANG=1
-    TRUFFLE_SLANG_REVISION="90b8e77eafdfa0aabbbc48f0e86f6cfbde4cb8f8")
+    TFL_SHADER_HAS_SLANG=1
+    TFL_SLANG_REVISION="90b8e77eafdfa0aabbbc48f0e86f6cfbde4cb8f8")

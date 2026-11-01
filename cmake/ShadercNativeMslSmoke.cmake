@@ -1,23 +1,23 @@
-if(NOT EXISTS "${TRUFFLE_SHADERC_TEST_DIR}/interface.tsp")
+if(NOT EXISTS "${TFL_SHADERC_TEST_DIR}/interface.tsp")
     message(FATAL_ERROR "Native MSL interface package fixture was not produced")
 endif()
 
 function(run_msl_cli target suffix interfacePackage shouldSucceed)
-    set(output "${TRUFFLE_SHADERC_TEST_DIR}/cli-${suffix}.tsp")
+    set(output "${TFL_SHADERC_TEST_DIR}/cli-${suffix}.tsp")
     execute_process(
-        COMMAND "${TRUFFLE_SHADERC}"
+        COMMAND "${TFL_SHADERC}"
             --name shaderc-native-msl
             --target "${target}"
             --stage vertex
             --source-language msl
-            --input "${TRUFFLE_NATIVE_MSL_FIXTURE_DIR}/root.metal"
+            --input "${TFL_NATIVE_MSL_FIXTURE_DIR}/root.metal"
             --output "${output}"
             --entry vertex_main
             --compile
             --source-unit common.metal
-            --include-root "${TRUFFLE_NATIVE_MSL_FIXTURE_DIR}"
-            --define TRUFFLE_MSL_CONFIG=1
-            --interface-from "${TRUFFLE_SHADERC_TEST_DIR}/${interfacePackage}"
+            --include-root "${TFL_NATIVE_MSL_FIXTURE_DIR}"
+            --define TFL_MSL_CONFIG=1
+            --interface-from "${TFL_SHADERC_TEST_DIR}/${interfacePackage}"
             --msl-version 2.1
         RESULT_VARIABLE result
         OUTPUT_VARIABLE stdout
@@ -43,6 +43,6 @@ endfunction()
 run_msl_cli(msl source interface.tsp TRUE)
 run_msl_cli(msl agreeing interface-agreeing.tsp TRUE)
 run_msl_cli(msl differing interface-differing.tsp FALSE)
-if(TRUFFLE_EXPECT_METALLIB)
+if(TFL_EXPECT_METALLIB)
     run_msl_cli(metallib library interface.tsp TRUE)
 endif()

@@ -18,15 +18,15 @@ int main() {
     renderer::TransformComputePass pass(context.device, &shader);
 
     auto localBufRes = context.device.create_buffer({.size = 4096, .usage = rhi::BufferUsage::storage});
-    TRUFFLE_CHECK(localBufRes.ok());
+    TFL_CHECK(localBufRes.ok());
     auto localBuf = std::move(localBufRes.value());
 
     auto parentBufRes = context.device.create_buffer({.size = 4096, .usage = rhi::BufferUsage::storage});
-    TRUFFLE_CHECK(parentBufRes.ok());
+    TFL_CHECK(parentBufRes.ok());
     auto parentBuf = std::move(parentBufRes.value());
 
     auto outBufRes = context.device.create_buffer({.size = 4096, .usage = rhi::BufferUsage::storage});
-    TRUFFLE_CHECK(outBufRes.ok());
+    TFL_CHECK(outBufRes.ok());
     auto outBuf= std::move(outBufRes.value());
 
     renderer::TransformComputePassDesc desc{
@@ -42,12 +42,12 @@ int main() {
         fg.add_node(std::make_unique<truffle::renderer::ComputePassNode>(pass, desc));
         return fg;
     }();
-    TRUFFLE_CHECK(truffle::renderer::Renderer{context.device}.render(graph).ok());
+    TFL_CHECK(truffle::renderer::Renderer{context.device}.render(graph).ok());
 
     // We no longer need cmd
     
 
-    TRUFFLE_CHECK(context.instance.stats().dispatchesRecorded == 1);
+    TFL_CHECK(context.instance.stats().dispatchesRecorded == 1);
 
     return 0;
 }

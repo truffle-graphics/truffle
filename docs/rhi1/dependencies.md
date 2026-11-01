@@ -63,16 +63,16 @@ as an unused framework.
 
 The optional dependency-free `truffle-shaderc` assembly target consumes
 precompiled or backend-native variants without a compiler library. Its first
-source route is enabled independently with `TRUFFLE_SHADER_ENABLE_GLSLANG` and
+source route is enabled independently with `TFL_SHADER_ENABLE_GLSLANG` and
 compiles GLSL or GLSL ES to SPIR-V using the pinned `vendor/glslang` source.
-Portable native routes use `TRUFFLE_SHADER_ENABLE_SPIRV_CROSS`, requiring
-one SPIR-V source adapter and `TRUFFLE_SHADER_ENABLE_SPIRV_TOOLS`.
-`TRUFFLE_SHADER_ENABLE_TINT` adds independent WGSL and SPIR-V-to-WGSL routes.
+Portable native routes use `TFL_SHADER_ENABLE_SPIRV_CROSS`, requiring
+one SPIR-V source adapter and `TFL_SHADER_ENABLE_SPIRV_TOOLS`.
+`TFL_SHADER_ENABLE_TINT` adds independent WGSL and SPIR-V-to-WGSL routes.
 The independent
-`TRUFFLE_SHADER_ENABLE_DXC` adapter compiles HLSL to SPIR-V/DXIL and requires
+`TFL_SHADER_ENABLE_DXC` adapter compiles HLSL to SPIR-V/DXIL and requires
 SPIRV-Tools; portable HLSL output reuses the same Cross/glslang closure.
 The independent native Slang route
-uses `TRUFFLE_SHADER_ENABLE_SLANG` plus SPIRV-Tools; its clean pinned source
+uses `TFL_SHADER_ENABLE_SLANG` plus SPIRV-Tools; its clean pinned source
 closure, Apache-2.0 WITH LLVM-exception license, source-only offline policy,
 install behavior and update checks are recorded in
 [native Slang](../shader-slang.md). Compiler dependencies are enabled
@@ -84,9 +84,9 @@ Runtime source compilation is an explicit optional feature, not exclusively
 an offline-tool capability.
 
 Native MSL compilation is an Apple-platform-only optional capability enabled
-with `TRUFFLE_SHADER_ENABLE_METAL_COMPILER`; it links the SDK's Metal and
+with `TFL_SHADER_ENABLE_METAL_COMPILER`; it links the SDK's Metal and
 Foundation frameworks privately and introduces no vendored source or license
-bundle. `TRUFFLE_SHADER_ENABLE_METALLIB_COMPILER` additionally requires the
+bundle. `TFL_SHADER_ENABLE_METALLIB_COMPILER` additionally requires the
 locally installed Apple Metal Toolchain (`xcrun metal` and `xcrun metallib`).
 These Apple components are neither downloaded nor redistributed by Truffle.
 Offline linking uses the matching toolchain's `air-lld` with reflection-list
@@ -168,7 +168,7 @@ extra allocator source or package requirement.
 
 ### GUI text
 
-GUI text is enabled by default through `TRUFFLE_GUI_ENABLE_TEXT`. It uses the pinned
+GUI text is enabled by default through `TFL_GUI_ENABLE_TEXT`. It uses the pinned
 FreeType 2.14.3 and HarfBuzz 14.5.1 sources below as private build dependencies
 of `Truffle::GUI`; the public API does not expose either library. Configure
 never downloads them and fails with preparation instructions when they are

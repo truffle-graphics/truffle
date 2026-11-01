@@ -16,7 +16,7 @@ void check(bool value, const char* message) {
     }
 }
 
-#if defined(TRUFFLE_TEST_METAL_COMPILER)
+#if defined(TFL_TEST_METAL_COMPILER)
 void native_rebuild_contract() {
     using namespace truffle;
     if (!tests::shader_route_enabled(rhi::ShaderSourceLanguage::msl,
@@ -93,7 +93,7 @@ kernel void compute_main(device uint* output [[buffer(16)]],
 
 int main() {
     using namespace truffle;
-#if defined(TRUFFLE_TEST_METAL_COMPILER)
+#if defined(TFL_TEST_METAL_COMPILER)
     native_rebuild_contract();
 #endif
     check(shader::detail::sha256("") == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "SHA-256 empty vector");

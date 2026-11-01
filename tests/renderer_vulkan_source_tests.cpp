@@ -11,7 +11,7 @@ namespace {
 
 using namespace truffle;
 
-const std::filesystem::path root{TRUFFLE_RENDERER_SOURCE_DIR};
+const std::filesystem::path root{TFL_RENDERER_SOURCE_DIR};
 
 void write(const std::filesystem::path& path, const std::string& text) {
     std::filesystem::create_directories(path.parent_path());
@@ -66,7 +66,7 @@ int run() {
                                                                             : "not installed")
               << '\n';
     auto adapter = tests::require(instance.adapter(0));
-    TRUFFLE_CHECK(adapter.info().native);
+    TFL_CHECK(adapter.info().native);
     std::cout << "adapter: " << adapter.info().name << '\n';
     auto device = tests::require(adapter.request_device());
 
@@ -111,12 +111,12 @@ void main() { color = palette(PALETTE_ENTRY) * tint; }
     };
 
     auto first = tests::require(program.rebuild(compiler, request()));
-    TRUFFLE_CHECK(first.published && !first.vertexCacheHit && !first.fragmentCacheHit);
+    TFL_CHECK(first.published && !first.vertexCacheHit && !first.fragmentCacheHit);
     const auto& compiled = *program.published_fragment();
-    TRUFFLE_CHECK(compiled.package.desc().variants.size() == 1);
-    TRUFFLE_CHECK(compiled.package.desc().variants.front().target == rhi::ShaderTarget::spirv);
-    TRUFFLE_CHECK(compiled.package.desc().permutations.size() == 1);
-    TRUFFLE_CHECK(compiled.dependencies.size() == 3);
+    TFL_CHECK(compiled.package.desc().variants.size() == 1);
+    TFL_CHECK(compiled.package.desc().variants.front().target == rhi::ShaderTarget::spirv);
+    TFL_CHECK(compiled.package.desc().permutations.size() == 1);
+    TFL_CHECK(compiled.dependencies.size() == 3);
     std::cout << "runtime GLSL->SPIR-V fragment: " << compiled.dependencies.size()
               << " source files, 1 requested configuration\n";
     render(red, "runtime-compiled initial program");
@@ -124,10 +124,10 @@ void main() { color = palette(PALETTE_ENTRY) * tint; }
     const auto pipelineCount = instance.stats().pipelinesCreated;
 
     auto unchanged = tests::require(program.rebuild(compiler, request()));
-    TRUFFLE_CHECK(!unchanged.published && unchanged.vertexCacheHit &&
+    TFL_CHECK(!unchanged.published && unchanged.vertexCacheHit &&
                   unchanged.fragmentCacheHit);
-    TRUFFLE_CHECK(instance.stats().pipelinesCreated == pipelineCount);
-    TRUFFLE_CHECK(programs.published(material)->id() == initialId);
+    TFL_CHECK(instance.stats().pipelinesCreated == pipelineCount);
+    TFL_CHECK(programs.published(material)->id() == initialId);
     render(red, "unchanged sources hit the compile cache and keep the program");
 
     // Record the published program, then replace it before submission: RHI keeps
@@ -146,8 +146,8 @@ void main() { color = palette(PALETTE_ENTRY) * tint; }
 
     write(root / "include" / "palette.glsl", palette("OPAQUE(0.0, 0.0, 1.0)"));
     auto changed = tests::require(program.rebuild(compiler, request()));
-    TRUFFLE_CHECK(changed.published && changed.vertexCacheHit && !changed.fragmentCacheHit);
-    TRUFFLE_CHECK(programs.published(material)->id() != initialId);
+    TFL_CHECK(changed.published && changed.vertexCacheHit && !changed.fragmentCacheHit);
+    TFL_CHECK(programs.published(material)->id() != initialId);
     tests::submit_graphics(device, list);
     tests::check_color(device, target, red, "recorded old program survives rebuild adoption");
     render(blue, "include dependency change adopted");
@@ -165,11 +165,11 @@ void main() { color = palette(PALETTE_ENTRY) * tint; }
     };
     write(root / "include" / "palette.glsl", "vec4 palette(int entry) { return undefined_value; }\n");
     const auto compileFailure = program.rebuild(compiler, request()).status();
-    TRUFFLE_CHECK(compileFailure.message.find("undefined_value") != std::string::npos);
+    TFL_CHECK(compileFailure.message.find("undefined_value") != std::string::npos);
     retained(compileFailure, "failed include rebuild keeps previous output");
     write(root / "include" / "palette.glsl", palette("OPAQUE(0.0, 0.0, 1.0)"));
     const auto interfaceFailure = program.rebuild(compiler, request(true)).status();
-    TRUFFLE_CHECK(interfaceFailure.code == base::StatusCode::invalid_argument);
+    TFL_CHECK(interfaceFailure.code == base::StatusCode::invalid_argument);
     retained(interfaceFailure, "stage interface mismatch keeps previous output");
     auto unboundRequest = request();
     unboundRequest.fragment.source.text =
@@ -183,7 +183,7 @@ void main() { color = palette(PALETTE_ENTRY) * tint; }
 
     write(root / "include" / "palette.glsl", palette("OPAQUE(0.0, 1.0, 0.0)"));
     auto recovered = tests::require(program.rebuild(compiler, request()));
-    TRUFFLE_CHECK(recovered.published && !recovered.fragmentCacheHit);
+    TFL_CHECK(recovered.published && !recovered.fragmentCacheHit);
     render(green, "recovered rebuild adopted");
     return 0;
 }

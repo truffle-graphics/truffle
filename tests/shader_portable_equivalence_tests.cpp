@@ -29,7 +29,7 @@ int main(int argc, char** argv) {
         std::ifstream file{argv[7], std::ios::binary};
         const std::string bytes{std::istreambuf_iterator<char>{file}, {}};
         const auto actual = compilation.package.bytes();
-        TRUFFLE_SHADER_CHECK(bytes.size() == actual.size() &&
+        TFL_SHADER_CHECK(bytes.size() == actual.size() &&
             std::equal(actual.begin(), actual.end(), bytes.begin(), [](std::byte a, char b) {
                 return std::to_integer<unsigned char>(a) == static_cast<unsigned char>(b);
             }));

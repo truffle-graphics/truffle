@@ -6,20 +6,20 @@
 #include "truffle/rhi/null_backend.hpp"
 #include "truffle/encom_renderer/encom_render_adapter.hpp"
 
-#if defined(TRUFFLE_HOST_WORKSPACE_METAL) || defined(TRUFFLE_HOST_WORKSPACE_OPENGL)
-#define TRUFFLE_HOST_WORKSPACE_WINDOW 1
+#if defined(TFL_HOST_WORKSPACE_METAL) || defined(TFL_HOST_WORKSPACE_OPENGL)
+#define TFL_HOST_WORKSPACE_WINDOW 1
 #include "host_presenter.hpp"
 #endif
 
-#ifdef TRUFFLE_HOST_WORKSPACE_METAL
+#ifdef TFL_HOST_WORKSPACE_METAL
 #include "truffle/rhi/metal_backend.hpp"
 #endif
 
-#ifdef TRUFFLE_HOST_WORKSPACE_OPENGL
+#ifdef TFL_HOST_WORKSPACE_OPENGL
 #include "truffle/rhi/opengl_backend.hpp"
 #endif
 
-#ifdef TRUFFLE_BUILD_BACKEND_VULKAN
+#ifdef TFL_BUILD_BACKEND_VULKAN
 #include "truffle/rhi/vulkan_backend.hpp"
 #endif
 
@@ -257,7 +257,7 @@ void print_summary(std::string_view runKind, const IWorkspace& workspace,
     return 0;
 }
 
-#ifdef TRUFFLE_HOST_WORKSPACE_WINDOW
+#ifdef TFL_HOST_WORKSPACE_WINDOW
 constexpr rhi::Extent2D kHostWindowExtent{640, 400};
 constexpr rhi::Extent2D kResizedHostWindowExtent{800, 520};
 constexpr std::uint32_t kResizeSettleAttempts = 60;
@@ -282,7 +282,7 @@ enum class HostWindowBackend { metal, opengl };
                                                 rhi::Extent2D extent,
                                                 HostPresenter& presenter) {
     if (backend == HostWindowBackend::metal) {
-#ifdef TRUFFLE_HOST_WORKSPACE_METAL
+#ifdef TFL_HOST_WORKSPACE_METAL
         auto instance = rhi::create_metal_instance();
         if (!instance.ok()) {
             return instance.status();
@@ -294,7 +294,7 @@ enum class HostWindowBackend { metal, opengl };
             rhi::TextureFormat::bgra8_unorm, extent);
 #endif
     } else {
-#ifdef TRUFFLE_HOST_WORKSPACE_OPENGL
+#ifdef TFL_HOST_WORKSPACE_OPENGL
         auto instance = rhi::create_opengl_instance();
         if (!instance.ok()) {
             return instance.status();
@@ -389,7 +389,7 @@ int run_application(const ApplicationOptions& options) {
         return 1;
     }
     if (options.useVulkan) {
-#ifdef TRUFFLE_BUILD_BACKEND_VULKAN
+#ifdef TFL_BUILD_BACKEND_VULKAN
         const auto result = rhi::create_vulkan_instance();
         if (result.ok() || result.status().code != base::StatusCode::unsupported) {
             std::cerr << "Vulkan RHI 1 availability contract changed\n";
@@ -403,7 +403,7 @@ int run_application(const ApplicationOptions& options) {
 #endif
     }
     if (options.useMetal && !options.smoke) {
-#ifdef TRUFFLE_HOST_WORKSPACE_METAL
+#ifdef TFL_HOST_WORKSPACE_METAL
         return run_host_window(HostWindowBackend::metal, options.frames);
 #else
         std::cerr << "Metal backend target is not compiled\n";
@@ -411,7 +411,7 @@ int run_application(const ApplicationOptions& options) {
 #endif
     }
     if (options.useOpenGL && !options.smoke) {
-#ifdef TRUFFLE_HOST_WORKSPACE_OPENGL
+#ifdef TFL_HOST_WORKSPACE_OPENGL
         return run_host_window(HostWindowBackend::opengl, options.frames);
 #else
         std::cerr << "macOS OpenGL host-window presentation is not compiled\n";

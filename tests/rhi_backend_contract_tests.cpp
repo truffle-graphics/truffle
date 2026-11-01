@@ -1,24 +1,24 @@
 #include "rhi_test_utils.hpp"
 
-#ifdef TRUFFLE_HAS_DIRECT3D_BACKEND
+#ifdef TFL_HAS_DIRECT3D_BACKEND
 #include "truffle/rhi/direct3d_backend.hpp"
 #endif
-#ifdef TRUFFLE_HAS_METAL_BACKEND
+#ifdef TFL_HAS_METAL_BACKEND
 #include "truffle/rhi/metal_backend.hpp"
 #endif
-#ifdef TRUFFLE_HAS_OPENGLES_BACKEND
+#ifdef TFL_HAS_OPENGLES_BACKEND
 #include "truffle/rhi/opengles_backend.hpp"
 #endif
-#ifdef TRUFFLE_HAS_OPENGL_BACKEND
+#ifdef TFL_HAS_OPENGL_BACKEND
 #include "truffle/rhi/opengl_backend.hpp"
 #endif
-#ifdef TRUFFLE_HAS_VULKAN_BACKEND
+#ifdef TFL_HAS_VULKAN_BACKEND
 #include "truffle/rhi/vulkan_backend.hpp"
 #endif
-#ifdef TRUFFLE_HAS_WEBGL2_BACKEND
+#ifdef TFL_HAS_WEBGL2_BACKEND
 #include "truffle/rhi/webgl2_backend.hpp"
 #endif
-#ifdef TRUFFLE_HAS_WEBGPU_BACKEND
+#ifdef TFL_HAS_WEBGPU_BACKEND
 #include "truffle/rhi/webgpu_backend.hpp"
 #endif
 
@@ -42,7 +42,7 @@ int main() {
     auto transfer = context.device.queue(rhi::QueueKind::transfer);
     assert(graphics.ok() && compute.ok() && transfer.ok());
 
-#ifdef TRUFFLE_HAS_METAL_BACKEND
+#ifdef TFL_HAS_METAL_BACKEND
     auto metalResult = rhi::create_metal_instance();
     if (metalResult.ok()) {
         auto metal = std::move(metalResult).value();
@@ -54,7 +54,7 @@ int main() {
         assert(metalResult.status().code == base::StatusCode::unavailable);
     }
 #endif
-#ifdef TRUFFLE_HAS_VULKAN_BACKEND
+#ifdef TFL_HAS_VULKAN_BACKEND
     auto vulkanResult = rhi::create_vulkan_instance();
     if (vulkanResult.ok()) {
         auto vulkan = std::move(vulkanResult).value();
@@ -65,7 +65,7 @@ int main() {
         assert(vulkanResult.status().code == base::StatusCode::unavailable);
     }
 #endif
-#ifdef TRUFFLE_HAS_DIRECT3D_BACKEND
+#ifdef TFL_HAS_DIRECT3D_BACKEND
     auto direct3dResult = rhi::create_direct3d12_instance();
     if (direct3dResult.ok()) {
         auto direct3d = std::move(direct3dResult).value();
@@ -76,7 +76,7 @@ int main() {
         assert(direct3dResult.status().code == base::StatusCode::unsupported);
     }
 #endif
-#ifdef TRUFFLE_HAS_OPENGL_BACKEND
+#ifdef TFL_HAS_OPENGL_BACKEND
     auto openglResult = rhi::create_opengl_instance();
     if (openglResult.ok()) {
         auto opengl = std::move(openglResult).value();
@@ -88,7 +88,7 @@ int main() {
                openglResult.status().code == base::StatusCode::unavailable);
     }
 #endif
-#ifdef TRUFFLE_HAS_OPENGLES_BACKEND
+#ifdef TFL_HAS_OPENGLES_BACKEND
     auto openglesResult = rhi::create_opengles_instance();
     if (openglesResult.ok()) {
         auto opengles = std::move(openglesResult).value();
@@ -100,11 +100,11 @@ int main() {
                openglesResult.status().code == base::StatusCode::unavailable);
     }
 #endif
-#ifdef TRUFFLE_HAS_WEBGPU_BACKEND
+#ifdef TFL_HAS_WEBGPU_BACKEND
     const auto webgpu = rhi::create_webgpu_instance();
     assert(!webgpu.ok() && webgpu.status().code == base::StatusCode::unsupported);
 #endif
-#ifdef TRUFFLE_HAS_WEBGL2_BACKEND
+#ifdef TFL_HAS_WEBGL2_BACKEND
     const auto webgl2 = rhi::create_webgl2_instance();
     if (!webgl2.ok()) {
         assert(webgl2.status().code == base::StatusCode::unsupported ||

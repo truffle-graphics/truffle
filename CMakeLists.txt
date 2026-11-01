@@ -12,8 +12,8 @@ include(TruffleOptions)
 include(TruffleFormatting)
 include(TruffleInstall)
 
-if(TRUFFLE_SHADER_ENABLE_METAL_COMPILER OR
-   TRUFFLE_SHADER_ENABLE_METALLIB_COMPILER)
+if(TFL_SHADER_ENABLE_METAL_COMPILER OR
+   TFL_SHADER_ENABLE_METALLIB_COMPILER)
     if(NOT APPLE)
         message(FATAL_ERROR "Native MSL compilation is available only on Apple platforms")
     endif()
@@ -32,25 +32,25 @@ find_package(Threads REQUIRED)
 
 add_subdirectory(src)
 
-if(TRUFFLE_BUILD_SHADERC)
+if(TFL_BUILD_SHADERC)
     add_subdirectory(tools/shaderc)
 endif()
 
-if(TRUFFLE_BUILD_RHI_DOCTOR)
+if(TFL_BUILD_RHI_DOCTOR)
     add_subdirectory(tools/rhi-doctor)
 endif()
 
-if(TRUFFLE_BUILD_EXAMPLES)
+if(TFL_BUILD_EXAMPLES)
     add_subdirectory(examples)
 endif()
 
-if(TRUFFLE_BUILD_TESTS)
+if(TFL_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
 truffle_add_format_targets()
 
-if(TRUFFLE_INSTALL)
+if(TFL_INSTALL)
     truffle_install_package()
     include(TruffleCPack)
 endif()

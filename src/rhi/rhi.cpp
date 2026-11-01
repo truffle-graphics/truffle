@@ -3410,7 +3410,7 @@ template <typename Payload>
 
 } // namespace detail
 
-#define TRUFFLE_DEFINE_OBJECT_LIFETIME(Type)                                      \
+#define TFL_DEFINE_OBJECT_LIFETIME(Type)                                      \
     Type::Type() noexcept = default;                                               \
     Type::~Type() = default;                                                       \
     Type::Type(Type&&) noexcept = default;                                         \
@@ -3420,31 +3420,31 @@ template <typename Payload>
     bool Type::valid() const noexcept { return detail::state_valid(state_); }       \
     ObjectId Type::id() const noexcept { return detail::state_id(state_); }
 
-TRUFFLE_DEFINE_OBJECT_LIFETIME(Instance)
-TRUFFLE_DEFINE_OBJECT_LIFETIME(Adapter)
-TRUFFLE_DEFINE_OBJECT_LIFETIME(Device)
-TRUFFLE_DEFINE_OBJECT_LIFETIME(Queue)
-TRUFFLE_DEFINE_OBJECT_LIFETIME(CommandPool)
-TRUFFLE_DEFINE_OBJECT_LIFETIME(CommandList)
-TRUFFLE_DEFINE_OBJECT_LIFETIME(Buffer)
-TRUFFLE_DEFINE_OBJECT_LIFETIME(BufferView)
-TRUFFLE_DEFINE_OBJECT_LIFETIME(Texture)
-TRUFFLE_DEFINE_OBJECT_LIFETIME(TextureView)
-TRUFFLE_DEFINE_OBJECT_LIFETIME(Sampler)
-TRUFFLE_DEFINE_OBJECT_LIFETIME(BindGroupLayout)
-TRUFFLE_DEFINE_OBJECT_LIFETIME(DescriptorArena)
-TRUFFLE_DEFINE_OBJECT_LIFETIME(BindlessTable)
-TRUFFLE_DEFINE_OBJECT_LIFETIME(PipelineLayout)
-TRUFFLE_DEFINE_OBJECT_LIFETIME(PipelineCache)
-TRUFFLE_DEFINE_OBJECT_LIFETIME(Shader)
-TRUFFLE_DEFINE_OBJECT_LIFETIME(Pipeline)
-TRUFFLE_DEFINE_OBJECT_LIFETIME(ComputePipeline)
-TRUFFLE_DEFINE_OBJECT_LIFETIME(Fence)
-TRUFFLE_DEFINE_OBJECT_LIFETIME(Semaphore)
-TRUFFLE_DEFINE_OBJECT_LIFETIME(QueryPool)
-TRUFFLE_DEFINE_OBJECT_LIFETIME(Surface)
+TFL_DEFINE_OBJECT_LIFETIME(Instance)
+TFL_DEFINE_OBJECT_LIFETIME(Adapter)
+TFL_DEFINE_OBJECT_LIFETIME(Device)
+TFL_DEFINE_OBJECT_LIFETIME(Queue)
+TFL_DEFINE_OBJECT_LIFETIME(CommandPool)
+TFL_DEFINE_OBJECT_LIFETIME(CommandList)
+TFL_DEFINE_OBJECT_LIFETIME(Buffer)
+TFL_DEFINE_OBJECT_LIFETIME(BufferView)
+TFL_DEFINE_OBJECT_LIFETIME(Texture)
+TFL_DEFINE_OBJECT_LIFETIME(TextureView)
+TFL_DEFINE_OBJECT_LIFETIME(Sampler)
+TFL_DEFINE_OBJECT_LIFETIME(BindGroupLayout)
+TFL_DEFINE_OBJECT_LIFETIME(DescriptorArena)
+TFL_DEFINE_OBJECT_LIFETIME(BindlessTable)
+TFL_DEFINE_OBJECT_LIFETIME(PipelineLayout)
+TFL_DEFINE_OBJECT_LIFETIME(PipelineCache)
+TFL_DEFINE_OBJECT_LIFETIME(Shader)
+TFL_DEFINE_OBJECT_LIFETIME(Pipeline)
+TFL_DEFINE_OBJECT_LIFETIME(ComputePipeline)
+TFL_DEFINE_OBJECT_LIFETIME(Fence)
+TFL_DEFINE_OBJECT_LIFETIME(Semaphore)
+TFL_DEFINE_OBJECT_LIFETIME(QueryPool)
+TFL_DEFINE_OBJECT_LIFETIME(Surface)
 
-#undef TRUFFLE_DEFINE_OBJECT_LIFETIME
+#undef TFL_DEFINE_OBJECT_LIFETIME
 
 BindGroup::BindGroup() noexcept = default;
 BindGroup::~BindGroup() = default;

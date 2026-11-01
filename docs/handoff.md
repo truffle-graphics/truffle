@@ -5,13 +5,31 @@ This is the rolling execution handoff, not an implementation transcript.
 issues/Project own accepted work. Earlier phase details remain in their PRs,
 the support matrix and Git history.
 
-## Current Delivery: GUI Text Default And Atlas Access (#243)
+## Current Delivery: TFL_ Prefix (#244)
+
+All `TRUFFLE_*` CMake options, cache/build variables, compile definitions,
+preprocessor macros, test macros, preset entries, CI references and docs are
+renamed to `TFL_*` (147 names) without compatibility aliases. Targets,
+namespaces, headers and the `Truffle` package/`Truffle::*` targets are
+unchanged; vendor sources are untouched. Existing build directories must be
+reconfigured from a clean cache because old option names are not migrated.
+The convention is recorded in `CONTRIBUTING.md`.
+
+Validation: clean default configure/build with warnings as errors and all 50
+default tests pass (Metal, GUI text on, installed package consumers); the
+`dev` preset configures with no unused-variable warnings and no `TRUFFLE_`
+cache entries; architecture guard and `git diff --check` pass. Only the
+intentional `GL_TRUFFLE_missing_extension` test extension name keeps the old
+spelling. Next: GUI event routing, hit testing, focus and pointer capture
+(#226).
+
+## Previous Delivery: GUI Text Default And Atlas Access (#243)
 
 Follow-up to #225 (merged in PR #242, `ad601d5`), epic #217.
 
-- `TRUFFLE_GUI_ENABLE_TEXT` now defaults to ON: text is fundamental to the
+- `TFL_GUI_ENABLE_TEXT` now defaults to ON: text is fundamental to the
   GUI. Configure fails with preparation instructions when the FreeType/HarfBuzz
-  submodules are missing; `-DTRUFFLE_GUI_ENABLE_TEXT=OFF` keeps a text-free
+  submodules are missing; `-DTFL_GUI_ENABLE_TEXT=OFF` keeps a text-free
   GUI. The manual Release workflow prepares only those two submodules.
 - `TextEngine::atlas_texture()` returns
   `Result<std::reference_wrapper<SampledTexture>>`: `invalid_state` for a
@@ -21,8 +39,7 @@ Follow-up to #225 (merged in PR #242, `ad601d5`), epic #217.
 Validation: text-on `truffle_gui_text_tests` (default, moved-from and
 shaping cases) and `truffle_gui_drawing_metal_tests` pass; text-off
 `truffle_gui_text_tests` passes; a clean default configure selects text ON.
-Architecture guard and `git diff --check` pass. Next: #244 renames the
-`TRUFFLE_` option/macro prefix to `TFL_`, then GUI event routing (#226).
+Architecture guard and `git diff --check` pass. Delivered in PR #245.
 
 ## Previous Delivery: GUI Text (#225)
 

@@ -13,7 +13,7 @@ namespace spv = SPIRV_CROSS_SPV_HEADER_NAMESPACE;
 namespace truffle::shader::detail {
 
 std::string translation_provenance() {
-    return ";spirv-cross=" TRUFFLE_SPIRV_CROSS_REVISION
+    return ";spirv-cross=" TFL_SPIRV_CROSS_REVISION
         ";truffle-cross=2;msl=macos-2.1;glsl=410-core;essl=300-es;"
         "flat-scalar-resources;gl-fixup-clipspace;metal-vertex-reserve=16;"
         "metal-no-auxiliary-bindings;"

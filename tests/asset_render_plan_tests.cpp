@@ -96,53 +96,53 @@ int main() {
 
     const auto unsupported =
         asset_render::plan_render_batch(mesh, material);
-    TRUFFLE_CHECK(!unsupported.ok());
-    TRUFFLE_CHECK(unsupported.status().code ==
+    TFL_CHECK(!unsupported.ok());
+    TFL_CHECK(unsupported.status().code ==
                   base::StatusCode::unsupported);
 
     auto planResult =
         asset_render::plan_render_batch(mesh, material, options);
-    TRUFFLE_CHECK(planResult.ok());
+    TFL_CHECK(planResult.ok());
     const auto& plan = planResult.value();
-    TRUFFLE_CHECK(plan.mesh == mesh.id);
-    TRUFFLE_CHECK(plan.material == material.id);
-    TRUFFLE_CHECK(plan.batch.layout.bindingModel ==
+    TFL_CHECK(plan.mesh == mesh.id);
+    TFL_CHECK(plan.material == material.id);
+    TFL_CHECK(plan.batch.layout.bindingModel ==
                   renderer::BindingModel::Interleaved);
-    TRUFFLE_CHECK(plan.batch.layout.channels.size() == 3);
-    TRUFFLE_CHECK(plan.attributes.size() == 3);
-    TRUFFLE_CHECK(plan.bindings.size() == 1);
-    TRUFFLE_CHECK(plan.bindings.front().binding == 0);
-    TRUFFLE_CHECK(plan.bindings.front().stream == stream.id);
-    TRUFFLE_CHECK(plan.bindings.front().elementCount == stream.elementCount);
-    TRUFFLE_CHECK(plan.bindings.front().byteSize == stream.byteSize);
+    TFL_CHECK(plan.batch.layout.channels.size() == 3);
+    TFL_CHECK(plan.attributes.size() == 3);
+    TFL_CHECK(plan.bindings.size() == 1);
+    TFL_CHECK(plan.bindings.front().binding == 0);
+    TFL_CHECK(plan.bindings.front().stream == stream.id);
+    TFL_CHECK(plan.bindings.front().elementCount == stream.elementCount);
+    TFL_CHECK(plan.bindings.front().byteSize == stream.byteSize);
 
     const auto& position = plan.batch.layout.channels[0];
     const auto& confidence = plan.batch.layout.channels[1];
     const auto& classification = plan.batch.layout.channels[2];
-    TRUFFLE_CHECK(position.kind == renderer::ChannelKind::CustomFloat4);
-    TRUFFLE_CHECK(position.binding == 0);
-    TRUFFLE_CHECK(position.offset == 0);
-    TRUFFLE_CHECK(position.stride == 32);
-    TRUFFLE_CHECK(confidence.kind == renderer::ChannelKind::CustomFloat4);
-    TRUFFLE_CHECK(confidence.binding == 0);
-    TRUFFLE_CHECK(confidence.offset == 12);
-    TRUFFLE_CHECK(confidence.stride == 32);
-    TRUFFLE_CHECK(classification.kind == renderer::ChannelKind::CustomFloat4);
-    TRUFFLE_CHECK(classification.binding == 0);
-    TRUFFLE_CHECK(classification.offset == 16);
-    TRUFFLE_CHECK(classification.stride == 32);
-    TRUFFLE_CHECK(plan.attributes[0].attribute.semantic ==
+    TFL_CHECK(position.kind == renderer::ChannelKind::CustomFloat4);
+    TFL_CHECK(position.binding == 0);
+    TFL_CHECK(position.offset == 0);
+    TFL_CHECK(position.stride == 32);
+    TFL_CHECK(confidence.kind == renderer::ChannelKind::CustomFloat4);
+    TFL_CHECK(confidence.binding == 0);
+    TFL_CHECK(confidence.offset == 12);
+    TFL_CHECK(confidence.stride == 32);
+    TFL_CHECK(classification.kind == renderer::ChannelKind::CustomFloat4);
+    TFL_CHECK(classification.binding == 0);
+    TFL_CHECK(classification.offset == 16);
+    TFL_CHECK(classification.stride == 32);
+    TFL_CHECK(plan.attributes[0].attribute.semantic ==
                   assets::AttributeSemantic::Position);
-    TRUFFLE_CHECK(plan.attributes[1].attribute.semantic ==
+    TFL_CHECK(plan.attributes[1].attribute.semantic ==
                   assets::AttributeSemantic::Confidence);
-    TRUFFLE_CHECK(plan.attributes[2].attribute.semantic ==
+    TFL_CHECK(plan.attributes[2].attribute.semantic ==
                   assets::AttributeSemantic::Classification);
-    TRUFFLE_CHECK(plan.batch.instanceCount == stream.elementCount);
-    TRUFFLE_CHECK(plan.batch.vertexCount == 1);
-    TRUFFLE_CHECK(plan.batch.material == material.id.value);
-    TRUFFLE_CHECK(plan.batch.kind == renderer::DrawKind::Direct);
-    TRUFFLE_CHECK(plan.batch.bindings[0].buffer == nullptr);
-    TRUFFLE_CHECK(plan.batch.variantHash != 0);
+    TFL_CHECK(plan.batch.instanceCount == stream.elementCount);
+    TFL_CHECK(plan.batch.vertexCount == 1);
+    TFL_CHECK(plan.batch.material == material.id.value);
+    TFL_CHECK(plan.batch.kind == renderer::DrawKind::Direct);
+    TFL_CHECK(plan.batch.bindings[0].buffer == nullptr);
+    TFL_CHECK(plan.batch.variantHash != 0);
 
     assets::GeometryStreamDesc transformStream;
     transformStream.id = assets::AssetId{400};
@@ -184,18 +184,18 @@ int main() {
 
     const auto defaultPlan =
         asset_render::plan_render_batch(transformMesh, transformMaterial);
-    TRUFFLE_CHECK(defaultPlan.ok());
-    TRUFFLE_CHECK(defaultPlan.value().batch.layout.channels.size() == 2);
-    TRUFFLE_CHECK(defaultPlan.value().batch.layout.channels[0].kind ==
+    TFL_CHECK(defaultPlan.ok());
+    TFL_CHECK(defaultPlan.value().batch.layout.channels.size() == 2);
+    TFL_CHECK(defaultPlan.value().batch.layout.channels[0].kind ==
                   renderer::ChannelKind::Transform);
-    TRUFFLE_CHECK(defaultPlan.value().batch.layout.channels[1].kind ==
+    TFL_CHECK(defaultPlan.value().batch.layout.channels[1].kind ==
                   renderer::ChannelKind::Color);
-    TRUFFLE_CHECK(defaultPlan.value().batch.instanceCount == 4);
+    TFL_CHECK(defaultPlan.value().batch.instanceCount == 4);
 
     assets::AssetCatalog catalog;
-    TRUFFLE_CHECK(catalog.add_geometry_stream(stream).ok());
-    TRUFFLE_CHECK(catalog.add_material(material).ok());
-    TRUFFLE_CHECK(catalog.add_mesh(mesh).ok());
+    TFL_CHECK(catalog.add_geometry_stream(stream).ok());
+    TFL_CHECK(catalog.add_material(material).ok());
+    TFL_CHECK(catalog.add_mesh(mesh).ok());
 
     assets::AssetGroupDesc group;
     group.id = assets::AssetId{500};
@@ -204,36 +204,36 @@ int main() {
     group.geometryStreams.push_back(stream.id);
     group.materials.push_back(material.id);
     group.meshes.push_back(mesh.id);
-    TRUFFLE_CHECK(catalog.add_group(group).ok());
+    TFL_CHECK(catalog.add_group(group).ok());
 
     auto catalogPlan =
         asset_render::plan_catalog_render_batch(catalog, mesh.id, options);
-    TRUFFLE_CHECK(catalogPlan.ok());
-    TRUFFLE_CHECK(catalogPlan.value().batch.instanceCount ==
+    TFL_CHECK(catalogPlan.ok());
+    TFL_CHECK(catalogPlan.value().batch.instanceCount ==
                   stream.elementCount);
 
     const auto missingCatalogPlan =
         asset_render::plan_catalog_render_batch(catalog,
                                                 assets::AssetId{999},
                                                 options);
-    TRUFFLE_CHECK(!missingCatalogPlan.ok());
-    TRUFFLE_CHECK(missingCatalogPlan.status().code ==
+    TFL_CHECK(!missingCatalogPlan.ok());
+    TFL_CHECK(missingCatalogPlan.status().code ==
                   base::StatusCode::unavailable);
 
     auto groupPlan =
         asset_render::plan_group_render_batches(catalog, group.id, options);
-    TRUFFLE_CHECK(groupPlan.ok());
-    TRUFFLE_CHECK(groupPlan.value().group == group.id);
-    TRUFFLE_CHECK(groupPlan.value().batches.size() == 1);
-    TRUFFLE_CHECK(groupPlan.value().batches.front().batch.instanceCount ==
+    TFL_CHECK(groupPlan.ok());
+    TFL_CHECK(groupPlan.value().group == group.id);
+    TFL_CHECK(groupPlan.value().batches.size() == 1);
+    TFL_CHECK(groupPlan.value().batches.front().batch.instanceCount ==
                   stream.elementCount);
 
     const auto missingGroupPlan =
         asset_render::plan_group_render_batches(catalog,
                                                 assets::AssetId{998},
                                                 options);
-    TRUFFLE_CHECK(!missingGroupPlan.ok());
-    TRUFFLE_CHECK(missingGroupPlan.status().code ==
+    TFL_CHECK(!missingGroupPlan.ok());
+    TFL_CHECK(missingGroupPlan.status().code ==
                   base::StatusCode::unavailable);
 
     return 0;

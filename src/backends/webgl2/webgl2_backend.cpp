@@ -2,7 +2,7 @@
 
 #include "foundation_backend.hpp"
 
-#ifdef TRUFFLE_HAS_WEBGL2_NATIVE
+#ifdef TFL_HAS_WEBGL2_NATIVE
 #include <GLES3/gl3.h>
 #include <emscripten/html5.h>
 
@@ -14,7 +14,7 @@
 
 namespace truffle::rhi {
 
-#ifdef TRUFFLE_HAS_WEBGL2_NATIVE
+#ifdef TFL_HAS_WEBGL2_NATIVE
 namespace {
 
 struct WebGlContext {
@@ -116,7 +116,7 @@ struct WebGlProbe {
 #endif
 
 Result<Instance> create_webgl2_instance(const InstanceDesc& desc) {
-#ifdef TRUFFLE_HAS_WEBGL2_NATIVE
+#ifdef TFL_HAS_WEBGL2_NATIVE
     auto probe = initialize_webgl2();
     if (!probe.ok()) {
         return probe.status();

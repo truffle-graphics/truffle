@@ -199,18 +199,18 @@ rhi::Result<Compilation> compile_glslang(const CompileRequest& request,
     Compilation result;
     result.vulkanTarget = request.vulkanTarget;
     result.compiler = {"glslang", std::to_string(version.major) + "." + std::to_string(version.minor) +
-                                   "." + std::to_string(version.patch), TRUFFLE_GLSLANG_REVISION};
+                                   "." + std::to_string(version.patch), TFL_GLSLANG_REVISION};
     result.compiler.revision += ";truffle-glslang=5;vulkan=" +
         std::string{vulkan_version_name(request.vulkanTarget.environment)} + ";spirv=" +
         std::string{spirv_version_name(request.vulkanTarget.spirv)};
     result.compiler.revision += ";target=" + std::string{rhi::shader_target_name(request.target)} +
         ";debug=" + (request.generateDebugInfo ? "1" : "0") +
         ";experimental-metal=" + (request.allowExperimentalMetalGeneration ? "1" : "0");
-#if defined(TRUFFLE_SHADER_HAS_SPIRV_TOOLS)
-    result.compiler.revision += ";spirv-tools=" TRUFFLE_SPIRV_TOOLS_REVISION
-                                ";spirv-headers=" TRUFFLE_SPIRV_HEADERS_REVISION;
+#if defined(TFL_SHADER_HAS_SPIRV_TOOLS)
+    result.compiler.revision += ";spirv-tools=" TFL_SPIRV_TOOLS_REVISION
+                                ";spirv-headers=" TFL_SPIRV_HEADERS_REVISION;
 #endif
-#if defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS)
+#if defined(TFL_SHADER_HAS_SPIRV_CROSS)
     if (request.target != rhi::ShaderTarget::spirv) {
         result.compiler.revision += detail::translation_provenance();
     }
@@ -295,7 +295,7 @@ rhi::Result<Compilation> compile_glslang(const CompileRequest& request,
     if (words.empty() || words[0] != 0x07230203) return invalid("glslang SPIR-V generation failed");
     auto status = detail::reflect_spirv(words, request.stage, variant.reflection);
     if (!status.ok()) return status;
-#if defined(TRUFFLE_SHADER_HAS_SPIRV_TOOLS)
+#if defined(TFL_SHADER_HAS_SPIRV_TOOLS)
     const auto validation = detail::validate_spirv(words, request.vulkanTarget);
     if (!validation.ok()) return validation;
 #endif
@@ -304,7 +304,7 @@ rhi::Result<Compilation> compile_glslang(const CompileRequest& request,
     result.diagnostics = (bounded(shader.getInfoLog()) + bounded(program.getInfoLog()) +
                           logger.getAllMessages()).substr(0, 16384);
     rhi::ShaderPackageDesc desc;
-#if defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS)
+#if defined(TFL_SHADER_HAS_SPIRV_CROSS)
     if (request.target != rhi::ShaderTarget::spirv) {
         auto translated = detail::translate_spirv(words, request, variant, desc.remaps);
         if (!translated.ok()) return translated;

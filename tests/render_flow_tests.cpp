@@ -12,7 +12,7 @@ int main() {
 
     // Create a 2-frame upload ring with 1 MiB per frame.
     auto ringResult = context.device.create_upload_ring(2, 1024 * 1024);
-    TRUFFLE_CHECK(ringResult.ok());
+    TFL_CHECK(ringResult.ok());
     auto ring = std::move(ringResult).value();
 
     // Build an InstanceLayout with one Transform channel (SoA).
@@ -27,7 +27,7 @@ int main() {
     constexpr std::uint32_t kInstances  = 3;
     constexpr std::size_t   kStride     = 64;
     auto alloc = ring.allocate(kInstances * kStride);
-    TRUFFLE_CHECK(alloc.valid());
+    TFL_CHECK(alloc.valid());
 
     // Write identity matrices directly into ring memory (no intermediate copy).
     auto* dst = static_cast<float*>(alloc.mapped);
@@ -47,38 +47,38 @@ int main() {
 
     // --- Headless path (no swapchain) ---
     truffle::renderer::Renderer headlessRenderer{context.device};
-    TRUFFLE_CHECK(headlessRenderer.render([&]() { truffle::renderer::FrameGraph fg; fg.add_node(std::make_unique<truffle::renderer::RenderPassNode>(true, std::vector<truffle::renderer::RenderBatch>(std::begin(batches), std::end(batches)))); return fg; }()).ok());
+    TFL_CHECK(headlessRenderer.render([&]() { truffle::renderer::FrameGraph fg; fg.add_node(std::make_unique<truffle::renderer::RenderPassNode>(true, std::vector<truffle::renderer::RenderBatch>(std::begin(batches), std::end(batches)))); return fg; }()).ok());
     const auto& headlessStats = headlessRenderer.last_frame_stats();
-    TRUFFLE_CHECK(headlessStats.computeNodesExecuted == 0);
-    TRUFFLE_CHECK(headlessStats.renderNodesExecuted == 1);
-    TRUFFLE_CHECK(headlessStats.renderBatchesExecuted == 1);
-    TRUFFLE_CHECK(!headlessStats.presented);
-    TRUFFLE_CHECK(context.instance.stats().drawsRecorded == 1);
-    TRUFFLE_CHECK(context.instance.stats().submissions   == 1);
+    TFL_CHECK(headlessStats.computeNodesExecuted == 0);
+    TFL_CHECK(headlessStats.renderNodesExecuted == 1);
+    TFL_CHECK(headlessStats.renderBatchesExecuted == 1);
+    TFL_CHECK(!headlessStats.presented);
+    TFL_CHECK(context.instance.stats().drawsRecorded == 1);
+    TFL_CHECK(context.instance.stats().submissions   == 1);
 
     // --- Swapchain path ---
     auto surfaceResult = context.device.create_surface({
         .native        = {.kind = truffle::rhi::NativeSurfaceKind::headless},
         .initialExtent = {640, 480},
     });
-    TRUFFLE_CHECK(surfaceResult.ok());
+    TFL_CHECK(surfaceResult.ok());
     auto surface = std::move(surfaceResult).value();
 
     auto swapchainResult = context.device.create_swapchain(
         surface, {.extent = {640, 480}, .imageCount = 2});
-    TRUFFLE_CHECK(swapchainResult.ok());
+    TFL_CHECK(swapchainResult.ok());
     auto swapchain = std::move(swapchainResult).value();
 
     truffle::renderer::Renderer renderer{context.device};
-    TRUFFLE_CHECK(renderer.render([&]() { truffle::renderer::FrameGraph fg; fg.add_node(std::make_unique<truffle::renderer::RenderPassNode>(true, std::vector<truffle::renderer::RenderBatch>(std::begin(batches), std::end(batches)))); return fg; }(), &swapchain).ok());
+    TFL_CHECK(renderer.render([&]() { truffle::renderer::FrameGraph fg; fg.add_node(std::make_unique<truffle::renderer::RenderPassNode>(true, std::vector<truffle::renderer::RenderBatch>(std::begin(batches), std::end(batches)))); return fg; }(), &swapchain).ok());
     const auto& swapchainStats = renderer.last_frame_stats();
-    TRUFFLE_CHECK(swapchainStats.computeNodesExecuted == 0);
-    TRUFFLE_CHECK(swapchainStats.renderNodesExecuted == 1);
-    TRUFFLE_CHECK(swapchainStats.renderBatchesExecuted == 1);
-    TRUFFLE_CHECK(swapchainStats.presented);
+    TFL_CHECK(swapchainStats.computeNodesExecuted == 0);
+    TFL_CHECK(swapchainStats.renderNodesExecuted == 1);
+    TFL_CHECK(swapchainStats.renderBatchesExecuted == 1);
+    TFL_CHECK(swapchainStats.presented);
 
     // Two draws total (headless + swapchain), two submissions
-    TRUFFLE_CHECK(context.instance.stats().drawsRecorded == 2);
-    TRUFFLE_CHECK(context.instance.stats().submissions   == 2);
+    TFL_CHECK(context.instance.stats().drawsRecorded == 2);
+    TFL_CHECK(context.instance.stats().submissions   == 2);
     return 0;
 }

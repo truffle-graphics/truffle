@@ -43,11 +43,11 @@ rhi::Result<Compilation> compile_tint(const CompileRequest& request,
 
     Compilation result;
     result.vulkanTarget = request.vulkanTarget;
-    result.compiler = {"Tint", "chromium/7258", TRUFFLE_TINT_REVISION
-        ";abseil=" TRUFFLE_ABSEIL_REVISION ";truffle-tint=1;spirv=1.3;vulkan=1.1;"
-        "emit-point-size=0;spirv-tools=" TRUFFLE_SPIRV_TOOLS_REVISION
-        ";spirv-headers=" TRUFFLE_SPIRV_HEADERS_REVISION};
-#if defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS)
+    result.compiler = {"Tint", "chromium/7258", TFL_TINT_REVISION
+        ";abseil=" TFL_ABSEIL_REVISION ";truffle-tint=1;spirv=1.3;vulkan=1.1;"
+        "emit-point-size=0;spirv-tools=" TFL_SPIRV_TOOLS_REVISION
+        ";spirv-headers=" TFL_SPIRV_HEADERS_REVISION};
+#if defined(TFL_SHADER_HAS_SPIRV_CROSS)
     if (request.target == rhi::ShaderTarget::metal_source)
         result.compiler.revision += detail::translation_provenance();
 #endif
@@ -144,7 +144,7 @@ rhi::Result<Compilation> compile_tint(const CompileRequest& request,
         variant.code.resize(wgsl.size());
         std::memcpy(variant.code.data(), wgsl.data(), wgsl.size());
     }
-#if defined(TRUFFLE_SHADER_HAS_SPIRV_CROSS)
+#if defined(TFL_SHADER_HAS_SPIRV_CROSS)
     if (request.target == rhi::ShaderTarget::metal_source) {
         status = detail::translate_spirv(words, request, variant, desc.remaps);
         if (!status.ok()) return status;

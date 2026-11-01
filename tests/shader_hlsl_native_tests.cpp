@@ -2,10 +2,10 @@
 #include "renderer_native_test_utils.hpp"
 #include "truffle/rhi/vulkan_backend.hpp"
 #include "vulkan_backend_test.hpp"
-#if defined(TRUFFLE_HLSL_TEST_METAL)
+#if defined(TFL_HLSL_TEST_METAL)
 #include "truffle/rhi/metal_backend.hpp"
 #endif
-#if defined(TRUFFLE_HLSL_TEST_OPENGL)
+#if defined(TFL_HLSL_TEST_OPENGL)
 #include "truffle/rhi/opengl_backend.hpp"
 #endif
 
@@ -112,19 +112,19 @@ int main() {
     try {
         shader::Compiler compiler;
         std::vector targets{rhi::ShaderTarget::spirv};
-#if defined(TRUFFLE_HLSL_TEST_METAL)
+#if defined(TFL_HLSL_TEST_METAL)
         targets.push_back(rhi::ShaderTarget::metal_source);
 #endif
-#if defined(TRUFFLE_HLSL_TEST_OPENGL)
+#if defined(TFL_HLSL_TEST_OPENGL)
         targets.push_back(rhi::ShaderTarget::glsl);
 #endif
         for (const auto target : targets) {
             const auto create = [&]() -> rhi::Result<rhi::Instance> {
-#if defined(TRUFFLE_HLSL_TEST_METAL)
+#if defined(TFL_HLSL_TEST_METAL)
                 if (target == rhi::ShaderTarget::metal_source)
                     return rhi::create_metal_instance({.enableValidation = true});
 #endif
-#if defined(TRUFFLE_HLSL_TEST_OPENGL)
+#if defined(TFL_HLSL_TEST_OPENGL)
                 if (target == rhi::ShaderTarget::glsl)
                     return rhi::create_opengl_instance({.enableValidation = true});
 #endif

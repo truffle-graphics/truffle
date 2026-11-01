@@ -60,7 +60,7 @@ int main() {
     invalidRequest.interfaceDeclaration = rhi::ShaderReflection{};
     expect(invalidRequest, rhi::StatusCode::unsupported);
     invalidRequest.interfaceDeclaration.reset();
-#if defined(TRUFFLE_TEST_DXC)
+#if defined(TFL_TEST_DXC)
     invalidRequest.language = rhi::ShaderSourceLanguage::hlsl;
     invalidRequest.target = rhi::ShaderTarget::spirv;
     invalidRequest.sourceUnits = {"shared.hlsl"};
@@ -132,7 +132,7 @@ int main() {
         return 0;
     }
     std::set<std::string> keys;
-#if defined(TRUFFLE_TEST_METAL_COMPILER)
+#if defined(TFL_TEST_METAL_COMPILER)
     const auto nativeMsl = std::find_if(
         routes.begin(), routes.end(), [](const auto& route) {
             return route.language == rhi::ShaderSourceLanguage::msl &&
@@ -144,7 +144,7 @@ int main() {
               !nativeMsl->experimental,
           "Native MSL advertises exact stages and Metal configuration");
 #endif
-#if defined(TRUFFLE_TEST_METALLIB_COMPILER)
+#if defined(TFL_TEST_METALLIB_COMPILER)
     const auto nativeLibrary = std::find_if(
         routes.begin(), routes.end(), [](const auto& route) {
             return route.language == rhi::ShaderSourceLanguage::msl &&
@@ -157,7 +157,7 @@ int main() {
               !nativeLibrary->experimental,
           "Offline metallib route advertises exact stages and Metal configuration");
 #endif
-#if defined(TRUFFLE_TEST_DXC)
+#if defined(TFL_TEST_DXC)
     const auto hlslSpirv = std::find_if(
         routes.begin(), routes.end(), [](const auto& route) {
             return route.language == rhi::ShaderSourceLanguage::hlsl &&

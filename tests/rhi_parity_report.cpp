@@ -1,24 +1,24 @@
 #include "truffle/rhi/null_backend.hpp"
 
-#ifdef TRUFFLE_HAS_DIRECT3D_BACKEND
+#ifdef TFL_HAS_DIRECT3D_BACKEND
 #include "truffle/rhi/direct3d_backend.hpp"
 #endif
-#ifdef TRUFFLE_HAS_METAL_BACKEND
+#ifdef TFL_HAS_METAL_BACKEND
 #include "truffle/rhi/metal_backend.hpp"
 #endif
-#ifdef TRUFFLE_HAS_OPENGL_BACKEND
+#ifdef TFL_HAS_OPENGL_BACKEND
 #include "truffle/rhi/opengl_backend.hpp"
 #endif
-#ifdef TRUFFLE_HAS_OPENGLES_BACKEND
+#ifdef TFL_HAS_OPENGLES_BACKEND
 #include "truffle/rhi/opengles_backend.hpp"
 #endif
-#ifdef TRUFFLE_HAS_VULKAN_BACKEND
+#ifdef TFL_HAS_VULKAN_BACKEND
 #include "truffle/rhi/vulkan_backend.hpp"
 #endif
-#ifdef TRUFFLE_HAS_WEBGPU_BACKEND
+#ifdef TFL_HAS_WEBGPU_BACKEND
 #include "truffle/rhi/webgpu_backend.hpp"
 #endif
-#ifdef TRUFFLE_HAS_WEBGL2_BACKEND
+#ifdef TFL_HAS_WEBGL2_BACKEND
 #include "truffle/rhi/webgl2_backend.hpp"
 #endif
 
@@ -92,37 +92,37 @@ int main(int argc, char** argv) {
                        nullAdapter.value().info().native,
                        nullAdapter.value().info().validationOnly});
 
-#ifdef TRUFFLE_HAS_METAL_BACKEND
+#ifdef TFL_HAS_METAL_BACKEND
     reports.push_back(native_report("metal", [] {
         return rhi::create_metal_instance();
     }));
 #endif
-#ifdef TRUFFLE_HAS_VULKAN_BACKEND
+#ifdef TFL_HAS_VULKAN_BACKEND
     reports.push_back(native_report("vulkan", [] {
         return rhi::create_vulkan_instance();
     }));
 #endif
-#ifdef TRUFFLE_HAS_OPENGL_BACKEND
+#ifdef TFL_HAS_OPENGL_BACKEND
     reports.push_back(native_report("opengl", [] {
         return rhi::create_opengl_instance();
     }));
 #endif
-#ifdef TRUFFLE_HAS_DIRECT3D_BACKEND
+#ifdef TFL_HAS_DIRECT3D_BACKEND
     reports.push_back(native_report("direct3d12", [] {
         return rhi::create_direct3d12_instance();
     }));
 #endif
-#ifdef TRUFFLE_HAS_OPENGLES_BACKEND
+#ifdef TFL_HAS_OPENGLES_BACKEND
     reports.push_back(native_report("opengles", [] {
         return rhi::create_opengles_instance();
     }));
 #endif
-#ifdef TRUFFLE_HAS_WEBGPU_BACKEND
+#ifdef TFL_HAS_WEBGPU_BACKEND
     reports.push_back(native_report("webgpu", [] {
         return rhi::create_webgpu_instance();
     }));
 #endif
-#ifdef TRUFFLE_HAS_WEBGL2_BACKEND
+#ifdef TFL_HAS_WEBGL2_BACKEND
     reports.push_back(native_report("webgl2", [] {
         return rhi::create_webgl2_instance();
     }));

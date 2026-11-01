@@ -71,7 +71,7 @@ void graphics(rhi::Device& device, shader::Compiler& compiler, shader::CompileRe
     for (size_t y = 0; y < 16; ++y)
         for (size_t x = 0; x < 16; ++x)
             for (size_t channel = 0; channel < 4; ++channel)
-                TRUFFLE_SHADER_CHECK(actual[y * rowPitch + x * 4 + channel] == expected[channel]);
+                TFL_SHADER_CHECK(actual[y * rowPitch + x * 4 + channel] == expected[channel]);
     std::cout << "Slang native vertex/fragment: exact 256 pixels RGBA(78,0,0,255)\n";
 }
 
@@ -83,18 +83,18 @@ int run() {
     }
     auto instance = std::move(created).value();
     const auto validation = rhi::detail::last_vulkan_validation_state_for_testing();
-    TRUFFLE_SHADER_CHECK(validation != rhi::detail::VulkanValidationState::failed_to_load);
+    TFL_SHADER_CHECK(validation != rhi::detail::VulkanValidationState::failed_to_load);
     auto adapter = tests::require(instance.adapter(0));
-    TRUFFLE_SHADER_CHECK(adapter.info().native);
+    TFL_SHADER_CHECK(adapter.info().native);
     auto device = tests::require(adapter.request_device());
     shader::Compiler compiler;
     shader::CompileRequest request;
     request.name = "slang-native";
-    request.source = tests::require(shader::read_source(TRUFFLE_SLANG_FIXTURES "/main.slang"));
+    request.source = tests::require(shader::read_source(TFL_SLANG_FIXTURES "/main.slang"));
     request.language = rhi::ShaderSourceLanguage::slang;
     request.stage = rhi::ShaderStage::compute;
     request.entryPoint = "computeMain";
-    request.includeRoots = {TRUFFLE_SLANG_FIXTURES};
+    request.includeRoots = {TFL_SLANG_FIXTURES};
     graphics(device, compiler, request);
     auto groupLayout = tests::require(device.create_bind_group_layout({
         .entries = {{.binding = 0, .type = rhi::BindingType::storage_buffer,
@@ -106,7 +106,7 @@ int run() {
     for (uint32_t quality : {3u, 4u}) {
         request.defines = {{"QUALITY", std::to_string(quality)}};
         const auto compilation = tests::require(compiler.compile(request));
-        TRUFFLE_SHADER_CHECK(compilation.dependencies.size() == 3);
+        TFL_SHADER_CHECK(compilation.dependencies.size() == 3);
         auto package = tests::require(rhi::ShaderPackage::load(compilation.package.bytes()));
         auto shader = tests::require(device.create_shader(package, rhi::ShaderTarget::spirv,
             "computeMain", rhi::ShaderStage::compute, package.desc().variants[0].permutation));
@@ -132,8 +132,8 @@ int run() {
         tests::require(queue.submit(lists));
         tests::require(output.read(0, std::as_writable_bytes(std::span{actual})));
         for (size_t index = 0; index < 8; ++index)
-            TRUFFLE_SHADER_CHECK(actual[index] == quality * 100 + index + 7);
-        TRUFFLE_SHADER_CHECK(actual[8] == 0xdeadbeefu);
+            TFL_SHADER_CHECK(actual[index] == quality * 100 + index + 7);
+        TFL_SHADER_CHECK(actual[8] == 0xdeadbeefu);
     }
     std::cout << "Slang native " << adapter.info().name
               << ": imported compute QUALITY=3/4 exact 8-word readbacks and untouched tail; validation "

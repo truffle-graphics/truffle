@@ -1,25 +1,25 @@
 #include "truffle/rhi/backend_support.hpp"
 #include "truffle/rhi/null_backend.hpp"
 
-#ifdef TRUFFLE_HAS_DIRECT3D_BACKEND
+#ifdef TFL_HAS_DIRECT3D_BACKEND
 #include "truffle/rhi/direct3d_backend.hpp"
 #endif
-#ifdef TRUFFLE_HAS_METAL_BACKEND
+#ifdef TFL_HAS_METAL_BACKEND
 #include "truffle/rhi/metal_backend.hpp"
 #endif
-#ifdef TRUFFLE_HAS_OPENGLES_BACKEND
+#ifdef TFL_HAS_OPENGLES_BACKEND
 #include "truffle/rhi/opengles_backend.hpp"
 #endif
-#ifdef TRUFFLE_HAS_OPENGL_BACKEND
+#ifdef TFL_HAS_OPENGL_BACKEND
 #include "truffle/rhi/opengl_backend.hpp"
 #endif
-#ifdef TRUFFLE_HAS_VULKAN_BACKEND
+#ifdef TFL_HAS_VULKAN_BACKEND
 #include "truffle/rhi/vulkan_backend.hpp"
 #endif
-#ifdef TRUFFLE_HAS_WEBGL2_BACKEND
+#ifdef TFL_HAS_WEBGL2_BACKEND
 #include "truffle/rhi/webgl2_backend.hpp"
 #endif
-#ifdef TRUFFLE_HAS_WEBGPU_BACKEND
+#ifdef TFL_HAS_WEBGPU_BACKEND
 #include "truffle/rhi/webgpu_backend.hpp"
 #endif
 
@@ -113,37 +113,37 @@ template <typename Factory>
     probes.push_back(run_probe(BackendKind::null_validation, [] {
         return truffle::rhi::create_null_instance();
     }));
-#ifdef TRUFFLE_HAS_METAL_BACKEND
+#ifdef TFL_HAS_METAL_BACKEND
     probes.push_back(run_probe(BackendKind::metal, [] {
         return truffle::rhi::create_metal_instance();
     }));
 #endif
-#ifdef TRUFFLE_HAS_VULKAN_BACKEND
+#ifdef TFL_HAS_VULKAN_BACKEND
     probes.push_back(run_probe(BackendKind::vulkan, [] {
         return truffle::rhi::create_vulkan_instance();
     }));
 #endif
-#ifdef TRUFFLE_HAS_DIRECT3D_BACKEND
+#ifdef TFL_HAS_DIRECT3D_BACKEND
     probes.push_back(run_probe(BackendKind::direct3d12, [] {
         return truffle::rhi::create_direct3d12_instance();
     }));
 #endif
-#ifdef TRUFFLE_HAS_OPENGL_BACKEND
+#ifdef TFL_HAS_OPENGL_BACKEND
     probes.push_back(run_probe(BackendKind::opengl, [] {
         return truffle::rhi::create_opengl_instance();
     }));
 #endif
-#ifdef TRUFFLE_HAS_OPENGLES_BACKEND
+#ifdef TFL_HAS_OPENGLES_BACKEND
     probes.push_back(run_probe(BackendKind::opengles, [] {
         return truffle::rhi::create_opengles_instance();
     }));
 #endif
-#ifdef TRUFFLE_HAS_WEBGPU_BACKEND
+#ifdef TFL_HAS_WEBGPU_BACKEND
     probes.push_back(run_probe(BackendKind::webgpu, [] {
         return truffle::rhi::create_webgpu_instance();
     }));
 #endif
-#ifdef TRUFFLE_HAS_WEBGL2_BACKEND
+#ifdef TFL_HAS_WEBGL2_BACKEND
     probes.push_back(run_probe(BackendKind::webgl2, [] {
         return truffle::rhi::create_webgl2_instance();
     }));

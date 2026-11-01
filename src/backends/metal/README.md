@@ -97,7 +97,7 @@ Commands used:
 ```bash
 cmake -S . -B build/metal -G Ninja -DCMAKE_BUILD_TYPE=Debug \
   -DCMAKE_OSX_SYSROOT="$(xcrun --sdk macosx --show-sdk-path)" \
-  -DTRUFFLE_WARNINGS_AS_ERRORS=ON -DTRUFFLE_BUILD_TESTS=ON
+  -DTFL_WARNINGS_AS_ERRORS=ON -DTFL_BUILD_TESTS=ON
 cmake --build build/metal --target truffle_metal_tests \
   truffle_metal_conformance_tests truffle_metal_presentation_tests truffle_host_workspace_example \
   truffle_backend_support_tests truffle_rhi_contract_tests \
