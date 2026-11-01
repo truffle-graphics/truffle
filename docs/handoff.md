@@ -29,8 +29,25 @@ outputs.
 
 Validation: a built tree matches the object-API tree element by element
 (bounds, layout params, padding, shapes) and wires callbacks; grid cells and
-widget defaults; rollback on a failing descendant. All 12 GUI tests pass in
-the warning-as-error Debug build and 10 in the text-free build.
+widget defaults; rollback on a failing descendant.
+
+#233 adds `Context::set_updater`/`request_update`/`set_update_live`: per-element
+updaters run at the start of `prepare_frame` (before styles) once when set or
+requested, or every frame while live, keep `needs_frame` true while due, stay
+pending on failure and die with their element (`updates.cpp`).
+`truffle/gui/region.hpp` builds on it: `Region::create` owns a column element
+whose body describes `label`, `button` (polled clicked), two-way `checkbox`/
+`slider` and nested `row`/`column` items by id per container. Items reuse
+their widgets (unchanged setters are no-ops), are reordered with `reparent`,
+recreated on kind/range change and destroyed when not described. Widget
+callbacks only record the action and request the region's update, so there is
+no ownership cycle. Repeated ids fail the frame.
+
+Validation: an unchanged rerun keeps identity with 0 shapes regenerated and 0
+measured; no rerun or frame without a request; click/toggle polling and model
+sync; insert/move/remove keep surviving elements; live mode; failure stays
+pending; updater removal with its element. All 13 GUI tests pass in the
+warning-as-error Debug build and 11 in the text-free build.
 
 ## Previous Delivery: GUI Layout And Drawing (#230-#231)
 

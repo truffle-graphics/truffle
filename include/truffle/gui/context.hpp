@@ -15,6 +15,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <span>
@@ -27,6 +28,7 @@ namespace truffle::gui {
 
 struct FrameStats {
     base::Status status;
+    std::size_t updates = 0; // updaters run (see `Context::set_updater`)
     StyleStats styles;
     LayoutStats layout;
     ShapeStats shapes;
@@ -231,6 +233,15 @@ public:
     void request_frame() noexcept;
     void request_frame_at(Clock::time_point when);
 
+    // Runs `update` at the start of `prepare_frame`, before styles, once after
+    // it is set or requested and on every frame while `live`. It may change the
+    // tree and is removed with its element; an empty function removes it now.
+    // A failure stops the frame and keeps that update pending.
+    using Updater = std::function<base::Status()>;
+    [[nodiscard]] base::Status set_updater(ElementId element, Updater update, bool live = false);
+    [[nodiscard]] base::Status request_update(ElementId element);
+    [[nodiscard]] base::Status set_update_live(ElementId element, bool live);
+
     [[nodiscard]] bool needs_frame(Clock::time_point now) const noexcept;
     // Earliest pending timed update, if any.
     [[nodiscard]] std::optional<Clock::time_point> next_update() const noexcept;
@@ -291,6 +302,13 @@ private:
         std::optional<TextSource> text_source;
     };
 
+    struct UpdaterEntry {
+        ElementId element;
+        Updater update;
+        bool live = false;
+        bool pending = true;
+    };
+
     [[nodiscard]] Node* find(ElementId element) noexcept;
     [[nodiscard]] const Node* find(ElementId element) const noexcept;
     [[nodiscard]] ElementId allocate();
@@ -305,6 +323,9 @@ private:
     void forget_input(ElementId element) noexcept;
     void forget_styles(ElementId element);
     void mark_style(ElementId element, Property property);
+    [[nodiscard]] UpdaterEntry* find_updater(ElementId element) noexcept;
+    [[nodiscard]] bool updates_due() const noexcept;
+    base::Status run_updaters(std::size_t& count);
 
     // Children seen by the element's layout (see `set_placement`).
     [[nodiscard]] std::span<const ElementId> flow_children(ElementId element) const noexcept;
@@ -326,6 +347,7 @@ private:
     bool frame_requested_ = false;
     std::vector<Clock::time_point> deadlines_;
     std::size_t overlays_ = 0;
+    std::vector<UpdaterEntry> updaters_;
     InputState input_;
     Host* host_ = nullptr;
     ElementId hovered_;
