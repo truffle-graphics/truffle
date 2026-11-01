@@ -8,7 +8,8 @@ if(TRUFFLE_GUI_ENABLE_TEXT)
         if(NOT EXISTS "${PROJECT_SOURCE_DIR}/vendor/${_dependency}/CMakeLists.txt")
             message(FATAL_ERROR
                 "GUI text needs the pinned vendor/${_dependency} source; prepare it with "
-                "`git submodule update --init vendor/freetype vendor/harfbuzz`")
+                "`git submodule update --init vendor/freetype vendor/harfbuzz`, or "
+                "configure a text-free GUI with -DTRUFFLE_GUI_ENABLE_TEXT=OFF")
         endif()
     endforeach()
 

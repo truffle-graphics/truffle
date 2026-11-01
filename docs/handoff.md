@@ -5,7 +5,26 @@ This is the rolling execution handoff, not an implementation transcript.
 issues/Project own accepted work. Earlier phase details remain in their PRs,
 the support matrix and Git history.
 
-## Current Delivery: GUI Text (#225)
+## Current Delivery: GUI Text Default And Atlas Access (#243)
+
+Follow-up to #225 (merged in PR #242, `ad601d5`), epic #217.
+
+- `TRUFFLE_GUI_ENABLE_TEXT` now defaults to ON: text is fundamental to the
+  GUI. Configure fails with preparation instructions when the FreeType/HarfBuzz
+  submodules are missing; `-DTRUFFLE_GUI_ENABLE_TEXT=OFF` keeps a text-free
+  GUI. The manual Release workflow prepares only those two submodules.
+- `TextEngine::atlas_texture()` returns
+  `Result<std::reference_wrapper<SampledTexture>>`: `invalid_state` for a
+  default-constructed or moved-from engine (previously a null dereference) and
+  `unsupported` when text is compiled out (previously a dummy texture).
+
+Validation: text-on `truffle_gui_text_tests` (default, moved-from and
+shaping cases) and `truffle_gui_drawing_metal_tests` pass; text-off
+`truffle_gui_text_tests` passes; a clean default configure selects text ON.
+Architecture guard and `git diff --check` pass. Next: #244 renames the
+`TRUFFLE_` option/macro prefix to `TFL_`, then GUI event routing (#226).
+
+## Previous Delivery: GUI Text (#225)
 
 Fifth GUI step of epic #217 (ADR 0013): optional text shaping, glyph
 rasterization and persistent-tree integration.
@@ -19,7 +38,7 @@ rasterization and persistent-tree integration.
   and generates element-local atlas quads. Text changes invalidate measure,
   color-only changes invalidate shapes, and unchanged text does no shaping or
   rasterization. The atlas is registered with `Painter` by the application.
-- Text is disabled by default. FreeType 2.14.3 (FTL, not its GPL alternative)
+- Text was initially disabled by default (changed by #243). FreeType 2.14.3 (FTL, not its GPL alternative)
   and HarfBuzz 14.5.1 (Old MIT) are private pinned dependencies. No font is
   bundled. Enabled installs include their static libraries, CMake packages,
   license texts and the required FreeType acknowledgment; disabled GUI
@@ -32,11 +51,9 @@ Validation: `truffle_gui_text_tests`, `truffle_gui_drawing_metal_tests`,
 Debug build with warnings as errors. Text-disabled text/layout tests and the
 installed package consumer pass; the enabled package consumer also passes and
 confirms the FreeType acknowledgment is installed. The architecture guard and
-`git diff --check` pass. `clang-format` is unavailable locally. One signed
-issue-scoped commit and immediate push are authorized; next is a review-first
-PR into `develop` and moving #225 to In Review.
+`git diff --check` pass. `clang-format` is unavailable locally. Delivered in PR #242.
 
-## Current Delivery: GUI Host Boundary (#224)
+## Previous Delivery: GUI Host Boundary (#224)
 
 Fourth GUI step of epic #217 (ADR 0013): the host-owned boundary.
 

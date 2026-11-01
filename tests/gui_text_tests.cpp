@@ -7,6 +7,7 @@
 
 #include <array>
 #include <span>
+#include <utility>
 
 namespace {
 
@@ -15,18 +16,37 @@ using namespace truffle;
 int test_optional_support() {
     auto context = tests::make_null_context();
     const auto engine = gui::TextEngine::create(context.device);
+    gui::TextEngine empty;
+    const auto empty_atlas = empty.atlas_texture();
+    TRUFFLE_CHECK(!empty_atlas.ok());
 #if TRUFFLE_TEST_GUI_TEXT
     TRUFFLE_CHECK(gui::TextEngine::available());
     TRUFFLE_CHECK(engine.ok());
+    TRUFFLE_CHECK(empty_atlas.status().code == base::StatusCode::invalid_state);
+    TRUFFLE_CHECK(empty.last_stats().shaped_glyphs == 0);
 #else
     TRUFFLE_CHECK(!gui::TextEngine::available());
     TRUFFLE_CHECK(!engine.ok());
     TRUFFLE_CHECK(engine.status().code == base::StatusCode::unsupported);
+    TRUFFLE_CHECK(empty_atlas.status().code == base::StatusCode::unsupported);
 #endif
     return 0;
 }
 
 #if TRUFFLE_TEST_GUI_TEXT
+int test_moved_from_engine() {
+    auto context = tests::make_null_context();
+    auto engine = tests::require(gui::TextEngine::create(context.device, {{64, 64}}));
+    TRUFFLE_CHECK(engine.atlas_texture().ok());
+    gui::TextEngine moved = std::move(engine);
+    TRUFFLE_CHECK(moved.atlas_texture().ok());
+    // NOLINTNEXTLINE(bugprone-use-after-move): the moved-from contract is under test.
+    const auto stale = engine.atlas_texture();
+    TRUFFLE_CHECK(!stale.ok());
+    TRUFFLE_CHECK(stale.status().code == base::StatusCode::invalid_state);
+    TRUFFLE_CHECK(!engine.load_font(tests::gui_test_font(), 7.0F).ok());
+    return 0;
+}
 int test_shape_atlas_and_invalidation() {
     auto context = tests::make_null_context();
     auto engine = tests::require(gui::TextEngine::create(context.device, {{64, 64}}));
@@ -94,6 +114,9 @@ int main() {
         return result;
     }
 #if TRUFFLE_TEST_GUI_TEXT
+    if (const int result = test_moved_from_engine(); result != 0) {
+        return result;
+    }
     return test_shape_atlas_and_invalidation();
 #else
     return 0;
