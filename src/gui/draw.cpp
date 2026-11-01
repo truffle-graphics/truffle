@@ -31,6 +31,7 @@ struct Pending {
     ElementId element;
     Point origin; // parent's absolute origin, layout units
     Bounds clip;
+    bool overlay = false; // starts a later layer when reached
 };
 
 } // namespace
@@ -50,64 +51,76 @@ void assemble(const Context& context, const DrawOptions& options, DrawData& out)
     const float y_sign = options.clip_y_up ? -1.0F : 1.0F;
     const auto pixel = [scale](float units) { return std::lround(units * scale); };
 
+    const Bounds viewport{0, 0, static_cast<long>(options.target.width),
+                          static_cast<long>(options.target.height)};
     Bounds last_clip;
-    std::vector<Pending> pending{{context.root(), {}, {0, 0,
-                                  static_cast<long>(options.target.width),
-                                  static_cast<long>(options.target.height)}}};
-    while (!pending.empty()) {
-        const Pending item = pending.back();
-        pending.pop_back();
-        if (item.clip.empty()) {
-            ++out.clipped;
-            continue;
-        }
-        const auto bounds = context.bounds(item.element);
-        const Rect rect = bounds.ok() ? bounds.value() : Rect{};
-        const Point origin{item.origin.x + rect.x, item.origin.y + rect.y};
-
-        const ElementShapes* shapes = context.shapes(item.element);
-        if (shapes != nullptr && !shapes->empty()) {
-            ++out.elements;
-            const auto base = static_cast<std::uint32_t>(out.vertices.size());
-            for (ShapeVertex vertex : shapes->vertices) {
-                const float x = (origin.x + vertex.position[0]) * scale;
-                const float y = (origin.y + vertex.position[1]) * scale;
-                vertex.position[0] = x * to_clip_x - 1.0F;
-                vertex.position[1] = y_sign * (y * to_clip_y - 1.0F);
-                vertex.local[0] *= scale;
-                vertex.local[1] *= scale;
-                for (float& value : vertex.shape) {
-                    value *= scale;
-                }
-                out.vertices.push_back(vertex);
+    // Overlays are drawn as later layers, each followed by the overlays nested in it.
+    std::vector<Pending> layers{{context.root(), {}, viewport}};
+    for (std::size_t layer = 0; layer < layers.size(); ++layer) {
+        std::vector<Pending> nested;
+        std::vector<Pending> pending{layers[layer]};
+        while (!pending.empty()) {
+            const Pending item = pending.back();
+            pending.pop_back();
+            if (item.overlay) {
+                nested.push_back({item.element, item.origin, viewport});
+                continue;
             }
-            for (const ShapeSegment& segment : shapes->segments) {
-                const auto first = static_cast<std::uint32_t>(out.indices.size());
-                for (std::uint32_t i = 0; i < segment.index_count; ++i) {
-                    out.indices.push_back(base + shapes->indices[segment.first_index + i]);
+            if (item.clip.empty()) {
+                ++out.clipped;
+                continue;
+            }
+            const auto bounds = context.bounds(item.element);
+            const Rect rect = bounds.ok() ? bounds.value() : Rect{};
+            const Point origin{item.origin.x + rect.x, item.origin.y + rect.y};
+
+            const ElementShapes* shapes = context.shapes(item.element);
+            if (shapes != nullptr && !shapes->empty()) {
+                ++out.elements;
+                const auto base = static_cast<std::uint32_t>(out.vertices.size());
+                for (ShapeVertex vertex : shapes->vertices) {
+                    const float x = (origin.x + vertex.position[0]) * scale;
+                    const float y = (origin.y + vertex.position[1]) * scale;
+                    vertex.position[0] = x * to_clip_x - 1.0F;
+                    vertex.position[1] = y_sign * (y * to_clip_y - 1.0F);
+                    vertex.local[0] *= scale;
+                    vertex.local[1] *= scale;
+                    for (float& value : vertex.shape) {
+                        value *= scale;
+                    }
+                    out.vertices.push_back(vertex);
                 }
-                if (!out.commands.empty() && out.commands.back().texture == segment.texture &&
-                    last_clip == item.clip) {
-                    out.commands.back().index_count += segment.index_count;
-                } else {
-                    out.commands.push_back(
-                        {segment.texture, item.clip.scissor(), first, segment.index_count});
-                    last_clip = item.clip;
+                for (const ShapeSegment& segment : shapes->segments) {
+                    const auto first = static_cast<std::uint32_t>(out.indices.size());
+                    for (std::uint32_t i = 0; i < segment.index_count; ++i) {
+                        out.indices.push_back(base + shapes->indices[segment.first_index + i]);
+                    }
+                    if (!out.commands.empty() && out.commands.back().texture == segment.texture &&
+                        last_clip == item.clip) {
+                        out.commands.back().index_count += segment.index_count;
+                    } else {
+                        out.commands.push_back(
+                            {segment.texture, item.clip.scissor(), first, segment.index_count});
+                        last_clip = item.clip;
+                    }
                 }
             }
-        }
 
-        Bounds child_clip = item.clip;
-        if (context.clips_children(item.element)) {
-            child_clip = child_clip.intersect({pixel(origin.x), pixel(origin.y),
-                                               pixel(origin.x + rect.width),
-                                               pixel(origin.y + rect.height)});
+            Bounds child_clip = item.clip;
+            if (context.clips_children(item.element)) {
+                child_clip = child_clip.intersect({pixel(origin.x), pixel(origin.y),
+                                                   pixel(origin.x + rect.width),
+                                                   pixel(origin.y + rect.height)});
+            }
+            const auto children = context.children(item.element);
+            const Point offset = context.child_offset(item.element);
+            const Point child_origin{origin.x + offset.x, origin.y + offset.y};
+            for (auto child = children.rbegin(); child != children.rend(); ++child) {
+                pending.push_back({*child, child_origin, child_clip, context.overlay(*child)});
+            }
         }
-        const auto children = context.children(item.element);
-        const Point offset = context.child_offset(item.element);
-        for (auto child = children.rbegin(); child != children.rend(); ++child) {
-            pending.push_back({*child, {origin.x + offset.x, origin.y + offset.y}, child_clip});
-        }
+        layers.insert(layers.begin() + static_cast<std::ptrdiff_t>(layer) + 1, nested.begin(),
+                      nested.end());
     }
 }
 

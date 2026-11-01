@@ -163,9 +163,36 @@ int focus_and_capture() {
     TFL_CHECK(!c.focus({}).ok());
     return 0;
 }
+int overlay_hits() {
+    Context c;
+    const auto cover = box(c, c.root(), {30, 15}, {40, 20});
+    const auto panel = box(c, c.root(), {10, 10}, {60, 40});
+    const auto a = box(c, panel, {5, 5}, {20, 10});
+    const auto popup = box(c, a, {50, 50}, {30, 20});
+    const auto tip = box(c, popup, {2, 0}, {5, 5});
+    const auto b = box(c, panel, {30, 5}, {20, 10});
+    static_cast<void>(c.update_layout({100, 100}));
+    TFL_CHECK(c.hit_test({45, 20}) == b); // cover is drawn before the panel
+    TFL_CHECK(c.hit_test({70, 70}) == c.root()); // popup clipped by panel
+    for (const auto element : {popup, tip, cover}) {
+        TFL_CHECK(c.set_overlay(element, true).ok());
+    }
+    TFL_CHECK(c.hit_test({45, 20}) == cover);
+    TFL_CHECK(c.hit_test({75, 75}) == popup);
+    TFL_CHECK(c.hit_test({68, 66}) == tip);
+    TFL_CHECK(c.hit_test({20, 20}) == a);
+    TFL_CHECK(c.set_interaction(tip, {.hit_test = false}).ok());
+    TFL_CHECK(c.hit_test({68, 66}) == popup);
+    // A disabled ancestor disables its overlays.
+    TFL_CHECK(c.set_interaction(panel, {.enabled = false}).ok());
+    TFL_CHECK(c.hit_test({75, 75}) == c.root());
+    TFL_CHECK(c.hit_test({45, 20}) == cover);
+    return 0;
+}
 } // namespace
 
 int main() {
     if (hit_and_route() != 0) { return 1; }
+    if (overlay_hits() != 0) { return 1; }
     return focus_and_capture();
 }

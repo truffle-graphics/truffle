@@ -12,6 +12,9 @@ using truffle::gui::Constraints;
 using truffle::gui::Context;
 using truffle::gui::Dirty;
 using truffle::gui::ElementId;
+using truffle::gui::GridCell;
+using truffle::gui::GridLayout;
+using truffle::gui::GridOptions;
 using truffle::gui::Layout;
 using truffle::gui::LayoutParams;
 using truffle::gui::LayoutPass;
@@ -19,6 +22,7 @@ using truffle::gui::Rect;
 using truffle::gui::Size;
 using truffle::gui::StackLayout;
 using truffle::gui::StackOptions;
+using truffle::gui::Track;
 
 ElementId make(Context& context, ElementId parent, LayoutParams params = {}) {
     auto created = context.create(parent);
@@ -265,6 +269,132 @@ int test_incremental() {
     return 0;
 }
 
+LayoutParams in_cell(GridCell cell, LayoutParams params = {}) {
+    params.cell = cell;
+    return params;
+}
+
+int test_grid_tracks() {
+    Context context;
+    const ElementId root = context.root();
+    GridOptions options;
+    options.columns = {Track::fixed(50.0F), Track::content(), Track::weighted()};
+    options.rows = {Track::content(), Track::weighted()};
+    options.column_spacing = 10.0F;
+    options.row_spacing = 5.0F;
+    TFL_CHECK(context.set_layout(root, std::make_shared<GridLayout>(options)).ok());
+    const ElementId a = make(context, root, in_cell({0, 0}));
+    const ElementId b = make(context, root, in_cell({1, 0}, fixed(30.0F, 15.0F)));
+    const ElementId c = make(context, root, in_cell({2, 1}));
+    LayoutParams short_row;
+    short_row.height = 10.0F;
+    const ElementId d = make(
+        context, root,
+        in_cell({.column = 0, .row = 1, .column_span = 2, .vertical = Align::center},
+                short_row));
+
+    auto stats = context.update_layout({300.0F, 200.0F});
+    TFL_CHECK(at(context, a) == (Rect{0.0F, 0.0F, 50.0F, 15.0F}));
+    TFL_CHECK(at(context, b) == (Rect{60.0F, 0.0F, 30.0F, 15.0F}));
+    TFL_CHECK(at(context, c) == (Rect{100.0F, 20.0F, 200.0F, 180.0F}));
+    TFL_CHECK(at(context, d) == (Rect{0.0F, 105.0F, 90.0F, 10.0F}));
+    context.clear_dirty();
+
+    // A wider content column re-measures only that child; a keeps its rect.
+    TFL_CHECK(context.set_layout_params(b, in_cell({1, 0}, fixed(40.0F, 15.0F))).ok());
+    stats = context.update_layout({300.0F, 200.0F});
+    TFL_CHECK(stats.measured == 2 && stats.arranged == 4);
+    TFL_CHECK(at(context, a) == (Rect{0.0F, 0.0F, 50.0F, 15.0F}));
+    TFL_CHECK(at(context, c) == (Rect{110.0F, 20.0F, 190.0F, 180.0F}));
+    TFL_CHECK(at(context, d) == (Rect{0.0F, 105.0F, 100.0F, 10.0F}));
+    TFL_CHECK(!truffle::gui::has(context.dirty(a), Dirty::shape));
+    return 0;
+}
+
+int test_grid_spans() {
+    Context context;
+    GridOptions options;
+    options.columns = {Track::content(), Track::content()};
+    const ElementId grid = make(context, context.root());
+    TFL_CHECK(context.set_layout(grid, std::make_shared<GridLayout>(options)).ok());
+    const ElementId a = make(context, grid, in_cell({0, 0}, fixed(20.0F, 10.0F)));
+    const ElementId b = make(
+        context, grid,
+        in_cell({.column = 0, .row = 1, .column_span = 2, .horizontal = Align::start},
+                fixed(60.0F, 10.0F)));
+    const ElementId c = make(context, grid, in_cell({1, 0}));
+    // An undeclared third column is sized to its content.
+    const ElementId e = make(context, grid, in_cell({2, 1}, fixed(7.0F, 4.0F)));
+
+    context.update_layout({200.0F, 100.0F});
+    // b's 40 units of excess are shared by both spanned columns.
+    TFL_CHECK(at(context, grid) == (Rect{0.0F, 0.0F, 67.0F, 20.0F}));
+    TFL_CHECK(at(context, a) == (Rect{0.0F, 0.0F, 20.0F, 10.0F}));
+    TFL_CHECK(at(context, b) == (Rect{0.0F, 10.0F, 60.0F, 10.0F}));
+    TFL_CHECK(at(context, c) == (Rect{40.0F, 0.0F, 20.0F, 10.0F}));
+    TFL_CHECK(at(context, e) == (Rect{60.0F, 10.0F, 7.0F, 4.0F}));
+    return 0;
+}
+
+int test_placement() {
+    Context context;
+    const ElementId root = context.root();
+    TFL_CHECK(context.set_layout(root, stack(Axis::vertical)).ok());
+    LayoutParams row;
+    row.height = 10.0F;
+    const ElementId a = make(context, root, row);
+    const ElementId b = make(context, root);
+    const ElementId c = make(context, root, row);
+    LayoutParams line;
+    line.height = 5.0F;
+    const ElementId inner = make(context, b, line);
+    TFL_CHECK(context.set_layout(b, stack(Axis::vertical)).ok());
+
+    TFL_CHECK(context.set_placement(b, Rect{5.0F, 50.0F, 20.0F, 30.0F}).ok());
+    TFL_CHECK(context.placement(b) == (Rect{5.0F, 50.0F, 20.0F, 30.0F}));
+    context.update_layout({100.0F, 100.0F});
+    // The stack closes the gap; b and its content take the placed rect.
+    TFL_CHECK(at(context, a) == (Rect{0.0F, 0.0F, 100.0F, 10.0F}));
+    TFL_CHECK(at(context, c) == (Rect{0.0F, 10.0F, 100.0F, 10.0F}));
+    TFL_CHECK(at(context, b) == (Rect{5.0F, 50.0F, 20.0F, 30.0F}));
+    TFL_CHECK(at(context, inner) == (Rect{0.0F, 0.0F, 20.0F, 5.0F}));
+    context.clear_dirty();
+
+    // Moving at the same size re-arranges only the parent.
+    TFL_CHECK(context.set_placement(b, Rect{8.0F, 40.0F, 20.0F, 30.0F}).ok());
+    auto stats = context.update_layout({100.0F, 100.0F});
+    TFL_CHECK(stats.measured == 0 && stats.arranged == 1);
+    TFL_CHECK(at(context, b) == (Rect{8.0F, 40.0F, 20.0F, 30.0F}));
+    TFL_CHECK(context.dirty(b) == Dirty::none);
+
+    // New children keep flowing around the placed one.
+    const ElementId d = make(context, root, row);
+    context.update_layout({100.0F, 100.0F});
+    TFL_CHECK(at(context, d) == (Rect{0.0F, 20.0F, 100.0F, 10.0F}));
+
+    // Returning b to the layout puts it back in order.
+    TFL_CHECK(context.set_placement(b, std::nullopt).ok());
+    context.update_layout({100.0F, 100.0F});
+    TFL_CHECK(at(context, b) == (Rect{0.0F, 10.0F, 100.0F, 5.0F}));
+    TFL_CHECK(at(context, c) == (Rect{0.0F, 15.0F, 100.0F, 10.0F}));
+
+    // Moving or destroying a placed element keeps its old parent's flow.
+    TFL_CHECK(context.set_placement(a, Rect{0.0F, 90.0F, 10.0F, 10.0F}).ok());
+    TFL_CHECK(context.reparent(a, b).ok());
+    context.update_layout({100.0F, 100.0F});
+    TFL_CHECK(at(context, b) == (Rect{0.0F, 0.0F, 100.0F, 5.0F}));
+    TFL_CHECK(at(context, a) == (Rect{0.0F, 90.0F, 10.0F, 10.0F}));
+    TFL_CHECK(context.destroy(a).ok());
+    context.update_layout({100.0F, 100.0F});
+    TFL_CHECK(at(context, inner) == (Rect{0.0F, 0.0F, 100.0F, 5.0F}));
+
+    TFL_CHECK(!context.set_placement(root, Rect{}).ok());
+    TFL_CHECK(!context.set_placement(c, Rect{0.0F, 0.0F, -1.0F, 1.0F}).ok());
+    TFL_CHECK(!context.set_placement(a, Rect{}).ok());
+    TFL_CHECK(!context.placement(a).has_value());
+    return 0;
+}
+
 int test_invalid_handles() {
     Context context;
     const ElementId gone = make(context, context.root());
@@ -286,5 +416,8 @@ int main() {
     if (const int failed = test_min_max_and_free_placement()) return failed;
     if (const int failed = test_custom_layout()) return failed;
     if (const int failed = test_incremental()) return failed;
+    if (const int failed = test_grid_tracks()) return failed;
+    if (const int failed = test_grid_spans()) return failed;
+    if (const int failed = test_placement()) return failed;
     return test_invalid_handles();
 }

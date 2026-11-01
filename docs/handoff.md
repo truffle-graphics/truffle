@@ -9,10 +9,47 @@ the support matrix and Git history.
 
 Maintainer decision: a branch and its PR cover a related batch of issues with
 one signed commit per issue, instead of a branch and PR per issue. Recorded in
-`AGENTS.md` and `CONTRIBUTING.md`. Latest batch: `feat/gui-interaction`
-(#226–#229).
+`AGENTS.md` and `CONTRIBUTING.md`. Latest batch: `feat/gui-layout-drawing`
+(#230–#231), the first of three batches finishing epic #217 (then
+`feat/gui-authoring` #232–#233 and `feat/gui-collections-dock` #234–#235).
 
-## Latest Delivery: GUI Interaction (#226-#229)
+## Current Batch: GUI Layout And Drawing (#230-#231)
+
+#230 adds `GridLayout`: declared columns/rows sized fixed, to content or by
+weight (each clamped to min/max), with spacing, implicit content-sized tracks
+past the declared ones, and per-child `LayoutParams::cell` (column/row, spans,
+horizontal/vertical alignment). Content tracks take their largest single-span
+child; a spanning child that does not fit grows its spanned non-fixed tracks
+equally. Weighted tracks share the arranged space like stack weights. Children
+in only fixed tracks measure bounded; edges round like stacks. Changing one
+child re-measures only its path and re-arranges only moved/resized cells.
+
+Validation: exact-rect tests for fixed/content/weighted tracks, spacing,
+spans, alignment, implicit tracks and grid measurement, plus incremental
+counts (2 measured, 4 arranged; untouched cells keep their shapes).
+Ownership: GUI layout only; no new module dependencies.
+
+#231 adds the low-level freedom of ADR 0013. `Context::set_placement` gives
+any non-root element an exact parent-relative rect: the parent's layout no
+longer sees it (`LayoutPass::children` returns flow children; siblings close
+the gap), while the context measures it tightly and arranges it after the
+layout. A same-size move only re-arranges the parent. `set_overlay` draws a
+subtree after the normal tree (and nested overlays after their container, in
+tree order) with only the viewport as clip, and hit tests it first; disabled
+ancestors still disable it and scrolling still moves it. `CanvasBuilder`
+paints after the decoration and repaints on `invalidate(element,
+Dirty::shape)`; `ShapeWriter::triangles`/`line` add solid untextured geometry
+(no anti-aliasing; deep inside the SDF so the existing GUI program renders
+it). Shapes stay readable through `Context::shapes`. Placement/overlay state
+lives in `placement.cpp`, keeping `context.cpp` cohesive.
+
+Validation: tests for placement flow, nested content, same-size move counts,
+new/reparented/destroyed children with a placed sibling and invalid inputs;
+overlay draw order, clips, scrolling and toggling; overlay hit priority,
+disabled ancestors; primitive geometry and canvas repaint. All 11 GUI tests
+pass in the warning-as-error Debug build and 9 in the text-free build.
+
+## Previous Delivery: GUI Interaction (#226-#229)
 
 #226 adds GUI-owned topmost clipped hit testing, mutation-safe bubbling,
 direct hover/focus/capture notifications, Tab traversal and per-pointer

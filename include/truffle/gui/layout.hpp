@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <vector>
 
 namespace truffle::gui {
 
@@ -15,6 +16,19 @@ class Context;
 enum class Axis : std::uint8_t { horizontal, vertical };
 
 enum class Align : std::uint8_t { start, center, end, stretch };
+
+// Cell of a child inside a GridLayout parent. Tracks beyond the parent's
+// declared columns or rows are content-sized.
+struct GridCell {
+    std::uint16_t column = 0;
+    std::uint16_t row = 0;
+    std::uint16_t column_span = 1;
+    std::uint16_t row_span = 1;
+    Align horizontal = Align::stretch; // placement inside the spanned cells
+    Align vertical = Align::stretch;
+
+    friend bool operator==(const GridCell&, const GridCell&) = default;
+};
 
 // Sizing and placement inputs of one element. The context applies the fixed
 // size, minimum, maximum and padding; layouts only place children.
@@ -28,6 +42,7 @@ struct LayoutParams {
     // measured size; a fixed main-axis size always wins over a weight.
     float weight = 0.0F;
     Point position; // offset inside a FreeLayout parent's content area
+    GridCell cell;  // cell inside a GridLayout parent
 
     friend bool operator==(const LayoutParams&, const LayoutParams&) = default;
 };
@@ -44,6 +59,8 @@ public:
     LayoutPass(const LayoutPass&) = delete;
     LayoutPass& operator=(const LayoutPass&) = delete;
 
+    // Children the layout places: every child except those with a placement
+    // override, which the context places itself.
     [[nodiscard]] std::span<const ElementId> children(ElementId element) const noexcept;
     [[nodiscard]] const LayoutParams& params(ElementId element) const noexcept;
 
@@ -115,6 +132,60 @@ public:
     [[nodiscard]] Size measure(LayoutPass& pass, ElementId element,
                                Constraints content) const override;
     void arrange(LayoutPass& pass, ElementId element, Rect content) const override;
+};
+
+enum class TrackSizing : std::uint8_t {
+    fixed,   // `value` layout units
+    content, // the largest child it holds
+    weight,  // a `value` share of the space left by the other tracks
+};
+
+// One grid column or row. Every track is kept within `min` and `max`.
+struct Track {
+    TrackSizing sizing = TrackSizing::content;
+    float value = 0.0F;
+    float min = 0.0F;
+    float max = unbounded;
+
+    [[nodiscard]] static constexpr Track fixed(float size) noexcept {
+        return {TrackSizing::fixed, size};
+    }
+    [[nodiscard]] static constexpr Track content(float min = 0.0F,
+                                                 float max = unbounded) noexcept {
+        return {TrackSizing::content, 0.0F, min, max};
+    }
+    [[nodiscard]] static constexpr Track weighted(float weight = 1.0F, float min = 0.0F,
+                                                  float max = unbounded) noexcept {
+        return {TrackSizing::weight, weight, min, max};
+    }
+
+    friend bool operator==(const Track&, const Track&) = default;
+};
+
+struct GridOptions {
+    std::vector<Track> columns;
+    std::vector<Track> rows;
+    float column_spacing = 0.0F;
+    float row_spacing = 0.0F;
+};
+
+// Rows and columns whose cells line up. Children choose a cell and span with
+// `LayoutParams::cell`. Content tracks take the largest single-span child;
+// a spanning child that does not fit grows its spanned non-fixed tracks
+// equally. When arranged, weighted tracks share the space the other tracks
+// leave, growing or shrinking; the measured size uses their content size.
+class GridLayout final : public Layout {
+public:
+    explicit GridLayout(GridOptions options = {});
+
+    [[nodiscard]] const GridOptions& options() const noexcept;
+
+    [[nodiscard]] Size measure(LayoutPass& pass, ElementId element,
+                               Constraints content) const override;
+    void arrange(LayoutPass& pass, ElementId element, Rect content) const override;
+
+private:
+    GridOptions options_;
 };
 
 } // namespace truffle::gui

@@ -4,6 +4,9 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <span>
+#include <utility>
 #include <vector>
 
 namespace truffle::gui {
@@ -72,7 +75,18 @@ public:
     // add nothing.
     void rect(const Rect& rect, const Decoration& decoration);
 
+    // Solid, untextured triangles in element-local layout units; every three
+    // `indices` into `points` make one. Edges are not anti-aliased. Nothing is
+    // added if an index is out of range or the color is invisible.
+    void triangles(std::span<const Point> points, std::span<const std::uint32_t> indices,
+                   Color color);
+
+    // A solid segment from `from` to `to`, `width` units wide, with square ends.
+    void line(Point from, Point to, float width, Color color);
+
 private:
+    void append_indices(TextureId texture, std::uint32_t count);
+
     ElementShapes* shapes_;
 };
 
@@ -89,6 +103,21 @@ public:
 class DecorationBuilder final : public ShapeBuilder {
 public:
     void build(ShapeWriter& out, Size size, const Decoration& decoration) const override;
+};
+
+// Custom drawing: the decoration, then whatever `paint` writes for the
+// element's current size. Shapes are cached; call
+// `Context::invalidate(element, Dirty::shape)` when the painted data changes.
+class CanvasBuilder final : public ShapeBuilder {
+public:
+    using Paint = std::function<void(ShapeWriter& out, Size size)>;
+
+    explicit CanvasBuilder(Paint paint) : paint_(std::move(paint)) {}
+
+    void build(ShapeWriter& out, Size size, const Decoration& decoration) const override;
+
+private:
+    Paint paint_;
 };
 
 struct ShapeStats {

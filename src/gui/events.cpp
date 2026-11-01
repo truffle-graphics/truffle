@@ -90,29 +90,73 @@ ElementId Context::hit_test(Point position) const {
         return {};
     }
     struct Entry { ElementId id; Point origin; Rect clip; bool self; };
-    std::vector<Entry> pending{{root_, {}, root->rect, false}};
-    while (!pending.empty()) {
-        const Entry entry = pending.back();
-        pending.pop_back();
-        const Node* node = find(entry.id);
-        if (node == nullptr || !node->interaction.enabled || !node->arranged ||
-            !contains(entry.clip, position)) {
-            continue;
-        }
-        const Rect rect{entry.origin.x + node->rect.x, entry.origin.y + node->rect.y,
-                        node->rect.width, node->rect.height};
-        if (entry.self) {
-            if (node->interaction.hit_test && contains(rect, position)) {
-                return entry.id;
+    const Rect viewport = root->rect;
+    // Searches one layer, topmost first; overlays below it are separate layers.
+    const auto search = [&](const Entry& start) -> ElementId {
+        std::vector<Entry> pending{start};
+        while (!pending.empty()) {
+            const Entry entry = pending.back();
+            pending.pop_back();
+            const Node* node = find(entry.id);
+            if (node == nullptr || !node->interaction.enabled || !node->arranged ||
+                !contains(entry.clip, position)) {
+                continue;
             }
-            continue;
+            const Rect rect{entry.origin.x + node->rect.x, entry.origin.y + node->rect.y,
+                            node->rect.width, node->rect.height};
+            if (entry.self) {
+                if (node->interaction.hit_test && contains(rect, position)) {
+                    return entry.id;
+                }
+                continue;
+            }
+            pending.push_back({entry.id, entry.origin, entry.clip, true});
+            const Rect clip = node->clips ? intersect(entry.clip, rect) : entry.clip;
+            // The last drawn child is visited first.
+            for (ElementId child : node->children) {
+                if (find(child)->overlay) {
+                    continue;
+                }
+                pending.push_back({child, {rect.x + node->child_offset.x,
+                                          rect.y + node->child_offset.y}, clip, false});
+            }
         }
-        pending.push_back({entry.id, entry.origin, entry.clip, true});
-        const Rect clip = node->clips ? intersect(entry.clip, rect) : entry.clip;
-        // The last drawn child is visited first.
-        for (ElementId child : node->children) {
-            pending.push_back({child, {rect.x + node->child_offset.x,
-                                      rect.y + node->child_offset.y}, clip, false});
+        return {};
+    };
+    const Entry base{root_, {}, viewport, false};
+    if (overlays_ == 0) {
+        return search(base);
+    }
+
+    // Gather layers in drawing order (see draw.cpp), skipping disabled subtrees.
+    std::vector<Entry> layers{base};
+    for (std::size_t layer = 0; layer < layers.size(); ++layer) {
+        std::vector<Entry> nested;
+        std::vector<Entry> pending{layers[layer]};
+        while (!pending.empty()) {
+            const Entry entry = pending.back();
+            pending.pop_back();
+            const Node* node = find(entry.id);
+            if (node == nullptr || !node->interaction.enabled || !node->arranged) {
+                continue;
+            }
+            if (entry.self) { // an overlay reached in tree order
+                nested.push_back({entry.id, entry.origin, viewport, false});
+                continue;
+            }
+            const Point origin{entry.origin.x + node->rect.x + node->child_offset.x,
+                               entry.origin.y + node->rect.y + node->child_offset.y};
+            for (auto child = node->children.rbegin(); child != node->children.rend();
+                 ++child) {
+                pending.push_back({*child, origin, viewport, find(*child)->overlay});
+            }
+        }
+        layers.insert(layers.begin() + static_cast<std::ptrdiff_t>(layer) + 1,
+                      nested.begin(), nested.end());
+    }
+    for (auto layer = layers.rbegin(); layer != layers.rend(); ++layer) {
+        if (const ElementId hit = search(*layer); hit.valid()) {
+            return hit;
         }
     }
     return {};

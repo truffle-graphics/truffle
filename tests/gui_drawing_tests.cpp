@@ -7,6 +7,7 @@
 
 namespace {
 
+using truffle::gui::CanvasBuilder;
 using truffle::gui::Color;
 using truffle::gui::Context;
 using truffle::gui::Decoration;
@@ -15,6 +16,7 @@ using truffle::gui::DrawOptions;
 using truffle::gui::ElementId;
 using truffle::gui::ElementShapes;
 using truffle::gui::LayoutParams;
+using truffle::gui::Point;
 using truffle::gui::Rect;
 using truffle::gui::ShapeBuilder;
 using truffle::gui::ShapeWriter;
@@ -243,9 +245,108 @@ int frame_assembly() {
     return 0;
 }
 
+int custom_drawing() {
+    ElementShapes shapes;
+    ShapeWriter writer(shapes);
+    writer.line({0, 0}, {10, 0}, 2, {1, 0, 0, 1});
+    TFL_CHECK(shapes.vertices.size() == 4 && shapes.indices.size() == 6);
+    TFL_CHECK(near(shapes.vertices[0].position[0], -1) && near(shapes.vertices[0].position[1], 1));
+    TFL_CHECK(near(shapes.vertices[3].position[0], 11) &&
+                  near(shapes.vertices[3].position[1], -1));
+    // Solid geometry sits deep inside its signed-distance shape.
+    TFL_CHECK(shapes.vertices[0].local[0] == 0.0F && shapes.vertices[0].shape[0] > 1000.0F);
+    const Point points[] = {{0, 0}, {4, 0}, {0, 4}};
+    const std::uint32_t triangle[] = {0, 1, 2};
+    const std::uint32_t broken[] = {0, 1, 3};
+    writer.triangles(points, triangle, {0, 1, 0, 1});
+    writer.triangles(points, broken, {0, 1, 0, 1});
+    writer.triangles(points, triangle, {0, 1, 0, 0});
+    writer.line({1, 1}, {1, 1}, 2, {1, 1, 1, 1});
+    TFL_CHECK(shapes.vertices.size() == 7 && shapes.indices.size() == 9);
+    TFL_CHECK(shapes.indices[6] == 4 && shapes.indices[8] == 6);
+    TFL_CHECK(shapes.segments.size() == 1 && shapes.segments[0].index_count == 9);
+
+    // A canvas paints after its decoration and repaints when invalidated.
+    Context context;
+    const ElementId canvas = make(context, context.root(), {0, 0, 40, 20});
+    int paints = 0;
+    Size painted;
+    TFL_CHECK(context.set_decoration(canvas, filled({0, 0, 1, 1})).ok());
+    TFL_CHECK(context.set_shape_builder(canvas, std::make_shared<CanvasBuilder>(
+                                                    [&](ShapeWriter& out, Size size) {
+                                                        ++paints;
+                                                        painted = size;
+                                                        out.line({0, 0}, {size.width, 0}, 1,
+                                                                 {1, 1, 1, 1});
+                                                    }))
+                  .ok());
+    frame(context);
+    static_cast<void>(context.update_shapes());
+    TFL_CHECK(paints == 1 && (painted == Size{40, 20}));
+    TFL_CHECK(context.shapes(canvas)->indices.size() == 12);
+    TFL_CHECK(context.update_shapes().regenerated == 0 && paints == 1);
+    TFL_CHECK(context.invalidate(canvas, truffle::gui::Dirty::shape).ok());
+    TFL_CHECK(context.update_shapes().regenerated == 1 && paints == 2);
+    return 0;
+}
+
+int overlay_layers() {
+    Context context;
+    const ElementId panel = make(context, context.root(), {10, 10, 60, 40});
+    const ElementId a = make(context, panel, {5, 5, 20, 10});
+    const ElementId popup = make(context, a, {50, 50, 30, 20}); // outside panel
+    const ElementId tip = make(context, popup, {2, 0, 5, 5});
+    const ElementId b = make(context, panel, {30, 5, 20, 10});
+    const ElementId top = make(context, context.root(), {0, 0, 10, 10});
+    for (const ElementId element : {panel, a, popup, tip, b, top}) {
+        TFL_CHECK(context.set_decoration(element, filled({1, 1, 1, 1})).ok());
+    }
+    TFL_CHECK(context.set_clips_children(panel, true).ok());
+    for (const ElementId element : {popup, tip, top}) {
+        TFL_CHECK(context.set_overlay(element, true).ok());
+        TFL_CHECK(context.overlay(element));
+    }
+    TFL_CHECK(!context.overlay(a));
+    TFL_CHECK(!context.set_overlay(context.root(), true).ok());
+    frame(context);
+    static_cast<void>(context.update_shapes());
+
+    DrawData data;
+    truffle::gui::assemble(context, {.target = {100, 80}}, data);
+    // Normal tree first (panel, a, b), then overlays in tree order with only
+    // the viewport as clip: popup, the nested tip, then top.
+    TFL_CHECK(data.elements == 6 && data.clipped == 0);
+    TFL_CHECK(data.commands.size() == 3);
+    TFL_CHECK(same_clip(data.commands[1].clip, 10, 10, 60, 40) &&
+                  data.commands[1].index_count == 12);
+    TFL_CHECK(same_clip(data.commands[2].clip, 0, 0, 100, 80) &&
+                  data.commands[2].index_count == 18);
+    TFL_CHECK(near(data.vertices[12].position[0], 0.28F)); // popup at 64 px
+    TFL_CHECK(near(data.vertices[16].position[0], 0.32F)); // tip at 66 px
+    TFL_CHECK(near(data.vertices[20].position[0], -1.02F)); // top at -1 px
+
+    // Scrolling the container still moves its overlays.
+    TFL_CHECK(context.set_child_offset(panel, {-10, 0}).ok());
+    truffle::gui::assemble(context, {.target = {100, 80}}, data);
+    TFL_CHECK(near(data.vertices[12].position[0], 0.08F));
+
+    TFL_CHECK(context.set_overlay(popup, false).ok());
+    TFL_CHECK(context.destroy(top).ok());
+    truffle::gui::assemble(context, {.target = {100, 80}}, data);
+    // popup is drawn in the normal tree again; its nested tip stays on top.
+    TFL_CHECK(data.elements == 5 && data.commands.back().index_count == 6);
+    return 0;
+}
+
 } // namespace
 
 int main() {
+    if (custom_drawing() != 0) {
+        return 1;
+    }
+    if (overlay_layers() != 0) {
+        return 1;
+    }
     if (shapes_follow_changes() != 0) {
         return 1;
     }
