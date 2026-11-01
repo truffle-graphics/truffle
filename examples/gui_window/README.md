@@ -1,6 +1,7 @@
 # GUI Window
 
-A small macOS application showing the Truffle GUI **host boundary**. The host
+A macOS application demonstrating all seven **core widgets** and the retained
+GUI's selective work. The host
 owns the Cocoa window, `CAMetalLayer`, event loop, swapchain and presentation;
 `Truffle::GUI` owns the persistent element tree, layout, shapes and frame
 scheduling.
@@ -8,15 +9,21 @@ scheduling.
 The loop sleeps until input or the GUI's next timed update, translates AppKit
 events into GUI input events, passes the logical size and content scale to
 `Context::set_viewport`, and draws only when `Context::needs_frame` is true.
-Moving the pointer alone draws nothing; clicking or dragging in the canvas moves
-the marker, the sidebar indicator blinks on a timer, and resizing redraws once.
-Cmd+C copies the marker position through the `Host` clipboard service. Event
-routing to elements, text and widgets arrive in later GUI issues.
+The left panel has a label, button, checkbox, slider and image. The right scroll
+area contains 64 persistent rows. The button updates its count, the checkbox
+changes the accent theme, and the slider changes image tint. Tab/Shift+Tab move
+focus, Space/Enter activate controls, arrows change the slider, and wheel or
+arrow/Page keys scroll the focused scroll area. Layout, drawing, hit testing and
+scroll clipping use the same tree. `demo.hpp` owns application composition;
+`main.mm` owns Cocoa input, the system-font lookup, rendering and presentation.
+
+No font is redistributed: the host loads its installed system font into
+`TextEngine`. GUI text must be enabled (the default). A text-disabled build does
+not build this text-dependent example.
 
 ## Build and run
 
-Requires macOS with a logged-in GUI session and a Metal device. The GUI program
-ships as prepared MSL, so no shader compiler is needed.
+Requires macOS with a logged-in GUI session and a Metal device. The GUI program ships as prepared MSL, so no shader compiler is needed.
 
 ```sh
 cmake -S . -B build/gui-window \
@@ -28,10 +35,36 @@ cmake --build build/gui-window --target truffle_gui_window
 
 Escape or the close button exits and prints the number of frames drawn.
 
-`--smoke` scripts the same window and fails unless it draws exactly one frame
-initially, none while idle, one for a timed update, none for pointer movement,
-and one each for a marker placement and a window resize:
+`--smoke` scripts the same native window/tree, checks exact work counts, and
+fails on unexpected work. Unrelated physical pointer/key events are ignored in
+the script; normal mode forwards them. Host focus and resize still pass through.
 
 ```sh
 ctest --test-dir build/gui-window --output-on-failure -R '^truffle_gui_window$'
 ```
+
+## Persistence evidence (#229)
+
+Local Apple Silicon / native Metal with API and shader validation, Debug and
+warnings as errors. The tree has **145 elements**, including all 64 rows.
+Counters count recomputation, not cache hits or GPU redrawing.
+
+| Change | Style resolutions | Measurements | Arrangements | Shape regenerations |
+| --- | ---: | ---: | ---: | ---: |
+| Initial tree | 142 | 145 | 145 | 145 |
+| Idle (even if prepared explicitly) | 0 | 0 | 0 | 0 |
+| Accent theme (two paint dependents) | 2 | 0 | 0 | 2 |
+| Scroll by one row | 0 | 0 | 0 | 0 |
+| One label's text | 0 | 4 | 4 | 1 |
+| Button gesture and counter callback | 1 | 4 | 4 | 2 |
+| Checkbox gesture and accent callback | 4 | 0 | 0 | 4 |
+| Slider key and image-tint callback | 2 | 0 | 0 | 3 |
+| Window resize, 900x640 to 740x560 | 0 | 4 | 7 | 7 |
+
+The smoke run draws eight frames total and remains idle after the changes.
+Idle, theme, scroll and text counts are asserted, as are widget callback
+results and frame counts. Row virtualization is deliberately not implemented
+here (#234): the elements and their shapes persist, while frame assembly
+still visits the tree. Zero recomputation is not a zero-cost traversal claim.
+Independent `truffle_gui_drawing_metal_tests` compare native widget pixels,
+including glyphs, hover/press/release, slider/check state and clipped scrolling.

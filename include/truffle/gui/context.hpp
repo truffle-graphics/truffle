@@ -70,6 +70,10 @@ public:
     using Clock = std::chrono::steady_clock;
 
     Context();
+    Context(const Context&) = delete;
+    Context& operator=(const Context&) = delete;
+    Context(Context&&) = delete;
+    Context& operator=(Context&&) = delete;
 
     [[nodiscard]] ElementId root() const noexcept;
     [[nodiscard]] bool alive(ElementId element) const noexcept;
@@ -187,9 +191,9 @@ public:
     [[nodiscard]] ElementId hovered() const noexcept;
     [[nodiscard]] ElementId focused() const noexcept;
     [[nodiscard]] base::Status focus(ElementId element); // empty clears focus
-    void focus_next(bool backwards = false);
+    base::Status focus_next(bool backwards = false);
     [[nodiscard]] base::Status capture_pointer(ElementId element, std::uint32_t pointer = 0);
-    void release_pointer(std::uint32_t pointer = 0);
+    base::Status release_pointer(std::uint32_t pointer = 0);
     [[nodiscard]] ElementId captured(std::uint32_t pointer = 0) const noexcept;
     // No log storage or trace work when the optional sink is empty.
     void set_event_trace(EventTrace trace);
@@ -278,7 +282,7 @@ private:
     void raise(ElementId element, Node& node, Dirty flags);
     void detach(ElementId element, Node& node);
     [[nodiscard]] bool input_enabled(ElementId element) const noexcept;
-    bool dispatch(ElementId target, RoutedPayload payload, bool bubble = true);
+    base::Result<bool> dispatch(ElementId target, RoutedPayload payload, bool bubble = true);
     void route_input(const InputEvent& event);
     void update_hover(ElementId next);
     void forget_input(ElementId element) noexcept;

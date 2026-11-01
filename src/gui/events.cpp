@@ -34,7 +34,8 @@ base::Status Context::set_interaction(ElementId element, Interaction interaction
     node->interaction = interaction;
     if (focused_.valid() &&
         (!input_enabled(focused_) || !find(focused_)->interaction.focusable)) {
-        static_cast<void>(focus({}));
+        const auto status = focus({});
+        if (!status.ok()) { return status; }
     }
     std::vector<std::uint32_t> release;
     for (const auto& [pointer, target] : captures_) {
@@ -43,7 +44,8 @@ base::Status Context::set_interaction(ElementId element, Interaction interaction
         }
     }
     for (auto pointer : release) {
-        release_pointer(pointer);
+        const auto status = release_pointer(pointer);
+        if (!status.ok()) { return status; }
     }
     if (!input_enabled(hovered_)) {
         update_hover({});
@@ -116,7 +118,7 @@ ElementId Context::hit_test(Point position) const {
     return {};
 }
 
-bool Context::dispatch(ElementId target, RoutedPayload payload, bool bubble) {
+base::Result<bool> Context::dispatch(ElementId target, RoutedPayload payload, bool bubble) {
     std::vector<ElementId> path;
     for (ElementId up = target; up.valid();) {
         const Node* node = find(up);
@@ -139,18 +141,19 @@ bool Context::dispatch(ElementId target, RoutedPayload payload, bool bubble) {
         if (handler) {
             handler(*this, event);
         }
-        if (!event.status.ok()) {
-            event_status_ = event.status;
-            break;
-        }
         const EventTrace trace = trace_;
         if (trace) {
             trace(event);
+        }
+        if (!event.status.ok()) {
+            event_status_ = event.status;
+            break;
         }
         if (event.stopped) {
             break;
         }
     }
+    if (!event.status.ok()) { return event.status; }
     return event.handled;
 }
 
@@ -194,14 +197,16 @@ base::Status Context::focus(ElementId element) {
     }
     const ElementId previous = focused_;
     focused_ = element;
-    static_cast<void>(dispatch(previous, ElementFocusEvent{false}, false));
+    const auto lost = dispatch(previous, ElementFocusEvent{false}, false);
+    if (!lost.ok()) { return lost.status(); }
     if (focused_ == element) {
-        static_cast<void>(dispatch(element, ElementFocusEvent{true}, false));
+        const auto gained = dispatch(element, ElementFocusEvent{true}, false);
+        if (!gained.ok()) { return gained.status(); }
     }
     return base::Status::success();
 }
 
-void Context::focus_next(bool backwards) {
+base::Status Context::focus_next(bool backwards) {
     std::vector<ElementId> order;
     std::vector<ElementId> pending{root_};
     while (!pending.empty()) {
@@ -217,8 +222,7 @@ void Context::focus_next(bool backwards) {
         pending.insert(pending.end(), node->children.rbegin(), node->children.rend());
     }
     if (order.empty()) {
-        static_cast<void>(focus({}));
-        return;
+        return focus({});
     }
     auto found = std::find(order.begin(), order.end(), focused_);
     std::size_t index = backwards ? order.size() - 1 : 0;
@@ -227,7 +231,7 @@ void Context::focus_next(bool backwards) {
         index = backwards ? (current + order.size() - 1) % order.size()
                           : (current + 1) % order.size();
     }
-    static_cast<void>(focus(order[index]));
+    return focus(order[index]);
 }
 
 base::Status Context::capture_pointer(ElementId element, std::uint32_t pointer) {
@@ -239,14 +243,15 @@ base::Status Context::capture_pointer(ElementId element, std::uint32_t pointer) 
     }
     const ElementId previous = captured(pointer);
     captures_[pointer] = element;
-    static_cast<void>(dispatch(previous, CaptureLostEvent{pointer}, false));
-    return base::Status::success();
+    const auto lost = dispatch(previous, CaptureLostEvent{pointer}, false);
+    return lost.ok() ? base::Status::success() : lost.status();
 }
 
-void Context::release_pointer(std::uint32_t pointer) {
+base::Status Context::release_pointer(std::uint32_t pointer) {
     const ElementId previous = captured(pointer);
     captures_.erase(pointer);
-    static_cast<void>(dispatch(previous, CaptureLostEvent{pointer}, false));
+    const auto lost = dispatch(previous, CaptureLostEvent{pointer}, false);
+    return lost.ok() ? base::Status::success() : lost.status();
 }
 
 ElementId Context::captured(std::uint32_t pointer) const noexcept {
@@ -312,7 +317,8 @@ void Context::route_input(const InputEvent& event) {
             update_hover({});
         }
     } else if (input_.focused) {
-        const bool handled = dispatch(focused_, event);
+        const auto result = dispatch(focused_, event);
+        const bool handled = !result.ok() || result.value();
         if (const auto* key = std::get_if<KeyEvent>(&event);
             key != nullptr && key->key == Key::tab && key->down && !handled) {
             focus_next(has(key->modifiers, Modifiers::shift));

@@ -9,10 +9,10 @@ the support matrix and Git history.
 
 Maintainer decision: a branch and its PR cover a related batch of issues with
 one signed commit per issue, instead of a branch and PR per issue. Recorded in
-`AGENTS.md` and `CONTRIBUTING.md`. Active batch: `feat/gui-interaction`
+`AGENTS.md` and `CONTRIBUTING.md`. Latest batch: `feat/gui-interaction`
 (#226–#229).
 
-## Active Delivery: GUI Interaction (#226-#229)
+## Latest Delivery: GUI Interaction (#226-#229)
 
 #226 adds GUI-owned topmost clipped hit testing, mutation-safe bubbling,
 direct hover/focus/capture notifications, Tab traversal and per-pointer
@@ -36,8 +36,7 @@ Theme resolution is isolated in `theme.cpp`, with no new module dependencies.
 Validation: warning-as-error Debug build; event, host, text and theme tests pass.
 Theme tests cover exact dirty states/counts, shielding/restoring overrides,
 rebinding/removal, invalid values, stack spacing and deterministic font changes
-including unloaded-font recovery. Next: #228 widgets and #229 native
-demo/persistence evidence on this branch.
+including unloaded-font recovery.
 
 #228 adds checked non-owning Widget references for panel, label, image,
 button, checkbox, slider and scroll area. The tree keeps widget state and
@@ -56,7 +55,35 @@ Validation: all nine GUI tests pass in the warning-as-error Debug build,
 including interaction tests and native Metal pixels for every widget,
 hover/press/release, checkbox/value changes, glyph updates and scrolling.
 Ownership remains GUI, with widget behavior in `widgets.cpp`; no lower layer
-acquires a GUI dependency. Next: #229 host demo and persistence evidence.
+acquires a GUI dependency.
+
+#229 replaces the boundary-only example with a native core-widget demo:
+application composition in `demo.hpp`, host/font/input/presentation in
+`main.mm`. All seven widgets and 64 persistent rows live in a 145-element tree.
+The smoke run proves zero idle recomputation, exactly two paint-only theme
+dependents, zero scroll recomputation and one text change measured along only
+four elements. It checks eight frames and every control callback, then idle.
+Measured counts and native pixel evidence are recorded in the example README.
+The system font remains host-owned and is not redistributed; this example
+requires text, while the GUI's text-free build remains supported.
+
+Batch self-review also enforces stable non-copyable/non-movable Context
+ownership (Widget callbacks borrow it), clears input targets when reparented
+under a disabled ancestor, and reports callback failures through routed input
+and direct focus/capture operations. These are tightly coupled lifetime/input
+fixes, not new scope. New installed-consumer coverage uses widgets/themes/input.
+
+Validation: warning-as-error Debug; all nine GUI tests, native window smoke and
+installed package consumer pass. Text-free event/theme/widget/host/text tests
+also pass. No hosted build is requested. Context tree/layout, routing, themes,
+widget behavior and native host composition remain separated; no architectural
+boundary changes or new runtime module dependencies.
+
+The interactive baseline is complete and ready for the single batch PR to
+`develop` with a merge commit. Remaining GUI work is #230-#235 (grid, flexible
+positioning/custom drawing, authoring layers, virtualized collections, docking),
+not included here. Text editing and broader GUI backend evidence remain outside
+this delivered baseline.
 
 ## Previous Delivery: TFL_ Prefix (#244)
 

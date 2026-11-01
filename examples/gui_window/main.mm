@@ -1,5 +1,8 @@
 #import <AppKit/AppKit.h>
 #import <QuartzCore/CAMetalLayer.h>
+#import <CoreText/CoreText.h>
+
+#include "demo.hpp"
 
 #include "truffle/gui/context.hpp"
 #include "truffle/gui/painter.hpp"
@@ -8,6 +11,7 @@
 #include "truffle/rhi/metal_backend.hpp"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <functional>
@@ -141,129 +145,25 @@ private:
     bool hidden_ = false;
 };
 
-gui::Decoration look(gui::Color fill, float radius = 0, gui::Color border = {},
-                     float border_width = 0) {
-    gui::Decoration decoration;
-    decoration.fill = fill;
-    decoration.corner_radius = radius;
-    decoration.border = border;
-    decoration.border_width = border_width;
-    return decoration;
+gui::FontId load_host_font(gui::TextEngine& engine) {
+    CTFontRef font = CTFontCreateUIFontForLanguage(kCTFontUIFontSystem, 14, nullptr);
+    if (font == nullptr) { throw std::runtime_error("could not resolve the host system font"); }
+    CFTypeRef attribute = CTFontCopyAttribute(font, kCTFontURLAttribute);
+    CFRelease(font);
+    if (attribute == nullptr || CFGetTypeID(attribute) != CFURLGetTypeID()) {
+        if (attribute != nullptr) { CFRelease(attribute); }
+        throw std::runtime_error("the host system font has no loadable font URL");
+    }
+    NSURL* url = CFBridgingRelease(attribute);
+    NSError* error = nil;
+    NSData* bytes = [NSData dataWithContentsOfURL:url options:0 error:&error];
+    if (bytes == nil) {
+        throw std::runtime_error("could not read the host font: " +
+            std::string(error.localizedDescription.UTF8String));
+    }
+    return require(engine.load_font(
+        {static_cast<const std::byte*>(bytes.bytes), bytes.length}, 14));
 }
-
-// The application: a sidebar with a blinking indicator, and a canvas where the
-// primary button places a marker. Only these changes cause frames.
-struct App {
-    gui::Context context;
-    gui::ElementId canvas;
-    gui::ElementId marker;
-    gui::ElementId indicator;
-    bool indicator_on = true;
-
-    App() {
-        const gui::ElementId root = context.root();
-        require(context.set_decoration(root, look({0.08F, 0.09F, 0.12F, 1})));
-        require(context.set_layout(root, std::make_shared<gui::StackLayout>(
-            gui::StackOptions{.axis = gui::Axis::horizontal, .spacing = 12})));
-        gui::LayoutParams root_params;
-        root_params.padding = {12, 12, 12, 12};
-        require(context.set_layout_params(root, root_params));
-
-        const gui::ElementId sidebar = require(context.create(root));
-        gui::LayoutParams sidebar_params;
-        sidebar_params.width = 180;
-        sidebar_params.padding = {12, 12, 12, 12};
-        require(context.set_layout_params(sidebar, sidebar_params));
-        require(context.set_layout(sidebar, std::make_shared<gui::StackLayout>(
-            gui::StackOptions{.spacing = 8})));
-        require(context.set_decoration(
-            sidebar, look({0.14F, 0.15F, 0.19F, 1}, 10, {0.3F, 0.32F, 0.4F, 1}, 1)));
-        for (int item = 0; item < 4; ++item) {
-            const gui::ElementId row = require(context.create(sidebar));
-            gui::LayoutParams row_params;
-            row_params.height = 28;
-            require(context.set_layout_params(row, row_params));
-            require(context.set_decoration(
-                row, look(item == 0 ? gui::Color{0.25F, 0.45F, 0.9F, 1}
-                                    : gui::Color{0.2F, 0.21F, 0.26F, 1}, 6)));
-        }
-        indicator = require(context.create(sidebar));
-        gui::LayoutParams indicator_params;
-        indicator_params.width = 16;
-        indicator_params.height = 16;
-        require(context.set_layout_params(indicator, indicator_params));
-        require(context.set_decoration(indicator, look({0.3F, 0.9F, 0.5F, 1}, 8)));
-
-        canvas = require(context.create(root));
-        gui::LayoutParams canvas_params;
-        canvas_params.weight = 1;
-        require(context.set_layout_params(canvas, canvas_params));
-        require(context.set_decoration(
-            canvas, look({0.11F, 0.12F, 0.16F, 1}, 10, {0.3F, 0.32F, 0.4F, 1}, 1)));
-        const gui::Color card_colors[] = {
-            {0.9F, 0.4F, 0.3F, 1}, {0.95F, 0.75F, 0.25F, 1}, {0.35F, 0.7F, 0.95F, 0.6F}};
-        for (int card = 0; card < 3; ++card) {
-            const gui::ElementId element = require(context.create(canvas));
-            gui::LayoutParams card_params;
-            card_params.width = 160;
-            card_params.height = 100;
-            card_params.position = {24.0F + 60.0F * static_cast<float>(card),
-                                    24.0F + 50.0F * static_cast<float>(card)};
-            require(context.set_layout_params(element, card_params));
-            require(context.set_decoration(
-                element, look(card_colors[card], 12, {1, 1, 1, 0.8F}, 2)));
-        }
-        marker = require(context.create(canvas));
-        gui::LayoutParams marker_params;
-        marker_params.width = 20;
-        marker_params.height = 20;
-        marker_params.position = {300, 200};
-        require(context.set_layout_params(marker, marker_params));
-        require(context.set_decoration(marker, look({1, 1, 1, 1}, 10, {0, 0, 0, 1}, 2)));
-    }
-
-    // Application reactions until the GUI routes events to elements itself.
-    void handle(const gui::InputEvent& event) {
-        context.handle(event);
-        const gui::InputState& input = context.input();
-        if (const auto* pointer = std::get_if<gui::PointerEvent>(&event)) {
-            const auto found = context.absolute_bounds(canvas);
-            const gui::Rect bounds = found.ok() ? found.value() : gui::Rect{};
-            const bool over = input.pointer && input.pointer->x >= bounds.x &&
-                              input.pointer->y >= bounds.y &&
-                              input.pointer->x < bounds.x + bounds.width &&
-                              input.pointer->y < bounds.y + bounds.height;
-            context.host().set_cursor(over ? gui::Cursor::crosshair : gui::Cursor::arrow);
-            if (over && input.pressed(gui::PointerButton::primary) &&
-                pointer->action != gui::PointerAction::up) {
-                gui::LayoutParams params = require(context.layout_params(marker));
-                params.position = {input.pointer->x - bounds.x - 10,
-                                   input.pointer->y - bounds.y - 10};
-                require(context.set_layout_params(marker, params));
-            }
-        } else if (const auto* key = std::get_if<gui::KeyEvent>(&event)) {
-            if (key->down && key->key == gui::Key::c &&
-                gui::has(key->modifiers, gui::Modifiers::super)) {
-                const gui::Point at = require(context.layout_params(marker)).position;
-                context.host().set_clipboard_text(
-                    "marker " + std::to_string(at.x) + ", " + std::to_string(at.y));
-            }
-        }
-    }
-
-    // Timed update: the indicator blinks.
-    void tick(Clock::time_point now, std::chrono::milliseconds period, bool repeat) {
-        const auto due = context.next_update();
-        if (due && *due <= now) {
-            indicator_on = !indicator_on;
-            require(context.set_decoration(
-                indicator, look({0.3F, 0.9F, 0.5F, indicator_on ? 1.0F : 0.2F}, 8)));
-            if (repeat) {
-                context.request_frame_at(now + period);
-            }
-        }
-    }
-};
 
 struct Window {
     NSWindow* window;
@@ -278,7 +178,7 @@ struct Window {
             throw std::runtime_error("the GUI window needs a logged-in macOS display");
         }
         window = [[NSWindow alloc]
-            initWithContentRect:NSMakeRect(0, 0, 720, 480)
+            initWithContentRect:NSMakeRect(0, 0, 900, 640)
             styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
                       NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable
             backing:NSBackingStoreBuffered defer:NO];
@@ -287,7 +187,7 @@ struct Window {
         }
         window.releasedWhenClosed = NO;
         window.acceptsMouseMovedEvents = YES;
-        window.title = @"Truffle GUI - click the canvas, Escape to close";
+        window.title = @"Truffle GUI - core widgets, Escape to close";
         layer = [CAMetalLayer layer];
         window.contentView.wantsLayer = YES;
         window.contentView.layer = layer;
@@ -415,9 +315,6 @@ struct Window {
 int run(bool smoke) {
     Window host_window(smoke);
     CocoaHost host;
-    App app;
-    app.context.set_host(&host);
-
     auto instance = require(rhi::create_metal_instance());
     auto adapter = require(instance.adapter(0));
     auto device = require(adapter.request_device(
@@ -440,14 +337,32 @@ int run(bool smoke) {
     auto pacer = require(renderer::FramePacer::create(device, 2));
     auto painter = require(gui::Painter::create(
         device, programs, {.color_format = rhi::TextureFormat::bgra8_unorm}));
-
-    const auto blink = std::chrono::milliseconds(smoke ? 40 : 500);
+    auto text = require(gui::TextEngine::create(device));
+    const auto font = load_host_font(text);
+    const auto atlas = require(painter.add_texture(require(text.atlas_texture()).get()));
+    const std::array<std::byte, 16> texels{
+        std::byte{255}, std::byte{130}, std::byte{60}, std::byte{255},
+        std::byte{70}, std::byte{180}, std::byte{255}, std::byte{255},
+        std::byte{70}, std::byte{180}, std::byte{255}, std::byte{255},
+        std::byte{255}, std::byte{130}, std::byte{60}, std::byte{255}};
+    auto image = require(renderer::SampledTexture::upload(device, {
+        .extent = {2, 2}, .bytes = texels}));
+    const auto image_id = require(painter.add_texture(image));
+    examples::GuiDemo app(text, font, atlas, image_id);
+    app.context.set_host(&host);
 
     std::uint32_t frames = 0;
+    gui::FrameStats last_work;
+    const auto report = [](std::string_view what, const gui::FrameStats& work) {
+        std::cout << what << ": styles=" << work.styles.resolved
+                  << " measured=" << work.layout.measured
+                  << " arranged=" << work.layout.arranged
+                  << " shapes=" << work.shapes.regenerated << '\n';
+    };
     const auto draw = [&]() {
         const auto now = Clock::now();
-        app.tick(now, blink, !smoke);
-        static_cast<void>(app.context.prepare_frame(now));
+        last_work = app.context.prepare_frame(now);
+        require(last_work.status);
         const auto current = swapchain.desc().extent;
         if (current.width != extent.width || current.height != extent.height) {
             require(swapchain.resize(extent));
@@ -467,6 +382,7 @@ int run(bool smoke) {
         }
         require(status);
         ++frames;
+        report("frame " + std::to_string(frames), last_work);
     };
 
     // One host iteration: sleep until input or the next timed update (capped
@@ -489,7 +405,11 @@ int run(bool smoke) {
                     until = [NSDate dateWithTimeIntervalSinceNow:std::max(seconds, 0.0)];
                 }
             }
-            host_window.pump(until, [&](const gui::InputEvent& event) { app.handle(event); });
+            host_window.pump(until, [&](const gui::InputEvent& event) {
+                if (!smoke || std::holds_alternative<gui::FocusEvent>(event)) {
+                    app.handle(event);
+                }
+            });
             if (!host_window.window.visible) {
                 return;
             }
@@ -504,7 +424,6 @@ int run(bool smoke) {
     };
 
     if (!smoke) {
-        app.context.request_frame_at(Clock::now() + blink);
         while (host_window.window.visible) {
             iterate(std::chrono::milliseconds(0));
         }
@@ -513,7 +432,7 @@ int run(bool smoke) {
         return 0;
     }
 
-    // Smoke script: count frames to prove that only changes are drawn.
+    // Native persistence evidence against the same application/tree as normal use.
     const auto settle = [&](int iterations) {
         for (int i = 0; i < iterations && host_window.window.visible; ++i) {
             iterate(std::chrono::milliseconds(5));
@@ -531,34 +450,70 @@ int run(bool smoke) {
         iterate(std::chrono::milliseconds(5));
     }
     expect(1, "initial frame");
-    // Scheduled after the first frame, which may outlast the short smoke period.
-    app.context.request_frame_at(Clock::now() + blink);
-    while (frames == 1 && Clock::now() < deadline) {
-        iterate(std::chrono::milliseconds(5));
-    }
     settle(10);
-    expect(2, "one timed update, then idle");
-
-    const auto canvas = require(app.context.absolute_bounds(app.canvas));
-    const gui::Point inside{canvas.x + 50, canvas.y + 60};
-    app.handle(gui::PointerEvent{.action = gui::PointerAction::move, .position = inside});
-    settle(4);
-    expect(2, "pointer movement alone");
-    app.handle(gui::PointerEvent{.action = gui::PointerAction::down, .position = inside,
-                                 .button = gui::PointerButton::primary});
-    app.handle(gui::PointerEvent{.action = gui::PointerAction::up, .position = inside,
-                                 .button = gui::PointerButton::primary});
-    settle(4);
-    expect(3, "marker placed");
-
-    [host_window.window setContentSize:NSMakeSize(560, 400)];
-    settle(4);
-    expect(4, "window resize");
-    if (painter.last_stats().elements != 12) {
-        throw std::runtime_error("expected twelve decorated elements to be drawn");
+    expect(1, "idle host");
+    const auto idle = app.context.prepare_frame(Clock::now());
+    require(idle.status);
+    report("idle work", idle);
+    if (idle.styles.resolved != 0 || idle.layout.measured != 0 ||
+        idle.layout.arranged != 0 || idle.shapes.regenerated != 0) {
+        throw std::runtime_error("idle tree recomputed work");
     }
+
+    require(app.context.set_theme_value("gui.accent", gui::Color{0.95F, 0.5F, 0.25F, 1}));
+    settle(4);
+    expect(2, "two-element accent change");
+    if (last_work.styles.resolved != 2 || last_work.layout.measured != 0 ||
+        last_work.layout.arranged != 0 || last_work.shapes.regenerated != 2) {
+        throw std::runtime_error("accent change did not affect exactly its two paint dependents");
+    }
+
+    require(app.scroll.set_scroll({0, 44}));
+    settle(4);
+    expect(3, "scroll stored elements");
+    if (last_work.styles.resolved != 0 || last_work.layout.measured != 0 ||
+        last_work.layout.arranged != 0 || last_work.shapes.regenerated != 0) {
+        throw std::runtime_error("scrolling rebuilt stored elements");
+    }
+
+    require(app.status.set_text("Button presses: 100"));
+    settle(4);
+    expect(4, "one label changed");
+    if (last_work.styles.resolved != 0 || last_work.layout.measured != 4 ||
+        last_work.shapes.regenerated != 1) {
+        throw std::runtime_error("text change escaped its four-element measurement path");
+    }
+    const auto click = [&](gui::ElementId id) {
+        const auto bounds = require(app.context.absolute_bounds(id));
+        const gui::Point point{bounds.x + bounds.width / 2, bounds.y + bounds.height / 2};
+        app.handle(gui::PointerEvent{.action = gui::PointerAction::down, .position = point,
+                                     .button = gui::PointerButton::primary});
+        app.handle(gui::PointerEvent{.action = gui::PointerAction::up, .position = point,
+                                     .button = gui::PointerButton::primary});
+        settle(4);
+    };
+    click(app.button.element());
+    expect(5, "button callback");
+    if (app.presses != 1 || app.context.focused() != app.button.element()) {
+        throw std::runtime_error("button activation/focus failed");
+    }
+    click(app.checkbox.element());
+    expect(6, "checkbox callback");
+    if (require(app.checkbox.checked())) { throw std::runtime_error("checkbox did not toggle"); }
+    require(app.context.focus(app.slider.element()));
+    app.handle(gui::KeyEvent{.key = gui::Key::left});
+    settle(4);
+    expect(7, "slider keyboard callback");
+    if (require(app.slider.value()) >= 1) { throw std::runtime_error("slider did not change"); }
+
+    [host_window.window setContentSize:NSMakeSize(740, 560)];
+    settle(4);
+    expect(8, "window resize");
+    settle(10);
+    expect(8, "idle after changes");
     require(pacer.wait_idle());
-    std::cout << "Truffle GUI window smoke: frames=" << frames << '\n';
+    std::cout << "Truffle GUI widget demo: elements=" << app.context.element_count()
+              << " frames=" << frames << " rows=" << app.rows.size() << '\n';
     return 0;
 }
 

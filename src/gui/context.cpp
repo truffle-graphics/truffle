@@ -134,7 +134,7 @@ base::Status Context::reparent(ElementId element, ElementId parent,
     node->parent = parent;
     mark(old_parent, Dirty::measure);
     mark(parent, Dirty::measure);
-    return base::Status::success();
+    return set_interaction(element, node->interaction);
 }
 
 base::Result<ElementId> Context::parent(ElementId element) const {

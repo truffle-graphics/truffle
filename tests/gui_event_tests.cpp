@@ -2,6 +2,7 @@
 #include "truffle/gui/context.hpp"
 
 #include <vector>
+#include <type_traits>
 
 namespace {
 using namespace truffle::gui;
@@ -73,6 +74,8 @@ int hit_and_route() {
 }
 
 int focus_and_capture() {
+    static_assert(!std::is_move_constructible_v<Context>);
+    static_assert(!std::is_copy_constructible_v<Context>);
     Context c;
     const auto a = box(c, c.root(), {}, {30, 30});
     const auto b = box(c, c.root(), {40, 0}, {30, 30});
@@ -133,6 +136,31 @@ int focus_and_capture() {
     TFL_CHECK(!c.focused().valid() && !c.captured().valid());
     TFL_CHECK(!c.capture_pointer(a).ok());
     TFL_CHECK(c.needs_frame(Context::Clock::now()));
+    const auto container = box(c, c.root(), {}, {80, 80});
+    const auto child = box(c, container, {}, {20, 20});
+    const auto disabled = box(c, c.root(), {80, 80}, {10, 10});
+    TFL_CHECK(c.set_interaction(child, {.focusable = true}).ok());
+    TFL_CHECK(c.set_interaction(disabled, {.enabled = false}).ok());
+    TFL_CHECK(c.focus(child).ok() && c.capture_pointer(child).ok());
+    TFL_CHECK(c.reparent(container, disabled).ok());
+    TFL_CHECK(!c.focused().valid() && !c.captured().valid());
+    TFL_CHECK(c.set_event_handler(c.root(), [](Context&, RoutedEvent& event) {
+        if (event.input<KeyEvent>()) {
+            event.status = truffle::base::Status::failure(
+                truffle::base::StatusCode::invalid_state, "test handler failure");
+        }
+    }).ok());
+    TFL_CHECK(c.set_interaction(b, {.focusable = true}).ok());
+    TFL_CHECK(c.focus(b).ok());
+    TFL_CHECK(!c.handle(KeyEvent{.key = Key::tab}).ok());
+    TFL_CHECK(c.focused() == b && !c.last_event_status().ok());
+    TFL_CHECK(c.set_event_handler(b, [](Context&, RoutedEvent& event) {
+        if (std::get_if<ElementFocusEvent>(&event.payload)) {
+            event.status = truffle::base::Status::failure(
+                truffle::base::StatusCode::invalid_state, "test focus failure");
+        }
+    }).ok());
+    TFL_CHECK(!c.focus({}).ok());
     return 0;
 }
 } // namespace

@@ -134,11 +134,21 @@ with composed application shaders, lighting and resize. Renderer owns no ECS
 schema or fixed transform/light/material model. GUI-readiness primitives add
 clip rectangles, sampled textures, streamed geometry and frame pacing. The GUI
 module's architecture is accepted in
-[ADR 0013](docs/adr/0013-truffle-gui-architecture.md) (#217); `Truffle::GUI` currently provides the
-persistent element tree (#221), incremental layout (#222) and persistent shape drawing
-through the Renderer (#223, Metal) and a host boundary with on-demand frames (#224,
-see [`examples/gui_window`](examples/gui_window/README.md)). GUI input routing (#226)
-adds clipped topmost hit testing, bubbling callbacks, hover notifications,
+[ADR 0013](docs/adr/0013-truffle-gui-architecture.md) (#217). `Truffle::GUI`
+provides the persistent tree, incremental layout, Renderer drawing (Metal),
+host boundary, text, event routing, themes and core widgets (#221-#229).
+The [native widget demo](examples/gui_window/README.md) records idle and
+selective-update evidence. Grid, authoring layers, virtualization and docking
+remain #230-#235; this is a usable baseline, not a finished GUI framework.
+Assets, a general material system and later application work are not started.
+[`docs/roadmap.md`](docs/roadmap.md) records the review and evidence boundaries.
+GUI text support is enabled by default and uses the pinned FreeType/HarfBuzz
+submodules; `-DTFL_GUI_ENABLE_TEXT=OFF` builds a text-free GUI. No font is
+bundled, and applications supply font data with its associated license.
+
+## GUI Object API
+
+GUI input routing (#226) adds clipped topmost hit testing, bubbling callbacks, hover notifications,
 keyboard focus/Tab traversal, and per-pointer capture. Register callbacks with
 `Context::set_event_handler`; `RoutedEvent::stop_propagation()` stops bubbling
 and `prevent_default()` suppresses default Tab traversal. Capture ends on the
@@ -165,12 +175,19 @@ Widgets retain semantic roles/labels, not an accessibility implementation.
 `Context::handle` returns callback errors and `last_event_status` retains them.
 Scrolling translates children consistently in drawing, hit testing and
 absolute bounds without regenerating layout or shapes.
-Assets, a general material system and later application work are
-not started.
-[`docs/roadmap.md`](docs/roadmap.md) records the review and evidence boundaries.
-GUI text support is enabled by default and uses the pinned FreeType/HarfBuzz
-submodules; `-DTFL_GUI_ENABLE_TEXT=OFF` builds a text-free GUI. No font is
-bundled, and applications supply font data with its associated license.
+Contexts are non-copyable and non-movable so callbacks and Widget references
+keep a stable owner. Application text engines/registered textures must outlive
+the elements using them.
+
+```cpp
+truffle::gui::Context ui;
+auto result = truffle::gui::Widget::create(ui, ui.root(), {
+    .kind = truffle::gui::WidgetKind::button,
+    .activated = [] { /* update application state */ },
+});
+if (!result.ok()) { /* report result.status() */ }
+// A caption additionally supplies text, text_engine, font and atlas in WidgetDesc.
+```
 
 ## Build
 
