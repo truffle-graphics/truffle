@@ -1,4 +1,5 @@
 #include "renderer_native_test_utils.hpp"
+#include "gui_text_fixture.hpp"
 #include "truffle/gui/context.hpp"
 #include "truffle/gui/painter.hpp"
 #include "truffle/renderer/frame_stream.hpp"
@@ -195,6 +196,12 @@ int run() {
     auto adapter = tests::require(instance.adapter(0));
     auto device = tests::require(adapter.request_device());
 
+#if TRUFFLE_TEST_GUI_TEXT
+    auto text_engine = tests::require(gui::TextEngine::create(device, {{64, 64}}));
+    const auto font_bytes = tests::gui_test_font();
+    const auto font = tests::require(text_engine.load_font(font_bytes, 7.0F));
+    const auto text_layout = tests::require(text_engine.shape(font, "A"));
+#endif
     renderer::PipelineCache programs(device);
     renderer::Renderer renderer(device, &programs);
     auto pacer = tests::require(renderer::FramePacer::create(device, 2));
@@ -208,6 +215,10 @@ int run() {
     auto image = tests::require(renderer::SampledTexture::upload(device, {
         .extent = {2, 1}, .bytes = texels}));
     const gui::TextureId image_id = tests::require(painter.add_texture(image));
+#if TRUFFLE_TEST_GUI_TEXT
+    const gui::TextureId atlas_id =
+        tests::require(painter.add_texture(text_engine.atlas_texture()));
+#endif
     const auto image_texel = [](float u) {
         return u < 0.5F ? Color{1, 1, 1, 1} : Color{1, 0, 0, 1};
     };
@@ -298,6 +309,18 @@ int run() {
     pixels = draw(0);
     compare(pixels, reference(layers({{20, 20, 8, 8}, fill({0, 0, 1, 1})})),
             "moved element keeps its shapes");
+
+#if TRUFFLE_TEST_GUI_TEXT
+    const ElementId text_element = tests::require(context.create(root));
+    gui::LayoutParams text_params;
+    text_params.position = {2, 2};
+    tests::require(context.set_layout_params(text_element, text_params));
+    tests::require(context.set_text(text_element, text_layout, atlas_id, {0, 1, 1, 1}));
+    pixels = draw(1);
+    expect_pixel(pixels, 3, 2, {0, 255, 255, 255}, "FreeType glyph rendered from atlas");
+    pixels = draw(0);
+    expect_pixel(pixels, 3, 2, {0, 255, 255, 255}, "unchanged glyph retained in atlas");
+#endif
 
     tests::require(painter.remove_texture(image_id));
     if (painter.record(context, tests::require(pacer.begin_frame()), {kSize, kSize}).ok()) {

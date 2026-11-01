@@ -417,6 +417,42 @@ base::Status Context::set_shape_builder(ElementId element,
     return base::Status::success();
 }
 
+base::Status Context::set_text(ElementId element, TextLayout layout, TextureId atlas,
+                               Color color) {
+    Node* node = find(element);
+    if (node == nullptr) {
+        return invalid_element();
+    }
+    const bool has_bitmap_glyph = std::any_of(
+        layout.glyphs.begin(), layout.glyphs.end(), [](const TextGlyph& glyph) {
+            return glyph.size.width > 0.0F && glyph.size.height > 0.0F;
+        });
+    if (has_bitmap_glyph && !atlas.valid()) {
+        return base::Status::failure(base::StatusCode::invalid_argument,
+                                     "visible GUI text requires a registered glyph atlas");
+    }
+    TextBlock text{std::move(layout), atlas, color};
+    if (node->text != text) {
+        const bool measure_changed =
+            !node->text || node->text->layout != text.layout;
+        node->text = std::move(text);
+        mark(element, measure_changed ? Dirty::measure : Dirty::shape);
+    }
+    return base::Status::success();
+}
+
+base::Status Context::clear_text(ElementId element) {
+    Node* node = find(element);
+    if (node == nullptr) {
+        return invalid_element();
+    }
+    if (node->text) {
+        node->text.reset();
+        mark(element, Dirty::measure);
+    }
+    return base::Status::success();
+}
+
 ShapeStats Context::update_shapes() {
     static const DecorationBuilder fallback;
     ShapeStats stats;
@@ -431,6 +467,22 @@ ShapeStats Context::update_shapes() {
         ShapeWriter writer(node->shapes);
         const ShapeBuilder& builder = node->builder ? *node->builder : fallback;
         builder.build(writer, node->rect.size(), node->decoration);
+        if (node->text) {
+            const TextBlock& text = *node->text;
+            const Decoration glyph_decoration{.fill = text.color, .texture = text.atlas};
+            const Edges padding = node->params.padding;
+            for (const TextGlyph& glyph : text.layout.glyphs) {
+                if (glyph.size.width <= 0.0F || glyph.size.height <= 0.0F) {
+                    continue;
+                }
+                Decoration decoration = glyph_decoration;
+                decoration.uv = glyph.uv;
+                writer.rect({padding.left + glyph.position.x, padding.top + glyph.position.y,
+                             glyph.size.width,
+                             glyph.size.height},
+                            decoration);
+            }
+        }
         ++stats.regenerated;
     }
     clear_dirty(Dirty::shape);
@@ -606,8 +658,12 @@ Size Context::measure_element(ElementId element, Constraints constraints) {
                            .measure(pass, element, content);
 
     node = find(element);
-    node->desired = {std::clamp(inner.width + params.padding.horizontal(), min_w, max_w),
-                     std::clamp(inner.height + params.padding.vertical(), min_h, max_h)};
+    const Size text_size = node->text ? node->text->layout.size : Size{};
+    node->desired = {
+        std::clamp(std::max(inner.width, text_size.width) + params.padding.horizontal(),
+                   min_w, max_w),
+        std::clamp(std::max(inner.height, text_size.height) + params.padding.vertical(),
+                   min_h, max_h)};
     node->measured_under = constraints;
     node->measured = true;
     node->dirty = node->dirty & without(Dirty::measure);

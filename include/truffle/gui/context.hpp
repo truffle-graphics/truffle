@@ -7,6 +7,7 @@
 #include "truffle/gui/input.hpp"
 #include "truffle/gui/layout.hpp"
 #include "truffle/gui/shapes.hpp"
+#include "truffle/gui/text.hpp"
 
 #include <chrono>
 #include <cstddef>
@@ -124,6 +125,13 @@ public:
     [[nodiscard]] base::Status set_shape_builder(ElementId element,
                                                  std::shared_ptr<const ShapeBuilder> builder);
 
+    // Replaces the element's shaped text. Its measured size contributes to the
+    // element's intrinsic size; glyphs are drawn over its other shapes.
+    [[nodiscard]] base::Status set_text(ElementId element, TextLayout layout,
+                                        TextureId atlas,
+                                        Color color = {1.0F, 1.0F, 1.0F, 1.0F});
+    [[nodiscard]] base::Status clear_text(ElementId element);
+
     // Regenerates shapes of `shape`-marked elements from their current bounds.
     // Call after `update_layout`.
     ShapeStats update_shapes();
@@ -179,6 +187,7 @@ private:
         bool clips = true;
         Decoration decoration;
         std::shared_ptr<const ShapeBuilder> builder;
+        std::optional<TextBlock> text;
         ElementShapes shapes;
     };
 

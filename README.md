@@ -140,6 +140,10 @@ through the Renderer (#223, Metal) and a host boundary with on-demand frames (#2
 see [`examples/gui_window`](examples/gui_window/README.md)). Assets, a general material system and later application work are
 not started.
 [`docs/roadmap.md`](docs/roadmap.md) records the review and evidence boundaries.
+GUI text support is optional and disabled by default; enabling it requires
+`-DTRUFFLE_GUI_ENABLE_TEXT=ON` and explicitly prepared FreeType/HarfBuzz
+submodules. No font is bundled, and applications supply font data with its
+associated license.
 
 ## Build
 
@@ -180,6 +184,16 @@ installed Xcode Metal Toolchain. These flags are disabled by default; prepared
 package consumers do not link the compiler.
 See the [native MSL and portable Shader target profiles and limits](src/shader/README.md#native-msl-source-and-libraries-188)
 and [shaderc examples](docs/rhi1/shader-package.md#tool-usage).
+
+Optional GUI text uses pinned FreeType and HarfBuzz sources and is enabled with
+`-DTRUFFLE_GUI_ENABLE_TEXT=ON`; prepare them with
+`git submodule update --init vendor/freetype vendor/harfbuzz`. Without the
+option, `gui::TextEngine::available()` is false and the GUI has no text-library
+build dependency. FreeType attribution and license notices are documented in
+[`docs/rhi1/dependencies.md`](docs/rhi1/dependencies.md#gui-text).
+Binary redistributors must include this acknowledgment in distribution
+documentation: "This software is based in part on the work of the FreeType
+Team." The enabled install also places it beside the license texts.
 
 Optional WGSL compilation uses pinned in-process Tint with
 `-DTRUFFLE_SHADER_ENABLE_TINT=ON -DTRUFFLE_SHADER_ENABLE_SPIRV_TOOLS=ON`,

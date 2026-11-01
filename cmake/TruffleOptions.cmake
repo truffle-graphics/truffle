@@ -19,6 +19,8 @@ option(TRUFFLE_SHADER_ENABLE_METAL_COMPILER
        "Enable the optional in-process native MSL compiler/reflection adapter (Apple only)" OFF)
 option(TRUFFLE_SHADER_ENABLE_METALLIB_COMPILER
        "Enable optional offline MSL-to-metallib compilation (Apple Metal Toolchain required)" OFF)
+option(TRUFFLE_GUI_ENABLE_TEXT
+       "Enable optional GUI text shaping and rasterization (FreeType and HarfBuzz)" OFF)
 option(TRUFFLE_BUILD_RHI_DOCTOR "Build the RHI backend/platform doctor tool" ${PROJECT_IS_TOP_LEVEL})
 
 option(TRUFFLE_BUILD_BACKEND_NULL    "Build the Truffle null validation backend" ON)

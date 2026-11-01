@@ -166,6 +166,31 @@ Exceptions stay enabled so unsupported constructs return diagnostics rather
 than asserting. Tools' optional mimalloc integration is disabled; it adds no
 extra allocator source or package requirement.
 
+### GUI text
+
+GUI text is opt-in with `TRUFFLE_GUI_ENABLE_TEXT`. It uses the pinned
+FreeType 2.14.3 and HarfBuzz 14.5.1 sources below as private build dependencies
+of `Truffle::GUI`; the public API does not expose either library. Configure
+never downloads them. Without the option and prepared submodules, `Truffle::GUI`
+still builds and `TextEngine::available()` is false; `TextEngine::create`
+returns `unsupported`.
+
+| Dependency | Pin | Upstream and license | Consumer and update policy |
+|---|---|---|---|
+| FreeType | `VER-2-14-3` / `0a0221a1347e2f1e07c395263540026e9a0aa7c7` | `freetype/freetype`; FreeType License (`docs/FTL.TXT`), selecting FTL rather than the GPL alternative | Private optional GUI glyph rasterizer. Optional compression/image/HarfBuzz adapters are disabled. The license text is installed when enabled; binary redistributors must include the FreeType Team attribution in distribution documentation. |
+| HarfBuzz | `14.5.1` / `eb033319fc2ebe723597fa497d4bb4331bab8b6b` | `harfbuzz/harfbuzz`; Old MIT (`COPYING`) | Private optional GUI shaper using HarfBuzz's FreeType integration. Utilities and subset/raster/vector/GPU extras are disabled. The license text is installed when enabled. |
+
+No font is bundled. Applications provide font bytes and are responsible for
+their font licenses. Updating either pin requires reviewing its license and
+build closure, then rerunning enabled/disabled GUI builds, shaping/raster tests,
+the native GUI text pixel proof and installed-consumer checks.
+
+FreeType's FTL requires binary distributions to acknowledge its use in their
+documentation. Include this statement (the URL is recommended):
+
+> This software is based in part on the work of the FreeType Team.
+> <https://www.freetype.org/>
+
 ### Validation and tests
 
 Validation layers, Vulkan software drivers, D3D12 WARP, Mesa llvmpipe/EGL,

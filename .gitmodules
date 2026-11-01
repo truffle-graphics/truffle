@@ -28,3 +28,9 @@
 [submodule "vendor/dxc"]
 	path = vendor/dxc
 	url = https://github.com/microsoft/DirectXShaderCompiler.git
+[submodule "vendor/freetype"]
+	path = vendor/freetype
+	url = https://gitlab.freedesktop.org/freetype/freetype.git
+[submodule "vendor/harfbuzz"]
+	path = vendor/harfbuzz
+	url = https://github.com/harfbuzz/harfbuzz.git
