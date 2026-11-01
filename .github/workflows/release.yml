@@ -21,6 +21,9 @@ jobs:
 
       - uses: actions/checkout@v4
 
+      - name: Prepare GUI text dependencies
+        run: git submodule update --init --depth 1 vendor/freetype vendor/harfbuzz
+
       - name: Configure package build
         run: |
           cmake -S . -B build/release-package \

@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <span>
 #include <string_view>
@@ -79,7 +80,10 @@ public:
     [[nodiscard]] base::Status unload_font(FontId font);
     [[nodiscard]] base::Result<TextLayout> shape(FontId font, std::string_view utf8);
 
-    [[nodiscard]] renderer::SampledTexture& atlas_texture() noexcept;
+    // The glyph atlas to register with a Painter. Fails with `invalid_state`
+    // for a default-constructed or moved-from engine.
+    [[nodiscard]] base::Result<std::reference_wrapper<renderer::SampledTexture>>
+    atlas_texture() noexcept;
     [[nodiscard]] const TextStats& last_stats() const noexcept;
 
 private:

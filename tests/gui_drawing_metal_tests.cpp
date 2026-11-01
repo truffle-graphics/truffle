@@ -217,7 +217,7 @@ int run() {
     const gui::TextureId image_id = tests::require(painter.add_texture(image));
 #if TRUFFLE_TEST_GUI_TEXT
     const gui::TextureId atlas_id =
-        tests::require(painter.add_texture(text_engine.atlas_texture()));
+        tests::require(painter.add_texture(tests::require(text_engine.atlas_texture()).get()));
 #endif
     const auto image_texel = [](float u) {
         return u < 0.5F ? Color{1, 1, 1, 1} : Color{1, 0, 0, 1};

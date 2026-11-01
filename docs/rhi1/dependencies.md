@@ -168,12 +168,13 @@ extra allocator source or package requirement.
 
 ### GUI text
 
-GUI text is opt-in with `TRUFFLE_GUI_ENABLE_TEXT`. It uses the pinned
+GUI text is enabled by default through `TRUFFLE_GUI_ENABLE_TEXT`. It uses the pinned
 FreeType 2.14.3 and HarfBuzz 14.5.1 sources below as private build dependencies
 of `Truffle::GUI`; the public API does not expose either library. Configure
-never downloads them. Without the option and prepared submodules, `Truffle::GUI`
-still builds and `TextEngine::available()` is false; `TextEngine::create`
-returns `unsupported`.
+never downloads them and fails with preparation instructions when they are
+missing. With the option OFF, `Truffle::GUI` builds without them,
+`TextEngine::available()` is false and `TextEngine::create` returns
+`unsupported`.
 
 | Dependency | Pin | Upstream and license | Consumer and update policy |
 |---|---|---|---|

@@ -409,12 +409,17 @@ base::Result<TextLayout> TextEngine::shape(FontId font, std::string_view utf8) {
 #endif
 }
 
-renderer::SampledTexture& TextEngine::atlas_texture() noexcept {
+base::Result<std::reference_wrapper<renderer::SampledTexture>>
+TextEngine::atlas_texture() noexcept {
 #if TRUFFLE_GUI_HAS_TEXT
-    return state_->atlas.texture;
+    if (!state_) {
+        return failure(base::StatusCode::invalid_state, "GUI text engine is not initialized");
+    }
+    return std::ref(state_->atlas.texture);
 #else
-    static renderer::SampledTexture unavailable;
-    return unavailable;
+    return failure(base::StatusCode::unsupported,
+                   "Truffle GUI text is unavailable; configure with "
+                   "TRUFFLE_GUI_ENABLE_TEXT=ON");
 #endif
 }
 
