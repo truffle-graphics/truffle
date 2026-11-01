@@ -124,6 +124,19 @@ public:
     // Bounds relative to the root's origin.
     [[nodiscard]] base::Result<Rect> absolute_bounds(ElementId element) const;
 
+    // Places `element` at `rect`, in its parent's coordinates, whatever the
+    // parent's layout. The parent's layout no longer sees it, so siblings close
+    // the gap; it is still measured (at `rect`'s size) and arranged. Empty
+    // returns it to the parent's layout. The root cannot be placed.
+    [[nodiscard]] base::Status set_placement(ElementId element, std::optional<Rect> rect);
+    [[nodiscard]] std::optional<Rect> placement(ElementId element) const noexcept;
+
+    // Overlays draw after every other element and take input before them. Their
+    // ancestors do not clip them (only the viewport does); scrolling still moves
+    // them. Nested overlays follow tree order.
+    [[nodiscard]] base::Status set_overlay(ElementId element, bool overlay);
+    [[nodiscard]] bool overlay(ElementId element) const noexcept;
+
     // How the element's background is drawn; transparent by default.
     [[nodiscard]] base::Status set_decoration(ElementId element, const Decoration& decoration);
     [[nodiscard]] base::Result<Decoration> decoration(ElementId element) const;
@@ -256,6 +269,10 @@ private:
         std::vector<ElementId> children;
         std::shared_ptr<const Layout> layout;
         LayoutParams params;
+        std::optional<Rect> placement;
+        std::vector<ElementId> flow; // children without placement, when any is placed
+        bool placed_children = false;
+        bool overlay = false;
         Constraints measured_under;
         Size desired;
         Rect rect;
@@ -289,6 +306,9 @@ private:
     void forget_styles(ElementId element);
     void mark_style(ElementId element, Property property);
 
+    // Children seen by the element's layout (see `set_placement`).
+    [[nodiscard]] std::span<const ElementId> flow_children(ElementId element) const noexcept;
+    void refresh_flow(ElementId parent);
     [[nodiscard]] const LayoutParams& params_of(ElementId element) const noexcept;
     [[nodiscard]] Size desired_of(ElementId element) const noexcept;
     Size measure_element(ElementId element, Constraints constraints);
@@ -305,6 +325,7 @@ private:
     float scale_ = 1.0F;
     bool frame_requested_ = false;
     std::vector<Clock::time_point> deadlines_;
+    std::size_t overlays_ = 0;
     InputState input_;
     Host* host_ = nullptr;
     ElementId hovered_;

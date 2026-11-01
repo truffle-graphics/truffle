@@ -65,6 +65,9 @@ base::Result<ElementId> Context::create(ElementId parent) {
     // allocate() may grow nodes_, so look the parent up again.
     find(parent)->children.push_back(element);
     find(element)->parent = parent;
+    if (find(parent)->placed_children) {
+        refresh_flow(parent);
+    }
     mark(element, all_dirty);
     return element;
 }
@@ -88,6 +91,9 @@ base::Status Context::destroy(ElementId element) {
         pending.pop_back();
         forget_input(current);
         forget_styles(current);
+        if (nodes_[index_of(current)].overlay) {
+            --overlays_;
+        }
         Node& doomed = nodes_[index_of(current)];
         pending.insert(pending.end(), doomed.children.begin(), doomed.children.end());
         const std::uint32_t generation = doomed.generation + 1;
@@ -132,6 +138,9 @@ base::Status Context::reparent(ElementId element, ElementId parent,
     siblings.insert(siblings.begin() + static_cast<std::ptrdiff_t>(position),
                     element);
     node->parent = parent;
+    if (find(parent)->placed_children || node->placement) {
+        refresh_flow(parent);
+    }
     mark(old_parent, Dirty::measure);
     mark(parent, Dirty::measure);
     return set_interaction(element, node->interaction);
@@ -706,6 +715,15 @@ Size Context::measure_element(ElementId element, Constraints constraints) {
                            .measure(pass, element, content);
 
     node = find(element);
+    if (node->placed_children) {
+        const std::vector<ElementId> children = node->children;
+        for (const ElementId child : children) {
+            if (const auto placed = find(child)->placement) {
+                static_cast<void>(measure_element(child, Constraints::tight(placed->size())));
+            }
+        }
+        node = find(element);
+    }
     const Size text_size = node->text ? node->text->layout.size : Size{};
     node->desired = {
         std::clamp(std::max(inner.width, text_size.width) + params.padding.horizontal(),
@@ -742,12 +760,25 @@ void Context::arrange_element(ElementId element, Rect rect) {
     const std::shared_ptr<const Layout> layout = node->layout;
     LayoutPass pass(*this);
     (layout ? *layout : static_cast<const Layout&>(fallback)).arrange(pass, element, content);
+
+    node = find(element);
+    if (node->placed_children) {
+        const std::vector<ElementId> children = node->children;
+        for (const ElementId child : children) {
+            if (const auto& placed = find(child)->placement) {
+                arrange_element(child, *placed);
+            }
+        }
+    }
 }
 
 void Context::detach(ElementId element, Node& node) {
     if (Node* parent = find(node.parent)) {
         auto& siblings = parent->children;
         siblings.erase(std::find(siblings.begin(), siblings.end(), element));
+        if (parent->placed_children) {
+            refresh_flow(node.parent);
+        }
     }
     node.parent = {};
 }

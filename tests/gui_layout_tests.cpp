@@ -336,6 +336,65 @@ int test_grid_spans() {
     return 0;
 }
 
+int test_placement() {
+    Context context;
+    const ElementId root = context.root();
+    TFL_CHECK(context.set_layout(root, stack(Axis::vertical)).ok());
+    LayoutParams row;
+    row.height = 10.0F;
+    const ElementId a = make(context, root, row);
+    const ElementId b = make(context, root);
+    const ElementId c = make(context, root, row);
+    LayoutParams line;
+    line.height = 5.0F;
+    const ElementId inner = make(context, b, line);
+    TFL_CHECK(context.set_layout(b, stack(Axis::vertical)).ok());
+
+    TFL_CHECK(context.set_placement(b, Rect{5.0F, 50.0F, 20.0F, 30.0F}).ok());
+    TFL_CHECK(context.placement(b) == (Rect{5.0F, 50.0F, 20.0F, 30.0F}));
+    context.update_layout({100.0F, 100.0F});
+    // The stack closes the gap; b and its content take the placed rect.
+    TFL_CHECK(at(context, a) == (Rect{0.0F, 0.0F, 100.0F, 10.0F}));
+    TFL_CHECK(at(context, c) == (Rect{0.0F, 10.0F, 100.0F, 10.0F}));
+    TFL_CHECK(at(context, b) == (Rect{5.0F, 50.0F, 20.0F, 30.0F}));
+    TFL_CHECK(at(context, inner) == (Rect{0.0F, 0.0F, 20.0F, 5.0F}));
+    context.clear_dirty();
+
+    // Moving at the same size re-arranges only the parent.
+    TFL_CHECK(context.set_placement(b, Rect{8.0F, 40.0F, 20.0F, 30.0F}).ok());
+    auto stats = context.update_layout({100.0F, 100.0F});
+    TFL_CHECK(stats.measured == 0 && stats.arranged == 1);
+    TFL_CHECK(at(context, b) == (Rect{8.0F, 40.0F, 20.0F, 30.0F}));
+    TFL_CHECK(context.dirty(b) == Dirty::none);
+
+    // New children keep flowing around the placed one.
+    const ElementId d = make(context, root, row);
+    context.update_layout({100.0F, 100.0F});
+    TFL_CHECK(at(context, d) == (Rect{0.0F, 20.0F, 100.0F, 10.0F}));
+
+    // Returning b to the layout puts it back in order.
+    TFL_CHECK(context.set_placement(b, std::nullopt).ok());
+    context.update_layout({100.0F, 100.0F});
+    TFL_CHECK(at(context, b) == (Rect{0.0F, 10.0F, 100.0F, 5.0F}));
+    TFL_CHECK(at(context, c) == (Rect{0.0F, 15.0F, 100.0F, 10.0F}));
+
+    // Moving or destroying a placed element keeps its old parent's flow.
+    TFL_CHECK(context.set_placement(a, Rect{0.0F, 90.0F, 10.0F, 10.0F}).ok());
+    TFL_CHECK(context.reparent(a, b).ok());
+    context.update_layout({100.0F, 100.0F});
+    TFL_CHECK(at(context, b) == (Rect{0.0F, 0.0F, 100.0F, 5.0F}));
+    TFL_CHECK(at(context, a) == (Rect{0.0F, 90.0F, 10.0F, 10.0F}));
+    TFL_CHECK(context.destroy(a).ok());
+    context.update_layout({100.0F, 100.0F});
+    TFL_CHECK(at(context, inner) == (Rect{0.0F, 0.0F, 100.0F, 5.0F}));
+
+    TFL_CHECK(!context.set_placement(root, Rect{}).ok());
+    TFL_CHECK(!context.set_placement(c, Rect{0.0F, 0.0F, -1.0F, 1.0F}).ok());
+    TFL_CHECK(!context.set_placement(a, Rect{}).ok());
+    TFL_CHECK(!context.placement(a).has_value());
+    return 0;
+}
+
 int test_invalid_handles() {
     Context context;
     const ElementId gone = make(context, context.root());
@@ -359,5 +418,6 @@ int main() {
     if (const int failed = test_incremental()) return failed;
     if (const int failed = test_grid_tracks()) return failed;
     if (const int failed = test_grid_spans()) return failed;
+    if (const int failed = test_placement()) return failed;
     return test_invalid_handles();
 }

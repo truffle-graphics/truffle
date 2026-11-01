@@ -419,7 +419,7 @@ void FreeLayout::arrange(LayoutPass& pass, ElementId element, Rect content) cons
 }
 
 std::span<const ElementId> LayoutPass::children(ElementId element) const noexcept {
-    return context_.children(element);
+    return context_.flow_children(element);
 }
 
 const LayoutParams& LayoutPass::params(ElementId element) const noexcept {

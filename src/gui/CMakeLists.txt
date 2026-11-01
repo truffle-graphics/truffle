@@ -1,4 +1,4 @@
-add_library(truffle_gui STATIC context.cpp draw.cpp events.cpp layout.cpp painter.cpp shapes.cpp text.cpp theme.cpp widgets.cpp)
+add_library(truffle_gui STATIC context.cpp draw.cpp events.cpp layout.cpp painter.cpp placement.cpp shapes.cpp text.cpp theme.cpp widgets.cpp)
 target_link_libraries(truffle_gui PUBLIC truffle_renderer)
 truffle_configure_target(truffle_gui GUI)
 add_library(Truffle::GUI ALIAS truffle_gui)

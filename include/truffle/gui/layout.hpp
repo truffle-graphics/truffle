@@ -59,6 +59,8 @@ public:
     LayoutPass(const LayoutPass&) = delete;
     LayoutPass& operator=(const LayoutPass&) = delete;
 
+    // Children the layout places: every child except those with a placement
+    // override, which the context places itself.
     [[nodiscard]] std::span<const ElementId> children(ElementId element) const noexcept;
     [[nodiscard]] const LayoutParams& params(ElementId element) const noexcept;
 
