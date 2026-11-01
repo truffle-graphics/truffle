@@ -660,6 +660,22 @@ FrameStats Context::prepare_frame(Clock::time_point now) {
     }
     stats.styles = styles.value();
     stats.layout = update_layout(host_viewport_);
+    if (std::exchange(layout_requested_update_, false)) {
+        // Size-dependent content asked for one more pass (LayoutPass::request_update).
+        stats.status = run_updaters(stats.updates);
+        if (!stats.status.ok()) {
+            return stats;
+        }
+        styles = update_styles();
+        if (!styles.ok()) {
+            stats.status = styles.status();
+            return stats;
+        }
+        stats.styles.resolved += styles.value().resolved;
+        const auto again = update_layout(host_viewport_);
+        stats.layout.measured += again.measured;
+        stats.layout.arranged += again.arranged;
+    }
     stats.shapes = update_shapes();
     clear_dirty();
     frame_requested_ = false;

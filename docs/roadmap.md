@@ -68,9 +68,8 @@ pre-GUI Renderer work. The GUI module (#217) follows
 themes and seven core widgets. The native demo records exact idle and
 dependent-update counts on 145 elements; it does not claim virtualization.
 Grid (#230), placement overrides/custom drawing/overlays (#231), the nested
-C++ builder (#232) and immediate-style regions (#233) followed.
-The remaining GUI work is virtualized collections (#234)
-and docking (#235). Text editing and broader GUI backend execution are not part
+C++ builder (#232), immediate-style regions (#233) and virtualized collections
+(#234) followed. The remaining GUI work is docking (#235). Text editing and broader GUI backend execution are not part
 of the delivered baseline. No asset
 system, general materials, or later application phases are planned by this
 work. Delivery remains signed issue-scoped commits, immediate pushes and
@@ -304,7 +303,7 @@ sequence commitment yet beyond the initial Shader/Renderer work above:
 - Engine with host-owned loop support; profiles and runners undecided.
 - GUI above Renderer, independent of EnCom: architecture accepted in
   [ADR 0013](adr/0013-truffle-gui-architecture.md); interactive baseline
-  #221-#233 implemented, with #234-#235 remaining and native evidence in
+  #221-#234 implemented, with #235 remaining and native evidence in
   [`examples/gui_window`](../examples/gui_window/README.md).
 - Assets module; name and design undecided.
 - Deferred conveniences: Simple RHI and an optional windowing wrapper.

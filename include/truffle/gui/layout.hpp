@@ -76,6 +76,10 @@ public:
     void arrange(ElementId child, Rect rect);
     [[nodiscard]] Point child_offset(ElementId element) const noexcept;
     void set_child_offset(ElementId element, Point offset);
+    // Requests the updater of `element` (see `Context::set_updater`) for
+    // content that depends on its arranged size. `prepare_frame` then runs
+    // updates and layout once more in the same frame.
+    void request_update(ElementId element);
 
 private:
     friend class Context;

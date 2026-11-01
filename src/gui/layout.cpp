@@ -16,6 +16,12 @@ Point LayoutPass::child_offset(ElementId element) const noexcept {
 void LayoutPass::set_child_offset(ElementId element, Point offset) {
     static_cast<void>(context_.set_child_offset(element, offset));
 }
+
+void LayoutPass::request_update(ElementId element) {
+    if (context_.request_update(element).ok()) {
+        context_.layout_requested_update_ = true;
+    }
+}
 namespace {
 
 [[nodiscard]] float main_of(Axis axis, Size size) noexcept {

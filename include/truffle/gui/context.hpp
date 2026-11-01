@@ -348,6 +348,7 @@ private:
     std::vector<Clock::time_point> deadlines_;
     std::size_t overlays_ = 0;
     std::vector<UpdaterEntry> updaters_;
+    bool layout_requested_update_ = false;
     InputState input_;
     Host* host_ = nullptr;
     ElementId hovered_;
