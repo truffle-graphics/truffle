@@ -2,6 +2,10 @@
 
 include(CMakeFindDependencyMacro)
 find_dependency(Threads)
+if(@TRUFFLE_GUI_ENABLE_TEXT@)
+    find_dependency(freetype CONFIG)
+    find_dependency(harfbuzz CONFIG)
+endif()
 if(@TRUFFLE_SHADER_ENABLE_GLSLANG@)
     find_dependency(glslang CONFIG)
 endif()

@@ -1,7 +1,62 @@
-add_library(truffle_gui STATIC context.cpp draw.cpp layout.cpp painter.cpp shapes.cpp)
+add_library(truffle_gui STATIC context.cpp draw.cpp layout.cpp painter.cpp shapes.cpp text.cpp)
 target_link_libraries(truffle_gui PUBLIC truffle_renderer)
 truffle_configure_target(truffle_gui GUI)
 add_library(Truffle::GUI ALIAS truffle_gui)
+
+if(TRUFFLE_GUI_ENABLE_TEXT)
+    foreach(_dependency freetype harfbuzz)
+        if(NOT EXISTS "${PROJECT_SOURCE_DIR}/vendor/${_dependency}/CMakeLists.txt")
+            message(FATAL_ERROR
+                "GUI text needs the pinned vendor/${_dependency} source; prepare it with "
+                "`git submodule update --init vendor/freetype vendor/harfbuzz`")
+        endif()
+    endforeach()
+
+    set(FT_DISABLE_ZLIB ON CACHE BOOL "" FORCE)
+    set(FT_DISABLE_BZIP2 ON CACHE BOOL "" FORCE)
+    set(FT_DISABLE_PNG ON CACHE BOOL "" FORCE)
+    set(FT_DISABLE_HARFBUZZ ON CACHE BOOL "" FORCE)
+    set(FT_DISABLE_BROTLI ON CACHE BOOL "" FORCE)
+    set(FT_ENABLE_ERROR_STRINGS OFF CACHE BOOL "" FORCE)
+    set(_truffle_gui_text_exclude_from_all)
+    if(NOT TRUFFLE_INSTALL)
+        set(_truffle_gui_text_exclude_from_all EXCLUDE_FROM_ALL)
+    endif()
+    add_subdirectory("${PROJECT_SOURCE_DIR}/vendor/freetype"
+                     "${PROJECT_BINARY_DIR}/vendor/freetype"
+                     ${_truffle_gui_text_exclude_from_all})
+
+    set(HB_HAVE_FREETYPE ON CACHE BOOL "" FORCE)
+    set(HB_HAVE_CORETEXT OFF CACHE BOOL "" FORCE)
+    set(HB_HAVE_UNISCRIBE OFF CACHE BOOL "" FORCE)
+    set(HB_HAVE_GDI OFF CACHE BOOL "" FORCE)
+    set(HB_HAVE_DIRECTWRITE OFF CACHE BOOL "" FORCE)
+    set(HB_BUILD_UTILS OFF CACHE BOOL "" FORCE)
+    set(HB_BUILD_SUBSET OFF CACHE BOOL "" FORCE)
+    set(HB_BUILD_RASTER OFF CACHE BOOL "" FORCE)
+    set(HB_BUILD_VECTOR OFF CACHE BOOL "" FORCE)
+    set(HB_BUILD_GPU OFF CACHE BOOL "" FORCE)
+    add_subdirectory("${PROJECT_SOURCE_DIR}/vendor/harfbuzz"
+                     "${PROJECT_BINARY_DIR}/vendor/harfbuzz"
+                     ${_truffle_gui_text_exclude_from_all})
+
+    add_library(harfbuzz::harfbuzz ALIAS harfbuzz)
+    target_compile_definitions(truffle_gui PRIVATE TRUFFLE_GUI_HAS_TEXT=1)
+    target_link_libraries(truffle_gui PRIVATE freetype harfbuzz::harfbuzz)
+    if(TRUFFLE_INSTALL)
+        include(GNUInstallDirs)
+        install(FILES "${PROJECT_SOURCE_DIR}/vendor/freetype/docs/FTL.TXT"
+                DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/Truffle"
+                RENAME FreeType-FTL.TXT)
+        install(FILES "${PROJECT_SOURCE_DIR}/docs/licenses/FreeType-attribution.txt"
+                DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/Truffle")
+        install(FILES "${PROJECT_SOURCE_DIR}/vendor/harfbuzz/COPYING"
+                DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/Truffle"
+                RENAME HarfBuzz-COPYING)
+    endif()
+else()
+    target_compile_definitions(truffle_gui PRIVATE TRUFFLE_GUI_HAS_TEXT=0)
+endif()
 
 # GUI shaders ship as prepared native source: the package is built in memory
 # from the embedded source and its hash, so no shader compiler runs.

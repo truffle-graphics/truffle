@@ -718,11 +718,20 @@ target_link_libraries(truffle_gui_host_tests PRIVATE truffle_gui)
 truffle_target_warnings(truffle_gui_host_tests)
 add_test(NAME truffle_gui_host_tests COMMAND truffle_gui_host_tests)
 
+add_executable(truffle_gui_text_tests gui_text_tests.cpp)
+target_link_libraries(truffle_gui_text_tests PRIVATE truffle_gui truffle_backend_null)
+target_compile_definitions(truffle_gui_text_tests PRIVATE
+    TRUFFLE_TEST_GUI_TEXT=$<BOOL:${TRUFFLE_GUI_ENABLE_TEXT}>)
+truffle_target_warnings(truffle_gui_text_tests)
+add_test(NAME truffle_gui_text_tests COMMAND truffle_gui_text_tests)
+
 # The GUI program ships as prepared MSL, so no shader compiler is required.
 if(APPLE AND TRUFFLE_BUILD_BACKEND_METAL)
     add_executable(truffle_gui_drawing_metal_tests gui_drawing_metal_tests.cpp)
     target_link_libraries(truffle_gui_drawing_metal_tests PRIVATE
         truffle_gui truffle_backend_metal)
+    target_compile_definitions(truffle_gui_drawing_metal_tests PRIVATE
+        TRUFFLE_TEST_GUI_TEXT=$<BOOL:${TRUFFLE_GUI_ENABLE_TEXT}>)
     truffle_target_warnings(truffle_gui_drawing_metal_tests)
     add_test(NAME truffle_gui_drawing_metal_tests COMMAND truffle_gui_drawing_metal_tests)
     set_tests_properties(truffle_gui_drawing_metal_tests PROPERTIES

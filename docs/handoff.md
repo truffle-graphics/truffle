@@ -5,6 +5,37 @@ This is the rolling execution handoff, not an implementation transcript.
 issues/Project own accepted work. Earlier phase details remain in their PRs,
 the support matrix and Git history.
 
+## Current Delivery: GUI Text (#225)
+
+Fifth GUI step of epic #217 (ADR 0013): optional text shaping, glyph
+rasterization and persistent-tree integration.
+
+- `gui/text.hpp`: `TextEngine` loads copied font bytes, shapes UTF-8 through
+  HarfBuzz, rasterizes FreeType glyphs, exposes ascent/descent/line metrics,
+  glyph positions/clusters and an RGBA atlas texture. Newly encountered bitmap
+  glyphs update only their packed atlas rectangles; repeated glyphs reuse the
+  cache. The engine is single-thread-owned and the RHI device must outlive it.
+- `Context::set_text`/`clear_text`: text contributes to intrinsic measurement
+  and generates element-local atlas quads. Text changes invalidate measure,
+  color-only changes invalidate shapes, and unchanged text does no shaping or
+  rasterization. The atlas is registered with `Painter` by the application.
+- Text is disabled by default. FreeType 2.14.3 (FTL, not its GPL alternative)
+  and HarfBuzz 14.5.1 (Old MIT) are private pinned dependencies. No font is
+  bundled. Enabled installs include their static libraries, CMake packages,
+  license texts and the required FreeType acknowledgment; disabled GUI
+  packages do not acquire either dependency.
+- Scope deliberately excludes fallback fonts, bidirectional text, editing,
+  selection, composition and atlas eviction; these remain later capabilities.
+
+Validation: `truffle_gui_text_tests`, `truffle_gui_drawing_metal_tests`,
+`truffle_gui_layout_tests` and `truffle_gui_drawing_tests` pass in the enabled
+Debug build with warnings as errors. Text-disabled text/layout tests and the
+installed package consumer pass; the enabled package consumer also passes and
+confirms the FreeType acknowledgment is installed. The architecture guard and
+`git diff --check` pass. `clang-format` is unavailable locally. One signed
+issue-scoped commit and immediate push are authorized; next is a review-first
+PR into `develop` and moving #225 to In Review.
+
 ## Current Delivery: GUI Host Boundary (#224)
 
 Fourth GUI step of epic #217 (ADR 0013): the host-owned boundary.
