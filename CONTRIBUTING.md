@@ -10,6 +10,9 @@ repository-specific policy below does not override them.
 - `develop` is the active integration branch.
 - Create `feat/<topic>` for new work and `fix/<topic>` for corrections from
   `develop`.
+- Scope a branch to a related batch of issues, not to a single issue: one
+  branch and one pull request deliver the batch, with one signed commit per
+  issue. Small related fixes ride on the active batch branch.
 - Open normal feature and fix pull requests into `develop`.
 - Cut `release/<version>` from `develop` when preparing a stable release.
   Stabilize there, merge its PR into `master`, then merge the same release
@@ -95,8 +98,8 @@ Before implementation begins:
    condition makes it actionable.
 
 Broad roadmap issues organize work; they are not implementation branches.
-Production changes should normally use one focused issue and one reviewable
-commit set. Update the issue and Project status when scope, sequencing,
+Production changes should normally use one focused issue per reviewable
+commit set, delivered with related issues on a shared batch branch. Update the issue and Project status when scope, sequencing,
 evidence, or disposition changes. Close an issue only when its acceptance
 criteria are satisfied or its final disposition is explicit.
 

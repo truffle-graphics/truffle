@@ -5,7 +5,87 @@ This is the rolling execution handoff, not an implementation transcript.
 issues/Project own accepted work. Earlier phase details remain in their PRs,
 the support matrix and Git history.
 
-## Current Delivery: TFL_ Prefix (#244)
+## Workflow: Batch Branches
+
+Maintainer decision: a branch and its PR cover a related batch of issues with
+one signed commit per issue, instead of a branch and PR per issue. Recorded in
+`AGENTS.md` and `CONTRIBUTING.md`. Latest batch: `feat/gui-interaction`
+(#226–#229).
+
+## Latest Delivery: GUI Interaction (#226-#229)
+
+#226 adds GUI-owned topmost clipped hit testing, mutation-safe bubbling,
+direct hover/focus/capture notifications, Tab traversal and per-pointer
+capture. Disabled subtrees cannot receive host input. Removal forgets checked
+input targets; cancellation, final button release and focus loss release capture.
+The trace sink is optional with no retained log. Input alone remains frame-free.
+
+Owner: GUI; existing Renderer/Base contracts only, no architectural boundary
+change. Routing lives in `events.cpp`, leaving Context's existing tree/layout
+implementation cohesive. New public contracts are documented extensions.
+Text editing, docking and virtualization remain outside this batch.
+
+#227 adds typed named values, indexed dependent-element bindings, per-property
+overrides and cached resolution. Paint-only properties never dirty ancestors;
+padding/spacing/font changes invalidate only dependent measurement paths.
+Text sources retain UTF-8 and borrow the application's engine/atlas so font
+changes reshape only affected text. `FrameStats::status` reports resolution
+errors without consuming failed work; manual staging resolves styles first.
+Theme resolution is isolated in `theme.cpp`, with no new module dependencies.
+
+Validation: warning-as-error Debug build; event, host, text and theme tests pass.
+Theme tests cover exact dirty states/counts, shielding/restoring overrides,
+rebinding/removal, invalid values, stack spacing and deterministic font changes
+including unloaded-font recovery.
+
+#228 adds checked non-owning Widget references for panel, label, image,
+button, checkbox, slider and scroll area. The tree keeps widget state and
+semantic roles/labels. Controls bind named theme values; direct property
+overrides survive hover/focus changes. Pointer capture, Space/Enter activation,
+slider keyboard/drag input and scroll wheel/keyboard behavior use #226.
+Programmatic setters never emit user-action callbacks. Input failures surface
+through `Context::handle` and `last_event_status`.
+
+Scroll children measure unconstrained and clip to their viewport. A child
+translation shared by drawing, hit testing and absolute bounds changes no
+stored shapes or layout. Resize/content changes clamp scroll offsets during
+arrangement. Immutable slider builders own only shape parameters.
+
+Validation: all nine GUI tests pass in the warning-as-error Debug build,
+including interaction tests and native Metal pixels for every widget,
+hover/press/release, checkbox/value changes, glyph updates and scrolling.
+Ownership remains GUI, with widget behavior in `widgets.cpp`; no lower layer
+acquires a GUI dependency.
+
+#229 replaces the boundary-only example with a native core-widget demo:
+application composition in `demo.hpp`, host/font/input/presentation in
+`main.mm`. All seven widgets and 64 persistent rows live in a 145-element tree.
+The smoke run proves zero idle recomputation, exactly two paint-only theme
+dependents, zero scroll recomputation and one text change measured along only
+four elements. It checks eight frames and every control callback, then idle.
+Measured counts and native pixel evidence are recorded in the example README.
+The system font remains host-owned and is not redistributed; this example
+requires text, while the GUI's text-free build remains supported.
+
+Batch self-review also enforces stable non-copyable/non-movable Context
+ownership (Widget callbacks borrow it), clears input targets when reparented
+under a disabled ancestor, and reports callback failures through routed input
+and direct focus/capture operations. These are tightly coupled lifetime/input
+fixes, not new scope. New installed-consumer coverage uses widgets/themes/input.
+
+Validation: warning-as-error Debug; all nine GUI tests, native window smoke and
+installed package consumer pass. Text-free event/theme/widget/host/text tests
+also pass. No hosted build is requested. Context tree/layout, routing, themes,
+widget behavior and native host composition remain separated; no architectural
+boundary changes or new runtime module dependencies.
+
+The interactive baseline is complete and ready for the single batch PR to
+`develop` with a merge commit. Remaining GUI work is #230-#235 (grid, flexible
+positioning/custom drawing, authoring layers, virtualized collections, docking),
+not included here. Text editing and broader GUI backend evidence remain outside
+this delivered baseline.
+
+## Previous Delivery: TFL_ Prefix (#244)
 
 All `TRUFFLE_*` CMake options, cache/build variables, compile definitions,
 preprocessor macros, test macros, preset entries, CI references and docs are

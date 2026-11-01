@@ -104,8 +104,9 @@ void assemble(const Context& context, const DrawOptions& options, DrawData& out)
                                                pixel(origin.y + rect.height)});
         }
         const auto children = context.children(item.element);
+        const Point offset = context.child_offset(item.element);
         for (auto child = children.rbegin(); child != children.rend(); ++child) {
-            pending.push_back({*child, origin, child_clip});
+            pending.push_back({*child, {origin.x + offset.x, origin.y + offset.y}, child_clip});
         }
     }
 }

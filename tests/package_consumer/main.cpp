@@ -8,6 +8,7 @@
 #include "truffle/rhi/null_backend.hpp"
 #include "truffle/encom_renderer/encom_render_adapter.hpp"
 #include "truffle/gui/context.hpp"
+#include "truffle/gui/widgets.hpp"
 #include "truffle/renderer/data_layout.hpp"
 #include "truffle/renderer/depth_target.hpp"
 #include "truffle/renderer/frame_stream.hpp"
@@ -30,6 +31,12 @@ int main() {
 
     truffle::gui::Context gui;
     if (!gui.create(gui.root()).ok()) return 1;
+    auto button = truffle::gui::Widget::create(gui, gui.root(), {
+        .kind = truffle::gui::WidgetKind::button});
+    if (!button.ok() || !gui.set_viewport({100, 100}).ok()) return 1;
+    if (!gui.prepare_frame(truffle::gui::Context::Clock::now()).status.ok()) return 1;
+    if (!gui.focus(button.value().element()).ok() ||
+        !gui.handle(truffle::gui::KeyEvent{.key = truffle::gui::Key::space}).ok()) return 1;
 
     truffle::assets::GeometryStreamDesc stream;
     stream.id = truffle::assets::AssetId{1};

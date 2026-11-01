@@ -86,6 +86,8 @@ base::Status Context::destroy(ElementId element) {
     while (!pending.empty()) {
         const ElementId current = pending.back();
         pending.pop_back();
+        forget_input(current);
+        forget_styles(current);
         Node& doomed = nodes_[index_of(current)];
         pending.insert(pending.end(), doomed.children.begin(), doomed.children.end());
         const std::uint32_t generation = doomed.generation + 1;
@@ -132,7 +134,7 @@ base::Status Context::reparent(ElementId element, ElementId parent,
     node->parent = parent;
     mark(old_parent, Dirty::measure);
     mark(parent, Dirty::measure);
-    return base::Status::success();
+    return set_interaction(element, node->interaction);
 }
 
 base::Result<ElementId> Context::parent(ElementId element) const {
@@ -364,6 +366,8 @@ base::Result<Rect> Context::absolute_bounds(ElementId element) const {
         const Node& above = *find(up);
         rect.x += above.rect.x;
         rect.y += above.rect.y;
+        rect.x += above.child_offset.x;
+        rect.y += above.child_offset.y;
         up = above.parent;
     }
     return rect;
@@ -432,6 +436,8 @@ base::Status Context::set_text(ElementId element, TextLayout layout, TextureId a
                                      "visible GUI text requires a registered glyph atlas");
     }
     TextBlock text{std::move(layout), atlas, color};
+    node->text_source.reset();
+    node->text_color = color;
     if (node->text != text) {
         const bool measure_changed =
             !node->text || node->text->layout != text.layout;
@@ -446,6 +452,7 @@ base::Status Context::clear_text(ElementId element) {
     if (node == nullptr) {
         return invalid_element();
     }
+    node->text_source.reset();
     if (node->text) {
         node->text.reset();
         mark(element, Dirty::measure);
@@ -517,7 +524,8 @@ float Context::scale() const noexcept {
     return scale_;
 }
 
-void Context::handle(const InputEvent& event) {
+base::Status Context::handle(const InputEvent& event) {
+    event_status_ = base::Status::success();
     std::visit(
         [this](const auto& value) {
             using Event = std::decay_t<decltype(value)>;
@@ -564,6 +572,40 @@ void Context::handle(const InputEvent& event) {
             }
         },
         event);
+    route_input(event);
+    return event_status_;
+}
+
+base::Status Context::set_child_offset(ElementId element, Point offset) {
+    Node* node = find(element);
+    if (node == nullptr) { return invalid_element(); }
+    if (!std::isfinite(offset.x) || !std::isfinite(offset.y)) {
+        return base::Status::failure(base::StatusCode::invalid_argument,
+                                     "GUI child offset must be finite");
+    }
+    if (node->child_offset != offset) {
+        node->child_offset = offset;
+        request_frame();
+    }
+    return base::Status::success();
+}
+
+Point Context::child_offset(ElementId element) const noexcept {
+    const Node* node = find(element);
+    return node == nullptr ? Point{} : node->child_offset;
+}
+
+base::Status Context::set_semantics(ElementId element, Semantics semantics) {
+    Node* node = find(element);
+    if (node == nullptr) { return invalid_element(); }
+    node->semantics = std::move(semantics);
+    return base::Status::success();
+}
+
+base::Result<Context::Semantics> Context::semantics(ElementId element) const {
+    const Node* node = find(element);
+    if (node == nullptr) { return invalid_element(); }
+    return node->semantics;
 }
 
 const InputState& Context::input() const noexcept {
@@ -595,6 +637,12 @@ std::optional<Context::Clock::time_point> Context::next_update() const noexcept 
 
 FrameStats Context::prepare_frame(Clock::time_point now) {
     FrameStats stats;
+    auto styles = update_styles();
+    if (!styles.ok()) {
+        stats.status = styles.status();
+        return stats;
+    }
+    stats.styles = styles.value();
     stats.layout = update_layout(host_viewport_);
     stats.shapes = update_shapes();
     clear_dirty();

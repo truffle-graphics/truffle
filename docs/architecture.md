@@ -31,6 +31,11 @@ unrelated modules. Truffle is not an application framework.
     tracking, and compilation-result caching. Its compiler backends are
     optional build parts inside Shader; without them, prepared packages still
     work and source-compilation requests report `unsupported`.
+11. `truffle_gui` provides a persistent element tree, incremental layout and
+    shapes, routed input, themes, text and core widgets. It uses Renderer, not
+    EnCom, and keeps GUI state separate from application state. Native windows,
+    font-file selection and the event loop remain host-owned. GUI Dock remains
+    an optional planned higher layer.
 
 Developer tools (`truffle-shaderc`, `truffle-rhi-doctor`) are tools, not
 modules. Shader tools use the Shader module; the doctor uses RHI. Neither tool
@@ -43,9 +48,9 @@ planned, not implemented.
 
 ```text
 (Engine) --> Renderer
-(Engine) -.-> EnCom, (GUI), (Assets)
-(GUIDock) --> (GUI)
-(GUI) -----> Renderer          (no EnCom dependency; own lightweight hierarchy)
+(Engine) -.-> EnCom, GUI, (Assets)
+(GUIDock) --> GUI
+GUI -------> Renderer          (no EnCom dependency; own lightweight hierarchy)
 EnComRenderer --> EnCom, Renderer
 Renderer --> Shader --> RHI --> Base
 EnCom ----------------> Base

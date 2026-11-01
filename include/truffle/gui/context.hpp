@@ -2,24 +2,32 @@
 
 #include "truffle/base/status.hpp"
 #include "truffle/gui/element.hpp"
+#include "truffle/gui/events.hpp"
 #include "truffle/gui/geometry.hpp"
 #include "truffle/gui/host.hpp"
 #include "truffle/gui/input.hpp"
 #include "truffle/gui/layout.hpp"
 #include "truffle/gui/shapes.hpp"
 #include "truffle/gui/text.hpp"
+#include "truffle/gui/theme.hpp"
 
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <span>
+#include <string>
+#include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace truffle::gui {
 
 struct FrameStats {
+    base::Status status;
+    StyleStats styles;
     LayoutStats layout;
     ShapeStats shapes;
 };
@@ -62,6 +70,10 @@ public:
     using Clock = std::chrono::steady_clock;
 
     Context();
+    Context(const Context&) = delete;
+    Context& operator=(const Context&) = delete;
+    Context(Context&&) = delete;
+    Context& operator=(Context&&) = delete;
 
     [[nodiscard]] ElementId root() const noexcept;
     [[nodiscard]] bool alive(ElementId element) const noexcept;
@@ -132,6 +144,24 @@ public:
                                         Color color = {1.0F, 1.0F, 1.0F, 1.0F});
     [[nodiscard]] base::Status clear_text(ElementId element);
 
+    // Keeps a UTF-8 source for font-theme changes. Engine and atlas are borrowed
+    // and must outlive the element; no font bytes or GPU resources are owned here.
+    [[nodiscard]] base::Status set_text_source(ElementId element, TextEngine& engine,
+                                               FontId font, std::string text,
+                                               TextureId atlas);
+
+    [[nodiscard]] base::Status set_theme_value(std::string name, ThemeValue value);
+    [[nodiscard]] base::Result<ThemeValue> theme_value(std::string_view name) const;
+    [[nodiscard]] base::Status bind_property(ElementId element, Property property,
+                                              std::string name);
+    [[nodiscard]] base::Status set_property_override(ElementId element, Property property,
+                                                      ThemeValue value);
+    // Resumes the bound theme value. An unbound property has no override to clear.
+    [[nodiscard]] base::Status clear_property_override(ElementId element, Property property);
+    [[nodiscard]] base::Result<ThemeValue> property(ElementId element, Property property) const;
+    // Resolve before layout/shapes. Failure keeps unresolved work pending.
+    [[nodiscard]] base::Result<StyleStats> update_styles();
+
     // Regenerates shapes of `shape`-marked elements from their current bounds.
     // Call after `update_layout`.
     ShapeStats update_shapes();
@@ -145,9 +175,43 @@ public:
     [[nodiscard]] Size viewport() const noexcept;
     [[nodiscard]] float scale() const noexcept;
 
-    // Records input forwarded by the host.
-    void handle(const InputEvent& event);
+    // Records host input and routes it through the current laid-out tree.
+    // Input only requests a frame when a handler makes a visible change.
+    base::Status handle(const InputEvent& event);
     [[nodiscard]] const InputState& input() const noexcept;
+
+    [[nodiscard]] base::Status set_interaction(ElementId element, Interaction interaction);
+    [[nodiscard]] base::Result<Interaction> interaction(ElementId element) const;
+    [[nodiscard]] base::Status set_event_handler(ElementId element, EventHandler handler);
+    // Routes snapshot the ancestor chain. Callbacks may mutate the tree;
+    // removed recipients are skipped. Hover/focus/capture notifications are
+    // direct, while host input bubbles. Tab traverses unless prevent_default().
+    // Topmost laid-out element, respecting ancestor clips and disabled subtrees.
+    [[nodiscard]] ElementId hit_test(Point position) const;
+    [[nodiscard]] ElementId hovered() const noexcept;
+    [[nodiscard]] ElementId focused() const noexcept;
+    [[nodiscard]] base::Status focus(ElementId element); // empty clears focus
+    base::Status focus_next(bool backwards = false);
+    [[nodiscard]] base::Status capture_pointer(ElementId element, std::uint32_t pointer = 0);
+    base::Status release_pointer(std::uint32_t pointer = 0);
+    [[nodiscard]] ElementId captured(std::uint32_t pointer = 0) const noexcept;
+    // No log storage or trace work when the optional sink is empty.
+    void set_event_trace(EventTrace trace);
+    [[nodiscard]] const base::Status& last_event_status() const noexcept;
+
+    // Translates children for scrolling without changing layout or stored shapes.
+    [[nodiscard]] base::Status set_child_offset(ElementId element, Point offset);
+    [[nodiscard]] Point child_offset(ElementId element) const noexcept;
+
+    enum class Role : std::uint8_t { generic, panel, label, image, button, checkbox,
+                                    slider, scroll_area };
+    struct Semantics {
+        Role role = Role::generic;
+        std::string label;
+        friend bool operator==(const Semantics&, const Semantics&) = default;
+    };
+    [[nodiscard]] base::Status set_semantics(ElementId element, Semantics semantics);
+    [[nodiscard]] base::Result<Semantics> semantics(ElementId element) const;
 
     // Asks for a frame now (for changes the GUI cannot see) or at `when`
     // (timed updates such as animations or caret blinking).
@@ -158,8 +222,9 @@ public:
     // Earliest pending timed update, if any.
     [[nodiscard]] std::optional<Clock::time_point> next_update() const noexcept;
 
-    // Brings layout and shapes up to date for drawing at `now`, consuming the
-    // frame request, every dirty flag and timed updates that are due.
+    // Resolves styles then brings layout and shapes up to date. Check status
+    // before drawing; failed resolution leaves work pending. Success consumes
+    // the frame request, every dirty flag and timed updates that are due.
     FrameStats prepare_frame(Clock::time_point now);
 
     // Platform services; `nullptr` restores a host that does nothing. The host
@@ -171,6 +236,16 @@ private:
     friend class LayoutPass;
 
     struct Node {
+        struct StyleBinding {
+            std::string name;
+            std::optional<ThemeValue> override_value;
+            std::optional<ThemeValue> resolved;
+        };
+        struct TextSource {
+            TextEngine* engine = nullptr;
+            std::string text;
+            TextureId atlas;
+        };
         std::uint32_t generation = 1;
         bool alive = false;
         bool queued = false;
@@ -189,6 +264,14 @@ private:
         std::shared_ptr<const ShapeBuilder> builder;
         std::optional<TextBlock> text;
         ElementShapes shapes;
+        Interaction interaction;
+        EventHandler handler;
+        Point child_offset;
+        Semantics semantics;
+        std::array<StyleBinding, static_cast<std::size_t>(Property::count)> styles;
+        FontId font;
+        Color text_color{1, 1, 1, 1};
+        std::optional<TextSource> text_source;
     };
 
     [[nodiscard]] Node* find(ElementId element) noexcept;
@@ -198,6 +281,13 @@ private:
     // Sets exactly `flags` on one element, without implied flags or ancestors.
     void raise(ElementId element, Node& node, Dirty flags);
     void detach(ElementId element, Node& node);
+    [[nodiscard]] bool input_enabled(ElementId element) const noexcept;
+    base::Result<bool> dispatch(ElementId target, RoutedPayload payload, bool bubble = true);
+    void route_input(const InputEvent& event);
+    void update_hover(ElementId next);
+    void forget_input(ElementId element) noexcept;
+    void forget_styles(ElementId element);
+    void mark_style(ElementId element, Property property);
 
     [[nodiscard]] const LayoutParams& params_of(ElementId element) const noexcept;
     [[nodiscard]] Size desired_of(ElementId element) const noexcept;
@@ -217,6 +307,15 @@ private:
     std::vector<Clock::time_point> deadlines_;
     InputState input_;
     Host* host_ = nullptr;
+    ElementId hovered_;
+    ElementId focused_;
+    std::unordered_map<std::uint32_t, ElementId> captures_;
+    std::unordered_map<std::uint32_t, std::uint8_t> pointer_buttons_;
+    EventTrace trace_;
+    base::Status event_status_;
+    struct ThemeDependent { ElementId element; Property property; };
+    std::unordered_map<std::string, ThemeValue> theme_;
+    std::unordered_map<std::string, std::vector<ThemeDependent>> theme_dependents_;
 };
 
 } // namespace truffle::gui

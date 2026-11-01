@@ -91,6 +91,10 @@ contributor-neutral defaults.
    - If work is tracked in GitHub Projects, implement only against a clear issue
    - Prefer small, unambiguous issues; split broad tasks into manageable subtasks
    - Keep commits small and issue-scoped; default to one issue -> one small commit set
+   - Batch branches by scope: one branch and one PR cover a related set of
+     issues (for example a GUI phase), with one signed commit per issue. Do not
+     open a branch or PR per issue; small related fixes ride on the active batch
+     branch. Merge the PR once the batch is done, then update all its issues.
    - Exceptions are allowed for non-diff tasks, discovery-first work, or unavoidable architecture-level changes; document rationale in the issue or PR
    - Do not push directly to protected branches (`master`, `develop`); use PR flow even when operating with admin credentials or AI automation
    - Use merge commits for normal Git Flow delivery; squash/rebase requires an

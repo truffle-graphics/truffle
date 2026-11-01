@@ -62,9 +62,15 @@ window with resize (#209), above ADR PR #205, merged after owner-authorized
 self-review. GUI-readiness primitives (#213) add clip rectangles, sampled
 textures, streamed geometry and frame pacing so a GUI module can start above
 the Renderer. Pass transitions and stable native MSL (#215) complete the
-pre-GUI Renderer work. The GUI module (#217) is next: its architecture is
-accepted in [ADR 0013](adr/0013-truffle-gui-architecture.md), and the epic is
-decomposed into implementation sub-issues before production work. No asset
+pre-GUI Renderer work. The GUI module (#217) follows
+[ADR 0013](adr/0013-truffle-gui-architecture.md). The interactive baseline
+(#221-#229) now provides tree, layout, drawing, host boundary, text, events,
+themes and seven core widgets. The native demo records exact idle and
+dependent-update counts on 145 elements; it does not claim virtualization.
+The remaining GUI work is grid (#230), positioning/custom shapes (#231),
+builder (#232), immediate-style regions (#233), virtualized collections (#234)
+and docking (#235). Text editing and broader GUI backend execution are not part
+of the delivered baseline. No asset
 system, general materials, or later application phases are planned by this
 work. Delivery remains signed issue-scoped commits, immediate pushes and
 owner-reviewed PRs.
@@ -296,8 +302,9 @@ sequence commitment yet beyond the initial Shader/Renderer work above:
   EnCom–Renderer integration.
 - Engine with host-owned loop support; profiles and runners undecided.
 - GUI above Renderer, independent of EnCom: architecture accepted in
-  [ADR 0013](adr/0013-truffle-gui-architecture.md); epic #217 is decomposed into
-  implementation sub-issues before production work.
+  [ADR 0013](adr/0013-truffle-gui-architecture.md); interactive baseline
+  #221-#229 implemented, with #230-#235 remaining and native evidence in
+  [`examples/gui_window`](../examples/gui_window/README.md).
 - Assets module; name and design undecided.
 - Deferred conveniences: Simple RHI and an optional windowing wrapper.
 - Expanded diagnostics/profiling and further developer tools.

@@ -134,15 +134,60 @@ with composed application shaders, lighting and resize. Renderer owns no ECS
 schema or fixed transform/light/material model. GUI-readiness primitives add
 clip rectangles, sampled textures, streamed geometry and frame pacing. The GUI
 module's architecture is accepted in
-[ADR 0013](docs/adr/0013-truffle-gui-architecture.md) (#217); `Truffle::GUI` currently provides the
-persistent element tree (#221), incremental layout (#222) and persistent shape drawing
-through the Renderer (#223, Metal) and a host boundary with on-demand frames (#224,
-see [`examples/gui_window`](examples/gui_window/README.md)). Assets, a general material system and later application work are
-not started.
+[ADR 0013](docs/adr/0013-truffle-gui-architecture.md) (#217). `Truffle::GUI`
+provides the persistent tree, incremental layout, Renderer drawing (Metal),
+host boundary, text, event routing, themes and core widgets (#221-#229).
+The [native widget demo](examples/gui_window/README.md) records idle and
+selective-update evidence. Grid, authoring layers, virtualization and docking
+remain #230-#235; this is a usable baseline, not a finished GUI framework.
+Assets, a general material system and later application work are not started.
 [`docs/roadmap.md`](docs/roadmap.md) records the review and evidence boundaries.
 GUI text support is enabled by default and uses the pinned FreeType/HarfBuzz
 submodules; `-DTFL_GUI_ENABLE_TEXT=OFF` builds a text-free GUI. No font is
 bundled, and applications supply font data with its associated license.
+
+## GUI Object API
+
+GUI input routing (#226) adds clipped topmost hit testing, bubbling callbacks, hover notifications,
+keyboard focus/Tab traversal, and per-pointer capture. Register callbacks with
+`Context::set_event_handler`; `RoutedEvent::stop_propagation()` stops bubbling
+and `prevent_default()` suppresses default Tab traversal. Capture ends on the
+final button release, cancellation, disabling, destruction or host focus loss.
+`set_event_trace` installs an optional sink; no log is collected by default.
+Input uses the last completed layout; prepare a changed tree before targeting it.
+Named themes (#227) use `set_theme_value`, `bind_property`,
+`set_property_override` and `clear_property_override`. Colors, borders and
+radii repaint only their dependents; padding, stack spacing and fonts also
+invalidate dependent layout. Overrides shield an element from theme updates.
+`prepare_frame` resolves pending styles before layout and shapes; check its
+`status` before drawing (for example, a font unloaded by the application fails
+explicitly and keeps work pending). Manual stages call `update_styles` first.
+`set_text_source` retains UTF-8 for font rebinding and borrows the application's
+`TextEngine`/atlas; direct `set_text` instead supplies already-shaped text.
+Theme bindings govern the named style properties; raw layout/decoration setters
+remain the low-level API, not implicit overrides of bindings.
+Core widgets (#228) are checked `Widget` references created with `WidgetDesc`:
+panel, label, image, button, checkbox, slider and scroll area. The Context owns
+their elements; destroying a reference does not remove the UI. User actions
+invoke the descriptor callbacks; programmatic setters do not. Use `element()`
+for layout/theme overrides and `content()` to add children to a scroll area.
+Widgets retain semantic roles/labels, not an accessibility implementation.
+`Context::handle` returns callback errors and `last_event_status` retains them.
+Scrolling translates children consistently in drawing, hit testing and
+absolute bounds without regenerating layout or shapes.
+Contexts are non-copyable and non-movable so callbacks and Widget references
+keep a stable owner. Application text engines/registered textures must outlive
+the elements using them.
+
+```cpp
+truffle::gui::Context ui;
+auto result = truffle::gui::Widget::create(ui, ui.root(), {
+    .kind = truffle::gui::WidgetKind::button,
+    .activated = [] { /* update application state */ },
+});
+if (!result.ok()) { /* report result.status() */ }
+// A caption additionally supplies text, text_engine, font and atlas in WidgetDesc.
+```
 
 ## Build
 

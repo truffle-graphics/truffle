@@ -57,6 +57,8 @@ public:
     // Places `child` at `rect`, in the coordinates of its parent. Its subtree
     // is arranged again only if its size changed or it was invalidated.
     void arrange(ElementId child, Rect rect);
+    [[nodiscard]] Point child_offset(ElementId element) const noexcept;
+    void set_child_offset(ElementId element, Point offset);
 
 private:
     friend class Context;

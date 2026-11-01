@@ -215,8 +215,17 @@ plus optional Truffle GUI Dock. #217 is decomposed into sub-issues #221-#235;
 `Truffle::GUI` provides the element tree and invalidation model (#221) and
 incremental measure/arrange layout (#222) and persistent shapes drawn
 through the Renderer with a prepared GUI program (#223), and a host boundary
-for input, platform services and on-demand frame scheduling (#224). Assets, a general material
-system and later application work are not started; the owner reviews the
+for input, platform services and on-demand frame scheduling (#224), text (#225),
+event routing/focus/capture (#226), named themes and overrides (#227), and
+core widgets (#228). The native host demo (#229) proves zero idle style/layout/
+shape work on a 145-element tree and bounded dependent updates; see
+[`examples/gui_window/README.md`](examples/gui_window/README.md) for measured
+counts and native pixel evidence. This completes the interactive GUI baseline,
+not the whole module: grid, overrides/custom shapes, optional authoring layers,
+virtualization and docking (#230-#235) remain. Text editing and broader GUI
+backend evidence are not delivered here. Contexts have stable, non-movable
+ownership; application text engines/atlases outlive their elements.
+Assets, a general material system and later application work are not started; the owner reviews the
 Renderer architecture later at their discretion, without committing to phases.
 Use signed issue-scoped phases, immediate pushes and reviewed merge-commit PRs.
 Other backends/platforms, Phase 6 advanced features, and Phase 7 hardening are
