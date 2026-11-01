@@ -9,19 +9,25 @@
 #include "truffle/gui/layout.hpp"
 #include "truffle/gui/shapes.hpp"
 #include "truffle/gui/text.hpp"
+#include "truffle/gui/theme.hpp"
 
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <span>
+#include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
 namespace truffle::gui {
 
 struct FrameStats {
+    base::Status status;
+    StyleStats styles;
     LayoutStats layout;
     ShapeStats shapes;
 };
@@ -134,6 +140,24 @@ public:
                                         Color color = {1.0F, 1.0F, 1.0F, 1.0F});
     [[nodiscard]] base::Status clear_text(ElementId element);
 
+    // Keeps a UTF-8 source for font-theme changes. Engine and atlas are borrowed
+    // and must outlive the element; no font bytes or GPU resources are owned here.
+    [[nodiscard]] base::Status set_text_source(ElementId element, TextEngine& engine,
+                                               FontId font, std::string text,
+                                               TextureId atlas);
+
+    [[nodiscard]] base::Status set_theme_value(std::string name, ThemeValue value);
+    [[nodiscard]] base::Result<ThemeValue> theme_value(std::string_view name) const;
+    [[nodiscard]] base::Status bind_property(ElementId element, Property property,
+                                              std::string name);
+    [[nodiscard]] base::Status set_property_override(ElementId element, Property property,
+                                                      ThemeValue value);
+    // Resumes the bound theme value. An unbound property has no override to clear.
+    [[nodiscard]] base::Status clear_property_override(ElementId element, Property property);
+    [[nodiscard]] base::Result<ThemeValue> property(ElementId element, Property property) const;
+    // Resolve before layout/shapes. Failure keeps unresolved work pending.
+    [[nodiscard]] base::Result<StyleStats> update_styles();
+
     // Regenerates shapes of `shape`-marked elements from their current bounds.
     // Call after `update_layout`.
     ShapeStats update_shapes();
@@ -179,8 +203,9 @@ public:
     // Earliest pending timed update, if any.
     [[nodiscard]] std::optional<Clock::time_point> next_update() const noexcept;
 
-    // Brings layout and shapes up to date for drawing at `now`, consuming the
-    // frame request, every dirty flag and timed updates that are due.
+    // Resolves styles then brings layout and shapes up to date. Check status
+    // before drawing; failed resolution leaves work pending. Success consumes
+    // the frame request, every dirty flag and timed updates that are due.
     FrameStats prepare_frame(Clock::time_point now);
 
     // Platform services; `nullptr` restores a host that does nothing. The host
@@ -192,6 +217,16 @@ private:
     friend class LayoutPass;
 
     struct Node {
+        struct StyleBinding {
+            std::string name;
+            std::optional<ThemeValue> override_value;
+            std::optional<ThemeValue> resolved;
+        };
+        struct TextSource {
+            TextEngine* engine = nullptr;
+            std::string text;
+            TextureId atlas;
+        };
         std::uint32_t generation = 1;
         bool alive = false;
         bool queued = false;
@@ -212,6 +247,10 @@ private:
         ElementShapes shapes;
         Interaction interaction;
         EventHandler handler;
+        std::array<StyleBinding, static_cast<std::size_t>(Property::count)> styles;
+        FontId font;
+        Color text_color{1, 1, 1, 1};
+        std::optional<TextSource> text_source;
     };
 
     [[nodiscard]] Node* find(ElementId element) noexcept;
@@ -226,6 +265,8 @@ private:
     void route_input(const InputEvent& event);
     void update_hover(ElementId next);
     void forget_input(ElementId element) noexcept;
+    void forget_styles(ElementId element);
+    void mark_style(ElementId element, Property property);
 
     [[nodiscard]] const LayoutParams& params_of(ElementId element) const noexcept;
     [[nodiscard]] Size desired_of(ElementId element) const noexcept;
@@ -250,6 +291,9 @@ private:
     std::unordered_map<std::uint32_t, ElementId> captures_;
     std::unordered_map<std::uint32_t, std::uint8_t> pointer_buttons_;
     EventTrace trace_;
+    struct ThemeDependent { ElementId element; Property property; };
+    std::unordered_map<std::string, ThemeValue> theme_;
+    std::unordered_map<std::string, std::vector<ThemeDependent>> theme_dependents_;
 };
 
 } // namespace truffle::gui

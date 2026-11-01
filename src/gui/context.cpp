@@ -87,6 +87,7 @@ base::Status Context::destroy(ElementId element) {
         const ElementId current = pending.back();
         pending.pop_back();
         forget_input(current);
+        forget_styles(current);
         Node& doomed = nodes_[index_of(current)];
         pending.insert(pending.end(), doomed.children.begin(), doomed.children.end());
         const std::uint32_t generation = doomed.generation + 1;
@@ -433,6 +434,8 @@ base::Status Context::set_text(ElementId element, TextLayout layout, TextureId a
                                      "visible GUI text requires a registered glyph atlas");
     }
     TextBlock text{std::move(layout), atlas, color};
+    node->text_source.reset();
+    node->text_color = color;
     if (node->text != text) {
         const bool measure_changed =
             !node->text || node->text->layout != text.layout;
@@ -447,6 +450,7 @@ base::Status Context::clear_text(ElementId element) {
     if (node == nullptr) {
         return invalid_element();
     }
+    node->text_source.reset();
     if (node->text) {
         node->text.reset();
         mark(element, Dirty::measure);
@@ -597,6 +601,12 @@ std::optional<Context::Clock::time_point> Context::next_update() const noexcept 
 
 FrameStats Context::prepare_frame(Clock::time_point now) {
     FrameStats stats;
+    auto styles = update_styles();
+    if (!styles.ok()) {
+        stats.status = styles.status();
+        return stats;
+    }
+    stats.styles = styles.value();
     stats.layout = update_layout(host_viewport_);
     stats.shapes = update_shapes();
     clear_dirty();

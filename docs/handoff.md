@@ -25,9 +25,19 @@ change. Routing lives in `events.cpp`, leaving Context's existing tree/layout
 implementation cohesive. New public contracts are documented extensions.
 Text editing, docking and virtualization remain outside this batch.
 
-Validation: warning-as-error Debug build of event/host tests, both passing.
-Next: #227 named theme values, selective dependencies and property overrides,
-then #228 widgets and #229 native demo/persistence evidence on this branch.
+#227 adds typed named values, indexed dependent-element bindings, per-property
+overrides and cached resolution. Paint-only properties never dirty ancestors;
+padding/spacing/font changes invalidate only dependent measurement paths.
+Text sources retain UTF-8 and borrow the application's engine/atlas so font
+changes reshape only affected text. `FrameStats::status` reports resolution
+errors without consuming failed work; manual staging resolves styles first.
+Theme resolution is isolated in `theme.cpp`, with no new module dependencies.
+
+Validation: warning-as-error Debug build; event, host, text and theme tests pass.
+Theme tests cover exact dirty states/counts, shielding/restoring overrides,
+rebinding/removal, invalid values, stack spacing and deterministic font changes
+including unloaded-font recovery. Next: #228 widgets and #229 native
+demo/persistence evidence on this branch.
 
 ## Previous Delivery: TFL_ Prefix (#244)
 

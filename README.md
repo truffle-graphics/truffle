@@ -145,6 +145,17 @@ and `prevent_default()` suppresses default Tab traversal. Capture ends on the
 final button release, cancellation, disabling, destruction or host focus loss.
 `set_event_trace` installs an optional sink; no log is collected by default.
 Input uses the last completed layout; prepare a changed tree before targeting it.
+Named themes (#227) use `set_theme_value`, `bind_property`,
+`set_property_override` and `clear_property_override`. Colors, borders and
+radii repaint only their dependents; padding, stack spacing and fonts also
+invalidate dependent layout. Overrides shield an element from theme updates.
+`prepare_frame` resolves pending styles before layout and shapes; check its
+`status` before drawing (for example, a font unloaded by the application fails
+explicitly and keeps work pending). Manual stages call `update_styles` first.
+`set_text_source` retains UTF-8 for font rebinding and borrows the application's
+`TextEngine`/atlas; direct `set_text` instead supplies already-shaped text.
+Theme bindings govern the named style properties; raw layout/decoration setters
+remain the low-level API, not implicit overrides of bindings.
 Assets, a general material system and later application work are
 not started.
 [`docs/roadmap.md`](docs/roadmap.md) records the review and evidence boundaries.
