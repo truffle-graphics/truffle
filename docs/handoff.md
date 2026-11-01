@@ -13,7 +13,7 @@ one signed commit per issue, instead of a branch and PR per issue. Recorded in
 (#234–#235), the last of three batches finishing epic #217 (after
 `feat/gui-layout-drawing` #230–#231 and `feat/gui-authoring` #232–#233).
 
-## Current Batch: GUI Collections And Docking (#234-#235)
+## Latest Delivery: GUI Collections And Docking (#234-#235)
 
 #234 adds `truffle/gui/collections.hpp`. `VirtualList` owns one focusable
 element whose children are a recycled pool of about `ceil(height/row) + 1`
@@ -36,7 +36,26 @@ deep jump, activation, keys, wheel, `scroll_to`; a taller list grows its pool
 in the same frame; count shrink to 0; table cells; tree flattening. 14 GUI
 tests pass in the warning-as-error Debug build and 12 in the text-free build.
 
-#235 docking: in progress.
+#235 adds the optional `Truffle::GUIDock` library (`truffle_gui_dock`, above
+`truffle_gui`; the architecture guard rejects the reverse). The pure model in
+`truffle/gui/dock/layout.hpp` is a tree of tab areas and splits with
+fractions; `insert_panel`/`remove_panel`/`move_panel` keep it normalized
+(single-child splits collapse, same-axis splits merge) and `move_panel` leaves
+the layout unchanged on failure. `serialize`/`parse` use a small
+locale-independent text form with shares in parts per 10000; `DockPresets`
+stores named layouts. `DockSpace` (`truffle/gui/dock/dock.hpp`) maps the model
+onto one element: area backgrounds, active contents, tab strips, dividers and
+a drop marker overlay; hidden panels move to a stash. Dragging a tab past a
+threshold previews a drop (tab strip = center, near edge = side) and the drop
+moves the panel; dragging a divider changes the two neighbouring fractions,
+clamped to `min_area`. `DockWindowHost` is declared for future separate OS
+windows and is not used.
+
+Validation: layout insert/move/remove/normalize/errors, serialization
+round-trip and parse errors, presets; DockSpace bounds after restore, tab
+activation, drag preview left/center/bottom and drop result, divider drag and
+clamp, presets, remove/undock/dock and destruction. 15 GUI tests pass in the
+warning-as-error Debug build and 13 in the text-free build.
 
 ## Previous Delivery: GUI Authoring (#232-#233)
 

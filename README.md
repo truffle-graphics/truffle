@@ -139,9 +139,10 @@ provides the persistent tree, incremental layout, Renderer drawing (Metal),
 host boundary, text, event routing, themes and core widgets (#221-#229),
 plus grid layout, placement overrides, canvas drawing and overlays (#230-#231),
 a nested C++ builder (#232), immediate-style regions (#233) and virtualized
-lists, table rows and tree flattening (#234).
+lists, table rows and tree flattening (#234) and the optional
+Truffle GUI Dock library (#235).
 The [native widget demo](examples/gui_window/README.md) records idle and
-selective-update evidence. Docking remains #235; this
+selective-update evidence. Epic #217 (#221-#235) is delivered; this
 is a usable baseline, not a finished GUI framework.
 Assets, a general material system and later application work are not started.
 [`docs/roadmap.md`](docs/roadmap.md) records the review and evidence boundaries.

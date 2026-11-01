@@ -752,6 +752,11 @@ target_link_libraries(truffle_gui_collection_tests PRIVATE truffle_gui)
 truffle_target_warnings(truffle_gui_collection_tests)
 add_test(NAME truffle_gui_collection_tests COMMAND truffle_gui_collection_tests)
 
+add_executable(truffle_gui_dock_tests gui_dock_tests.cpp)
+target_link_libraries(truffle_gui_dock_tests PRIVATE truffle_gui_dock)
+truffle_target_warnings(truffle_gui_dock_tests)
+add_test(NAME truffle_gui_dock_tests COMMAND truffle_gui_dock_tests)
+
 add_executable(truffle_gui_text_tests gui_text_tests.cpp)
 target_link_libraries(truffle_gui_text_tests PRIVATE truffle_gui truffle_backend_null)
 target_compile_definitions(truffle_gui_text_tests PRIVATE
