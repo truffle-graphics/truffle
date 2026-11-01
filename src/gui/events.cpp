@@ -1,0 +1,317 @@
+#include "truffle/gui/context.hpp"
+
+#include <algorithm>
+#include <cmath>
+#include <utility>
+
+namespace truffle::gui {
+namespace {
+
+bool contains(Rect rect, Point point) {
+    return point.x >= rect.x && point.y >= rect.y &&
+           point.x < rect.x + rect.width && point.y < rect.y + rect.height;
+}
+
+Rect intersect(Rect a, Rect b) {
+    const float x = std::max(a.x, b.x);
+    const float y = std::max(a.y, b.y);
+    return {x, y, std::max(0.0F, std::min(a.x + a.width, b.x + b.width) - x),
+            std::max(0.0F, std::min(a.y + a.height, b.y + b.height) - y)};
+}
+
+base::Status invalid_target() {
+    return base::Status::failure(base::StatusCode::invalid_argument,
+                                 "GUI input target is not an eligible live element");
+}
+
+} // namespace
+
+base::Status Context::set_interaction(ElementId element, Interaction interaction) {
+    Node* node = find(element);
+    if (node == nullptr) {
+        return invalid_target();
+    }
+    node->interaction = interaction;
+    if (focused_.valid() &&
+        (!input_enabled(focused_) || !find(focused_)->interaction.focusable)) {
+        static_cast<void>(focus({}));
+    }
+    std::vector<std::uint32_t> release;
+    for (const auto& [pointer, target] : captures_) {
+        if (!input_enabled(target)) {
+            release.push_back(pointer);
+        }
+    }
+    for (auto pointer : release) {
+        release_pointer(pointer);
+    }
+    if (!input_enabled(hovered_)) {
+        update_hover({});
+    }
+    return base::Status::success();
+}
+
+base::Result<Interaction> Context::interaction(ElementId element) const {
+    const Node* node = find(element);
+    if (node == nullptr) {
+        return invalid_target();
+    }
+    return node->interaction;
+}
+
+base::Status Context::set_event_handler(ElementId element, EventHandler handler) {
+    Node* node = find(element);
+    if (node == nullptr) {
+        return invalid_target();
+    }
+    node->handler = std::move(handler);
+    return base::Status::success();
+}
+
+bool Context::input_enabled(ElementId element) const noexcept {
+    for (ElementId up = element; up.valid();) {
+        const Node* node = find(up);
+        if (node == nullptr || !node->interaction.enabled) {
+            return false;
+        }
+        up = node->parent;
+    }
+    return alive(element);
+}
+
+ElementId Context::hit_test(Point position) const {
+    if (!std::isfinite(position.x) || !std::isfinite(position.y)) {
+        return {};
+    }
+    const Node* root = find(root_);
+    if (!root->arranged || !contains(root->rect, position)) {
+        return {};
+    }
+    struct Entry { ElementId id; Point origin; Rect clip; bool self; };
+    std::vector<Entry> pending{{root_, {}, root->rect, false}};
+    while (!pending.empty()) {
+        const Entry entry = pending.back();
+        pending.pop_back();
+        const Node* node = find(entry.id);
+        if (node == nullptr || !node->interaction.enabled || !node->arranged ||
+            !contains(entry.clip, position)) {
+            continue;
+        }
+        const Rect rect{entry.origin.x + node->rect.x, entry.origin.y + node->rect.y,
+                        node->rect.width, node->rect.height};
+        if (entry.self) {
+            if (node->interaction.hit_test && contains(rect, position)) {
+                return entry.id;
+            }
+            continue;
+        }
+        pending.push_back({entry.id, entry.origin, entry.clip, true});
+        const Rect clip = node->clips ? intersect(entry.clip, rect) : entry.clip;
+        // The last drawn child is visited first.
+        for (ElementId child : node->children) {
+            pending.push_back({child, {rect.x, rect.y}, clip, false});
+        }
+    }
+    return {};
+}
+
+bool Context::dispatch(ElementId target, RoutedPayload payload, bool bubble) {
+    std::vector<ElementId> path;
+    for (ElementId up = target; up.valid();) {
+        const Node* node = find(up);
+        if (node == nullptr) {
+            break;
+        }
+        path.push_back(up);
+        up = bubble ? node->parent : ElementId{};
+    }
+    RoutedEvent event{target, {}, std::move(payload)};
+    for (ElementId current : path) {
+        const Node* node = find(current);
+        if (node == nullptr ||
+            (std::holds_alternative<InputEvent>(event.payload) && !input_enabled(current))) {
+            continue;
+        }
+        event.current = current;
+        // Callbacks may destroy/reparent elements, replace themselves, or grow nodes_.
+        const EventHandler handler = node->handler;
+        if (handler) {
+            handler(*this, event);
+        }
+        const EventTrace trace = trace_;
+        if (trace) {
+            trace(event);
+        }
+        if (event.stopped) {
+            break;
+        }
+    }
+    return event.handled;
+}
+
+ElementId Context::hovered() const noexcept { return hovered_; }
+ElementId Context::focused() const noexcept { return focused_; }
+
+void Context::update_hover(ElementId next) {
+    if (next == hovered_) {
+        return;
+    }
+    const auto path = [this](ElementId id) {
+        std::vector<ElementId> result;
+        while (const Node* node = find(id)) {
+            result.push_back(id);
+            id = node->parent;
+        }
+        return result;
+    };
+    const auto old_path = path(hovered_);
+    const auto new_path = path(next);
+    hovered_ = next;
+    for (ElementId id : old_path) {
+        if (std::find(new_path.begin(), new_path.end(), id) == new_path.end()) {
+            static_cast<void>(dispatch(id, HoverEvent{false}, false));
+        }
+    }
+    for (auto it = new_path.rbegin(); it != new_path.rend(); ++it) {
+        if (std::find(old_path.begin(), old_path.end(), *it) == old_path.end()) {
+            static_cast<void>(dispatch(*it, HoverEvent{true}, false));
+        }
+    }
+}
+
+base::Status Context::focus(ElementId element) {
+    if (element.valid() && (!input_.focused || !input_enabled(element) ||
+                            !find(element)->interaction.focusable)) {
+        return invalid_target();
+    }
+    if (focused_ == element) {
+        return base::Status::success();
+    }
+    const ElementId previous = focused_;
+    focused_ = element;
+    static_cast<void>(dispatch(previous, ElementFocusEvent{false}, false));
+    if (focused_ == element) {
+        static_cast<void>(dispatch(element, ElementFocusEvent{true}, false));
+    }
+    return base::Status::success();
+}
+
+void Context::focus_next(bool backwards) {
+    std::vector<ElementId> order;
+    std::vector<ElementId> pending{root_};
+    while (!pending.empty()) {
+        const ElementId id = pending.back();
+        pending.pop_back();
+        const Node* node = find(id);
+        if (node == nullptr || !node->interaction.enabled) {
+            continue;
+        }
+        if (node->interaction.focusable) {
+            order.push_back(id);
+        }
+        pending.insert(pending.end(), node->children.rbegin(), node->children.rend());
+    }
+    if (order.empty()) {
+        static_cast<void>(focus({}));
+        return;
+    }
+    auto found = std::find(order.begin(), order.end(), focused_);
+    std::size_t index = backwards ? order.size() - 1 : 0;
+    if (found != order.end()) {
+        const auto current = static_cast<std::size_t>(found - order.begin());
+        index = backwards ? (current + order.size() - 1) % order.size()
+                          : (current + 1) % order.size();
+    }
+    static_cast<void>(focus(order[index]));
+}
+
+base::Status Context::capture_pointer(ElementId element, std::uint32_t pointer) {
+    if (!input_enabled(element) || !input_.focused) {
+        return invalid_target();
+    }
+    if (captured(pointer) == element) {
+        return base::Status::success();
+    }
+    const ElementId previous = captured(pointer);
+    captures_[pointer] = element;
+    static_cast<void>(dispatch(previous, CaptureLostEvent{pointer}, false));
+    return base::Status::success();
+}
+
+void Context::release_pointer(std::uint32_t pointer) {
+    const ElementId previous = captured(pointer);
+    captures_.erase(pointer);
+    static_cast<void>(dispatch(previous, CaptureLostEvent{pointer}, false));
+}
+
+ElementId Context::captured(std::uint32_t pointer) const noexcept {
+    const auto found = captures_.find(pointer);
+    return found == captures_.end() ? ElementId{} : found->second;
+}
+
+void Context::forget_input(ElementId element) noexcept {
+    if (hovered_ == element) { hovered_ = {}; }
+    if (focused_ == element) { focused_ = {}; }
+    std::erase_if(captures_, [element](const auto& entry) { return entry.second == element; });
+}
+
+void Context::set_event_trace(EventTrace trace) { trace_ = std::move(trace); }
+
+void Context::route_input(const InputEvent& event) {
+    if (const auto* pointer = std::get_if<PointerEvent>(&event)) {
+        const bool outside = pointer->action == PointerAction::leave ||
+                             pointer->action == PointerAction::cancel;
+        update_hover(outside ? ElementId{} : hit_test(pointer->position));
+        ElementId target = captured(pointer->pointer);
+        if (!target.valid()) { target = hovered_; }
+        if (pointer->action == PointerAction::down) {
+            pointer_buttons_[pointer->pointer] |=
+                static_cast<std::uint8_t>(1U << static_cast<unsigned>(pointer->button));
+            ElementId candidate = target;
+            while (const Node* node = find(candidate)) {
+                if (node->interaction.focusable) { break; }
+                candidate = node->parent;
+            }
+            if (input_.focused) { static_cast<void>(focus(candidate)); }
+        }
+        static_cast<void>(dispatch(target, event));
+        if (pointer->action == PointerAction::up) {
+            auto found = pointer_buttons_.find(pointer->pointer);
+            if (found != pointer_buttons_.end()) {
+                found->second &= static_cast<std::uint8_t>(
+                    ~(1U << static_cast<unsigned>(pointer->button)));
+                if (found->second == 0) { pointer_buttons_.erase(found); }
+            }
+            if (!pointer_buttons_.contains(pointer->pointer)) {
+                release_pointer(pointer->pointer);
+            }
+        } else if (pointer->action == PointerAction::cancel) {
+            pointer_buttons_.erase(pointer->pointer);
+            release_pointer(pointer->pointer);
+        }
+    } else if (const auto* wheel = std::get_if<WheelEvent>(&event)) {
+        update_hover(hit_test(wheel->position));
+        static_cast<void>(dispatch(hovered_, event));
+    } else if (const auto* focus_event = std::get_if<FocusEvent>(&event)) {
+        static_cast<void>(dispatch(focused_, event));
+        if (!focus_event->focused) {
+            static_cast<void>(focus({}));
+            std::vector<std::uint32_t> pointers;
+            for (const auto& [pointer, target] : captures_) {
+                static_cast<void>(target);
+                pointers.push_back(pointer);
+            }
+            for (auto pointer : pointers) { release_pointer(pointer); }
+            pointer_buttons_.clear();
+            update_hover({});
+        }
+    } else if (input_.focused) {
+        const bool handled = dispatch(focused_, event);
+        if (const auto* key = std::get_if<KeyEvent>(&event);
+            key != nullptr && key->key == Key::tab && key->down && !handled) {
+            focus_next(has(key->modifiers, Modifiers::shift));
+        }
+    }
+}
+
+} // namespace truffle::gui

@@ -86,6 +86,7 @@ base::Status Context::destroy(ElementId element) {
     while (!pending.empty()) {
         const ElementId current = pending.back();
         pending.pop_back();
+        forget_input(current);
         Node& doomed = nodes_[index_of(current)];
         pending.insert(pending.end(), doomed.children.begin(), doomed.children.end());
         const std::uint32_t generation = doomed.generation + 1;
@@ -564,6 +565,7 @@ void Context::handle(const InputEvent& event) {
             }
         },
         event);
+    route_input(event);
 }
 
 const InputState& Context::input() const noexcept {

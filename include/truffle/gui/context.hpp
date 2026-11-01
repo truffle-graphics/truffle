@@ -2,6 +2,7 @@
 
 #include "truffle/base/status.hpp"
 #include "truffle/gui/element.hpp"
+#include "truffle/gui/events.hpp"
 #include "truffle/gui/geometry.hpp"
 #include "truffle/gui/host.hpp"
 #include "truffle/gui/input.hpp"
@@ -15,6 +16,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <unordered_map>
 #include <vector>
 
 namespace truffle::gui {
@@ -145,9 +147,28 @@ public:
     [[nodiscard]] Size viewport() const noexcept;
     [[nodiscard]] float scale() const noexcept;
 
-    // Records input forwarded by the host.
+    // Records host input and routes it through the current laid-out tree.
+    // Input only requests a frame when a handler makes a visible change.
     void handle(const InputEvent& event);
     [[nodiscard]] const InputState& input() const noexcept;
+
+    [[nodiscard]] base::Status set_interaction(ElementId element, Interaction interaction);
+    [[nodiscard]] base::Result<Interaction> interaction(ElementId element) const;
+    [[nodiscard]] base::Status set_event_handler(ElementId element, EventHandler handler);
+    // Routes snapshot the ancestor chain. Callbacks may mutate the tree;
+    // removed recipients are skipped. Hover/focus/capture notifications are
+    // direct, while host input bubbles. Tab traverses unless prevent_default().
+    // Topmost laid-out element, respecting ancestor clips and disabled subtrees.
+    [[nodiscard]] ElementId hit_test(Point position) const;
+    [[nodiscard]] ElementId hovered() const noexcept;
+    [[nodiscard]] ElementId focused() const noexcept;
+    [[nodiscard]] base::Status focus(ElementId element); // empty clears focus
+    void focus_next(bool backwards = false);
+    [[nodiscard]] base::Status capture_pointer(ElementId element, std::uint32_t pointer = 0);
+    void release_pointer(std::uint32_t pointer = 0);
+    [[nodiscard]] ElementId captured(std::uint32_t pointer = 0) const noexcept;
+    // No log storage or trace work when the optional sink is empty.
+    void set_event_trace(EventTrace trace);
 
     // Asks for a frame now (for changes the GUI cannot see) or at `when`
     // (timed updates such as animations or caret blinking).
@@ -189,6 +210,8 @@ private:
         std::shared_ptr<const ShapeBuilder> builder;
         std::optional<TextBlock> text;
         ElementShapes shapes;
+        Interaction interaction;
+        EventHandler handler;
     };
 
     [[nodiscard]] Node* find(ElementId element) noexcept;
@@ -198,6 +221,11 @@ private:
     // Sets exactly `flags` on one element, without implied flags or ancestors.
     void raise(ElementId element, Node& node, Dirty flags);
     void detach(ElementId element, Node& node);
+    [[nodiscard]] bool input_enabled(ElementId element) const noexcept;
+    bool dispatch(ElementId target, RoutedPayload payload, bool bubble = true);
+    void route_input(const InputEvent& event);
+    void update_hover(ElementId next);
+    void forget_input(ElementId element) noexcept;
 
     [[nodiscard]] const LayoutParams& params_of(ElementId element) const noexcept;
     [[nodiscard]] Size desired_of(ElementId element) const noexcept;
@@ -217,6 +245,11 @@ private:
     std::vector<Clock::time_point> deadlines_;
     InputState input_;
     Host* host_ = nullptr;
+    ElementId hovered_;
+    ElementId focused_;
+    std::unordered_map<std::uint32_t, ElementId> captures_;
+    std::unordered_map<std::uint32_t, std::uint8_t> pointer_buttons_;
+    EventTrace trace_;
 };
 
 } // namespace truffle::gui

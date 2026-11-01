@@ -12,6 +12,23 @@ one signed commit per issue, instead of a branch and PR per issue. Recorded in
 `AGENTS.md` and `CONTRIBUTING.md`. Active batch: `feat/gui-interaction`
 (#226–#229).
 
+## Active Delivery: GUI Interaction (#226-#229)
+
+#226 adds GUI-owned topmost clipped hit testing, mutation-safe bubbling,
+direct hover/focus/capture notifications, Tab traversal and per-pointer
+capture. Disabled subtrees cannot receive host input. Removal forgets checked
+input targets; cancellation, final button release and focus loss release capture.
+The trace sink is optional with no retained log. Input alone remains frame-free.
+
+Owner: GUI; existing Renderer/Base contracts only, no architectural boundary
+change. Routing lives in `events.cpp`, leaving Context's existing tree/layout
+implementation cohesive. New public contracts are documented extensions.
+Text editing, docking and virtualization remain outside this batch.
+
+Validation: warning-as-error Debug build of event/host tests, both passing.
+Next: #227 named theme values, selective dependencies and property overrides,
+then #228 widgets and #229 native demo/persistence evidence on this branch.
+
 ## Previous Delivery: TFL_ Prefix (#244)
 
 All `TRUFFLE_*` CMake options, cache/build variables, compile definitions,

@@ -137,7 +137,15 @@ module's architecture is accepted in
 [ADR 0013](docs/adr/0013-truffle-gui-architecture.md) (#217); `Truffle::GUI` currently provides the
 persistent element tree (#221), incremental layout (#222) and persistent shape drawing
 through the Renderer (#223, Metal) and a host boundary with on-demand frames (#224,
-see [`examples/gui_window`](examples/gui_window/README.md)). Assets, a general material system and later application work are
+see [`examples/gui_window`](examples/gui_window/README.md)). GUI input routing (#226)
+adds clipped topmost hit testing, bubbling callbacks, hover notifications,
+keyboard focus/Tab traversal, and per-pointer capture. Register callbacks with
+`Context::set_event_handler`; `RoutedEvent::stop_propagation()` stops bubbling
+and `prevent_default()` suppresses default Tab traversal. Capture ends on the
+final button release, cancellation, disabling, destruction or host focus loss.
+`set_event_trace` installs an optional sink; no log is collected by default.
+Input uses the last completed layout; prepare a changed tree before targeting it.
+Assets, a general material system and later application work are
 not started.
 [`docs/roadmap.md`](docs/roadmap.md) records the review and evidence boundaries.
 GUI text support is enabled by default and uses the pinned FreeType/HarfBuzz
