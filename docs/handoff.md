@@ -9,12 +9,55 @@ the support matrix and Git history.
 
 Maintainer decision: a branch and its PR cover a related batch of issues with
 one signed commit per issue, instead of a branch and PR per issue. Recorded in
-`AGENTS.md` and `CONTRIBUTING.md`. Latest batch: `feat/gui-authoring`
-(#232–#233), the second of three batches finishing epic #217 (after
-`feat/gui-layout-drawing` #230–#231, before `feat/gui-collections-dock`
-#234–#235).
+`AGENTS.md` and `CONTRIBUTING.md`. Latest batch: `feat/gui-collections-dock`
+(#234–#235), the last of three batches finishing epic #217 (after
+`feat/gui-layout-drawing` #230–#231 and `feat/gui-authoring` #232–#233).
 
-## Current Batch: GUI Authoring (#232-#233)
+## Latest Delivery: GUI Collections And Docking (#234-#235)
+
+#234 adds `truffle/gui/collections.hpp`. `VirtualList` owns one focusable
+element whose children are a recycled pool of about `ceil(height/row) + 1`
+rows: `make_row` builds a row once, `bind_row` fills it for an index. Its
+updater clamps the double-precision offset, unbinds rows that left the range,
+grows/shrinks the pool and binds missing indices; rows are placed by
+slot-relative `position.y` and the sub-row remainder is a child offset, so a
+scroll within a row touches no layout or shapes and 1M rows keep float-safe
+positions. `LayoutPass::request_update` lets the rows layout ask for another
+update when the arranged height differs; `prepare_frame` then reruns
+updates/styles/layout once in the same frame. Wheel (20 px units), arrows,
+page and home/end scroll; a primary press focuses and reports `activated`.
+`set_count`/`refresh`/`scroll_to` cover data changes. `table_columns` gives
+rows a shared fixed/weighted column grid; `flatten_tree` turns expanded nodes
+of a `TreeSource` into depth-annotated rows for a list.
+
+Validation: 1,000,000 rows hold 13 elements; in-row scroll binds nothing and
+measures/arranges/regenerates nothing; one row of scroll rebinds one row;
+deep jump, activation, keys, wheel, `scroll_to`; a taller list grows its pool
+in the same frame; count shrink to 0; table cells; tree flattening. 14 GUI
+tests pass in the warning-as-error Debug build and 12 in the text-free build.
+
+#235 adds the optional `Truffle::GUIDock` library (`truffle_gui_dock`, above
+`truffle_gui`; the architecture guard rejects the reverse). The pure model in
+`truffle/gui/dock/layout.hpp` is a tree of tab areas and splits with
+fractions; `insert_panel`/`remove_panel`/`move_panel` keep it normalized
+(single-child splits collapse, same-axis splits merge) and `move_panel` leaves
+the layout unchanged on failure. `serialize`/`parse` use a small
+locale-independent text form with shares in parts per 10000; `DockPresets`
+stores named layouts. `DockSpace` (`truffle/gui/dock/dock.hpp`) maps the model
+onto one element: area backgrounds, active contents, tab strips, dividers and
+a drop marker overlay; hidden panels move to a stash. Dragging a tab past a
+threshold previews a drop (tab strip = center, near edge = side) and the drop
+moves the panel; dragging a divider changes the two neighbouring fractions,
+clamped to `min_area`. `DockWindowHost` is declared for future separate OS
+windows and is not used.
+
+Validation: layout insert/move/remove/normalize/errors, serialization
+round-trip and parse errors, presets; DockSpace bounds after restore, tab
+activation, drag preview left/center/bottom and drop result, divider drag and
+clamp, presets, remove/undock/dock and destruction. 15 GUI tests pass in the
+warning-as-error Debug build and 13 in the text-free build.
+
+## Previous Delivery: GUI Authoring (#232-#233)
 
 #232 adds `truffle/gui/builder.hpp`: plain nested C++ values (`BuildNode`
 from `ui::column`, `row`, `grid`, `panel`, `scroll`, `label`, `button`,

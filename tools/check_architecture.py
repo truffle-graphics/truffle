@@ -23,6 +23,7 @@ DIRECT_DEPENDENCIES = {
     "truffle_asset_render": {"truffle_assets", "truffle_renderer"},
     "truffle_encom_renderer": {"truffle_encom", "truffle_renderer"},
     "truffle_gui": {"truffle_renderer"},
+    "truffle_gui_dock": {"truffle_gui"},
     "truffle_diagnostics": {
         "truffle_asset_render",
         "truffle_assets",
@@ -40,6 +41,7 @@ PUBLIC_MODULE_TARGETS = {
     "asset_render": "truffle_asset_render",
     "encom_renderer": "truffle_encom_renderer",
     "gui": "truffle_gui",
+    "gui/dock": "truffle_gui_dock",
     "diagnostics": "truffle_diagnostics",
 }
 
@@ -103,12 +105,16 @@ def target_for_source(path: Path) -> str | None:
         top = relative.parts[0]
         if top == "backends":
             return "truffle_backend_"
+        if top == "gui_dock":
+            return "truffle_gui_dock"
         return PUBLIC_MODULE_TARGETS.get(top)
 
     try:
         relative = path.relative_to(INCLUDE_ROOT)
     except ValueError:
         return None
+    if relative.parts[:2] == ("gui", "dock"):
+        return "truffle_gui_dock"
     return PUBLIC_MODULE_TARGETS.get(relative.parts[0])
 
 
@@ -153,7 +159,10 @@ def check_target_dependencies(errors: list[str]) -> tuple[int, int]:
     return declared, checked
 
 
-INCLUDE_PATTERN = re.compile(r'^\s*#\s*include\s*[<"]truffle/([^/]+)/', re.MULTILINE)
+# `truffle/gui/dock/` belongs to GUI Dock, not GUI.
+INCLUDE_PATTERN = re.compile(
+    r'^\s*#\s*include\s*[<"]truffle/(gui/dock|[^/]+)/', re.MULTILINE
+)
 SOURCE_SUFFIXES = {".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx", ".m", ".mm"}
 
 

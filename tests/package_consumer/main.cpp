@@ -8,6 +8,7 @@
 #include "truffle/rhi/null_backend.hpp"
 #include "truffle/encom_renderer/encom_render_adapter.hpp"
 #include "truffle/gui/context.hpp"
+#include "truffle/gui/dock/dock.hpp"
 #include "truffle/gui/widgets.hpp"
 #include "truffle/renderer/data_layout.hpp"
 #include "truffle/renderer/depth_target.hpp"
@@ -37,6 +38,9 @@ int main() {
     if (!gui.prepare_frame(truffle::gui::Context::Clock::now()).status.ok()) return 1;
     if (!gui.focus(button.value().element()).ok() ||
         !gui.handle(truffle::gui::KeyEvent{.key = truffle::gui::Key::space}).ok()) return 1;
+    auto dock = truffle::gui::dock::DockSpace::create(gui, gui.root());
+    if (!dock.ok() || !dock.value().add_panel("view", "", gui.create(gui.root()).value()).ok() ||
+        !dock.value().restore("(tabs 0 \"view\")").ok()) return 1;
 
     truffle::assets::GeometryStreamDesc stream;
     stream.id = truffle::assets::AssetId{1};
