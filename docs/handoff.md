@@ -13,6 +13,38 @@ one signed commit per issue, instead of a branch and PR per issue. Recorded in
 (#234–#235), the last of three batches finishing epic #217 (after
 `feat/gui-layout-drawing` #230–#231 and `feat/gui-authoring` #232–#233).
 
+## Active Delivery: GUI Usability (#251-#253)
+
+The owner approved one `feat/gui-text-native-docking` batch branch/PR,
+independently validated signed issue phases with immediate pushes, self-review
+and a normal merge commit. Milestone: GUI usability. #217 remains completed;
+these are explicit follow-ups, not a reopening of its bounded baseline.
+
+- #251: Unicode layout and ordered font fallback, then visual caret/selection
+  geometry used by editing. Private pinned text dependencies remain inside GUI.
+- #252: plain-text editing, grapheme-aware mutations, pointer/keyboard
+  selection, clipboard, undo/redo and input methods; native Cocoa integration
+  stays in the example host.
+- #253: checked detached docking surfaces, host-owned native windows and divider
+  cursor feedback. GUI Dock remains above GUI; OS window policy stays outside.
+
+#251 is implemented and independently validated: pinned Unicode 16 SheenBidi
+2.9.0/utf8proc 2.10.0, script/bidi paragraph runs, ordered font fallback,
+source-byte grapheme/caret/selection geometry and GDEF ligature carets.
+Missing font coverage retains the primary font's glyph 0; configured fallback
+handles stay live until the chain is cleared. All 1,093 matching grapheme
+fixtures and upstream bidi/script tests pass, as do text-enabled/disabled
+Unicode tests and installed consumers. Dependencies remain private and optional.
+
+The editable object/widget/builder/region paths and Cocoa NSTextInputClient
+adapter are implemented. The native demo checks marked text, candidate
+placement, commit and undo; original idle/selective recomputation checks still
+pass. All 15 currently selected text-enabled GUI tests pass, including native
+Metal drawing. The text-disabled editor API reports unsupported explicitly.
+Remaining before delivery: complete the Unicode and native docking integration,
+check installed consumers, finish documentation, review the complete diff and
+deliver each signed issue phase. No hosted workflows were started.
+
 ## Latest Delivery: GUI Collections And Docking (#234-#235)
 
 #234 adds `truffle/gui/collections.hpp`. `VirtualList` owns one focusable

@@ -1,9 +1,10 @@
-add_library(truffle_gui STATIC builder.cpp collections.cpp context.cpp draw.cpp events.cpp layout.cpp painter.cpp placement.cpp region.cpp shapes.cpp text.cpp theme.cpp updates.cpp widgets.cpp)
+add_library(truffle_gui STATIC builder.cpp collections.cpp context.cpp draw.cpp events.cpp layout.cpp painter.cpp placement.cpp region.cpp shapes.cpp surface.cpp text.cpp text_edit.cpp text_layout.cpp text_unicode.cpp theme.cpp updates.cpp widgets.cpp)
 target_link_libraries(truffle_gui PUBLIC truffle_renderer)
 truffle_configure_target(truffle_gui GUI)
 add_library(Truffle::GUI ALIAS truffle_gui)
 
 if(TFL_GUI_ENABLE_TEXT)
+    enable_language(C)
     foreach(_dependency freetype harfbuzz)
         if(NOT EXISTS "${PROJECT_SOURCE_DIR}/vendor/${_dependency}/CMakeLists.txt")
             message(FATAL_ERROR
@@ -12,6 +13,48 @@ if(TFL_GUI_ENABLE_TEXT)
                 "configure a text-free GUI with -DTFL_GUI_ENABLE_TEXT=OFF")
         endif()
     endforeach()
+
+    foreach(_source sheenbidi/Source/SheenBidi.c utf8proc/utf8proc.c)
+        if(NOT EXISTS "${PROJECT_SOURCE_DIR}/vendor/${_source}")
+            message(FATAL_ERROR
+                "GUI text needs pinned Unicode sources; run "
+                "`git submodule update --init vendor/sheenbidi vendor/utf8proc`, "
+                "or set -DTFL_GUI_ENABLE_TEXT=OFF")
+        endif()
+    endforeach()
+    # Compile only the upstream runtime sources: no tools, tests, network or
+    # global upstream CMake options. These private static dependencies travel
+    # in the same install/export set as GUI.
+    add_library(truffle_gui_sheenbidi STATIC
+        "${PROJECT_SOURCE_DIR}/vendor/sheenbidi/Source/SheenBidi.c")
+    target_compile_definitions(truffle_gui_sheenbidi PRIVATE SB_CONFIG_UNITY)
+    target_include_directories(truffle_gui_sheenbidi SYSTEM PUBLIC
+        "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/vendor/sheenbidi/Headers>")
+    add_library(truffle_gui_utf8proc STATIC
+        "${PROJECT_SOURCE_DIR}/vendor/utf8proc/utf8proc.c")
+    target_compile_definitions(truffle_gui_utf8proc PUBLIC UTF8PROC_STATIC)
+    target_include_directories(truffle_gui_utf8proc SYSTEM PUBLIC
+        "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/vendor/utf8proc>")
+    set_target_properties(truffle_gui_sheenbidi truffle_gui_utf8proc PROPERTIES
+        POSITION_INDEPENDENT_CODE ON C_STANDARD 99 C_STANDARD_REQUIRED ON)
+    set_target_properties(truffle_gui_sheenbidi PROPERTIES EXPORT_NAME GUIUnicodeBidi)
+    set_target_properties(truffle_gui_utf8proc PROPERTIES EXPORT_NAME GUIUnicodeGraphemes)
+    target_link_libraries(truffle_gui PRIVATE truffle_gui_sheenbidi truffle_gui_utf8proc)
+    if(TFL_INSTALL)
+        include(GNUInstallDirs)
+        install(TARGETS truffle_gui_sheenbidi truffle_gui_utf8proc
+            EXPORT TruffleTargets ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}")
+        install(FILES "${PROJECT_SOURCE_DIR}/vendor/sheenbidi/LICENSE"
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/Truffle"
+            RENAME SheenBidi-LICENSE)
+        install(FILES "${PROJECT_SOURCE_DIR}/docs/licenses/SheenBidi-attribution.txt"
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/Truffle")
+        install(FILES "${PROJECT_SOURCE_DIR}/vendor/utf8proc/LICENSE.md"
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/Truffle"
+            RENAME utf8proc-LICENSE.md)
+        install(FILES "${PROJECT_SOURCE_DIR}/docs/licenses/Unicode-3.0.txt"
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/licenses/Truffle")
+    endif()
 
     set(FT_DISABLE_ZLIB ON CACHE BOOL "" FORCE)
     set(FT_DISABLE_BZIP2 ON CACHE BOOL "" FORCE)

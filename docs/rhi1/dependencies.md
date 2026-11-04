@@ -169,8 +169,9 @@ extra allocator source or package requirement.
 ### GUI text
 
 GUI text is enabled by default through `TFL_GUI_ENABLE_TEXT`. It uses the pinned
-FreeType 2.14.3 and HarfBuzz 14.5.1 sources below as private build dependencies
-of `Truffle::GUI`; the public API does not expose either library. Configure
+FreeType 2.14.3, HarfBuzz 14.5.1, SheenBidi 2.9.0 and utf8proc 2.10.0
+sources below as private build dependencies of `Truffle::GUI`; the public API
+does not expose these libraries. Configure
 never downloads them and fails with preparation instructions when they are
 missing. With the option OFF, `Truffle::GUI` builds without them,
 `TextEngine::available()` is false and `TextEngine::create` returns
@@ -180,11 +181,16 @@ missing. With the option OFF, `Truffle::GUI` builds without them,
 |---|---|---|---|
 | FreeType | `VER-2-14-3` / `0a0221a1347e2f1e07c395263540026e9a0aa7c7` | `freetype/freetype`; FreeType License (`docs/FTL.TXT`), selecting FTL rather than the GPL alternative | Private optional GUI glyph rasterizer. Optional compression/image/HarfBuzz adapters are disabled. The license text is installed when enabled; binary redistributors must include the FreeType Team attribution in distribution documentation. |
 | HarfBuzz | `14.5.1` / `eb033319fc2ebe723597fa497d4bb4331bab8b6b` | `harfbuzz/harfbuzz`; Old MIT (`COPYING`) | Private optional GUI shaper using HarfBuzz's FreeType integration. Utilities and subset/raster/vector/GPU extras are disabled. The license text is installed when enabled. |
+| SheenBidi | `v2.9.0` / `83f77108a2873600283f6da4b326a2dca7a3a7a6` | `Tehreer/SheenBidi`; Apache-2.0 plus Unicode data notices | Private Unicode 16 paragraph bidi/script runtime. Only upstream runtime C sources compile, with no utilities or configure downloads. License/attribution travel with the enabled install. |
+| utf8proc | `v2.10.0` / `a1b99daa2a3393884220264c927a48ba1251a9c6` | `JuliaStrings/utf8proc`; MIT plus Unicode data license | Private Unicode 16 UTF-8 validation and extended-grapheme boundaries. The static runtime and notices travel with the enabled install. |
 
 No font is bundled. Applications provide font bytes and are responsible for
-their font licenses. Updating either pin requires reviewing its license and
+their font licenses. Updating a text dependency pin requires reviewing its license and
 build closure, then rerunning enabled/disabled GUI builds, shaping/raster tests,
 the native GUI text pixel proof and installed-consumer checks.
+Unicode updates additionally rerun the matching grapheme and bidi conformance
+fixtures. Unicode helpers stay behind the same text option; a text-disabled
+install has no Unicode-library link dependency.
 
 FreeType's FTL requires binary distributions to acknowledge its use in their
 documentation. Include this statement (the URL is recommended):
