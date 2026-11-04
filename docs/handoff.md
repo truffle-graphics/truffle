@@ -35,6 +35,9 @@ Missing font coverage retains the primary font's glyph 0; configured fallback
 handles stay live until the chain is cleared. All 1,093 matching grapheme
 fixtures and upstream bidi/script tests pass, as do text-enabled/disabled
 Unicode tests and installed consumers. Dependencies remain private and optional.
+The Unicode phase is pushed. Its source-list staging correction keeps editor
+and surface sources in their own following phases rather than referencing
+files absent from the standalone Unicode commit.
 
 The editable object/widget/builder/region paths and Cocoa NSTextInputClient
 adapter are implemented. The native demo checks marked text, candidate
