@@ -17,11 +17,25 @@ struct TextureUpload {
     std::string debugName = "Renderer sampled texture";
 };
 
+// A texture rendered into by one pass and sampled by later ones (for example
+// a 3D view shown in a GUI panel). Formats are the uncompressed colour formats.
+struct RenderTargetDesc {
+    rhi::Extent2D extent{};
+    rhi::TextureFormat format = rhi::TextureFormat::bgra8_unorm;
+    std::string debugName = "Renderer render target";
+};
+
 // Device-local 2D texture sampled by shaders (for example a font atlas or
 // icons), with one mip and layer. Uploads/updates copy bytes unchanged through a
 // staging buffer and wait for the copy; the texture is left shader-readable.
 // Updates follow earlier graphics-queue work in submission order. Views borrow
 // this object's wrappers: keep it alive and unmoved while batches reference them.
+//
+// A render target is created shader-readable too, and must be shader-readable
+// between frames: move it with `to_attachment()` before the pass rendering
+// into it and with `to_shader_read()` before the pass sampling it (see
+// RenderPassNode::transition_before), and order the passes with a dependency.
+// Render targets cannot be updated with bytes.
 class SampledTexture {
 public:
     SampledTexture() = default;
@@ -32,6 +46,13 @@ public:
 
     [[nodiscard]] static base::Result<SampledTexture> upload(rhi::Device& device,
                                                              const TextureUpload& desc);
+    // Waits for an initial layout transition on the graphics queue.
+    [[nodiscard]] static base::Result<SampledTexture> render_target(rhi::Device& device,
+                                                                    const RenderTargetDesc& desc);
+    // Layout transitions for a render target: shader-readable to colour
+    // attachment, and back.
+    [[nodiscard]] rhi::TextureBarrier to_attachment() noexcept;
+    [[nodiscard]] rhi::TextureBarrier to_shader_read() noexcept;
     // Replaces a sub-rectangle; `bytesPerRow` 0 means tightly packed.
     [[nodiscard]] base::Status update(rhi::Device& device, rhi::Origin3D origin,
                                       rhi::Extent2D extent,

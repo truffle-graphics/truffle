@@ -13,7 +13,16 @@ one signed commit per issue, instead of a branch and PR per issue. Recorded in
 `feat/gui-text-native-docking` (#251-#253), following the three batches
 that completed epic #217.
 
-## Latest Delivery: GUI Usability (#251-#253)
+## Latest Delivery: Renderer Render Targets (#255)
+
+Requested by Truffle Studio's 3D viewport (truffle-graphics/truffle-studio#13).
+`SampledTexture::render_target` creates a sampled colour attachment, and
+`to_attachment()`/`to_shader_read()` give the barriers for the pass that renders
+into it and the pass that samples it. Byte updates of render targets are rejected. The GUI primitives
+Metal proof renders into a target and samples it in a later pass of the same
+frame graph across two frames, under Metal validation. Next: Studio consumes it.
+
+## Previous Delivery: GUI Usability (#251-#253)
 
 The owner approved one `feat/gui-text-native-docking` batch branch/PR,
 independently validated signed issue phases with immediate pushes, self-review

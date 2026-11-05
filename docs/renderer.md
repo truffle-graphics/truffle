@@ -204,6 +204,12 @@ policy; vertex formats, atlas contents and shaders remain application-defined.
   program; `TextureBinding` owns the sampler and bind group for one texture and
   returns a `BatchBindGroup`, so 2D consumers such as GUI need no RHI calls.
   Keep bindings alive and unmoved while batches reference them.
+- **Render targets.** `SampledTexture::render_target` creates the same kind of
+  texture as a color attachment that later passes sample, such as a 3D view
+  shown in a GUI panel. It rests shader-readable between frames: add
+  `to_attachment()` before the pass that renders into it and `to_shader_read()`
+  before the pass that samples it (`RenderPassNode::transition_before`), with a
+  graph dependency between them. Render targets reject byte updates (#255).
 - **Streamed geometry.** `renderer::StreamBuffer` (`frame_stream.hpp`) copies
   per-frame bytes (vertices, indices, uniforms) into per-slot upload buffers
   and returns `BufferView`s for `RenderBatch` bindings or index buffers; slots
