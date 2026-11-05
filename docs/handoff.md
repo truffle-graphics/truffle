@@ -9,11 +9,11 @@ the support matrix and Git history.
 
 Maintainer decision: a branch and its PR cover a related batch of issues with
 one signed commit per issue, instead of a branch and PR per issue. Recorded in
-`AGENTS.md` and `CONTRIBUTING.md`. Latest batch: `feat/gui-collections-dock`
-(#234–#235), the last of three batches finishing epic #217 (after
-`feat/gui-layout-drawing` #230–#231 and `feat/gui-authoring` #232–#233).
+`AGENTS.md` and `CONTRIBUTING.md`. Latest batch:
+`feat/gui-text-native-docking` (#251-#253), following the three batches
+that completed epic #217.
 
-## Active Delivery: GUI Usability (#251-#253)
+## Latest Delivery: GUI Usability (#251-#253)
 
 The owner approved one `feat/gui-text-native-docking` batch branch/PR,
 independently validated signed issue phases with immediate pushes, self-review
@@ -35,9 +35,6 @@ Missing font coverage retains the primary font's glyph 0; configured fallback
 handles stay live until the chain is cleared. All 1,093 matching grapheme
 fixtures and upstream bidi/script tests pass, as do text-enabled/disabled
 Unicode tests and installed consumers. Dependencies remain private and optional.
-The Unicode phase is pushed. Its source-list staging correction keeps editor
-and surface sources in their own following phases rather than referencing
-files absent from the standalone Unicode commit.
 
 #252's object/widget/builder/region editing paths and Cocoa NSTextInputClient
 adapter are implemented and validated. Editing covers grapheme-safe mutations,
@@ -46,15 +43,30 @@ multiline input, composition cancellation/commit and callback destruction.
 Programmatic setters are callback-free; fonts are explicitly selected for the
 editor. Native Metal pixels check selection, caret and preedit underline.
 The 148-element native demo checks marked text, candidate placement, one-step
-commit/undo and exact idle/selective work; nine frames total. All 15 selected
-text-enabled GUI tests and the installed consumer pass. Text-disabled editing
-reports unsupported explicitly.
+commit/undo and exact idle/selective work; nine frames total. Text-disabled
+editing reports unsupported explicitly.
 
-#253's portable surfaces and native multi-window example are implemented;
-final integrated native/text-disabled validation and documentation remain before
-its signed phase and batch self-review/merge. No hosted workflows were started.
+#253 adds independent host/input/viewport roots inside one Context, preserving
+live ElementIds and panel values across checked detachment and redocking.
+Hidden host preparation precedes validated transfer/show; failures preserve the
+docked panel. Close, redock, restore, element destruction and Context teardown
+clean up surfaces/windows. Divider hover/drag/reset request axis resize cursors.
+Hosts retire surfaces after in-flight callbacks return. Saved layouts normalize
+detached panels back into docking; OS window geometry is not persisted.
+`gui_dock_window` proves two visible Metal swapchains, live detached rendering,
+resize, clicks and close/redock/restore cleanup. Its host is macOS-only and has
+no IME adapter; `gui_window` supplies the separate native input-method proof.
 
-## Latest Delivery: GUI Collections And Docking (#234-#235)
+Final integrated evidence: 16 text-enabled GUI tests, 13 text-disabled GUI tests,
+installed package consumer build and execution all pass in the warning-as-error
+Debug configurations. The text-enabled set includes both native window demos
+and exact Metal editor pixels. The native docking agent also verified the
+text-disabled native demo. Architecture and whitespace guards pass. No hosted
+workflows were started; this is macOS/Metal evidence, not broader GUI platform
+promotion. The batch is delivered as signed, immediately pushed phases with
+owner-authorized self-review and a normal merge commit.
+
+## Previous Delivery: GUI Collections And Docking (#234-#235)
 
 #234 adds `truffle/gui/collections.hpp`. `VirtualList` owns one focusable
 element whose children are a recycled pool of about `ceil(height/row) + 1`

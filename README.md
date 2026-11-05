@@ -141,6 +141,15 @@ plus grid layout, placement overrides, canvas drawing and overlays (#230-#231),
 a nested C++ builder (#232), immediate-style regions (#233) and virtualized
 lists, table rows and tree flattening (#234) and the optional
 Truffle GUI Dock library (#235).
+The usability follow-up (#251-#253) adds Unicode fallback/bidirectional text,
+editable controls and host-owned detached docking windows. Divider hover and
+capture request the corresponding resize cursor. Native two-window rendering,
+interaction and redocking are demonstrated in
+[`examples/gui_dock_window`](examples/gui_dock_window/README.md).
+Detached panels keep their live elements in an independent `Surface` of the same
+Context. Saved layouts normalize them back into docking; OS window geometry is
+not persisted. Native windows remain a host integration, demonstrated on
+macOS/Metal rather than claimed for every platform.
 The [native widget demo](examples/gui_window/README.md) records idle and
 selective-update evidence. Epic #217 (#221-#235) is delivered; this
 is a usable baseline, not a finished GUI framework.

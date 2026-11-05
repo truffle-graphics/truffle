@@ -224,9 +224,14 @@ counts and native pixel evidence. This completes the interactive GUI baseline,
 not the whole module. Grid layout (#230) and placement overrides, canvas
 drawing, solid primitives and overlays (#231) and the nested C++ builder (#232)
 and immediate-style regions (#233) and virtualized collections (#234) followed;
-the optional docking library (#235) completed #221-#235. Docking has no
-separate OS windows yet. Text editing and broader GUI
-backend evidence are not delivered here. Contexts have stable, non-movable
+the optional docking library (#235) completed #221-#235. Follow-ups #251-#253 add Unicode 16 font fallback,
+bidirectional/script layout and visual grapheme geometry; plain-text editing
+with clipboard, undo/redo and native Cocoa input-method integration; and
+host-owned detached docking windows with divider cursor feedback. Detached
+surfaces preserve elements in the same Context with independent host/input/
+viewport state; saved layouts normalize detached panels back into docking
+rather than persisting OS window geometry. Native execution evidence remains
+macOS/Metal, not a broader GUI backend claim. Contexts have stable, non-movable
 ownership; application text engines/atlases outlive their elements.
 Assets, a general material system and later application work are not started; the owner reviews the
 Renderer architecture later at their discretion, without committing to phases.

@@ -184,11 +184,272 @@ int dock_space() {
     return 0;
 }
 
+struct CursorHost final : Host {
+    Cursor cursor = Cursor::arrow;
+    void set_cursor(Cursor value) override { cursor = value; }
+};
+
+struct WindowHost final : DockWindowHost {
+    enum class Mode { accept, refuse, fail, invalid };
+    Mode mode = Mode::accept;
+    std::unique_ptr<Surface> surface;
+    int opened = 0;
+    int closed = 0;
+    bool shown = false;
+    CursorHost services;
+    base::Result<Surface*> open_window(Context& c, const DockWindowRequest&) override {
+        ++opened;
+        if (mode == Mode::refuse || mode == Mode::fail) {
+            return base::Status::failure(mode == Mode::refuse ? base::StatusCode::unsupported
+                                                               : base::StatusCode::backend_error,
+                                          "test native host refusal/failure");
+        }
+        if (mode == Mode::invalid) { return static_cast<Surface*>(nullptr); }
+        surface = need(Surface::create(c));
+        surface->set_host(&services);
+        need(surface->set_viewport({240, 160}, 2));
+        return surface.get();
+    }
+    void show_window(std::string_view) noexcept override { shown = true; }
+    void close_window(std::string_view) noexcept override { ++closed; surface.reset(); shown = false; }
+};
+
+int native_lifecycle() {
+    // Host outlives Context: Context teardown is itself a native cleanup path.
+    WindowHost windows;
+    CursorHost cursor;
+    Context c;
+    c.set_host(&cursor);
+    need(c.set_viewport({400, 300}));
+    auto dock = need(DockSpace::create(c, c.root()));
+    need(c.set_placement(dock.element(), Rect{0, 0, 400, 300}));
+    const auto a = need(c.create(c.root()));
+    const auto b = need(c.create(c.root()));
+    need(c.set_decoration(a, {.fill = {1, 0, 0, 1}}));
+    int clicks = 0;
+    bool refuse_focus_loss = false;
+    need(c.set_interaction(a, {.focusable = true}));
+    need(c.set_event_handler(a, [&](Context&, RoutedEvent& event) {
+        if (const auto* focus = std::get_if<ElementFocusEvent>(&event.payload);
+            focus != nullptr && !focus->focused && refuse_focus_loss) {
+            event.status = base::Status::failure(base::StatusCode::backend_error,
+                                                  "application refused focus loss");
+        }
+        if (const auto* p = event.input<PointerEvent>(); p && p->action == PointerAction::down) {
+            ++clicks;
+        }
+    }));
+    need(dock.add_panel("a", "Live panel", a));
+    need(dock.add_panel("b", "Other panel", b));
+    need(dock.set_layout(DockNode::split(dock::Axis::horizontal,
+                                        {DockNode::tabs({"a"}), DockNode::tabs({"b"})})));
+    TFL_CHECK(frame(c).status.ok());
+    const auto original = dock.save();
+    const Rect rect{450, 30, 240, 160};
+    TFL_CHECK(dock.detach("a", rect).code == base::StatusCode::unsupported);
+    TFL_CHECK(dock.save() == original && need(c.parent(a)) == dock.element());
+    need(dock.set_window_host(&windows));
+    for (auto mode : {WindowHost::Mode::refuse, WindowHost::Mode::fail, WindowHost::Mode::invalid}) {
+        windows.mode = mode;
+        TFL_CHECK(!dock.detach("a", rect).ok());
+        TFL_CHECK(dock.save() == original && !dock.detached("a"));
+        TFL_CHECK(need(c.parent(a)) == dock.element() && c.alive(a));
+    }
+    windows.mode = WindowHost::Mode::accept;
+    need(c.focus(a));
+    refuse_focus_loss = true;
+    TFL_CHECK(!dock.detach("a", rect).ok());
+    TFL_CHECK(!windows.surface && dock.save() == original &&
+              need(c.parent(a)) == dock.element());
+    refuse_focus_loss = false;
+    need(dock.detach("a", rect));
+    TFL_CHECK(dock.detached("a") && windows.shown && !contains(dock.layout(), "a"));
+    TFL_CHECK(!dock.set_window_host(nullptr).ok());
+    TFL_CHECK(dock.save() == original && need(c.parent(a)) == windows.surface->root());
+    TFL_CHECK(!c.focus(a).ok() && !c.capture_pointer(a).ok());
+    TFL_CHECK(frame(c).status.ok());
+    TFL_CHECK(need(c.bounds(a)) == (Rect{0, 0, 240, 160}));
+    DrawData primary, secondary;
+    assemble(c, {{400, 300}}, primary);
+    windows.surface->assemble({{480, 320}, 2}, secondary);
+    TFL_CHECK(!secondary.vertices.empty());
+    need(windows.surface->handle(FocusEvent{true}));
+    need(windows.surface->focus(a));
+    bool view_update_seen = false;
+    need(c.set_updater(a, [&] {
+        view_update_seen = c.root() == windows.surface->root() && c.focused() == a &&
+                           c.viewport() == (Size{240, 160}) && c.scale() == 2 &&
+                           &c.host() == &windows.services;
+        return base::Status::success();
+    }));
+    TFL_CHECK(frame(c).status.ok() && view_update_seen && c.root() != windows.surface->root());
+    need(windows.surface->handle(PointerEvent{.action = PointerAction::down,
+                                              .position = {20, 20},
+                                              .button = PointerButton::primary}));
+    TFL_CHECK(clicks == 1 && !c.input().pressed(PointerButton::primary));
+    refuse_focus_loss = true;
+    const auto detached_layout = dock.layout();
+    TFL_CHECK(!dock.redock("a").ok());
+    TFL_CHECK(dock.detached("a") && windows.surface && dock.layout() == detached_layout &&
+              need(c.parent(a)) == windows.surface->root());
+    refuse_focus_loss = false;
+    need(windows.surface->set_viewport({280, 190}, 1));
+    TFL_CHECK(frame(c).status.ok() && need(c.bounds(a)) == (Rect{0, 0, 280, 190}));
+    need(dock.redock("a"));
+    TFL_CHECK(!windows.surface && !dock.detached("a") && dock.save() == original);
+    TFL_CHECK(frame(c).status.ok() && need(c.parent(a)) == dock.element());
+    need(press(c, PointerAction::down, {20, 60}));
+    need(press(c, PointerAction::up, {20, 60}));
+    TFL_CHECK(clicks == 2);
+
+    // Restore redocks without recreating the application subtree or state.
+    need(dock.detach("a", rect));
+    const auto saved = dock.save();
+    need(dock.restore(saved));
+    TFL_CHECK(!windows.surface && c.alive(a) && clicks == 2 && dock.save() == saved);
+    need(dock.detach("a", rect));
+    need(dock.shutdown());
+    TFL_CHECK(!windows.surface && !dock.detached("a"));
+    need(dock.detach("a", rect));
+    need(c.destroy(dock.element()));
+    TFL_CHECK(!windows.surface && !c.alive(a) && !dock.alive());
+    return 0;
+}
+
+struct InputHost final : Host {
+    std::optional<Rect> area;
+    void set_text_input_area(std::optional<Rect> value) override { area = value; }
+};
+
+int surface_input_ownership() {
+    InputHost primary, secondary;
+    Context c;
+    c.set_host(&primary);
+    need(c.set_viewport({400, 300}));
+    auto surface = need(Surface::create(c));
+    surface->set_host(&secondary);
+    need(surface->set_viewport({240, 160}, 2));
+    const auto main = need(c.create(c.root()));
+    const auto content = need(c.create(c.root()));
+    need(c.set_interaction(main, {.focusable = true}));
+    need(c.set_interaction(content, {.focusable = true}));
+    need(c.focus(main));
+    need(surface->attach(content));
+    need(surface->focus(content));
+    TFL_CHECK(c.focused() == main && &c.host() == &primary);
+    secondary.area = Rect{1, 2, 3, 4};
+    bool lost = false;
+    need(c.set_event_handler(content, [&](Context& current, RoutedEvent& event) {
+        if (const auto* focus = std::get_if<ElementFocusEvent>(&event.payload);
+            focus != nullptr && !focus->focused) {
+            lost = &current.host() == &secondary;
+            current.host().set_text_input_area(std::nullopt);
+        }
+    }));
+    need(c.set_interaction(content, {.enabled = false, .focusable = true}));
+    TFL_CHECK(lost && !secondary.area && c.focused() == main);
+    need(c.set_interaction(content, {.focusable = true}));
+    need(surface->focus(content));
+    secondary.area = Rect{1, 2, 3, 4};
+    need(c.destroy(content));
+    TFL_CHECK(!secondary.area && c.focused() == main && &c.host() == &primary);
+    TFL_CHECK(frame(c).status.ok());
+    TFL_CHECK(!c.needs_frame(Context::Clock::now()));
+    need(surface->set_viewport({240, 160}, 1));
+    TFL_CHECK(c.needs_frame(Context::Clock::now()));
+    return 0;
+}
+
+struct ManyWindows final : DockWindowHost {
+    std::map<std::string, std::unique_ptr<Surface>, std::less<>> windows;
+    int closed = 0;
+    base::Result<Surface*> open_window(Context& c, const DockWindowRequest& request) override {
+        auto surface = need(Surface::create(c));
+        need(surface->set_viewport({200, 150}));
+        auto* result = surface.get();
+        windows.emplace(request.panel, std::move(surface));
+        return result;
+    }
+    void show_window(std::string_view) noexcept override {}
+    void close_window(std::string_view panel) noexcept override {
+        const auto found = windows.find(panel);
+        if (found != windows.end()) { windows.erase(found); ++closed; }
+    }
+};
+
+int multiple_windows() {
+    ManyWindows host;
+    {
+        Context c;
+        auto dock = need(DockSpace::create(c, c.root()));
+        for (const auto* id : {"a", "b", "c"}) {
+            need(dock.add_panel(id, id, need(c.create(c.root()))));
+        }
+        need(dock.restore(
+            R"((split h 3000 7000 (tabs 0 "a") (split v 6000 4000 (tabs 0 "b") (tabs 0 "c"))))"));
+        need(dock.set_window_host(&host));
+        const auto home = dock.save();
+        const Rect rect{0, 0, 200, 150};
+        for (const auto* id : {"c", "a", "b"}) { need(dock.detach(id, rect)); }
+        TFL_CHECK(dock.layout().empty() && host.windows.size() == 3 && dock.save() == home);
+        need(dock.redock("a"));
+        TFL_CHECK(host.windows.size() == 2 && dock.detached("b") && dock.detached("c"));
+        need(dock.redock("c"));
+        TFL_CHECK(host.windows.size() == 1 && dock.detached("b"));
+        need(dock.redock("b"));
+        TFL_CHECK(host.windows.empty() && dock.save() == home);
+        need(dock.detach("a", rect));
+        need(dock.restore(home));
+        TFL_CHECK(host.windows.empty() && dock.save() == home);
+        // Implicit Context teardown must release all native resources too.
+        need(dock.detach("b", rect));
+    }
+    TFL_CHECK(host.windows.empty() && host.closed == 5);
+    return 0;
+}
+
+int divider_cursors() {
+    CursorHost host;
+    Context c;
+    c.set_host(&host);
+    need(c.set_viewport({400, 300}));
+    auto dock = need(DockSpace::create(c, c.root()));
+    need(c.set_placement(dock.element(), Rect{0, 0, 400, 300}));
+    need(dock.add_panel("a", "A", need(c.create(c.root()))));
+    need(dock.add_panel("b", "B", need(c.create(c.root()))));
+    for (const auto axis : {dock::Axis::horizontal, dock::Axis::vertical}) {
+        need(dock.set_layout(DockNode::split(axis,
+                                           {DockNode::tabs({"a"}), DockNode::tabs({"b"})})));
+        TFL_CHECK(frame(c).status.ok());
+        const auto bounds = need(c.bounds(dock.dividers()[0]));
+        const Point at{bounds.x + 1, bounds.y + 1};
+        const auto wanted = axis == dock::Axis::horizontal ? Cursor::resize_horizontal : Cursor::resize_vertical;
+        need(press(c, PointerAction::move, at));
+        TFL_CHECK(host.cursor == wanted);
+        need(c.handle(PointerEvent{.action = PointerAction::leave}));
+        TFL_CHECK(host.cursor == Cursor::arrow);
+        need(press(c, PointerAction::down, at));
+        need(press(c, PointerAction::move, {500, 500}));
+        TFL_CHECK(host.cursor == wanted);
+        need(press(c, PointerAction::cancel, {500, 500}));
+        TFL_CHECK(host.cursor == Cursor::arrow && !c.captured().valid());
+        need(press(c, PointerAction::down, at));
+        TFL_CHECK(host.cursor == wanted);
+        need(c.handle(FocusEvent{false}));
+        TFL_CHECK(host.cursor == Cursor::arrow && !c.captured().valid());
+        need(c.handle(FocusEvent{true}));
+        need(press(c, PointerAction::move, {20, 60}));
+        TFL_CHECK(host.cursor == Cursor::arrow);
+    }
+    return 0;
+}
+
 } // namespace
 
 int main() {
     try {
-        return layout_model() + dock_space();
+        return layout_model() + dock_space() + native_lifecycle() + multiple_windows() +
+               surface_input_ownership() + divider_cursors();
     } catch (const std::exception& error) {
         std::fprintf(stderr, "%s\n", error.what());
         return 1;
