@@ -354,6 +354,60 @@ int run() {
         return x < 12 ? Pixel{255, 255, 255, 255} : Pixel{0, 255, 0, 255};
     });
     render_to_texture(device);
+
+    // Render target (#255): one pass clears it, the next samples it as a texture.
+    if (renderer::SampledTexture::render_target(device, {.extent = {0, 4}}).ok()) {
+        throw std::runtime_error("zero-extent render target was accepted");
+    }
+    auto layer = tests::require(renderer::SampledTexture::render_target(device, {
+        .extent = {2, 2}, .format = rhi::TextureFormat::rgba8_unorm,
+    }));
+    if (layer.update(device, {}, {1, 1}, green).ok()) {
+        throw std::runtime_error("render target accepted a byte update");
+    }
+    auto layerBinding = tests::require(renderer::TextureBinding::create(device, bindings, layer));
+    for (const auto& fill : {std::array<float, 4>{1, 1, 0, 1}, std::array<float, 4>{0, 1, 1, 1}}) {
+        const auto slot = tests::require(pacer.begin_frame());
+        tests::require(stream.begin_frame(slot));
+        const auto vertices = quad(-1, 1, 1, 1);
+        renderer::RenderBatch batch;
+        batch.material = 1;
+        batch.instanceCount = 1;
+        batch.kind = renderer::DrawKind::Indexed;
+        batch.indexFormat = rhi::IndexFormat::uint16;
+        batch.vertexCount = static_cast<std::uint32_t>(indices.size());
+        batch.vertexElementCount = 4;
+        batch.bindings[0] = tests::require(stream.write(std::as_bytes(std::span{vertices})));
+        batch.indexBuffer = tests::require(stream.write(std::as_bytes(std::span{indices}), 4));
+        batch.bindGroups = {layerBinding.batch_group()};
+        renderer::FrameGraph graph;
+        auto writer = std::make_unique<renderer::RenderPassNode>(
+            rhi::RenderPassDesc{
+                .extent = {2, 2},
+                .colorAttachments = {{.texture = &layer.texture(),
+                                      .clear = {fill[0], fill[1], fill[2], fill[3]}}},
+            },
+            std::vector<renderer::RenderBatch>{});
+        writer->transition_before(layer.to_attachment());
+        auto reader = std::make_unique<renderer::RenderPassNode>(
+            rhi::RenderPassDesc{
+                .extent = {16, 16},
+                .colorAttachments = {{.texture = &color, .clear = {0, 0, 0, 1}}},
+            },
+            std::vector<renderer::RenderBatch>{std::move(batch)});
+        reader->transition_before(layer.to_shader_read());
+        const auto first = graph.add_node(std::move(writer));
+        const auto second = graph.add_node(std::move(reader));
+        tests::require(graph.add_dependency(first, second));
+        const auto status = renderer.render(graph, nullptr, pacer.signal());
+        pacer.end_frame(renderer.last_frame_stats().submitted);
+        tests::require(status);
+        tests::require(pacer.wait_idle());
+        const Pixel want{static_cast<int>(fill[0] * 255), static_cast<int>(fill[1] * 255),
+                         static_cast<int>(fill[2] * 255), 255};
+        check_pixels(device, color, "render target sampled by a later pass",
+                     [want](auto, auto) { return want; });
+    }
     return 0;
 }
 

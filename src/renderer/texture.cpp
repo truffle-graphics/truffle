@@ -157,6 +157,96 @@ base::Result<SampledTexture> SampledTexture::upload(rhi::Device& device,
     return result;
 }
 
+base::Result<SampledTexture> SampledTexture::render_target(rhi::Device& device,
+                                                           const RenderTargetDesc& desc) {
+    if (texel_size(desc.format) == 0 || desc.extent.width == 0 || desc.extent.height == 0) {
+        return invalid("SampledTexture: nonzero extent and uncompressed color format required");
+    }
+    auto texture = device.create_texture({
+        .extent = {desc.extent.width, desc.extent.height, 1}, .format = desc.format,
+        .usage = rhi::TextureUsage::sampled | rhi::TextureUsage::color_attachment |
+                 rhi::TextureUsage::copy_source,
+        .debugName = desc.debugName,
+    });
+    if (!texture.ok()) {
+        return texture.status();
+    }
+    SampledTexture result;
+    result.texture_ = std::move(texture).value();
+    auto pool = device.create_command_pool(rhi::QueueKind::graphics);
+    if (!pool.ok()) {
+        return pool.status();
+    }
+    auto listResult = pool.value().allocate();
+    if (!listResult.ok()) {
+        return listResult.status();
+    }
+    auto list = std::move(listResult).value();
+    if (auto status = list.begin(); !status.ok()) {
+        return status;
+    }
+    rhi::BarrierBatch initial;
+    initial.textures.push_back({
+        .texture = &result.texture_,
+        .oldLayout = rhi::TextureLayout::undefined,
+        .newLayout = rhi::TextureLayout::shader_read_only,
+        .sourceStages = rhi::PipelineStage::top,
+        .destinationStages = rhi::PipelineStage::fragment_shader,
+        .destinationAccess = rhi::Access::shader_read,
+    });
+    if (auto status = list.barrier(initial); !status.ok()) {
+        return status;
+    }
+    if (auto status = list.end(); !status.ok()) {
+        return status;
+    }
+    auto fence = device.create_fence();
+    if (!fence.ok()) {
+        return fence.status();
+    }
+    auto queue = device.queue(rhi::QueueKind::graphics);
+    if (!queue.ok()) {
+        return queue.status();
+    }
+    const std::array<rhi::CommandList*, 1> lists{&list};
+    if (auto status = queue.value().submit(lists, &fence.value(), 1); !status.ok()) {
+        return status;
+    }
+    if (auto status = fence.value().wait(1, std::chrono::seconds(10)); !status.ok()) {
+        return status;
+    }
+    auto view = device.create_texture_view(result.texture_, {.format = desc.format});
+    if (!view.ok()) {
+        return view.status();
+    }
+    result.view_ = std::move(view).value();
+    return result;
+}
+
+rhi::TextureBarrier SampledTexture::to_attachment() noexcept {
+    return {
+        .texture = &texture_,
+        .oldLayout = rhi::TextureLayout::shader_read_only,
+        .newLayout = rhi::TextureLayout::color_attachment,
+        .sourceStages = rhi::PipelineStage::fragment_shader,
+        .destinationStages = rhi::PipelineStage::color_attachment_output,
+        .sourceAccess = rhi::Access::shader_read,
+        .destinationAccess = rhi::Access::color_attachment_write,
+    };
+}
+
+rhi::TextureBarrier SampledTexture::to_shader_read() noexcept {
+    return {
+        .texture = &texture_,
+        .oldLayout = rhi::TextureLayout::color_attachment,
+        .newLayout = rhi::TextureLayout::shader_read_only,
+        .sourceStages = rhi::PipelineStage::color_attachment_output,
+        .destinationStages = rhi::PipelineStage::fragment_shader,
+        .sourceAccess = rhi::Access::color_attachment_write,
+        .destinationAccess = rhi::Access::shader_read,
+    };
+}
+
 base::Status SampledTexture::update(rhi::Device& device, rhi::Origin3D origin,
                                     rhi::Extent2D extent,
                                     std::span<const std::byte> bytes,
@@ -164,6 +254,10 @@ base::Status SampledTexture::update(rhi::Device& device, rhi::Origin3D origin,
     if (!texture_.valid()) {
         return base::Status::failure(base::StatusCode::invalid_state,
                                      "SampledTexture: not uploaded");
+    }
+    if (!rhi::has_usage(texture_.desc().usage, rhi::TextureUsage::copy_destination)) {
+        return base::Status::failure(base::StatusCode::invalid_state,
+                                     "SampledTexture: render targets cannot be updated");
     }
     return copy_into(device, texture_, true, origin, extent, bytes, bytesPerRow);
 }
