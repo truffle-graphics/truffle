@@ -1,6 +1,6 @@
 # The GUI program ships as prepared MSL, so no shader compiler is required.
 if(APPLE AND TFL_BUILD_BACKEND_METAL AND TFL_GUI_ENABLE_TEXT)
-    add_executable(truffle_gui_window main.mm)
+    add_executable(truffle_gui_window main.mm input_view.mm)
     target_link_libraries(truffle_gui_window PRIVATE truffle_gui truffle_backend_metal
         "-framework AppKit" "-framework QuartzCore" "-framework CoreText")
     target_compile_options(truffle_gui_window PRIVATE

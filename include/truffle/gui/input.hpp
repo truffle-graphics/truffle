@@ -78,8 +78,17 @@ struct KeyEvent {
 };
 
 // Committed UTF-8 text. One key may produce no text or several characters.
+struct TextRange {
+    std::size_t begin = 0;
+    std::size_t end = 0;
+    friend bool operator==(const TextRange&, const TextRange&) = default;
+};
+
 struct TextEvent {
     std::string text;
+    // Optional replacement range in the currently displayed UTF-8 text
+    // (including preedit); otherwise replaces the current selection/preedit.
+    std::optional<TextRange> replacement = std::nullopt;
 };
 
 // Text an input method is still composing. The selection is a byte range in
@@ -89,6 +98,7 @@ struct CompositionEvent {
     std::string preedit;
     std::size_t selection_begin = 0;
     std::size_t selection_end = 0;
+    std::optional<TextRange> replacement = std::nullopt;
 };
 
 // The host window gained or lost keyboard focus. Losing it releases pressed

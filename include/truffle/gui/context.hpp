@@ -219,7 +219,7 @@ public:
     [[nodiscard]] Point child_offset(ElementId element) const noexcept;
 
     enum class Role : std::uint8_t { generic, panel, label, image, button, checkbox,
-                                    slider, scroll_area };
+                                    slider, scroll_area, text_edit };
     struct Semantics {
         Role role = Role::generic;
         std::string label;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "truffle/gui/context.hpp"
+#include "truffle/gui/text_edit.hpp"
 
 #include <functional>
 #include <memory>
@@ -9,7 +10,7 @@
 namespace truffle::gui {
 
 enum class WidgetKind : std::uint8_t { panel, label, image, button, checkbox, slider,
-                                       scroll_area };
+                                       scroll_area, text_edit };
 
 struct WidgetDesc {
     WidgetKind kind = WidgetKind::panel;
@@ -27,6 +28,9 @@ struct WidgetDesc {
     std::function<void()> activated;
     std::function<void(bool)> toggled;
     std::function<void(float)> value_changed;
+    bool multiline = false;
+    bool read_only = false;
+    std::function<void(const std::string&)> text_changed;
 };
 
 // A checked, non-owning object-API reference. Context owns the element tree;
@@ -42,6 +46,8 @@ public:
     [[nodiscard]] ElementId content() const noexcept;
     [[nodiscard]] bool alive() const noexcept;
     [[nodiscard]] base::Status set_text(std::string text);
+    [[nodiscard]] base::Result<std::string> text() const;
+    [[nodiscard]] base::Result<TextEdit> editor() const;
     [[nodiscard]] base::Status set_checked(bool checked);
     [[nodiscard]] base::Result<bool> checked() const;
     [[nodiscard]] base::Status set_value(float value);

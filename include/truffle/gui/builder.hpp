@@ -61,6 +61,8 @@ namespace ui {
 [[nodiscard]] BuildNode slider(float min, float max, float value,
                                std::function<void(float)> value_changed = {});
 [[nodiscard]] BuildNode image(TextureId texture, Size size);
+[[nodiscard]] BuildNode text_edit(std::string text, bool multiline = false,
+                                  std::function<void(const std::string&)> changed = {});
 
 } // namespace ui
 

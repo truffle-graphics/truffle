@@ -39,14 +39,20 @@ The Unicode phase is pushed. Its source-list staging correction keeps editor
 and surface sources in their own following phases rather than referencing
 files absent from the standalone Unicode commit.
 
-The editable object/widget/builder/region paths and Cocoa NSTextInputClient
-adapter are implemented. The native demo checks marked text, candidate
-placement, commit and undo; original idle/selective recomputation checks still
-pass. All 15 currently selected text-enabled GUI tests pass, including native
-Metal drawing. The text-disabled editor API reports unsupported explicitly.
-Remaining before delivery: complete the Unicode and native docking integration,
-check installed consumers, finish documentation, review the complete diff and
-deliver each signed issue phase. No hosted workflows were started.
+#252's object/widget/builder/region editing paths and Cocoa NSTextInputClient
+adapter are implemented and validated. Editing covers grapheme-safe mutations,
+visual bidi navigation/selection, clipboard, 128 undo/redo steps, read-only and
+multiline input, composition cancellation/commit and callback destruction.
+Programmatic setters are callback-free; fonts are explicitly selected for the
+editor. Native Metal pixels check selection, caret and preedit underline.
+The 148-element native demo checks marked text, candidate placement, one-step
+commit/undo and exact idle/selective work; nine frames total. All 15 selected
+text-enabled GUI tests and the installed consumer pass. Text-disabled editing
+reports unsupported explicitly.
+
+#253's portable surfaces and native multi-window example are implemented;
+final integrated native/text-disabled validation and documentation remain before
+its signed phase and batch self-review/merge. No hosted workflows were started.
 
 ## Latest Delivery: GUI Collections And Docking (#234-#235)
 

@@ -764,6 +764,13 @@ target_compile_definitions(truffle_gui_text_tests PRIVATE
 truffle_target_warnings(truffle_gui_text_tests)
 add_test(NAME truffle_gui_text_tests COMMAND truffle_gui_text_tests)
 
+add_executable(truffle_gui_text_edit_tests gui_text_edit_tests.cpp)
+target_link_libraries(truffle_gui_text_edit_tests PRIVATE truffle_gui truffle_backend_null)
+target_compile_definitions(truffle_gui_text_edit_tests PRIVATE
+    TFL_TEST_GUI_TEXT=$<BOOL:${TFL_GUI_ENABLE_TEXT}>)
+truffle_target_warnings(truffle_gui_text_edit_tests)
+add_test(NAME truffle_gui_text_edit_tests COMMAND truffle_gui_text_edit_tests)
+
 # The GUI program ships as prepared MSL, so no shader compiler is required.
 if(APPLE AND TFL_BUILD_BACKEND_METAL)
     add_executable(truffle_gui_drawing_metal_tests gui_drawing_metal_tests.cpp)

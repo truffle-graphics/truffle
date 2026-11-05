@@ -54,6 +54,7 @@ public:
     // widget follows `checked`.
     bool checkbox(std::string_view id, std::string_view text, bool& checked);
     bool slider(std::string_view id, float& value, float min, float max, float step = 0.01F);
+    bool text_edit(std::string_view id, std::string& value, bool multiline = false);
     void row(std::string_view id, float spacing, const std::function<void()>& body);
     void column(std::string_view id, float spacing, const std::function<void()>& body);
 

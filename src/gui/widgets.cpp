@@ -102,6 +102,7 @@ struct Widget::State {
     ElementId content;
     ElementId mark;
     WidgetDesc desc;
+    TextEdit editor;
     bool hover = false;
     bool focused = false;
     bool key_pressed = false;
@@ -303,7 +304,7 @@ struct Widget::State {
 };
 
 base::Result<Widget> Widget::create(Context& context, ElementId parent, WidgetDesc desc) {
-    if (desc.kind > WidgetKind::scroll_area || !context.alive(parent)) {
+    if (desc.kind > WidgetKind::text_edit || !context.alive(parent)) {
         return invalid_widget();
     }
     if (desc.kind == WidgetKind::slider &&
@@ -325,6 +326,20 @@ base::Result<Widget> Widget::create(Context& context, ElementId parent, WidgetDe
     }
     auto status = defaults(context);
     if (!status.ok()) { return status; }
+    if (desc.kind == WidgetKind::text_edit) {
+        auto editor = TextEdit::create(context, parent, {
+            .text = desc.text, .text_engine = desc.text_engine, .font = desc.font,
+            .atlas = desc.atlas, .multiline = desc.multiline, .read_only = desc.read_only,
+            .changed = desc.text_changed, .submitted = desc.activated});
+        if (!editor.ok()) { return editor.status(); }
+        auto state = std::make_shared<State>();
+        state->context = &context;
+        state->editor = std::move(editor).value();
+        state->element = state->editor.element();
+        state->content = state->element;
+        state->desc = std::move(desc);
+        return Widget{std::move(state)};
+    }
     const auto created = context.create(parent);
     if (!created.ok()) { return created.status(); }
     auto state = std::make_shared<State>();
@@ -451,6 +466,9 @@ bool Widget::alive() const noexcept { return state_ && state_->live(); }
 
 base::Status Widget::set_text(std::string text) {
     if (!alive()) { return invalid_widget(); }
+    if (state_->desc.kind == WidgetKind::text_edit) {
+        return state_->editor.set_text(std::move(text));
+    }
     if (state_->desc.text == text) { return base::Status::success(); }
     const auto kind = state_->desc.kind;
     if (kind == WidgetKind::label || kind == WidgetKind::button || kind == WidgetKind::checkbox) {
@@ -467,6 +485,15 @@ base::Status Widget::set_text(std::string text) {
     state_->desc.text = std::move(text);
     return state_->context->set_semantics(element(), {
         static_cast<Context::Role>(static_cast<unsigned>(kind) + 1), state_->desc.text});
+}
+base::Result<std::string> Widget::text() const {
+    if (!alive()) { return invalid_widget(); }
+    return state_->desc.kind == WidgetKind::text_edit
+        ? state_->editor.text() : base::Result<std::string>{state_->desc.text};
+}
+base::Result<TextEdit> Widget::editor() const {
+    if (!alive() || state_->desc.kind != WidgetKind::text_edit) { return invalid_widget(); }
+    return state_->editor;
 }
 base::Status Widget::set_checked(bool checked) {
     return state_ ? state_->check(checked) : invalid_widget();

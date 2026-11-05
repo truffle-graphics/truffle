@@ -3,6 +3,7 @@
 #import <CoreText/CoreText.h>
 
 #include "demo.hpp"
+#include "input_view.hpp"
 
 #include "truffle/gui/context.hpp"
 #include "truffle/gui/painter.hpp"
@@ -21,6 +22,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
 // A host-owned macOS window that draws a Truffle GUI through the Renderer and
 // redraws only when the GUI needs a frame. The host owns the window, the event
@@ -67,6 +69,9 @@ gui::Key key_of(unsigned short code) {
     case 0: return gui::Key::a;
     case 8: return gui::Key::c;
     case 9: return gui::Key::v;
+    case 6: return gui::Key::z;
+    case 7: return gui::Key::x;
+    case 16: return gui::Key::y;
     case 36: return gui::Key::enter;
     case 48: return gui::Key::tab;
     case 49: return gui::Key::space;
@@ -100,10 +105,9 @@ gui::PointerButton button_of(NSEvent* event) {
     }
 }
 
-// Cocoa implementation of the GUI's platform services. Input-method placement
-// needs an NSTextInputClient view, which arrives with text editing.
 class CocoaHost final : public gui::Host {
 public:
+    explicit CocoaHost(TFLInputView* view) : view_(view) {}
     void set_cursor(gui::Cursor cursor) override {
         if (cursor == gui::Cursor::hidden) {
             if (!hidden_) {
@@ -141,15 +145,24 @@ public:
         [NSPasteboard.generalPasteboard setString:value forType:NSPasteboardTypeString];
     }
 
+    void set_text_input_area(std::optional<gui::Rect> area) override {
+        view_->candidateArea = area;
+        [view_.inputContext invalidateCharacterCoordinates];
+    }
+    void set_text_input_state(std::optional<gui::TextInputState> state) override {
+        const bool ended = view_->textState &&
+            (!state || (view_->textState->marked && !state->marked));
+        view_->textState = std::move(state);
+        if (ended) { [view_.inputContext discardMarkedText]; }
+    }
+
 private:
+    TFLInputView* view_;
     bool hidden_ = false;
 };
 
-gui::FontId load_host_font(gui::TextEngine& engine) {
-    CTFontRef font = CTFontCreateUIFontForLanguage(kCTFontUIFontSystem, 14, nullptr);
-    if (font == nullptr) { throw std::runtime_error("could not resolve the host system font"); }
+gui::FontId load_host_face(gui::TextEngine& engine, CTFontRef font) {
     CFTypeRef attribute = CTFontCopyAttribute(font, kCTFontURLAttribute);
-    CFRelease(font);
     if (attribute == nullptr || CFGetTypeID(attribute) != CFURLGetTypeID()) {
         if (attribute != nullptr) { CFRelease(attribute); }
         throw std::runtime_error("the host system font has no loadable font URL");
@@ -165,9 +178,39 @@ gui::FontId load_host_font(gui::TextEngine& engine) {
         {static_cast<const std::byte*>(bytes.bytes), bytes.length}, 14));
 }
 
+gui::FontId load_host_font(gui::TextEngine& engine) {
+    CTFontRef system = CTFontCreateUIFontForLanguage(kCTFontUIFontSystem, 14, nullptr);
+    if (system == nullptr) { throw std::runtime_error("could not resolve the host system font"); }
+    // File discovery is a host policy. The portable engine receives only
+    // explicitly loaded font bytes and an ordered chain.
+    const auto primary = load_host_face(engine, system);
+    std::vector<gui::FontId> fallbacks;
+    for (NSString* sample in @[@"\u05E9\u05DC\u05D5\u05DD", @"\u0645\u0631\u062D\u0628\u0627"]) {
+        CTFontRef face = CTFontCreateForString(system, (__bridge CFStringRef)sample,
+                                              CFRangeMake(0, sample.length));
+        if (face == nullptr) {
+            CFRelease(system);
+            throw std::runtime_error("could not resolve a host fallback font");
+        }
+        fallbacks.push_back(load_host_face(engine, face));
+        CFRelease(face);
+    }
+    CFRelease(system);
+    require(engine.set_fallbacks(primary, fallbacks));
+    const auto proof = require(engine.shape(
+        primary, "Latin \u05E9\u05DC\u05D5\u05DD \u0645\u0631\u062D\u0628\u0627 123"));
+    if (std::ranges::any_of(proof.glyphs, [](const gui::TextGlyph& glyph) {
+            return glyph.id == 0;
+        })) {
+        throw std::runtime_error("host font chain did not cover the multilingual demo");
+    }
+    return primary;
+}
+
 struct Window {
     NSWindow* window;
     CAMetalLayer* layer;
+    TFLInputView* view;
     bool focused = false;
 
     explicit Window(bool smoke) {
@@ -187,22 +230,29 @@ struct Window {
         }
         window.releasedWhenClosed = NO;
         window.acceptsMouseMovedEvents = YES;
-        window.title = @"Truffle GUI - core widgets, Escape to close";
+        window.title = @"Truffle GUI - widgets and text editing";
+        view = [[TFLInputView alloc] initWithFrame:window.contentView.bounds];
+        window.contentView = view;
         layer = [CAMetalLayer layer];
         window.contentView.wantsLayer = YES;
         window.contentView.layer = layer;
         [window center];
         [window makeKeyAndOrderFront:nil];
+        [window makeFirstResponder:view];
         [NSApp finishLaunching];
     }
 
-    ~Window() { [window close]; }
+    ~Window() {
+        view->forward = {};
+        view->queryArea = {};
+        view->textState.reset();
+        [window close];
+    }
 
     gui::Point position(NSEvent* event) const {
         const NSPoint point = [window.contentView convertPoint:event.locationInWindow
                                                       fromView:nil];
-        return {static_cast<float>(point.x),
-                static_cast<float>(window.contentView.bounds.size.height - point.y)};
+        return {static_cast<float>(point.x), static_cast<float>(point.y)};
     }
 
     // Waits for events until `until`, then drains the queue into `forward`.
@@ -215,7 +265,7 @@ struct Window {
             if (event == nil) {
                 break;
             }
-            if (event.type == NSEventTypeKeyDown && event.keyCode == 53) {
+            if (event.type == NSEventTypeKeyDown && event.keyCode == 53 && !view->textState) {
                 [window close];
                 return;
             }
@@ -267,18 +317,11 @@ struct Window {
         case NSEventTypeKeyDown:
         case NSEventTypeKeyUp: {
             const bool down = event.type == NSEventTypeKeyDown;
-            forward(gui::KeyEvent{.key = key_of(event.keyCode), .down = down,
+            if (!down || ![view hasMarkedText] ||
+                gui::has(modifiers, gui::Modifiers::super)) {
+                forward(gui::KeyEvent{.key = key_of(event.keyCode), .down = down,
                                   .repeat = down && event.ARepeat == YES,
                                   .modifiers = modifiers, .native = event.keyCode});
-            NSString* characters = event.characters;
-            if (down && characters.length > 0 &&
-                !gui::has(modifiers, gui::Modifiers::super) &&
-                !gui::has(modifiers, gui::Modifiers::control)) {
-                const unichar first = [characters characterAtIndex:0];
-                // Skips control characters and AppKit's function-key range.
-                if (first >= 0x20 && first != 0x7F && (first < 0xF700 || first > 0xF8FF)) {
-                    forward(gui::TextEvent{characters.UTF8String});
-                }
             }
             break;
         }
@@ -314,7 +357,7 @@ struct Window {
 
 int run(bool smoke) {
     Window host_window(smoke);
-    CocoaHost host;
+    CocoaHost host(host_window.view);
     auto instance = require(rhi::create_metal_instance());
     auto adapter = require(instance.adapter(0));
     auto device = require(adapter.request_device(
@@ -350,6 +393,13 @@ int run(bool smoke) {
     const auto image_id = require(painter.add_texture(image));
     examples::GuiDemo app(text, font, atlas, image_id);
     app.context.set_host(&host);
+    host_window.view->forward = [&](const gui::InputEvent& event) {
+        if (!smoke) { app.handle(event); }
+    };
+    host_window.view->queryArea = [&]() -> std::optional<gui::Rect> {
+        if (app.context.focused() != app.editor.element()) { return std::nullopt; }
+        return require(require(app.editor.editor()).caret_rect());
+    };
 
     std::uint32_t frames = 0;
     gui::FrameStats last_work;
@@ -511,6 +561,42 @@ int run(bool smoke) {
     expect(8, "window resize");
     settle(10);
     expect(8, "idle after changes");
+
+    // Exercise the actual NSTextInputClient bridge, not just GUI TextEvents.
+    host_window.view->forward = [&](const gui::InputEvent& event) { app.handle(event); };
+    auto editor = require(app.editor.editor());
+    require(app.context.handle(gui::FocusEvent{true}));
+    require(app.context.focus(editor.element()));
+    require(app.editor.set_text("AB"));
+    require(editor.select({1, 2}));
+    [host_window.view setMarkedText:@"A" selectedRange:NSMakeRange(1, 0)
+                  replacementRange:NSMakeRange(NSNotFound, 0)];
+    if (![host_window.view hasMarkedText] || require(app.editor.text()) != "AB") {
+        throw std::runtime_error("native preedit changed the committed document");
+    }
+    NSRange actual;
+    const auto candidate = [host_window.view firstRectForCharacterRange:NSMakeRange(1, 0)
+                                                           actualRange:&actual];
+    if (candidate.size.height <= 0) {
+        throw std::runtime_error("native input-method candidate area was not published");
+    }
+    [host_window.view insertText:@"BA" replacementRange:NSMakeRange(NSNotFound, 0)];
+    if ([host_window.view hasMarkedText] || require(app.editor.text()) != "ABA") {
+        throw std::runtime_error("native input-method commit failed");
+    }
+    require(editor.undo());
+    if (require(app.editor.text()) != "AB") {
+        throw std::runtime_error("native input-method commit was not one undo step");
+    }
+    require(app.context.focus({}));
+    host_window.view->forward = {};
+    draw();
+    const auto edited_idle = app.context.prepare_frame(Clock::now());
+    require(edited_idle.status);
+    if (edited_idle.layout.measured != 0 || edited_idle.shapes.regenerated != 0) {
+        throw std::runtime_error("editable control rebuilt while idle");
+    }
+    std::cout << "native text editing: preedit, candidate placement, commit and undo passed\n";
     require(pacer.wait_idle());
     std::cout << "Truffle GUI widget demo: elements=" << app.context.element_count()
               << " frames=" << frames << " rows=" << app.rows.size() << '\n';
