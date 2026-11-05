@@ -157,6 +157,16 @@ BuildNode image(TextureId texture, Size size) {
     return node;
 }
 
+BuildNode text_edit(std::string text, bool multiline,
+                    std::function<void(const std::string&)> changed) {
+    BuildNode node;
+    node.desc.kind = WidgetKind::text_edit;
+    node.desc.text = std::move(text);
+    node.desc.multiline = multiline;
+    node.desc.text_changed = std::move(changed);
+    return node;
+}
+
 } // namespace ui
 
 base::Result<Widget> build(Context& context, ElementId parent, const BuildNode& node,

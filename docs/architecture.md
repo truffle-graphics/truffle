@@ -34,8 +34,9 @@ unrelated modules. Truffle is not an application framework.
 11. `truffle_gui` provides a persistent element tree, incremental layout and
     shapes, routed input, themes, text and core widgets. It uses Renderer, not
     EnCom, and keeps GUI state separate from application state. Native windows,
-    font-file selection and the event loop remain host-owned. GUI Dock remains
-    an optional planned higher layer.
+    font-file selection and the event loop remain host-owned.
+12. `truffle_gui_dock` is the optional higher layer for tabbed/split docking,
+    saved layouts and host-owned detached windows; GUI does not depend on it.
 
 Developer tools (`truffle-shaderc`, `truffle-rhi-doctor`) are tools, not
 modules. Shader tools use the Shader module; the doctor uses RHI. Neither tool
@@ -49,7 +50,7 @@ planned, not implemented.
 ```text
 (Engine) --> Renderer
 (Engine) -.-> EnCom, GUI, (Assets)
-(GUIDock) --> GUI
+GUIDock ---> GUI
 GUI -------> Renderer          (no EnCom dependency; own lightweight hierarchy)
 EnComRenderer --> EnCom, Renderer
 Renderer --> Shader --> RHI --> Base
@@ -352,6 +353,35 @@ plus explicitly enabled private Apple APIs.
 
 See [the shader package contract](rhi1/shader-package.md).
 
+## GUI Usability And Native Surfaces (#251-#253)
+
+GUI owns Unicode text shaping, font fallback and plain-text editing above
+Renderer. FreeType/HarfBuzz and Unicode 16 SheenBidi/utf8proc remain private,
+pinned dependencies behind the text option; hosts select/load font files.
+Visual glyphs, source-byte clusters and grapheme carets remain distinct.
+Editing retains selection, history and preedit in the GUI, while application
+document values cross explicit setters and user-change callbacks. Fonts for an
+editor are explicitly selected; outer element styling stays available through
+the normal property APIs.
+
+Native IME/clipboard/cursor services remain host-owned. Cocoa's
+`NSTextInputClient` and UTF-16 conversion live in the example, not the library.
+The steady caret and retained layouts do not create a perpetual update loop.
+Wrapping, rich text and an accessibility bridge are not part of this batch.
+
+`Surface` gives a host another root with its own viewport, input and Host
+services in the same stable Context; it does not create an OS window.
+Layout and updater dispatch select the owning surface. GUI Dock's window host
+prepares a hidden surface, then the dock validates/transfers live panel elements
+before showing it. Failure keeps the original docking model. Close/redock,
+restore and cleanup return or dispose of the surface safely without copying
+application controls. Hosts must keep their service objects alive through
+Context cleanup and retire surfaces after in-flight callbacks have returned.
+Saved layouts include detached panels in a normalized docking layout; they do
+not serialize native-window geometry. The native two-window proof is
+[`examples/gui_dock_window`](../examples/gui_dock_window/README.md), on
+macOS/Metal only.
+
 ## Planned Modules
 
 These are agreed directions, not implementations. Details stay undecided until
@@ -360,12 +390,6 @@ their own design issues.
 - **Engine**: a multipurpose graphics engine above Renderer, optionally using
   EnCom, GUI, and Assets. It supports a host-owned application loop; runner
   conveniences, use-case profiles, and scheduling are undecided.
-- **GUI**: a GUI library above Renderer that does not depend on EnCom and keeps
-  its own lightweight hierarchy. [ADR 0013](adr/0013-truffle-gui-architecture.md)
-  (#217) records its design: a persistent element tree whose style, layout and
-  shapes are recomputed only where something changes, with an object API,
-  optional builder and immediate-style regions. The optional Truffle GUI Dock
-  library adds docking above it.
 - **Assets**: file loading and import, separate from GPU resources, which the
   Renderer owns. An asset-to-resource bridge is optional. The module's name,
   architecture, and the future of the provisional `truffle_assets` and

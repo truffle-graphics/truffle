@@ -22,7 +22,15 @@ DIRECT_DEPENDENCIES = {
     "truffle_renderer": {"truffle_shader", "truffle_rhi"},
     "truffle_asset_render": {"truffle_assets", "truffle_renderer"},
     "truffle_encom_renderer": {"truffle_encom", "truffle_renderer"},
-    "truffle_gui": {"truffle_renderer"},
+    "truffle_gui": {
+        "truffle_renderer",
+        "truffle_gui_sheenbidi",
+        "truffle_gui_utf8proc",
+    },
+    # Private pinned Unicode runtimes. Only GUI text may consume them; neither
+    # dependency may acquire a link back into Truffle modules.
+    "truffle_gui_sheenbidi": set(),
+    "truffle_gui_utf8proc": set(),
     "truffle_gui_dock": {"truffle_gui"},
     "truffle_diagnostics": {
         "truffle_asset_render",

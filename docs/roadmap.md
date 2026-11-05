@@ -69,9 +69,14 @@ themes and seven core widgets. The native demo records exact idle and
 dependent-update counts on 145 elements; it does not claim virtualization.
 Grid (#230), placement overrides/custom drawing/overlays (#231), the nested
 C++ builder (#232), immediate-style regions (#233) and virtualized collections
-(#234) followed. Optional docking (#235) completed epic #217; separate OS dock windows are not
-implemented. Text editing and broader GUI backend execution are not part
-of the delivered baseline. No asset
+(#234) followed. Optional docking (#235) completed epic #217. The accepted
+GUI usability follow-up batch completes Unicode fallback/bidirectional layout
+(#251), editable text with input methods (#252), and detached native dock windows
+with divider cursor feedback (#253). The widget/input-method demo now has 148
+elements and 64 persistent virtualized rows; the docking demo proves two native
+windows on macOS/Metal. Saved floating-window geometry, rich text, automatic
+text wrapping and broader GUI backend execution remain outside this delivery.
+No asset
 system, general materials, or later application phases are planned by this
 work. Delivery remains signed issue-scoped commits, immediate pushes and
 owner-reviewed PRs.

@@ -8,13 +8,14 @@
 namespace truffle::gui {
 namespace {
 
-enum class Kind : std::uint8_t { label, button, checkbox, slider, row, column };
+enum class Kind : std::uint8_t { label, button, checkbox, slider, text_edit, row, column };
 
 // User actions recorded by widget callbacks until the next run reads them.
 struct Pending {
     int clicks = 0;
     std::optional<bool> checked;
     std::optional<float> value;
+    std::optional<std::string> text;
 };
 
 struct Entry;
@@ -297,6 +298,34 @@ bool RegionScope::slider(std::string_view id, float& value, float min, float max
     const auto shown = entry->widget.value();
     if (shown.ok() && shown.value() != value) {
         auto status = entry->widget.set_value(value);
+        if (!status.ok()) { state_.fail(std::move(status)); }
+    }
+    return false;
+}
+
+bool RegionScope::text_edit(std::string_view id, std::string& value, bool multiline) {
+    Entry* entry = state_.enter(id, Kind::text_edit,
+        [&](const Entry& old) { return old.step == (multiline ? 1.0F : 0.0F); },
+        [&](Entry& made) {
+            made.step = multiline ? 1.0F : 0.0F;
+            auto widget = state_.desc(WidgetKind::text_edit, value);
+            widget.multiline = multiline;
+            widget.text_changed = [pending = made.pending, context = &state_.context,
+                                   region = state_.region](const std::string& changed) {
+                pending->text = changed;
+                (void)context->request_update(region);
+            };
+            return state_.make_widget(made, std::move(widget));
+        });
+    if (entry == nullptr) { return false; }
+    if (auto user = std::exchange(entry->pending->text, std::nullopt)) {
+        value = std::move(*user);
+        return true;
+    }
+    const auto shown = entry->widget.text();
+    if (!shown.ok()) { state_.fail(shown.status()); return false; }
+    if (shown.value() != value) {
+        auto status = entry->widget.set_text(value);
         if (!status.ok()) { state_.fail(std::move(status)); }
     }
     return false;

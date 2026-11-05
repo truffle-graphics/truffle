@@ -10,6 +10,7 @@
 #include "truffle/gui/context.hpp"
 #include "truffle/gui/dock/dock.hpp"
 #include "truffle/gui/widgets.hpp"
+#include "../gui_text_fixture.hpp"
 #include "truffle/renderer/data_layout.hpp"
 #include "truffle/renderer/depth_target.hpp"
 #include "truffle/renderer/frame_stream.hpp"
@@ -21,6 +22,7 @@
 #include <iostream>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 int main() {
     static_assert(std::is_default_constructible_v<truffle::base::RuntimeConfig>);
@@ -79,6 +81,27 @@ int main() {
     auto deviceResult = rhiAdapter.request_device();
     if (!deviceResult.ok()) return 1;
     auto device = std::move(deviceResult).value();
+
+    const auto graphemes = truffle::gui::text_graphemes("A\xCC\x81");
+    if (truffle::gui::TextEngine::available()) {
+        if (!graphemes.ok() || graphemes.value() != std::vector<std::size_t>{0, 3}) return 1;
+        auto engine = truffle::gui::TextEngine::create(device);
+        if (!engine.ok()) return 1;
+        auto font = engine.value().load_font(truffle::tests::gui_test_font(), 7);
+        if (!font.ok()) return 1;
+        truffle::gui::Context editable;
+        auto edit = truffle::gui::TextEdit::create(editable, editable.root(), {
+            .text_engine = &engine.value(), .font = font.value(),
+            .atlas = truffle::gui::TextureId{1}});
+        if (!edit.ok() || !editable.set_viewport({160, 40}).ok() ||
+            !editable.focus(edit.value().element()).ok() ||
+            !editable.handle(truffle::gui::TextEvent{"AB"}).ok() ||
+            !editable.prepare_frame(truffle::gui::Context::Clock::now()).status.ok() ||
+            !edit.value().text().ok() || edit.value().text().value() != "AB") return 1;
+    } else if (graphemes.ok() ||
+               graphemes.status().code != truffle::base::StatusCode::unsupported) {
+        return 1;
+    }
 
     static_assert(!std::is_copy_constructible_v<truffle::renderer::Mesh>);
     auto projection = truffle::renderer::perspective(1, 1, .1F, 10);

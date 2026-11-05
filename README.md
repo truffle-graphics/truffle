@@ -141,13 +141,23 @@ plus grid layout, placement overrides, canvas drawing and overlays (#230-#231),
 a nested C++ builder (#232), immediate-style regions (#233) and virtualized
 lists, table rows and tree flattening (#234) and the optional
 Truffle GUI Dock library (#235).
+The usability follow-up (#251-#253) adds Unicode fallback/bidirectional text,
+editable controls and host-owned detached docking windows. Divider hover and
+capture request the corresponding resize cursor. Native two-window rendering,
+interaction and redocking are demonstrated in
+[`examples/gui_dock_window`](examples/gui_dock_window/README.md).
+Detached panels keep their live elements in an independent `Surface` of the same
+Context. Saved layouts normalize them back into docking; OS window geometry is
+not persisted. Native windows remain a host integration, demonstrated on
+macOS/Metal rather than claimed for every platform.
 The [native widget demo](examples/gui_window/README.md) records idle and
 selective-update evidence. Epic #217 (#221-#235) is delivered; this
 is a usable baseline, not a finished GUI framework.
 Assets, a general material system and later application work are not started.
 [`docs/roadmap.md`](docs/roadmap.md) records the review and evidence boundaries.
-GUI text support is enabled by default and uses the pinned FreeType/HarfBuzz
-submodules; `-DTFL_GUI_ENABLE_TEXT=OFF` builds a text-free GUI. No font is
+GUI text support is enabled by default and uses private pinned FreeType,
+HarfBuzz, SheenBidi and utf8proc submodules;
+`-DTFL_GUI_ENABLE_TEXT=OFF` builds a text-free GUI. No font is
 bundled, and applications supply font data with its associated license.
 
 ## GUI Object API
@@ -168,6 +178,13 @@ invalidate dependent layout. Overrides shield an element from theme updates.
 explicitly and keeps work pending). Manual stages call `update_styles` first.
 `set_text_source` retains UTF-8 for font rebinding and borrows the application's
 `TextEngine`/atlas; direct `set_text` instead supplies already-shaped text.
+Text shaping (#251) segments scripts and bidi paragraphs into visual runs.
+`TextEngine::set_fallbacks` sets an ordered chain of application-loaded fonts;
+the engine performs no OS font discovery. Glyphs retain their font and source
+UTF-8 cluster. `TextLayout` exposes visual carets, `hit_test`, `caret_position`
+and selection rectangles, while `text_graphemes` validates UTF-8 and returns
+extended-grapheme boundaries. Newlines create separate lines; wrapping remains
+an application policy.
 Theme bindings govern the named style properties; raw layout/decoration setters
 remain the low-level API, not implicit overrides of bindings.
 Core widgets (#228) are checked `Widget` references created with `WidgetDesc`:
@@ -176,6 +193,23 @@ their elements; destroying a reference does not remove the UI. User actions
 invoke the descriptor callbacks; programmatic setters do not. Use `element()`
 for layout/theme overrides and `content()` to add children to a scroll area.
 Widgets retain semantic roles/labels, not an accessibility implementation.
+The `text_edit` widget (#252) is also available as `TextEdit`, through
+`ui::text_edit` in a builder, or as a two-way `RegionScope::text_edit`.
+It supports plain single-line/multiline UTF-8, grapheme-safe selection/deletion,
+visual arrow navigation, Home/End, clipboard, 128 undo/redo steps and IME
+preedit/commit. `Widget::editor()` exposes its checked editing reference.
+Programmatic `set_text` resets undo history without calling `text_changed`;
+user edits and undo/redo call it. Read-only controls still allow selection/copy.
+Line endings normalize to LF; single-line insertion converts line breaks to
+spaces. Lines scroll to keep the caret visible; automatic line wrapping and
+rich-text editing are not supplied. The caret is steady, not a continuous
+redraw timer. Editing state/font are explicit (`TextEdit::set_font`), while
+the outer element remains available for normal layout/decoration overrides.
+Native IMEs receive `Host::set_text_input_state` and `set_text_input_area`;
+replacement/selection ranges use UTF-8 bytes, not glyphs or UTF-16 indices.
+Hosts can query `TextEdit::caret_rect()` for current candidate geometry after
+ancestor scrolling. The Cocoa demo implements `NSTextInputClient`, including
+UTF-16 conversion, marked text and candidate-window placement.
 `Context::handle` returns callback errors and `last_event_status` retains them.
 Scrolling translates children consistently in drawing, hit testing and
 absolute bounds without regenerating layout or shapes.
@@ -233,8 +267,8 @@ package consumers do not link the compiler.
 See the [native MSL and portable Shader target profiles and limits](src/shader/README.md#native-msl-source-and-libraries-188)
 and [shaderc examples](docs/rhi1/shader-package.md#tool-usage).
 
-GUI text uses pinned FreeType and HarfBuzz sources and is enabled by default;
-prepare them with `git submodule update --init vendor/freetype vendor/harfbuzz`.
+GUI text is enabled by default; prepare its pinned sources with
+`git submodule update --init vendor/freetype vendor/harfbuzz vendor/sheenbidi vendor/utf8proc`.
 With `-DTFL_GUI_ENABLE_TEXT=OFF`, `gui::TextEngine::available()` is false
 and the GUI has no text-library build dependency. FreeType attribution and
 license notices are documented in

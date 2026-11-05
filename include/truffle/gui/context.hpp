@@ -26,6 +26,8 @@
 
 namespace truffle::gui {
 
+class Surface;
+
 struct FrameStats {
     base::Status status;
     std::size_t updates = 0; // updaters run (see `Context::set_updater`)
@@ -72,6 +74,7 @@ public:
     using Clock = std::chrono::steady_clock;
 
     Context();
+    ~Context();
     Context(const Context&) = delete;
     Context& operator=(const Context&) = delete;
     Context(Context&&) = delete;
@@ -86,6 +89,9 @@ public:
 
     // Destroys `element` and its whole subtree. The root cannot be destroyed.
     [[nodiscard]] base::Status destroy(ElementId element);
+    // Runs once, before the element/subtree is removed, also on Context
+    // teardown. Must not throw or recursively destroy its own element.
+    [[nodiscard]] base::Status set_cleanup(ElementId element, std::function<void()> cleanup);
 
     // Moves `element` under `parent` at `index` (append when empty). Moving
     // within the same parent reorders it. Cycles and the root are rejected.
@@ -219,7 +225,7 @@ public:
     [[nodiscard]] Point child_offset(ElementId element) const noexcept;
 
     enum class Role : std::uint8_t { generic, panel, label, image, button, checkbox,
-                                    slider, scroll_area };
+                                    slider, scroll_area, text_edit };
     struct Semantics {
         Role role = Role::generic;
         std::string label;
@@ -258,6 +264,7 @@ public:
 
 private:
     friend class LayoutPass;
+    friend class Surface;
 
     struct Node {
         struct StyleBinding {
@@ -272,6 +279,7 @@ private:
         };
         std::uint32_t generation = 1;
         bool alive = false;
+        std::function<void()> cleanup;
         bool queued = false;
         bool measured = false;
         bool arranged = false;
@@ -326,6 +334,8 @@ private:
     [[nodiscard]] UpdaterEntry* find_updater(ElementId element) noexcept;
     [[nodiscard]] bool updates_due() const noexcept;
     base::Status run_updaters(std::size_t& count);
+    base::Status run_element_update(ElementId element, const Updater& update);
+    [[nodiscard]] Surface* surface_of(ElementId element) const noexcept;
 
     // Children seen by the element's layout (see `set_placement`).
     [[nodiscard]] std::span<const ElementId> flow_children(ElementId element) const noexcept;
@@ -340,6 +350,9 @@ private:
     std::vector<ElementId> dirty_queue_;
     std::size_t live_ = 0;
     ElementId root_;
+    ElementId primary_root_;
+    struct SurfaceRoot { ElementId root; Size size; Surface* surface; };
+    std::vector<SurfaceRoot> surface_roots_;
     Size viewport_;
     LayoutStats stats_;
     Size host_viewport_;

@@ -368,6 +368,27 @@ int run() {
         pixels = render_context(tree, 1);
         expect_pixel(pixels, 2, 2, {0, 255, 255, 255}, "label updated glyph");
     }
+    {
+        gui::Context tree;
+        auto edit = tests::require(gui::TextEdit::create(tree, tree.root(), {
+            .text = " A", .text_engine = &text_engine, .font = font, .atlas = atlas_id}));
+        place_widget(tree, edit.element(), {2, 2, 24, 16});
+        tests::require(tree.set_decoration(edit.element(), {.fill = {0, 0, 0, 1}}));
+        tests::require(tree.focus(edit.element()));
+        tests::require(edit.select({0, 1}));
+        pixels = render_context(tree, tree.element_count());
+        expect_pixel(pixels, 3, 4, {35, 70, 126, 255}, "text editor selection background");
+        expect_pixel(pixels, 5, 4, {255, 255, 255, 255}, "text editor caret");
+        pixels = render_context(tree, 0);
+        expect_pixel(pixels, 3, 4, {35, 70, 126, 255}, "cached text editor selection");
+        tests::require(tree.handle(gui::CompositionEvent{
+            .preedit = " ", .selection_begin = 1, .selection_end = 1}));
+        pixels = render_context(tree, 2);
+        expect_pixel(pixels, 3, 8, {217, 217, 255, 255}, "input-method preedit underline");
+        if (tests::require(edit.text()) != " A") {
+            throw std::runtime_error("preedit changed the committed pixel-test document");
+        }
+    }
 #endif
     {
         gui::Context tree;

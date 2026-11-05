@@ -82,7 +82,7 @@ base::Status Context::run_updaters(std::size_t& count) {
         }
         entry->pending = false;
         const Updater update = entry->update; // keeps captured state alive
-        auto status = update();
+        auto status = run_element_update(element, update);
         ++count;
         if (!status.ok()) {
             if (UpdaterEntry* failed = find_updater(element)) {

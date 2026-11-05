@@ -1,6 +1,7 @@
 #pragma once
 
 #include "truffle/gui/geometry.hpp"
+#include "truffle/gui/input.hpp"
 
 #include <cstdint>
 #include <optional>
@@ -19,6 +20,12 @@ enum class Cursor : std::uint8_t {
     resize_vertical,
     not_allowed,
     hidden,
+};
+
+struct TextInputState {
+    std::string text; // displayed UTF-8, including input-method preedit
+    TextRange selection;
+    std::optional<TextRange> marked;
 };
 
 // Platform services the GUI asks of its host. The host owns windows, the event
@@ -40,6 +47,9 @@ public:
     // Where an input method should place its candidate window, in logical
     // root coordinates; empty when no text input is active.
     virtual void set_text_input_area(std::optional<Rect> /*area*/) {}
+    // Snapshot for native input-method queries. Byte ranges index `text`;
+    // hosts translate to their platform's character indexing (e.g. UTF-16).
+    virtual void set_text_input_state(std::optional<TextInputState> /*state*/) {}
 };
 
 } // namespace truffle::gui

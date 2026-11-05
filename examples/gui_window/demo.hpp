@@ -17,6 +17,7 @@ public:
     gui::Widget status;
     gui::Widget image;
     gui::Widget scroll;
+    gui::Widget editor;
     std::vector<gui::Widget> rows;
     int presses = 0;
 
@@ -78,6 +79,11 @@ public:
             .image = image_texture, .image_size = {128, 72}}));
         static_cast<void>(caption(controls.element(), "Tab / Shift+Tab: focus"));
         static_cast<void>(caption(controls.element(), "Space / Enter: activate"));
+        static_cast<void>(caption(controls.element(), "Editable text - clipboard, undo and IME"));
+        editor = take(gui::Widget::create(context, controls.element(), {
+            .kind = gui::WidgetKind::text_edit,
+            .text = "Edit: \u05E9\u05DC\u05D5\u05DD \u0645\u0631\u062D\u0628\u0627 123",
+            .text_engine = &text, .font = font, .atlas = atlas}));
 
         scroll = take(gui::Widget::create(context, body, {
             .kind = gui::WidgetKind::scroll_area, .text = "Scrollable persistent elements"}));

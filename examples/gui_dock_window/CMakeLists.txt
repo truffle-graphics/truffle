@@ -1,0 +1,15 @@
+if(APPLE AND TFL_BUILD_BACKEND_METAL)
+    add_executable(truffle_gui_dock_window main.mm)
+    target_link_libraries(truffle_gui_dock_window PRIVATE truffle_gui_dock truffle_backend_metal
+        "-framework AppKit" "-framework QuartzCore")
+    target_compile_options(truffle_gui_dock_window PRIVATE
+        "$<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>")
+    truffle_target_warnings(truffle_gui_dock_window)
+    if(TFL_BUILD_TESTS)
+        add_test(NAME truffle_gui_dock_window COMMAND truffle_gui_dock_window --smoke)
+        set_tests_properties(truffle_gui_dock_window PROPERTIES
+            LABELS "native-smoke;gui;presentation;host-window;validation"
+            TIMEOUT 40
+            ENVIRONMENT "MTL_DEBUG_LAYER=1;MTL_SHADER_VALIDATION=1;METAL_DEVICE_WRAPPER_TYPE=1")
+    endif()
+endif()

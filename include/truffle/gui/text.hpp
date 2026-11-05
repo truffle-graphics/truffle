@@ -19,6 +19,7 @@ struct FontTag {};
 using FontId = base::Handle<FontTag>;
 
 struct TextGlyph {
+    FontId font;
     std::uint32_t id = 0;
     std::uint32_t cluster = 0;
     Point position;
@@ -29,12 +30,47 @@ struct TextGlyph {
     friend bool operator==(const TextGlyph&, const TextGlyph&) = default;
 };
 
+struct TextCaret {
+    std::size_t byte = 0;
+    Point position;
+    float height = 0.0F;
+
+    friend bool operator==(const TextCaret&, const TextCaret&) = default;
+};
+
+// Logical grapheme coverage in visual coordinates, including ligature subdivisions.
+struct TextCluster {
+    std::size_t begin = 0;
+    std::size_t end = 0;
+    Rect bounds;
+    bool right_to_left = false;
+
+    friend bool operator==(const TextCluster&, const TextCluster&) = default;
+};
+
+// Unicode 16 extended grapheme boundaries (UAX #29), including 0 and utf8.size().
+// Malformed UTF-8 is invalid_argument; text-disabled builds return unsupported.
+[[nodiscard]] base::Result<std::vector<std::size_t>> text_graphemes(std::string_view utf8);
+
 struct TextLayout {
     Size size;
     float ascent = 0.0F;
     float descent = 0.0F;
     float line_height = 0.0F;
     std::vector<TextGlyph> glyphs;
+    // Line top y, then increasing x. Bidi junctions may have multiple logical
+    // boundaries at one position, or one boundary at multiple positions.
+    std::vector<TextCaret> carets;
+    std::vector<TextCluster> clusters;
+
+    // Picks the nearest line first, then its nearest source-byte caret.
+    [[nodiscard]] std::size_t hit_test(Point point) const noexcept;
+    // First visual match, or nearest source-byte boundary when not exact.
+    [[nodiscard]] Point caret_position(std::size_t byte) const noexcept;
+    // Half-open source selection; partial graphemes expand to their whole
+    // cluster. Splits directional spans and lines; hard breaks have no area.
+    [[nodiscard]] std::vector<Rect> selection_rects(std::size_t begin,
+                                                   std::size_t end) const;
 
     friend bool operator==(const TextLayout&, const TextLayout&) = default;
 };
@@ -78,6 +114,14 @@ public:
     [[nodiscard]] base::Result<FontId> load_font(std::span<const std::byte> bytes,
                                                  float size);
     [[nodiscard]] base::Status unload_font(FontId font);
+    // Replaces the primary's flat ordered fallback chain atomically. All handles
+    // must be live, distinct and different from primary. Unload of a referenced
+    // fallback is invalid_state until its referencing chains are replaced.
+    [[nodiscard]] base::Status set_fallbacks(FontId primary,
+                                            std::span<const FontId> ordered);
+    // Validated UTF-8, automatic UAX #9 bidi, script runs and hard newlines.
+    // Uncovered graphemes use the primary font's explicit missing glyph (id 0);
+    // malformed UTF-8 and invalid font handles fail instead of being replaced.
     [[nodiscard]] base::Result<TextLayout> shape(FontId font, std::string_view utf8);
 
     // The glyph atlas to register with a Painter. Fails with `invalid_state`

@@ -9,11 +9,64 @@ the support matrix and Git history.
 
 Maintainer decision: a branch and its PR cover a related batch of issues with
 one signed commit per issue, instead of a branch and PR per issue. Recorded in
-`AGENTS.md` and `CONTRIBUTING.md`. Latest batch: `feat/gui-collections-dock`
-(#234–#235), the last of three batches finishing epic #217 (after
-`feat/gui-layout-drawing` #230–#231 and `feat/gui-authoring` #232–#233).
+`AGENTS.md` and `CONTRIBUTING.md`. Latest batch:
+`feat/gui-text-native-docking` (#251-#253), following the three batches
+that completed epic #217.
 
-## Latest Delivery: GUI Collections And Docking (#234-#235)
+## Latest Delivery: GUI Usability (#251-#253)
+
+The owner approved one `feat/gui-text-native-docking` batch branch/PR,
+independently validated signed issue phases with immediate pushes, self-review
+and a normal merge commit. Milestone: GUI usability. #217 remains completed;
+these are explicit follow-ups, not a reopening of its bounded baseline.
+
+- #251: Unicode layout and ordered font fallback, then visual caret/selection
+  geometry used by editing. Private pinned text dependencies remain inside GUI.
+- #252: plain-text editing, grapheme-aware mutations, pointer/keyboard
+  selection, clipboard, undo/redo and input methods; native Cocoa integration
+  stays in the example host.
+- #253: checked detached docking surfaces, host-owned native windows and divider
+  cursor feedback. GUI Dock remains above GUI; OS window policy stays outside.
+
+#251 is implemented and independently validated: pinned Unicode 16 SheenBidi
+2.9.0/utf8proc 2.10.0, script/bidi paragraph runs, ordered font fallback,
+source-byte grapheme/caret/selection geometry and GDEF ligature carets.
+Missing font coverage retains the primary font's glyph 0; configured fallback
+handles stay live until the chain is cleared. All 1,093 matching grapheme
+fixtures and upstream bidi/script tests pass, as do text-enabled/disabled
+Unicode tests and installed consumers. Dependencies remain private and optional.
+
+#252's object/widget/builder/region editing paths and Cocoa NSTextInputClient
+adapter are implemented and validated. Editing covers grapheme-safe mutations,
+visual bidi navigation/selection, clipboard, 128 undo/redo steps, read-only and
+multiline input, composition cancellation/commit and callback destruction.
+Programmatic setters are callback-free; fonts are explicitly selected for the
+editor. Native Metal pixels check selection, caret and preedit underline.
+The 148-element native demo checks marked text, candidate placement, one-step
+commit/undo and exact idle/selective work; nine frames total. Text-disabled
+editing reports unsupported explicitly.
+
+#253 adds independent host/input/viewport roots inside one Context, preserving
+live ElementIds and panel values across checked detachment and redocking.
+Hidden host preparation precedes validated transfer/show; failures preserve the
+docked panel. Close, redock, restore, element destruction and Context teardown
+clean up surfaces/windows. Divider hover/drag/reset request axis resize cursors.
+Hosts retire surfaces after in-flight callbacks return. Saved layouts normalize
+detached panels back into docking; OS window geometry is not persisted.
+`gui_dock_window` proves two visible Metal swapchains, live detached rendering,
+resize, clicks and close/redock/restore cleanup. Its host is macOS-only and has
+no IME adapter; `gui_window` supplies the separate native input-method proof.
+
+Final integrated evidence: 16 text-enabled GUI tests, 13 text-disabled GUI tests,
+installed package consumer build and execution all pass in the warning-as-error
+Debug configurations. The text-enabled set includes both native window demos
+and exact Metal editor pixels. The native docking agent also verified the
+text-disabled native demo. Architecture and whitespace guards pass. No hosted
+workflows were started; this is macOS/Metal evidence, not broader GUI platform
+promotion. The batch is delivered as signed, immediately pushed phases with
+owner-authorized self-review and a normal merge commit.
+
+## Previous Delivery: GUI Collections And Docking (#234-#235)
 
 #234 adds `truffle/gui/collections.hpp`. `VirtualList` owns one focusable
 element whose children are a recycled pool of about `ceil(height/row) + 1`

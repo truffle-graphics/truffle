@@ -1,4 +1,5 @@
 #include "truffle/gui/context.hpp"
+#include "truffle/gui/surface.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -41,8 +42,23 @@ constexpr std::uint32_t retired_generation = std::numeric_limits<std::uint32_t>:
 
 } // namespace
 
-Context::Context() : root_(allocate()) {
+Context::Context() : root_(allocate()), primary_root_(root_) {
     mark(root_, all_dirty);
+}
+
+Context::~Context() {
+    // Cleanup can close host surfaces and therefore mutate/grow the node pool.
+    for (std::size_t i = 0; i < nodes_.size(); ++i) {
+        auto cleanup = std::exchange(nodes_[i].cleanup, {});
+        if (cleanup) { cleanup(); }
+    }
+}
+
+base::Status Context::set_cleanup(ElementId element, std::function<void()> cleanup) {
+    Node* node = find(element);
+    if (node == nullptr) { return invalid_element(); }
+    node->cleanup = std::move(cleanup);
+    return base::Status::success();
 }
 
 ElementId Context::root() const noexcept {
@@ -77,10 +93,18 @@ base::Status Context::destroy(ElementId element) {
     if (node == nullptr) {
         return invalid_element();
     }
-    if (element == root_) {
+    if (element == primary_root_ || std::ranges::any_of(surface_roots_, [element](const auto& entry) {
+            return entry.root == element;
+        })) {
         return base::Status::failure(base::StatusCode::invalid_argument,
                                      "the GUI root element cannot be destroyed");
     }
+    if (auto* surface = surface_of(element); surface != nullptr && root_ != surface->root()) {
+        return surface->remove(element);
+    }
+    auto cleanup = std::exchange(node->cleanup, {});
+    if (cleanup) { cleanup(); }
+    node = find(element);
     const ElementId parent = node->parent;
     detach(element, *node);
     mark(parent, Dirty::measure);
@@ -89,6 +113,8 @@ base::Status Context::destroy(ElementId element) {
     while (!pending.empty()) {
         const ElementId current = pending.back();
         pending.pop_back();
+        auto child_cleanup = std::exchange(find(current)->cleanup, {});
+        if (child_cleanup) { child_cleanup(); }
         forget_input(current);
         forget_styles(current);
         if (nodes_[index_of(current)].overlay) {
@@ -116,7 +142,9 @@ base::Status Context::reparent(ElementId element, ElementId parent,
     if (node == nullptr || find(parent) == nullptr) {
         return invalid_element();
     }
-    if (element == root_) {
+    if (element == primary_root_ || std::ranges::any_of(surface_roots_, [element](const auto& entry) {
+            return entry.root == element;
+        })) {
         return base::Status::failure(base::StatusCode::invalid_argument,
                                      "the GUI root element cannot be moved");
     }
@@ -329,6 +357,10 @@ LayoutStats Context::update_layout(Size viewport) {
     }
 
     static_cast<void>(measure_element(root_, Constraints::tight(viewport_)));
+    for (const auto& [root, size, surface] : surface_roots_) {
+        (void)surface;
+        static_cast<void>(measure_element(root, Constraints::tight(size)));
+    }
 
     // Arrange invalidated elements top-down; arranging a parent may already
     // have consumed a descendant's work.
@@ -351,9 +383,13 @@ LayoutStats Context::update_layout(Size viewport) {
         if (!has(node.dirty, Dirty::arrange)) {
             continue;
         }
-        const Rect rect = element == root_
-                              ? Rect{0.0F, 0.0F, viewport_.width, viewport_.height}
-                              : node.rect;
+        Rect rect = element == root_
+                        ? Rect{0.0F, 0.0F, viewport_.width, viewport_.height}
+                        : node.rect;
+        for (const auto& [root, size, surface] : surface_roots_) {
+            (void)surface;
+            if (element == root) { rect = {0, 0, size.width, size.height}; break; }
+        }
         arrange_element(element, rect);
     }
     clear_dirty(Dirty::measure | Dirty::arrange);

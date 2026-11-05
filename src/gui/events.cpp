@@ -1,4 +1,5 @@
 #include "truffle/gui/context.hpp"
+#include "truffle/gui/surface.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -27,6 +28,11 @@ base::Status invalid_target() {
 } // namespace
 
 base::Status Context::set_interaction(ElementId element, Interaction interaction) {
+    if (auto* surface = surface_of(element); surface != nullptr && root_ != surface->root()) {
+        return surface->update([this, element, interaction] {
+            return set_interaction(element, interaction);
+        });
+    }
     Node* node = find(element);
     if (node == nullptr) {
         return invalid_target();
@@ -76,9 +82,10 @@ bool Context::input_enabled(ElementId element) const noexcept {
         if (node == nullptr || !node->interaction.enabled) {
             return false;
         }
+        if (up == root_) { return true; }
         up = node->parent;
     }
-    return alive(element);
+    return false;
 }
 
 ElementId Context::hit_test(Point position) const {
@@ -241,6 +248,7 @@ base::Status Context::focus(ElementId element) {
     }
     const ElementId previous = focused_;
     focused_ = element;
+    input_.composition = {};
     const auto lost = dispatch(previous, ElementFocusEvent{false}, false);
     if (!lost.ok()) { return lost.status(); }
     if (focused_ == element) {
@@ -305,7 +313,12 @@ ElementId Context::captured(std::uint32_t pointer) const noexcept {
 
 void Context::forget_input(ElementId element) noexcept {
     if (hovered_ == element) { hovered_ = {}; }
-    if (focused_ == element) { focused_ = {}; }
+    if (focused_ == element) {
+        focused_ = {};
+        input_.composition = {};
+        host().set_text_input_area(std::nullopt);
+        host().set_text_input_state(std::nullopt);
+    }
     std::erase_if(captures_, [element](const auto& entry) { return entry.second == element; });
 }
 

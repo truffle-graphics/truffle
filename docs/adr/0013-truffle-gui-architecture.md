@@ -197,3 +197,17 @@ order are settled in #217's implementation sub-issues.
   application to rebuild every frame.
 - Renderer gains no GUI concepts. Any Renderer gaps found while building the
   GUI are fixed in Renderer issues.
+
+## Implemented Follow-ups (#251-#253)
+
+The original in-window/text baseline remains the historical scope of #217.
+The accepted usability batch adds Unicode 16 fallback/bidi/grapheme processing
+through private pinned SheenBidi/utf8proc, plain-text editing with native
+input-method integration, and host-owned detached docking windows.
+`Surface` supplies an independent GUI root/viewport/input scope inside the same
+Context so controls retain their identities and application state across
+detachment; OS windows, swapchains and event loops remain application-owned.
+The host prepares hidden surfaces and the dock validates/transfers before
+showing them. Saved layouts normalize detached panels back into docking rather
+than persisting OS geometry. These are documented extensions, not reverse-layer
+dependencies or a GUI-owned application framework.
