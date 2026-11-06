@@ -5,7 +5,28 @@ This is the rolling execution handoff, not an implementation transcript.
 issues/Project own accepted work. Earlier phase details remain in their PRs,
 the support matrix and Git history.
 
-## Latest: developer build workflow (#257)
+## Latest: Truffle Dark/Light themes and dock gap (#260)
+
+The user chose one theme system (tokens plus widget styles), with layout kept
+separate. GUI now ships neutral Truffle Dark/Light token sets (`themes.hpp`):
+`apply_theme`, `install_default_theme` and `builtin_theme_name`. Truffle Dark
+replaces the old bluish defaults and fills only missing tokens. `TextEdit` binds
+surface/border/accent/text and draws selection, caret and composition from
+`gui.*` tokens. Dock binds `dock.*` tokens, not hard-coded decorations.
+`DockStyle` became the colour-free `DockMetrics` and gained `gap`, which defaults
+to 0 and leaves the existing geometry unchanged. A non-zero gap centres the
+splitter and exposes `dock.background`. Visual Studio-style tabs joined to their
+panel and Studio-specific themes are non-goals. Studio still hard-codes some
+shell colours, which is a separate follow-up.
+
+Pre-release policy (user decision, recorded in `PROJECT_CONTEXT.md`): until the
+first release tag, breaking changes between Truffle modules or towards Studio
+need no version bump or compatibility scaffolding; callers update in the same
+change.
+Validation: the focused Debug GUI theme, widget, text-edit and dock tests pass,
+including the dark/light switch, neutral tokens and gap geometry.
+
+## Earlier: developer build workflow (#257)
 
 The user-approved build workflow separates final outputs into `out/<preset>/bin`
 and `lib`, installs/packages into `install/<preset>`, and throwaway probes/logs

@@ -1,5 +1,6 @@
 #include "test_support.hpp"
 #include "truffle/gui/dock/dock.hpp"
+#include "truffle/gui/themes.hpp"
 
 #include <cstdio>
 #include <stdexcept>
@@ -444,12 +445,47 @@ int divider_cursors() {
     return 0;
 }
 
+int theme_and_gap() {
+    Context c;
+    TFL_CHECK(c.set_viewport({400, 300}).ok());
+    DockSpaceOptions bad;
+    bad.metrics.gap = -1;
+    TFL_CHECK(!DockSpace::create(c, c.root(), bad).ok());
+    DockSpaceOptions options;
+    options.metrics.gap = 6;
+    auto dock = need(DockSpace::create(c, c.root(), options));
+    LayoutParams params;
+    params.width = 400;
+    params.height = 300;
+    need(c.set_layout_params(dock.element(), params));
+    const ElementId a = need(c.create(c.root()));
+    const ElementId b = need(c.create(c.root()));
+    need(dock.add_panel("a", "A", a));
+    need(dock.add_panel("b", "B", b));
+    need(dock.restore(R"((split h 5000 5000 (tabs 0 "a") (tabs 0 "b")))"));
+    TFL_CHECK(frame(c).status.ok());
+    // 400 - (4 divider + 6 gap) = 390 shared; the splitter is centred in the gap.
+    TFL_CHECK(need(c.bounds(a)) == (Rect{0, 24, 195, 276}));
+    TFL_CHECK(need(c.bounds(dock.dividers()[0])) == (Rect{198, 0, 4, 300}));
+    TFL_CHECK(need(c.bounds(b)) == (Rect{205, 24, 195, 276}));
+
+    const auto grey = [](float v, float alpha = 1) { return Color{v, v, v, alpha}; };
+    TFL_CHECK(need(c.decoration(dock.element())).fill == grey(0.07F));
+    TFL_CHECK(need(c.decoration(dock.tab("a"))).fill == grey(0.24F));
+    need(apply_theme(c, BuiltinTheme::truffle_light));
+    TFL_CHECK(frame(c).status.ok());
+    TFL_CHECK(need(c.decoration(dock.element())).fill == grey(0.84F));
+    TFL_CHECK(need(c.decoration(dock.tab("a"))).fill == grey(1.0F));
+    TFL_CHECK(need(c.decoration(dock.dividers()[0])).fill == grey(0.80F));
+    return 0;
+}
+
 } // namespace
 
 int main() {
     try {
         return layout_model() + dock_space() + native_lifecycle() + multiple_windows() +
-               surface_input_ownership() + divider_cursors();
+               surface_input_ownership() + divider_cursors() + theme_and_gap();
     } catch (const std::exception& error) {
         std::fprintf(stderr, "%s\n", error.what());
         return 1;

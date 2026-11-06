@@ -173,6 +173,12 @@ Named themes (#227) use `set_theme_value`, `bind_property`,
 `set_property_override` and `clear_property_override`. Colors, borders and
 radii repaint only their dependents; padding, stack spacing and fonts also
 invalidate dependent layout. Overrides shield an element from theme updates.
+Two neutral built-in themes, Truffle Dark and Truffle Light (#260), live in
+`truffle/gui/themes.hpp`. `apply_theme` switches all tokens; widgets,
+`TextEdit` and `DockSpace` call `install_default_theme`, which fills only
+missing tokens with Truffle Dark, so application values always win. Dock colours
+use `dock.*` tokens; `DockMetrics` holds only geometry, including an optional
+`gap` between areas (default 0) that exposes `dock.background`.
 `prepare_frame` resolves pending styles before layout and shapes; check its
 `status` before drawing (for example, a font unloaded by the application fails
 explicitly and keeps work pending). Manual stages call `update_styles` first.

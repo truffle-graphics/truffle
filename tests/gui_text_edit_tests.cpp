@@ -5,6 +5,7 @@
 #include "truffle/gui/builder.hpp"
 #include "truffle/gui/region.hpp"
 #include "truffle/gui/text_edit.hpp"
+#include "truffle/gui/themes.hpp"
 
 #include <algorithm>
 #include <optional>
@@ -262,6 +263,20 @@ int authoring_and_callback_lifetime() {
 }
 #endif
 
+int theme_tokens() {
+    Fixture f;
+    const auto grey = [](float v) { return gui::Color{v, v, v, 1}; };
+    const auto decoration = [&] { return tests::require(f.context.decoration(f.edit.element())); };
+    TFL_CHECK(decoration().fill == grey(0.12F) && decoration().border == grey(0.82F));
+    TFL_CHECK(gui::apply_theme(f.context, gui::BuiltinTheme::truffle_light).ok());
+    f.frame();
+    TFL_CHECK(decoration().fill == grey(0.96F) && decoration().border == grey(0.22F));
+    TFL_CHECK(f.context.handle(gui::FocusEvent{false}).ok());
+    f.frame();
+    TFL_CHECK(decoration().border == grey(0.72F));
+    return 0;
+}
+
 } // namespace
 
 int main() {
@@ -269,7 +284,7 @@ int main() {
     for (auto test : {editing_clipboard_history, unicode_selection_and_failures,
                       input_method_lifecycle, bidirectional_visual_navigation,
                       pointer_read_only_multiline,
-                      authoring_and_callback_lifetime}) {
+                      authoring_and_callback_lifetime, theme_tokens}) {
         if (const int result = test(); result != 0) { return result; }
     }
 #else

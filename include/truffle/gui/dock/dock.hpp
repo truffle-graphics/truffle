@@ -12,23 +12,19 @@
 
 namespace truffle::gui::dock {
 
-struct DockStyle {
+// Dock geometry only; colours and radii come from the `dock.*` theme tokens
+// (see truffle/gui/themes.hpp), so layout stays independent of the theme.
+struct DockMetrics {
     float tab_height = 24.0F;
     float max_tab_width = 160.0F;
-    float divider = 4.0F;
-    float min_area = 48.0F;     // smallest size a divider drag leaves an area
+    float divider = 4.0F;        // draggable splitter thickness
+    float gap = 0.0F;            // extra space between neighbouring areas; shows dock.background
+    float min_area = 48.0F;      // smallest size a divider drag leaves an area
     float drag_threshold = 4.0F; // pointer travel before a tab press becomes a drag
-    Decoration area{.fill = {0.12F, 0.12F, 0.13F, 1.0F}};
-    Decoration tab{.fill = {0.17F, 0.17F, 0.19F, 1.0F}};
-    Decoration active_tab{.fill = {0.24F, 0.24F, 0.28F, 1.0F}};
-    Decoration divider_fill{.fill = {0.07F, 0.07F, 0.08F, 1.0F}};
-    Decoration marker{.fill = {0.25F, 0.5F, 1.0F, 0.3F},
-                      .border = {0.25F, 0.5F, 1.0F, 0.9F},
-                      .border_width = 2.0F};
 };
 
 struct DockSpaceOptions {
-    DockStyle style;
+    DockMetrics metrics;
     // Tab titles are shaped when an engine is given; it must outlive the dock.
     TextEngine* text_engine = nullptr;
     FontId font;
