@@ -164,6 +164,15 @@ consumer selects concrete loading, upload, and backend behavior.
 - Backend-platform maturity advances only through objective native evidence.
   Shared contract tests and compilation are necessary but not support claims.
 - C++20 and CMake remain canonical. No C ABI is published in RHI 1.
+- Native setup/build entry points use CMake presets (#257). Final artifacts
+  live under `out/<preset>/bin` and `lib`, installed/package trees under
+  `install/<preset>`, and temporary checks under `build/_scratch`.
+  `build/<preset>` is CMake's working directory. Embedded Truffle retains
+  parent output policy; setup prepares only standard pinned dependencies and
+  confirms machine package installation. No install script is implemented.
+  Normal configurations are debug/release/relwithdebinfo; package is a separate
+  distribution preset. Warnings-as-errors is a cached on/off option within any
+  selected build, not a separate configuration or output directory.
 
 ## Validation And References
 

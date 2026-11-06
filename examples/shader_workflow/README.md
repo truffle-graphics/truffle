@@ -14,8 +14,8 @@ From a repository build configured with `TFL_BUILD_EXAMPLES=ON` and
 `TFL_SHADER_ENABLE_GLSLANG=ON`:
 
 ```sh
-cmake --build build --target truffle_shader_workflow --parallel 2
-build/examples/shader_workflow/truffle_shader_workflow \
+./build.sh debug --target truffle_shader_workflow --parallel 2
+./out/debug/bin/truffle_shader_workflow \
   examples/shader_workflow/shader.frag
 ```
 
@@ -23,10 +23,11 @@ Or build against an existing installed Truffle package, without configuring
 the rest of the repository:
 
 ```sh
-cmake -S examples/shader_workflow -B build/shader-workflow \
+cmake -S examples/shader_workflow -B build/_scratch/shader-workflow \
+  -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="$PWD/out/shader-workflow/bin" \
   -DCMAKE_PREFIX_PATH=/path/to/truffle/install
-cmake --build build/shader-workflow --parallel 2
-build/shader-workflow/truffle_shader_workflow \
+cmake --build build/_scratch/shader-workflow --parallel 2
+./out/shader-workflow/bin/truffle_shader_workflow \
   examples/shader_workflow/shader.frag
 ```
 

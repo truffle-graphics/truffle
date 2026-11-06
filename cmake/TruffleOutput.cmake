@@ -1,0 +1,18 @@
+if(PROJECT_IS_TOP_LEVEL)
+    get_filename_component(_truffle_build_name "${CMAKE_BINARY_DIR}" NAME)
+    set(TFL_OUTPUT_DIR "${PROJECT_SOURCE_DIR}/out/${_truffle_build_name}"
+        CACHE PATH "Root directory for built executables and libraries")
+    foreach(_kind RUNTIME LIBRARY ARCHIVE)
+        if(NOT DEFINED CMAKE_${_kind}_OUTPUT_DIRECTORY)
+            if(_kind STREQUAL "RUNTIME")
+                set(CMAKE_${_kind}_OUTPUT_DIRECTORY "${TFL_OUTPUT_DIR}/bin")
+            else()
+                set(CMAKE_${_kind}_OUTPUT_DIRECTORY "${TFL_OUTPUT_DIR}/lib")
+            endif()
+        endif()
+    endforeach()
+    if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+        set(CMAKE_INSTALL_PREFIX "${PROJECT_SOURCE_DIR}/install/${_truffle_build_name}"
+            CACHE PATH "Install prefix" FORCE)
+    endif()
+endif()

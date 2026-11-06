@@ -9,6 +9,7 @@ project(
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 
 include(TruffleOptions)
+include(TruffleOutput)
 include(TruffleFormatting)
 include(TruffleInstall)
 

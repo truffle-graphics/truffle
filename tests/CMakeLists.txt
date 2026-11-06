@@ -1,3 +1,7 @@
+get_filename_component(_truffle_build_name "${PROJECT_BINARY_DIR}" NAME)
+set(_truffle_scratch_dir "${PROJECT_SOURCE_DIR}/build/_scratch/${_truffle_build_name}")
+file(MAKE_DIRECTORY "${_truffle_scratch_dir}")
+set(_truffle_test_install_dir "${PROJECT_SOURCE_DIR}/install/${_truffle_build_name}/tests")
 add_executable(truffle_encom_tests encom_contract_tests.cpp)
 if(TFL_SHADER_ENABLE_SLANG)
     add_executable(truffle_shader_slang_tests shader_slang_tests.cpp)
@@ -11,7 +15,7 @@ if(TFL_SHADER_ENABLE_SLANG)
             "-DTFL_SHADERC=$<TARGET_FILE:truffle-shaderc>"
             "-DTFL_SLANG_TEST=$<TARGET_FILE:truffle_shader_slang_tests>"
             "-DTFL_SLANG_FIXTURES=${PROJECT_SOURCE_DIR}/tests/fixtures/slang"
-            "-DTFL_SHADERC_TEST_DIR=${PROJECT_BINARY_DIR}/shaderc-slang"
+            "-DTFL_SHADERC_TEST_DIR=${_truffle_scratch_dir}/shaderc-slang"
             -P "${PROJECT_SOURCE_DIR}/cmake/ShadercSlangSmoke.cmake")
     endif()
 endif()
@@ -147,7 +151,7 @@ if(APPLE AND TFL_SHADER_ENABLE_METAL_COMPILER AND
         truffle_shader truffle_backend_metal)
     target_compile_definitions(truffle_shader_native_msl_tests PRIVATE
         "TFL_NATIVE_MSL_FIXTURE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/fixtures/shader/native-msl\""
-        "TFL_NATIVE_MSL_TEST_OUTPUT_DIR=\"${PROJECT_BINARY_DIR}/shader-native-msl-smoke\"")
+        "TFL_NATIVE_MSL_TEST_OUTPUT_DIR=\"${_truffle_scratch_dir}/shader-native-msl-smoke\"")
     truffle_target_warnings(truffle_shader_native_msl_tests)
     add_test(NAME truffle_shader_native_msl_tests
         COMMAND truffle_shader_native_msl_tests)
@@ -160,7 +164,7 @@ if(APPLE AND TFL_SHADER_ENABLE_METAL_COMPILER AND
         add_test(NAME truffle_shaderc_native_msl_smoke
             COMMAND "${CMAKE_COMMAND}"
                 "-DTFL_SHADERC=$<TARGET_FILE:truffle-shaderc>"
-                "-DTFL_SHADERC_TEST_DIR=${PROJECT_BINARY_DIR}/shader-native-msl-smoke"
+                "-DTFL_SHADERC_TEST_DIR=${_truffle_scratch_dir}/shader-native-msl-smoke"
                 "-DTFL_NATIVE_MSL_FIXTURE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/shader/native-msl"
                 "-DTFL_EXPECT_METALLIB=$<BOOL:${TFL_SHADER_ENABLE_METALLIB_COMPILER}>"
                 -P "${PROJECT_SOURCE_DIR}/cmake/ShadercNativeMslSmoke.cmake")
@@ -276,8 +280,8 @@ if(APPLE AND TFL_BUILD_BACKEND_METAL)
     target_link_libraries(truffle_renderer_metal_tests PRIVATE truffle_backend_metal truffle_renderer)
     target_compile_definitions(truffle_renderer_metal_tests PRIVATE
         "TFL_RENDERER_FIXTURE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/fixtures/renderer\""
-        "TFL_RENDERER_PACKAGE_OUTPUT_DIR=\"${CMAKE_CURRENT_BINARY_DIR}/renderer-native-fixtures\"")
-    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/renderer-native-fixtures")
+        "TFL_RENDERER_PACKAGE_OUTPUT_DIR=\"${_truffle_scratch_dir}/renderer-native-fixtures\"")
+    file(MAKE_DIRECTORY "${_truffle_scratch_dir}/renderer-native-fixtures")
     add_test(NAME truffle_renderer_metal_tests COMMAND truffle_renderer_metal_tests)
     set_tests_properties(truffle_renderer_metal_tests PROPERTIES
         LABELS "native-smoke;validation;renderer"
@@ -315,12 +319,12 @@ if(TFL_BUILD_BACKEND_VULKAN)
                                PRIVATE "${PROJECT_SOURCE_DIR}/src/backends/vulkan")
     if(TFL_BUILD_SHADERC AND TFL_SHADER_ENABLE_GLSLANG)
         target_compile_definitions(truffle_vulkan_tests PRIVATE
-            "TFL_VULKAN_SHADER_PACKAGE_PATH=\"${PROJECT_BINARY_DIR}/shaderc-glslang-smoke/triangle-a.tsp\""
-            "TFL_VULKAN_FRAGMENT_PACKAGE_PATH=\"${PROJECT_BINARY_DIR}/shaderc-glslang-smoke/triangle-fragment.tsp\""
-            "TFL_VULKAN_MRT_FRAGMENT_PACKAGE_PATH=\"${PROJECT_BINARY_DIR}/shaderc-glslang-smoke/mrt-fragment.tsp\""
-            "TFL_VULKAN_COMPUTE_COLOR_FRAGMENT_PACKAGE_PATH=\"${PROJECT_BINARY_DIR}/shaderc-glslang-smoke/compute-color-fragment.tsp\""
-            "TFL_VULKAN_TEXTURED_FRAGMENT_PACKAGE_PATH=\"${PROJECT_BINARY_DIR}/shaderc-glslang-smoke/textured-fragment.tsp\""
-            "TFL_VULKAN_COMPUTE_PACKAGE_PATH=\"${PROJECT_BINARY_DIR}/shaderc-glslang-smoke/work-es.tsp\"")
+            "TFL_VULKAN_SHADER_PACKAGE_PATH=\"${_truffle_scratch_dir}/shaderc-glslang-smoke/triangle-a.tsp\""
+            "TFL_VULKAN_FRAGMENT_PACKAGE_PATH=\"${_truffle_scratch_dir}/shaderc-glslang-smoke/triangle-fragment.tsp\""
+            "TFL_VULKAN_MRT_FRAGMENT_PACKAGE_PATH=\"${_truffle_scratch_dir}/shaderc-glslang-smoke/mrt-fragment.tsp\""
+            "TFL_VULKAN_COMPUTE_COLOR_FRAGMENT_PACKAGE_PATH=\"${_truffle_scratch_dir}/shaderc-glslang-smoke/compute-color-fragment.tsp\""
+            "TFL_VULKAN_TEXTURED_FRAGMENT_PACKAGE_PATH=\"${_truffle_scratch_dir}/shaderc-glslang-smoke/textured-fragment.tsp\""
+            "TFL_VULKAN_COMPUTE_PACKAGE_PATH=\"${_truffle_scratch_dir}/shaderc-glslang-smoke/work-es.tsp\"")
     endif()
     add_test(NAME truffle_vulkan_tests COMMAND truffle_vulkan_tests)
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID)
@@ -385,7 +389,7 @@ if(TFL_BUILD_BACKEND_VULKAN)
         target_include_directories(truffle_renderer_vulkan_source_tests
                                    PRIVATE "${PROJECT_SOURCE_DIR}/src/backends/vulkan")
         target_compile_definitions(truffle_renderer_vulkan_source_tests PRIVATE
-            "TFL_RENDERER_SOURCE_DIR=\"${CMAKE_CURRENT_BINARY_DIR}/renderer-vulkan-sources\"")
+            "TFL_RENDERER_SOURCE_DIR=\"${_truffle_scratch_dir}/renderer-vulkan-sources\"")
         add_test(NAME truffle_renderer_vulkan_source_tests
                  COMMAND truffle_renderer_vulkan_source_tests)
         set_tests_properties(truffle_renderer_vulkan_source_tests PROPERTIES
@@ -571,7 +575,7 @@ endif()
 add_test(
     NAME truffle_rhi_parity_report
     COMMAND truffle_rhi_parity_report
-            "${PROJECT_BINARY_DIR}/rhi-parity-report.json")
+            "${_truffle_scratch_dir}/rhi-parity-report.json")
 
 add_executable(truffle_api_version_tests api_version_tests.cpp)
 target_link_libraries(truffle_api_version_tests PRIVATE truffle_base)
@@ -593,7 +597,7 @@ if(TFL_BUILD_SHADERC)
         add_test(NAME truffle_shaderc_wgsl_smoke COMMAND "${CMAKE_COMMAND}"
             "-DTFL_SHADERC=$<TARGET_FILE:truffle-shaderc>"
             "-DTFL_SHADER_EQUIVALENCE=$<TARGET_FILE:truffle_shader_wgsl_equivalence_tests>"
-            "-DTFL_SHADERC_TEST_DIR=${PROJECT_BINARY_DIR}/shaderc-wgsl-smoke"
+            "-DTFL_SHADERC_TEST_DIR=${_truffle_scratch_dir}/shaderc-wgsl-smoke"
             -P "${PROJECT_SOURCE_DIR}/cmake/ShadercWgslSmoke.cmake")
     endif()
     if(TFL_SHADER_ENABLE_DXC)
@@ -602,7 +606,7 @@ if(TFL_BUILD_SHADERC)
             "-DTFL_SHADER_EQUIVALENCE=$<TARGET_FILE:truffle_shader_hlsl_tests>"
             "-DTFL_HLSL_FIXTURE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/shader-hlsl"
             "-DTFL_HLSL_PORTABLE=$<BOOL:${TFL_SHADER_ENABLE_SPIRV_CROSS}>"
-            "-DTFL_SHADERC_TEST_DIR=${PROJECT_BINARY_DIR}/shaderc-hlsl-smoke"
+            "-DTFL_SHADERC_TEST_DIR=${_truffle_scratch_dir}/shaderc-hlsl-smoke"
             -P "${PROJECT_SOURCE_DIR}/cmake/ShadercHlslSmoke.cmake")
     endif()
     if(TFL_SHADER_ENABLE_GLSLANG AND TFL_SHADER_ENABLE_SPIRV_CROSS)
@@ -612,7 +616,7 @@ if(TFL_BUILD_SHADERC)
         add_test(NAME truffle_shaderc_portable_smoke COMMAND "${CMAKE_COMMAND}"
             "-DTFL_SHADERC=$<TARGET_FILE:truffle-shaderc>"
             "-DTFL_SHADER_EQUIVALENCE=$<TARGET_FILE:truffle_shader_portable_equivalence_tests>"
-            "-DTFL_SHADERC_TEST_DIR=${PROJECT_BINARY_DIR}/shaderc-portable-smoke"
+            "-DTFL_SHADERC_TEST_DIR=${_truffle_scratch_dir}/shaderc-portable-smoke"
             -P "${PROJECT_SOURCE_DIR}/cmake/ShadercPortableSmoke.cmake")
     endif()
     add_test(NAME truffle_shaderc_routes
@@ -621,7 +625,7 @@ if(TFL_BUILD_SHADERC)
             "-DTFL_EXPECT_COMPILER=$<BOOL:${TFL_SHADER_ENABLE_GLSLANG}>"
             "-DTFL_EXPECT_TINT=$<BOOL:${TFL_SHADER_ENABLE_TINT}>"
             "-DTFL_EXPECT_DXC=$<BOOL:${TFL_SHADER_ENABLE_DXC}>"
-            "-DTFL_SHADERC_TEST_DIR=${PROJECT_BINARY_DIR}/shaderc-routes"
+            "-DTFL_SHADERC_TEST_DIR=${_truffle_scratch_dir}/shaderc-routes"
             -P "${PROJECT_SOURCE_DIR}/cmake/ShadercRoutesSmoke.cmake")
     add_test(NAME truffle_shaderc_self_test COMMAND truffle-shaderc --self-test)
     add_test(
@@ -629,7 +633,7 @@ if(TFL_BUILD_SHADERC)
         COMMAND
             "${CMAKE_COMMAND}"
             "-DTFL_SHADERC=$<TARGET_FILE:truffle-shaderc>"
-            "-DTFL_SHADERC_TEST_DIR=${PROJECT_BINARY_DIR}/shaderc-smoke"
+            "-DTFL_SHADERC_TEST_DIR=${_truffle_scratch_dir}/shaderc-smoke"
             "-DTFL_EXPECT_COMPILER=$<BOOL:${TFL_SHADER_ENABLE_GLSLANG}>"
             -P "${PROJECT_SOURCE_DIR}/cmake/ShadercSmoke.cmake")
     if(TFL_SHADER_ENABLE_GLSLANG)
@@ -640,13 +644,13 @@ if(TFL_BUILD_SHADERC)
             COMMAND ${CMAKE_COMMAND}
                 "-DTFL_SHADERC=$<TARGET_FILE:truffle-shaderc>"
                 "-DTFL_SHADER_EQUIVALENCE=$<TARGET_FILE:truffle_shaderc_equivalence_tests>"
-                "-DTFL_SHADERC_TEST_DIR=${PROJECT_BINARY_DIR}/shaderc-configured-smoke"
+                "-DTFL_SHADERC_TEST_DIR=${_truffle_scratch_dir}/shaderc-configured-smoke"
                 -P "${PROJECT_SOURCE_DIR}/cmake/ShadercConfiguredSmoke.cmake")
         add_test(
             NAME truffle_shaderc_glslang_smoke
             COMMAND ${CMAKE_COMMAND}
                 "-DTFL_SHADERC=$<TARGET_FILE:truffle-shaderc>"
-                "-DTFL_SHADERC_TEST_DIR=${PROJECT_BINARY_DIR}/shaderc-glslang-smoke"
+                "-DTFL_SHADERC_TEST_DIR=${_truffle_scratch_dir}/shaderc-glslang-smoke"
                 -P "${PROJECT_SOURCE_DIR}/cmake/ShadercGlslangSmoke.cmake")
         set_tests_properties(truffle_shaderc_glslang_smoke PROPERTIES
                              FIXTURES_SETUP vulkan_spirv_package)
@@ -666,8 +670,8 @@ if(TFL_INSTALL)
         COMMAND "${CMAKE_COMMAND}"
             "-DTFL_BINARY_DIR=${PROJECT_BINARY_DIR}"
             "-DTFL_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
-            "-DTFL_INSTALL_PREFIX=${PROJECT_BINARY_DIR}/shader-install-test/install"
-            "-DTFL_CONSUMER_BUILD_DIR=${PROJECT_BINARY_DIR}/shader-install-test/consumer"
+            "-DTFL_INSTALL_PREFIX=${_truffle_test_install_dir}/shader"
+            "-DTFL_CONSUMER_BUILD_DIR=${_truffle_scratch_dir}/shader-install-consumer"
             "-DTFL_CMAKE_GENERATOR=${CMAKE_GENERATOR}"
             "-DTFL_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
             "-DTFL_OSX_SYSROOT=${CMAKE_OSX_SYSROOT}"
@@ -686,11 +690,12 @@ if(TFL_INSTALL)
             "${CMAKE_COMMAND}"
             "-DTFL_BINARY_DIR=${PROJECT_BINARY_DIR}"
             "-DTFL_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
-            "-DTFL_INSTALL_PREFIX=${PROJECT_BINARY_DIR}/package-test/install"
-            "-DTFL_CONSUMER_BUILD_DIR=${PROJECT_BINARY_DIR}/package-test/consumer"
+            "-DTFL_INSTALL_PREFIX=${_truffle_test_install_dir}/package"
+            "-DTFL_CONSUMER_BUILD_DIR=${_truffle_scratch_dir}/package-consumer"
             "-DTFL_CMAKE_GENERATOR=${CMAKE_GENERATOR}"
             "-DTFL_CMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}"
             "-DTFL_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
+            "-DTFL_OSX_SYSROOT=${CMAKE_OSX_SYSROOT}"
             -P "${PROJECT_SOURCE_DIR}/cmake/VerifyInstall.cmake")
 endif()
 

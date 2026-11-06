@@ -27,6 +27,9 @@ endif()
 if(DEFINED TFL_CXX_COMPILER AND NOT TFL_CXX_COMPILER STREQUAL "")
     list(APPEND _truffle_consumer_configure "-DCMAKE_CXX_COMPILER=${TFL_CXX_COMPILER}")
 endif()
+if(DEFINED TFL_OSX_SYSROOT AND NOT TFL_OSX_SYSROOT STREQUAL "")
+    list(APPEND _truffle_consumer_configure "-DCMAKE_OSX_SYSROOT=${TFL_OSX_SYSROOT}")
+endif()
 
 execute_process(
     COMMAND ${_truffle_consumer_configure}

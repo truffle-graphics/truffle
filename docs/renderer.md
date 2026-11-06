@@ -359,27 +359,27 @@ genuine native pipeline-creation failure is covered by the Metal prepared test,
 not by this Vulkan source test.
 
 ```bash
-cmake -S . -B build/renderer -G Ninja \
+cmake -S . -B build/_scratch/renderer -G Ninja \
   -DCMAKE_BUILD_TYPE=Debug \
   -DCMAKE_OSX_SYSROOT="$(xcrun --sdk macosx --show-sdk-path)" \
   -DTFL_WARNINGS_AS_ERRORS=ON -DTFL_BUILD_TESTS=ON \
   -DTFL_BUILD_BACKEND_METAL=ON -DTFL_BUILD_SHADERC=OFF \
   -DTFL_SHADER_ENABLE_GLSLANG=OFF
-cmake --build build/renderer --parallel 4 --target \
+cmake --build build/_scratch/renderer --parallel 4 --target \
   truffle_renderer_program_tests truffle_renderer_source_program_tests \
   truffle_renderer_metal_tests
 MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 METAL_DEVICE_WRAPPER_TYPE=1 \
-  ctest --test-dir build/renderer --output-on-failure \
+  ctest --test-dir build/_scratch/renderer --output-on-failure \
   -R '^truffle_renderer_(program|source_program|metal)_tests$'
 
-cmake -S . -B build/renderer-shader -G Ninja \
+cmake -S . -B build/_scratch/renderer-shader -G Ninja \
   -DCMAKE_BUILD_TYPE=Debug \
   -DCMAKE_OSX_SYSROOT="$(xcrun --sdk macosx --show-sdk-path)" \
   -DTFL_WARNINGS_AS_ERRORS=ON -DTFL_BUILD_TESTS=ON \
   -DTFL_BUILD_BACKEND_VULKAN=ON -DTFL_BUILD_BACKEND_METAL=OFF \
   -DTFL_SHADER_ENABLE_GLSLANG=ON
-cmake --build build/renderer-shader --parallel 4
-ctest --test-dir build/renderer-shader --output-on-failure \
+cmake --build build/_scratch/renderer-shader --parallel 4
+ctest --test-dir build/_scratch/renderer-shader --output-on-failure \
   -R '^truffle_renderer_(source_program|vulkan_source)_tests$'
 ```
 

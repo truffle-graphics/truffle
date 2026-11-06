@@ -212,11 +212,11 @@ Examples:
 ## Code Quality
 
 - Follow `.editorconfig`.
-- The local foundation path uses `cmake --preset dev`,
-  `cmake --build --preset dev`, and `ctest --preset dev`. Configure only when
+- The local foundation path uses `cmake --preset debug`,
+  `cmake --build --preset debug`, and `ctest --preset debug`. Configure only when
   needed and prefer `--target <affected-target>` and `-R <test-pattern>` over
   rebuilding or retesting unrelated areas.
-- Run `cmake --build --preset dev --target truffle_format_check` when
+- Run `cmake --build --preset debug --target truffle_format_check` when
   `clang-format` is available; use `truffle_format` to apply the repository
   formatting baseline.
 - Keep module boundaries explicit and public contracts documented.

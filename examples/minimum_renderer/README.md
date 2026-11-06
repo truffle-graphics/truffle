@@ -21,12 +21,12 @@ or portable shader compiler is needed for this example.
 From the repository root, using an existing suitable build directory or a new one:
 
 ```sh
-cmake -S . -B build/minimum-renderer \
+cmake --preset debug \
   -DTFL_BUILD_BACKEND_METAL=ON \
   -DTFL_SHADER_ENABLE_METAL_COMPILER=ON \
   -DTFL_BUILD_EXAMPLES=ON
-cmake --build build/minimum-renderer --target truffle_minimum_renderer
-./build/minimum-renderer/examples/minimum_renderer/truffle_minimum_renderer
+./build.sh debug --target truffle_minimum_renderer
+./out/debug/bin/truffle_minimum_renderer
 ```
 
 Resize the window normally; Escape or the close button exits. The host updates
@@ -38,7 +38,7 @@ recreated; other failures exit with a diagnostic.
 unless both real drawable/depth changes occurred. It requires a real display:
 
 ```sh
-ctest --test-dir build/minimum-renderer --output-on-failure \
+ctest --preset debug \
   -R '^truffle_minimum_renderer_window$'
 ```
 

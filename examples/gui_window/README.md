@@ -32,11 +32,8 @@ not build this text-dependent example.
 Requires macOS with a logged-in GUI session and a Metal device. The GUI program ships as prepared MSL, so no shader compiler is needed.
 
 ```sh
-cmake -S . -B build/gui-window \
-  -DTFL_BUILD_BACKEND_METAL=ON \
-  -DTFL_BUILD_EXAMPLES=ON
-cmake --build build/gui-window --target truffle_gui_window
-./build/gui-window/examples/gui_window/truffle_gui_window
+./build.sh debug --target truffle_gui_window
+./out/debug/bin/truffle_gui_window
 ```
 
 The close button exits and prints the number of frames drawn. Escape closes
@@ -47,7 +44,7 @@ fails on unexpected work. Unrelated physical pointer/key events are ignored in
 the script; normal mode forwards them. Host focus and resize still pass through.
 
 ```sh
-ctest --test-dir build/gui-window --output-on-failure -R '^truffle_gui_window$'
+ctest --preset debug -R '^truffle_gui_window$'
 ```
 
 ## Persistence evidence (#229)
