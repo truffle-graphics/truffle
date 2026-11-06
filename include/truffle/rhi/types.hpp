@@ -710,6 +710,8 @@ struct ShaderBindingMap {
     std::uint32_t nativeGroup = 0;
     std::uint32_t nativeBinding = 0;
     std::uint32_t nativeArrayElement = 0;
+    // D3D12 structured SRV/UAV element bytes; zero selects a raw buffer.
+    std::uint32_t nativeBufferStride = 0;
 };
 
 struct PushConstantRange {

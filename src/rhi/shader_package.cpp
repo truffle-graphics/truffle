@@ -492,6 +492,29 @@ template <typename T, typename Read>
             return invalid("shader package has duplicate binding remaps");
         }
     }
+    for (const auto& remap : desc.remaps) {
+        if (remap.nativeBufferStride == 0) continue;
+        if (remap.target != ShaderTarget::dxil || remap.nativeBufferStride > 2048 ||
+            remap.nativeBufferStride % 4 != 0) {
+            return invalid("native structured-buffer stride requires DXIL and aligned 4..2048 bytes");
+        }
+        bool found = false;
+        for (const auto& variant : desc.variants) {
+            if (variant.target != remap.target || variant.stage != remap.stage) continue;
+            const auto binding = std::find_if(
+                variant.reflection.bindings.begin(), variant.reflection.bindings.end(),
+                [&](const auto& value) {
+                    return value.group == remap.group && value.binding == remap.binding &&
+                           value.type == ResourceBindingType::buffer &&
+                           remap.arrayElement < value.arrayCount;
+                });
+            if (binding == variant.reflection.bindings.end()) {
+                return invalid("native structured-buffer stride has no matching buffer");
+            }
+            found = true;
+        }
+        if (!found) return invalid("native structured-buffer stride has no matching variant");
+    }
 
     for (auto& source : desc.sources) {
         std::transform(source.sha256.begin(), source.sha256.end(),
@@ -753,6 +776,7 @@ void write_reflection(Writer& writer, const ShaderReflection& value) {
                      output.u32(remap.nativeGroup);
                      output.u32(remap.nativeBinding);
                      output.u32(remap.nativeArrayElement);
+                     output.u32(remap.nativeBufferStride);
                  });
     write_vector(writer, desc.sources,
                  [](Writer& output, const ShaderSourceRecord& source) {
@@ -818,7 +842,8 @@ void write_reflection(Writer& writer, const ShaderReflection& value) {
                                   input.u32(remap.arrayElement) &&
                                   input.u32(remap.nativeGroup) &&
                                   input.u32(remap.nativeBinding) &&
-                                  input.u32(remap.nativeArrayElement);
+                                  input.u32(remap.nativeArrayElement) &&
+                                  input.u32(remap.nativeBufferStride);
                        }) &&
            read_vector(reader, desc.sources,
                        [](Reader& input, ShaderSourceRecord& source) {

@@ -6,7 +6,8 @@
 namespace truffle::shader::detail {
 
 [[nodiscard]] rhi::Status reflect_dxil(IDxcUtils& utils, IDxcBlob& code,
-                                      rhi::ShaderStage stage, rhi::ShaderReflection& reflection);
+                                      rhi::ShaderStage stage, rhi::ShaderReflection& reflection,
+                                      std::vector<rhi::ShaderBindingRemap>& remaps);
 [[nodiscard]] rhi::Status validate_dxil(IDxcBlob& code);
 
 } // namespace truffle::shader::detail

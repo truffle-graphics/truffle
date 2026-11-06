@@ -76,14 +76,18 @@ Current evidence is narrower than the old roadmap claimed:
   SPIR-V/DXIL and reuses portable native generation (#189). Emitted-DXIL
   reflection is native DXC/PSV metadata, not a second SPIR-V compilation.
   HLSL graphics agrees on Vulkan/MoltenVK, Metal and GL 4.1; compute agrees on
-  Vulkan/Metal. Windows/D3D12 native execution remains separate evidence.
+  Vulkan/Metal. Windows source DXC and fresh DXIL graphics/compute on D3D12
+  WARP are now verified with GPU validation (#264), including raw/structured
+  buffers and structured descriptor arrays.
   The Shader library (#178/#180) owns compilation; Renderer consumes its
   in-memory results directly through `renderer::SourceProgram` (#181).
 - The optional native Slang adapter (#190) uses pinned source Slang 2026.12.1,
   native imports and component linking, fresh transitive content snapshots,
   canonical SPIR-V reflection and independent validation. It emits only the
   requested vertex/fragment/compute entry/configuration to Vulkan 1.1 /
-  SPIR-V 1.3 without glslang. See `docs/shader-slang.md`; no Slang portable-native
+  SPIR-V 1.3 without glslang. Its Windows source build, installed consumption,
+  and Vulkan graphics/compute are also verified (#264).
+  See `docs/shader-slang.md`; no Slang portable-native
   output or backend maturity promotion is implied.
 - WebGPU and WebGL2 now have explicit source-only targets; WebGL2 contains an
   Emscripten browser-context path but has no browser execution evidence yet.
@@ -205,9 +209,10 @@ composition/cache/rebuild audit (#185-#192) are delivered.
 The [evidence-linked Shader matrix](src/shader/README.md#completion-scope-and-evidence-73-193)
 is the authority for actual routes, profile/API floors, experimental gates and
 representational limits, not full upstream-language or cross-product support.
-Native Metal/Vulkan/OpenGL 4.1 evidence is local to Apple Silicon; DXIL native
-Windows consumption, new Linux/GLES output checks and browser execution remain
-separately tracked, not simulated or blocking this baseline.
+The original native Metal/Vulkan/OpenGL 4.1 evidence is local to Apple Silicon;
+Windows DXC/Slang source builds, Vulkan output and fresh DXIL consumption on
+D3D12 WARP are verified separately in #264. New Linux/GLES output checks and
+browser execution remain separately tracked, not simulated or blocking this baseline.
 
 The accepted next scope is the minimum flexible Renderer (#206), following
 [ADR 0012](docs/adr/0012-app-defined-render-data.md): explicit app-defined data,

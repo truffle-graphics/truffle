@@ -262,6 +262,10 @@ see [Slang's pinned source build and bounded target matrix](docs/shader-slang.md
 HLSL compilation is independently enabled with
 `-DTFL_SHADER_ENABLE_DXC=ON -DTFL_SHADER_ENABLE_SPIRV_TOOLS=ON`;
 it uses pinned in-process DXC for SPIR-V and DXIL, without requiring glslang.
+On Windows, source-built DXC also requires the Visual Studio **C++ ATL for
+latest v143 build tools (x86 & x64)** component. Activate the developer shell
+for an installation containing ATL before configuring/building; an already
+active toolchain is preserved by the build scripts.
 Portable native outputs additionally require
 `-DTFL_SHADER_ENABLE_SPIRV_TOOLS=ON -DTFL_SHADER_ENABLE_SPIRV_CROSS=ON`.
 Explicitly prepare their pinned submodules first; configure never downloads.

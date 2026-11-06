@@ -1,5 +1,7 @@
 #pragma once
 
+#include "truffle/rhi/status.hpp"
+
 namespace truffle::rhi::detail {
 
 enum class Direct3DAcquireFault {
@@ -24,5 +26,6 @@ enum class Direct3DPresentFault {
 
 void set_direct3d_acquire_fault_for_testing(Direct3DAcquireFault fault) noexcept;
 void set_direct3d_present_fault_for_testing(Direct3DPresentFault fault) noexcept;
+[[nodiscard]] Status direct3d_validation_status_for_testing();
 
 } // namespace truffle::rhi::detail

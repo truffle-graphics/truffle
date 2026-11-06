@@ -105,7 +105,11 @@ inline void check_color(rhi::Device& device, rhi::Texture& target,
             for (std::size_t channel = 0; channel < 4; ++channel) {
                 if (bytes[y * rowPitch + x * 4 + channel] != expected[channel]) {
                     throw std::runtime_error(std::string(label) + ": pixel mismatch at " +
-                                             std::to_string(x) + "," + std::to_string(y));
+                                             std::to_string(x) + "," + std::to_string(y) +
+                                             " channel " + std::to_string(channel) +
+                                             ": expected " + std::to_string(std::to_integer<unsigned>(expected[channel])) +
+                                             ", got " + std::to_string(std::to_integer<unsigned>(
+                                                 bytes[y * rowPitch + x * 4 + channel])));
                 }
             }
         }

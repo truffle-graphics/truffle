@@ -2186,6 +2186,13 @@ struct Factory {
             return Status::failure(StatusCode::invalid_argument,
                                    "shader binding remap has no logical resource");
         }
+        if (mapping.nativeBufferStride != 0 &&
+            ((desc.format != ShaderByteFormat::dxil && desc.format != ShaderByteFormat::native_source) ||
+             reflected->type != ResourceBindingType::buffer ||
+             mapping.nativeBufferStride > 2048 || mapping.nativeBufferStride % 4 != 0)) {
+            return Status::failure(StatusCode::invalid_argument,
+                                   "shader native structured-buffer stride is invalid");
+        }
         for (std::size_t previous = 0; previous < index; ++previous) {
             const auto& candidate = desc.bindingMap[previous];
             if (candidate.stage == mapping.stage &&
@@ -3828,6 +3835,7 @@ Result<Shader> Device::create_shader(const ShaderPackage& package,
                     .nativeGroup = remap.nativeGroup,
                     .nativeBinding = remap.nativeBinding,
                     .nativeArrayElement = remap.nativeArrayElement,
+                    .nativeBufferStride = remap.nativeBufferStride,
                 });
             }
         }

@@ -5,7 +5,48 @@ This is the rolling execution handoff, not an implementation transcript.
 issues/Project own accepted work. Earlier phase details remain in their PRs,
 the support matrix and Git history.
 
-## Latest: Windows Debug baseline and queue-safe Vulkan layouts (#262/#263)
+## Latest: Windows source compilers and native DXIL (#264)
+
+The Windows batch remains `fix/windows-baseline`; signed issue-scoped commits
+are pushed before starting the next task. Studio's submodule pin is unchanged.
+DXC and Slang now build from their documented clean pinned source closures on
+Windows x64, MSVC 19.44. The selected developer environment needs C++ ATL for
+DXC; configure reports that requirement early. An installed ATL-capable
+developer shell was used without installing components or modifying vendor code.
+DXC stages its DLL beside normal build executables, and Slang exports/installs
+its Windows import library. Installed consumers deploy their enabled compiler
+DLLs using CMake runtime dependency metadata, without global PATH changes.
+
+Native DXIL exposed a real D3D12 descriptor bug: structured buffers were bound
+as raw buffers. Existing per-target binding maps now carry
+`nativeBufferStride`; DXC emits it, the package codec validates/preserves it,
+and D3D12 constructs structured SRV/UAVs with the actual stride. Zero preserves
+raw-buffer behavior. This extends the unreleased TSP 1.0 draft in place, not a
+version bump or compatibility layer. RHI owns native binding metadata and the
+backend owns descriptors; neither acquires a Shader/compiler dependency.
+The RHI/codec/backend cohesion candidates remain existing contract/native
+owners, with no architectural boundary change.
+
+Strict optional-provider build and 22 focused Shader/D3D12 checks pass, including
+installed Shader/Renderer consumers and CLI/library byte equality. Fresh DXIL
+on WARP gives 256 exact RGBA(64,128,255,255) pixels, exact structured and raw
+compute words 107..110 plus untouched sentinels, and exact structured SRV/UAV
+arrays at a 12-byte stride. The test requires the debug layer and GPU validation
+and rejects stored warnings/errors or lost diagnostics. HLSL SPIR-V and native
+Slang graphics/compute run on the NVIDIA RTX 4080 SUPER with Vulkan validation.
+HLSL graphics uses exact UNORM code points rather than the GPU-dependent 0.5
+quantization tie; byte-exact assertions remain unchanged.
+
+The normal Debug configuration retains DXC/Slang disabled: its strict build and
+19 focused Shader/binding/D3D12/package checks pass. The architecture guard
+passes. Optional build/install outputs are isolated in `build/windows-shader`,
+`out/windows-shader`, and `install/windows-shader`; use the debug preset with
+explicit output/install overrides and the DXC/Slang/SPIRV-Tools options.
+No Windows portable Metal/GL output, D3D12 physical-GPU or ARM64 claim is made.
+The broader D3D12 assessment #122 stays open. Next, in order: Vulkan Win32 WSI
+#58, then desktop OpenGL WGL #61/#63. Backend maturity is unchanged.
+
+## Earlier: Windows Debug baseline and queue-safe Vulkan layouts (#262/#263)
 
 The Windows batch is `fix/windows-baseline`, based on `b4ba538`. The owner
 authorized signed issue-scoped commits with immediate pushes. Studio's

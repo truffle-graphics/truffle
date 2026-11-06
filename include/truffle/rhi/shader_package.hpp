@@ -84,6 +84,7 @@ struct ShaderBindingRemap {
     std::uint32_t nativeGroup = 0;
     std::uint32_t nativeBinding = 0;
     std::uint32_t nativeArrayElement = 0;
+    std::uint32_t nativeBufferStride = 0;
 
     bool operator==(const ShaderBindingRemap&) const = default;
 };
