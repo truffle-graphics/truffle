@@ -5,6 +5,41 @@ This is the rolling execution handoff, not an implementation transcript.
 issues/Project own accepted work. Earlier phase details remain in their PRs,
 the support matrix and Git history.
 
+## Latest: developer build workflow (#257)
+
+The user-approved build workflow separates final outputs into `out/<preset>/bin`
+and `lib`, installs/packages into `install/<preset>`, and throwaway probes/logs
+into `build/_scratch`. `build/<preset>` remains CMake's working directory.
+Native `setup.sh` / `setup.ps1` prepare the standard pinned dependencies and
+confirm machine package installation; `build.sh` / `build.ps1` configure and
+build debug/release/relwithdebinfo/package presets. No install script or hosted run is added.
+Embedded Truffle preserves parent output settings.
+
+User-directed revision replaces the custom dev/ci names with standard
+configurations and removes the separate warning-policy preset. The build
+scripts accept `--warnings-as-errors on|off` (PowerShell
+`-WarningsAsErrors on|off`) without changing the build/output directories.
+The setting defaults off in a new build and is remembered per configuration.
+The revised scripts pass 15 isolated behavior checks per repository. All three
+normal CMake configurations were checked; real debug builds of the small Base
+target confirm on/off/retained settings use the same output tree. Compiler
+commands confirm an unused-variable warning fails with on and succeeds with
+off. No full application rebuild was repeated for the naming/flag revision.
+
+On macOS, script safety/error cases and focused strict RHI/Shader/GUI tests,
+installed Shader/package consumers, CPack archive staging and parity paths were
+verified. The reused ci cache referenced a removed Apple SDK; its SDK and stale
+feature probes were refreshed locally, not worked around in production code.
+Windows/Linux installation and native build execution are not verified here.
+The Windows entry point activates the installed x64 Visual Studio toolchain;
+automatic Linux dependency installation targets Debian/Ubuntu only.
+The owner approved the design for both repositories and authorized delivery.
+The approved obsolete local build directories were removed after validation:
+17 were present at cleanup (the earlier inventory said 18). `dev`, `ci`, the
+explicit `package` preset and `_scratch` were retained. Those 17 were ad hoc
+build directories, not presets. Retired dev/ci caches have not been deleted
+as part of the naming revision; no additional cleanup is authorized.
+
 ## Workflow: Batch Branches
 
 Maintainer decision: a branch and its PR cover a related batch of issues with

@@ -68,13 +68,13 @@ Local evidence (2026-10-29, Apple M3 Pro, macOS 27.0.1, Homebrew MoltenVK
 1.4.2, loader 1.4.363.0):
 
 ```sh
-cmake -S . -B build/vulkan -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+cmake -S . -B build/_scratch/vulkan -G Ninja -DCMAKE_BUILD_TYPE=Debug \
   -DCMAKE_OSX_SYSROOT="$(xcrun --sdk macosx --show-sdk-path)" \
   -DTFL_WARNINGS_AS_ERRORS=ON -DTFL_BUILD_TESTS=ON \
   -DTFL_BUILD_BACKEND_VULKAN=ON -DTFL_BUILD_SHADERC=ON \
   -DTFL_SHADER_ENABLE_GLSLANG=ON
-cmake --build build/vulkan
-ctest --test-dir build/vulkan --output-on-failure
+cmake --build build/_scratch/vulkan
+ctest --test-dir build/_scratch/vulkan --output-on-failure
 ```
 
 `truffle_vulkan_tests` runs the same shared suite as Linux plus a

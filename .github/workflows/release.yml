@@ -22,30 +22,27 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Prepare GUI text dependencies
-        run: git submodule update --init --depth 1 vendor/freetype vendor/harfbuzz
+        run: git submodule update --init vendor/freetype vendor/harfbuzz vendor/sheenbidi vendor/utf8proc
 
       - name: Configure package build
         run: |
-          cmake -S . -B build/release-package \
-            -DTFL_INSTALL=ON \
-            -DTFL_BUILD_TESTS=ON \
-            -DTFL_BUILD_EXAMPLES=OFF
+          cmake --preset package -DTFL_BUILD_TESTS=ON
 
       - name: Build package
-        run: cmake --build build/release-package
+        run: cmake --build --preset package
 
       - name: Install package layout
-        run: cmake --install build/release-package --prefix build/release-package/install
+        run: cmake --install build/package
 
       - name: Create package archives
-        working-directory: build/release-package
+        working-directory: build/package
         run: cpack --verbose
 
       - name: Generate backend parity report
         run: |
           cmake \
-            -DTFL_BUILD_DIR=${{ github.workspace }}/build/release-package \
-            -DTFL_REPORT_OUT=${{ github.workspace }}/build/release-package/parity-matrix.md \
+            -DTFL_BUILD_DIR=${{ github.workspace }}/build/package \
+            -DTFL_REPORT_OUT=${{ github.workspace }}/build/_scratch/package/parity-matrix.md \
             -P cmake/GenerateParityReport.cmake
 
       - name: Upload parity report artifact
@@ -53,10 +50,10 @@ jobs:
         with:
           name: backend-parity-matrix-release
           path: |
-            build/release-package/parity-matrix.md
-            build/release-package/parity-matrix.json
-            build/release-package/rhi-parity-report.json
-            build/release-package/*.parity.log
+            build/_scratch/package/parity-matrix.md
+            build/_scratch/package/parity-matrix.json
+            build/_scratch/package/rhi-parity-report.json
+            build/_scratch/package/*.parity.log
           if-no-files-found: error
 
       - name: Publish GitHub Release
@@ -64,8 +61,8 @@ jobs:
         with:
           generate_release_notes: true
           files: |
-            build/release-package/*.tar.gz
-            build/release-package/*.zip
-            build/release-package/parity-matrix.md
-            build/release-package/parity-matrix.json
-            build/release-package/rhi-parity-report.json
+            install/package/packages/*.tar.gz
+            install/package/packages/*.zip
+            build/_scratch/package/parity-matrix.md
+            build/_scratch/package/parity-matrix.json
+            build/_scratch/package/rhi-parity-report.json

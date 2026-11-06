@@ -13,8 +13,8 @@ resources; this intentionally keeps the example focused on package consumption.
 Configure with `TFL_BUILD_EXAMPLES=ON` and Metal and/or Vulkan enabled, then:
 
 ```bash
-cmake --build build/renderer --parallel 4 --target truffle_prepared_renderer
-build/renderer/examples/prepared_renderer/truffle_prepared_renderer \
+./build.sh debug --parallel 4 --target truffle_prepared_renderer
+./out/debug/bin/truffle_prepared_renderer \
   msl vertex.tsp vertex_main fragment.tsp green_fragment 0 configured
 ```
 
@@ -24,7 +24,7 @@ Both packages can be the same file. Target/backend unavailability and package or
 native failures return a nonzero exit code.
 
 The native Renderer test generates a real `prepared.tsp` fixture in
-`build/renderer/tests/renderer-native-fixtures/`. To run this example against that
+`build/_scratch/debug/renderer-native-fixtures/`. To run this example against that
 fixture, replace both package paths above with its path. No offline/source
 compiler is needed to generate that hand-authored native-source fixture.
 

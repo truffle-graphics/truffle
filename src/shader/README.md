@@ -303,7 +303,7 @@ and shaderc. No compiler executable or subprocess is involved.
 git submodule update --init vendor/dxc vendor/spirv-tools vendor/spirv-headers
 git -C vendor/dxc submodule update --init external/SPIRV-Headers \
   external/SPIRV-Tools external/DirectX-Headers
-cmake -S . -B build/hlsl -G Ninja -DTFL_SHADER_ENABLE_DXC=ON \
+cmake -S . -B build/_scratch/hlsl -G Ninja -DTFL_SHADER_ENABLE_DXC=ON \
   -DTFL_SHADER_ENABLE_SPIRV_TOOLS=ON -DTFL_BUILD_SHADERC=ON
 ```
 

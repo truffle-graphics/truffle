@@ -239,9 +239,9 @@ Prerequisites:
   the copied GLFW source when examples are enabled.
 
 ```powershell
-cmake --preset dev
-cmake --build --preset dev
-ctest --preset dev
+cmake --preset debug
+cmake --build --preset debug
+ctest --preset debug
 ```
 
 The checked-in presets build the optional `truffle-shaderc` package assembler
@@ -296,6 +296,71 @@ Accepted and deliberately deferred work is tracked in the
 [Truffle delivery project](https://github.com/orgs/truffle-graphics/projects/1) and
 repository issues. [`docs/planning.md`](docs/planning.md) defines the durable
 planning and traceability rules used by contributors and automation.
+
+## Setup and build
+
+On macOS or Debian/Ubuntu Linux:
+
+```sh
+./setup.sh
+./build.sh
+./build.sh release
+./build.sh relwithdebinfo
+./build.sh debug --warnings-as-errors on --target truffle_rhi_contract_tests --parallel 4
+./build.sh debug --warnings-as-errors off --target truffle_rhi_contract_tests
+ctest --preset debug -R '^truffle_rhi_contract_tests$'
+```
+
+On Windows, from PowerShell:
+
+```powershell
+.\setup.ps1
+.\build.ps1
+.\build.ps1 release
+.\build.ps1 debug -WarningsAsErrors on
+.\build.ps1 debug -WarningsAsErrors off
+```
+
+Setup checks Git, CMake 3.23+, Ninja and the native C++ toolchain. Missing tools
+are installed only after confirmation, using existing Homebrew, apt-get or
+winget. Homebrew itself is not bootstrapped. On Windows, setup can install the
+Visual Studio 2022 C++ Build Tools and Windows SDK; build activates the installed
+x64 developer environment when necessary. If an installer needs a new terminal
+or Apple's graphical installer needs to finish, setup stops and asks you to rerun.
+`setup.sh --check` / `setup.ps1 -Check` perform no installation or fetching.
+
+Setup initializes only the pinned Vulkan headers/volk, glslang and GUI-text
+submodules needed by the standard presets. It does not fetch optional DXC, Slang
+or Tint toolchains recursively. Dirty submodules are never moved. Additional
+shader routes still require their documented dependency preparation.
+
+The scripts work from any current directory. Build configures the selected
+preset and forwards build arguments to `cmake --build`. `debug` is Debug,
+`release` is optimized, and `relwithdebinfo` is optimized with debugging
+information. `package` is an explicit distribution preset, not a warning mode.
+Warnings-as-errors is independently toggled with `--warnings-as-errors on|off`
+or PowerShell `-WarningsAsErrors on|off`. New builds default to off; each
+configuration remembers its setting until explicitly changed. Toggling
+reconfigures the same directory, not a separate build tree. Only project-owned
+targets adopt this warning policy, not vendored third-party sources.
+Direct CMake use remains supported (`-DTFL_WARNINGS_AS_ERRORS=ON` or `OFF`).
+Metal defaults on only on Apple hosts.
+
+```text
+build/<preset>/        CMake cache, generated build files and intermediate work
+out/<preset>/bin/      executables, examples, tests and tools
+out/<preset>/lib/      static and shared libraries
+install/<preset>/     installed package tree (only after cmake --install)
+install/<preset>/packages/  CPack archives and staging
+build/_scratch/        temporary validation logs, reports and consumer probes
+```
+
+These directories are ignored by Git. No install script is provided yet.
+For direct `cmake -S . -B ...` builds, the build-directory basename selects the
+output/install name; set `TFL_OUTPUT_DIR` and `CMAKE_INSTALL_PREFIX` to override it.
+Explicit `CMAKE_*_OUTPUT_DIRECTORY` settings are respected. Embedded Truffle
+does not change its parent's output directories. Multi-configuration generators
+append their configuration under `bin` and `lib`; the shipped presets use Ninja.
 
 ## CMake Consumers
 

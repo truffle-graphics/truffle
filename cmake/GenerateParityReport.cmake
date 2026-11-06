@@ -5,13 +5,15 @@ endif()
 if(NOT DEFINED TFL_REPORT_OUT)
     message(FATAL_ERROR "TFL_REPORT_OUT is required")
 endif()
+get_filename_component(TFL_REPORT_OUT "${TFL_REPORT_OUT}" ABSOLUTE)
 
 if(NOT DEFINED TFL_REPORT_JSON_OUT)
     string(REGEX REPLACE "\\.[^.]*$" ".json" TFL_REPORT_JSON_OUT "${TFL_REPORT_OUT}")
 endif()
 
 if(NOT DEFINED TFL_RHI_PARITY_JSON_OUT)
-    set(TFL_RHI_PARITY_JSON_OUT "${TFL_BUILD_DIR}/rhi-parity-report.json")
+    get_filename_component(_truffle_report_dir "${TFL_REPORT_OUT}" DIRECTORY)
+    set(TFL_RHI_PARITY_JSON_OUT "${_truffle_report_dir}/rhi-parity-report.json")
 endif()
 
 function(_truffle_json_escape out input)
@@ -111,8 +113,7 @@ foreach(_test IN LISTS _tracked_tests)
     else()
         string(APPEND _report "| ${_test} | fail | see CI logs for output |\n")
         _truffle_append_json_test("${_test}" "fail" "see CI logs for output")
-        file(MAKE_DIRECTORY "${TFL_BUILD_DIR}")
-        file(WRITE "${TFL_BUILD_DIR}/${_test}.parity.log"
+        file(WRITE "${_report_dir}/${_test}.parity.log"
             "--- ctest stdout ---\n${_run_output}\n\n--- ctest stderr ---\n${_run_error}\n")
         file(WRITE "${TFL_REPORT_OUT}" "${_report}")
         string(APPEND _json "\n  ]\n}\n")
@@ -131,8 +132,17 @@ else()
     set(_truffle_exe_suffix "")
 endif()
 
+if(NOT DEFINED TFL_BIN_DIR)
+    file(STRINGS "${TFL_BUILD_DIR}/CMakeCache.txt" _output_cache
+        REGEX "^TFL_OUTPUT_DIR:[^=]+=" LIMIT_COUNT 1)
+    if(NOT _output_cache)
+        message(FATAL_ERROR "Pass TFL_BIN_DIR for builds without a cached TFL_OUTPUT_DIR")
+    endif()
+    string(REGEX REPLACE "^[^=]+=" "" _output_dir "${_output_cache}")
+    set(TFL_BIN_DIR "${_output_dir}/bin")
+endif()
 set(_rhi_parity_report_exe
-    "${TFL_BUILD_DIR}/tests/truffle_rhi_parity_report${_truffle_exe_suffix}")
+    "${TFL_BIN_DIR}/truffle_rhi_parity_report${_truffle_exe_suffix}")
 if(EXISTS "${_rhi_parity_report_exe}")
     execute_process(
         COMMAND "${_rhi_parity_report_exe}" "${TFL_RHI_PARITY_JSON_OUT}"

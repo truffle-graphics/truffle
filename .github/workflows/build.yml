@@ -56,45 +56,47 @@ jobs:
             xvfb
 
       - name: Configure
-        run: cmake --preset ci -DTFL_BUILD_BACKEND_METAL=${{ matrix.metal }}
+        run: cmake --preset debug -DTFL_WARNINGS_AS_ERRORS=ON -DTFL_BUILD_BACKEND_METAL=${{ matrix.metal }}
 
       - name: Build
-        run: cmake --build --preset ci
+        run: cmake --build --preset debug
 
       - name: Run shared contract tests
-        run: ctest --preset ci -LE "native-smoke|presentation|validation"
+        run: ctest --preset debug -LE "native-smoke|presentation|validation"
 
       - name: Run native smoke with API validation
         env:
           MTL_DEBUG_LAYER: 1
-        run: ctest --preset ci -L native-smoke
+        run: ctest --preset debug -L native-smoke
 
       - name: Run native presentation proof
         if: runner.os == 'macOS' || runner.os == 'Windows'
         env:
           MTL_DEBUG_LAYER: 1
-        run: ctest --preset ci -L presentation
+        run: ctest --preset debug -L presentation
 
       - name: Run Linux native presentation proof
         if: runner.os == 'Linux'
-        run: xvfb-run --auto-servernum ctest --preset ci -L presentation
+        run: xvfb-run --auto-servernum ctest --preset debug -L presentation
 
       - name: Run strict RHI doctor
-        run: ./build/ci/tools/rhi-doctor/truffle-rhi-doctor${{ runner.os == 'Windows' && '.exe' || '' }} --strict --json build/ci/rhi-doctor.json
+        run: |
+          cmake -E make_directory build/_scratch/debug
+          ./out/debug/bin/truffle-rhi-doctor${{ runner.os == 'Windows' && '.exe' || '' }} --strict --json build/_scratch/debug/rhi-doctor.json
 
       - name: Generate backend parity report
-        run: cmake -DTFL_BUILD_DIR="${{ github.workspace }}/build/ci" -DTFL_REPORT_OUT="${{ github.workspace }}/build/ci/parity-matrix.md" -P cmake/GenerateParityReport.cmake
+        run: cmake -DTFL_BUILD_DIR="${{ github.workspace }}/build/debug" -DTFL_REPORT_OUT="${{ github.workspace }}/build/_scratch/debug/parity-matrix.md" -P cmake/GenerateParityReport.cmake
 
       - name: Upload backend parity report
         uses: actions/upload-artifact@v4
         with:
           name: backend-parity-matrix-${{ matrix.os }}
           path: |
-            build/ci/parity-matrix.md
-            build/ci/parity-matrix.json
-            build/ci/rhi-parity-report.json
-            build/ci/rhi-doctor.json
-            build/ci/*.parity.log
+            build/_scratch/debug/parity-matrix.md
+            build/_scratch/debug/parity-matrix.json
+            build/_scratch/debug/rhi-parity-report.json
+            build/_scratch/debug/rhi-doctor.json
+            build/_scratch/debug/*.parity.log
           if-no-files-found: error
 
   package:
@@ -103,20 +105,20 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Prepare package dependencies
+        run: git submodule update --init vendor/freetype vendor/harfbuzz vendor/sheenbidi vendor/utf8proc
 
       - name: Configure package build
-        run: |
-          cmake -S . -B build/package \
-            -DTFL_INSTALL=ON \
-            -DTFL_BUILD_RHI_DOCTOR=OFF \
-            -DTFL_BUILD_TESTS=OFF \
-            -DTFL_BUILD_EXAMPLES=OFF
+        run: cmake --preset package
 
       - name: Build package targets
-        run: cmake --build build/package
+        run: cmake --build --preset package
 
       - name: Install package layout
-        run: cmake --install build/package --prefix build/package/install
+        run: cmake --install build/package
 
       - name: Generate archives with CPack
         working-directory: build/package
@@ -127,6 +129,6 @@ jobs:
         with:
           name: truffle-package-archives
           path: |
-            build/package/*.tar.gz
-            build/package/*.zip
+            install/package/packages/*.tar.gz
+            install/package/packages/*.zip
           if-no-files-found: error

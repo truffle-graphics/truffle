@@ -3,8 +3,8 @@
 On a logged-in Apple Silicon macOS desktop with the Metal backend enabled:
 
 ```sh
-cmake --build build/gui-interaction --target truffle_gui_dock_window
-build/gui-interaction/examples/gui_dock_window/truffle_gui_dock_window
+./build.sh debug --target truffle_gui_dock_window
+./out/debug/bin/truffle_gui_dock_window
 ```
 
 Drag the left tab outside the main window to detach the live colored button.

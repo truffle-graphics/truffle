@@ -7,15 +7,17 @@
   },
   "configurePresets": [
     {
-      "name": "dev",
-      "displayName": "Developer build",
-      "description": "Configure Truffle tests, examples, install rules, and the null backend.",
+      "name": "debug",
+      "displayName": "Debug",
+      "description": "Debug build with tests, examples, tools, GUI text and platform backends.",
       "generator": "Ninja",
-      "binaryDir": "${sourceDir}/build/dev",
+      "binaryDir": "${sourceDir}/build/${presetName}",
       "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "TFL_OUTPUT_DIR": "${sourceDir}/out/${presetName}",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/install/${presetName}",
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "TFL_BUILD_BACKEND_NULL": "ON",
-        "TFL_BUILD_BACKEND_METAL": "ON",
         "TFL_BUILD_BACKEND_VULKAN": "ON",
         "TFL_BUILD_BACKEND_OPENGL": "ON",
         "TFL_BUILD_BACKEND_OPENGLES": "ON",
@@ -30,36 +32,76 @@
       }
     },
     {
-      "name": "ci",
-      "displayName": "CI build",
-      "inherits": "dev",
-      "binaryDir": "${sourceDir}/build/ci",
+      "name": "relwithdebinfo",
+      "displayName": "Release with debug information",
+      "inherits": "debug",
       "cacheVariables": {
-        "TFL_WARNINGS_AS_ERRORS": "ON"
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      }
+    },
+    {
+      "name": "release",
+      "displayName": "Release",
+      "inherits": "debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "package",
+      "displayName": "Distribution build",
+      "inherits": "release",
+      "cacheVariables": {
+        "TFL_BUILD_TESTS": "OFF",
+        "TFL_BUILD_EXAMPLES": "OFF",
+        "TFL_BUILD_RHI_DOCTOR": "OFF",
+        "TFL_BUILD_SHADERC": "OFF",
+        "TFL_SHADER_ENABLE_GLSLANG": "OFF",
+        "TFL_BUILD_BACKEND_VULKAN": "OFF",
+        "TFL_BUILD_BACKEND_OPENGL": "OFF",
+        "TFL_BUILD_BACKEND_OPENGLES": "OFF",
+        "TFL_BUILD_BACKEND_DIRECT3D": "OFF",
+        "TFL_BUILD_BACKEND_WEBGPU": "OFF",
+        "TFL_BUILD_BACKEND_WEBGL2": "OFF"
       }
     }
   ],
   "buildPresets": [
     {
-      "name": "dev",
-      "configurePreset": "dev"
+      "name": "debug",
+      "configurePreset": "debug"
     },
     {
-      "name": "ci",
-      "configurePreset": "ci"
+      "name": "relwithdebinfo",
+      "configurePreset": "relwithdebinfo"
+    },
+    {
+      "name": "release",
+      "configurePreset": "release"
+    },
+    {
+      "name": "package",
+      "configurePreset": "package"
     }
   ],
   "testPresets": [
     {
-      "name": "dev",
-      "configurePreset": "dev",
+      "name": "debug",
+      "configurePreset": "debug",
       "output": {
         "outputOnFailure": true
       }
     },
     {
-      "name": "ci",
-      "configurePreset": "ci",
+      "name": "relwithdebinfo",
+      "configurePreset": "relwithdebinfo",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "release",
+      "configurePreset": "release",
       "output": {
         "outputOnFailure": true
       }

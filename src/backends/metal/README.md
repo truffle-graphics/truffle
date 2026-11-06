@@ -95,15 +95,15 @@ storage.
 Commands used:
 
 ```bash
-cmake -S . -B build/metal -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+cmake -S . -B build/_scratch/metal -G Ninja -DCMAKE_BUILD_TYPE=Debug \
   -DCMAKE_OSX_SYSROOT="$(xcrun --sdk macosx --show-sdk-path)" \
   -DTFL_WARNINGS_AS_ERRORS=ON -DTFL_BUILD_TESTS=ON
-cmake --build build/metal --target truffle_metal_tests \
+cmake --build build/_scratch/metal --target truffle_metal_tests \
   truffle_metal_conformance_tests truffle_metal_presentation_tests truffle_host_workspace_example \
   truffle_backend_support_tests truffle_rhi_contract_tests \
   truffle_rhi_parity_report
 MTL_DEBUG_LAYER=1 MTL_SHADER_VALIDATION=1 METAL_DEVICE_WRAPPER_TYPE=1 \
-  ctest --test-dir build/metal --output-on-failure \
+  ctest --test-dir build/_scratch/metal --output-on-failure \
   -R "truffle_metal|truffle_host_workspace|truffle_backend_support|truffle_rhi_contract|truffle_rhi_parity"
 ```
 
