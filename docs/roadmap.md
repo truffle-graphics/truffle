@@ -111,9 +111,11 @@ lanes, or Intel-specific work is planned.
 - Current Shader-provider/native-output checks on Windows D3D12 (#122), Linux
   Vulkan (#124), Linux GL/GLES (#125), and browser WGSL (#123). Older backend
   smoke receipts are not evidence for the newly added Shader routes.
-- Desktop OpenGL on Windows (WGL, #61), and on Linux beyond its current EGL
-  evidence, including the refactored EGL context path and window
-  presentation (#61).
+- Windows WGL GL 4.5 core resources, graphics/compute, sync/query ownership
+  and host-window presentation/resize/recovery are verified locally (#266).
+  Linux beyond its current EGL evidence, including the refactored EGL context
+  path and window presentation, remains under #61; remaining GL/GLES
+  synchronization/platform scopes remain under #63.
 - Any baseline backend feature first verified on only one platform.
 
 ## Deferred Backlog

@@ -2,23 +2,26 @@
 
 #include "foundation_backend.hpp"
 
-#if defined(TFL_HAS_EGL_OPENGL) || defined(TFL_HAS_CGL_OPENGL)
+#if defined(TFL_HAS_EGL_OPENGL) || defined(TFL_HAS_CGL_OPENGL) || \
+    defined(TFL_HAS_WGL_OPENGL)
 #define TFL_HAS_NATIVE_OPENGL 1
 #define TFL_GL_API_DESKTOP 1
 #if defined(TFL_HAS_CGL_OPENGL)
 #define TFL_GL_CONTEXT_CGL 1
+#elif defined(TFL_HAS_WGL_OPENGL)
+#define TFL_GL_CONTEXT_WGL 1
 #else
 #define TFL_GL_CONTEXT_EGL 1
 #endif
 #include "gl_probe.hpp"
 #endif
-#if defined(TFL_GL_CONTEXT_CGL)
+#if defined(TFL_GL_CONTEXT_CGL) || defined(TFL_GL_CONTEXT_WGL)
 #include "gl_present.hpp"
 #endif
 
 namespace truffle::rhi {
 
-#if defined(TFL_GL_CONTEXT_CGL)
+#if defined(TFL_GL_CONTEXT_CGL) || defined(TFL_GL_CONTEXT_WGL)
 namespace detail {
 
 void set_opengl_present_capture_for_testing(bool enabled) noexcept {
@@ -30,6 +33,12 @@ OpenGLPresentCapture opengl_last_present_capture_for_testing() {
     std::lock_guard lock{capture.mutex};
     return capture.last;
 }
+
+#if defined(TFL_GL_CONTEXT_WGL)
+void set_opengl_context_loss_for_testing(bool enabled) noexcept {
+    gl_probe::contextLossForTesting.store(enabled);
+}
+#endif
 
 } // namespace detail
 #endif
@@ -45,6 +54,8 @@ Result<Instance> create_opengl_instance(const InstanceDesc& desc) {
     config.kind = BackendKind::opengl;
 #if defined(TFL_GL_CONTEXT_CGL)
     config.platform = PlatformKind::macos;
+#elif defined(TFL_GL_CONTEXT_WGL)
+    config.platform = PlatformKind::windows;
 #else
     config.platform = PlatformKind::linux_host;
 #endif
@@ -64,6 +75,15 @@ Result<Instance> create_opengl_instance(const InstanceDesc& desc) {
     config.supportedFeatures = {Feature::transfer, Feature::descriptor_arrays,
                                 Feature::dynamic_offsets, Feature::push_constants};
 #endif
+    // Presentation is independent of the compute feature tier.
+#if defined(TFL_GL_CONTEXT_WGL)
+    config.supportedFeatures.push_back(Feature::presentation);
+    config.presentation = true;
+#endif
+    if (native.timestampQueries) {
+        config.supportedFeatures.push_back(Feature::timestamp_queries);
+        config.timestampPeriodNanoseconds = 1.0;
+    }
     config.resourceCapabilities = {
         .bufferViews = true,
         .textureViews = native.textureViews,
@@ -129,7 +149,7 @@ Result<Instance> create_opengl_instance(const InstanceDesc& desc) {
     config.createSemaphore = &detail::gl_probe::create_semaphore;
     config.createQueryPool = &detail::gl_probe::create_query_pool;
 #endif
-#if defined(TFL_GL_CONTEXT_CGL)
+#if defined(TFL_GL_CONTEXT_CGL) || defined(TFL_GL_CONTEXT_WGL)
     config.createSurface = &detail::gl_probe::create_surface;
     config.createSwapchain = &detail::gl_probe::create_swapchain;
     config.acquireSwapchain = &detail::gl_probe::acquire_swapchain;

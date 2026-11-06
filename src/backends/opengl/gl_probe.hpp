@@ -5,6 +5,8 @@
 #include "gl_api.hpp"
 #if defined(TFL_GL_CONTEXT_CGL)
 #include "cgl_context.hpp"
+#elif defined(TFL_GL_CONTEXT_WGL)
+#include "wgl_context.hpp"
 #else
 #include "egl_context.hpp"
 #endif
@@ -1297,6 +1299,7 @@ struct Probe {
     std::string adapterName;
     bool debugOutput = false;
     bool textureViews = false;
+    bool timestampQueries = false;
     std::uint32_t uniformAlignment = 1;
     std::uint32_t storageAlignment = 1;
     Extent3D workgroupSize{0, 0, 0};
@@ -1342,6 +1345,12 @@ struct Probe {
 
 [[nodiscard]] inline Result<Probe> initialize(const InstanceDesc& desc) {
     auto native = std::make_shared<Context>();
+#if defined(TFL_GL_CONTEXT_WGL)
+    native->validationRequested = desc.enableValidation;
+    native->debugCallback = desc.debugCallback;
+    native->debugUserData = desc.debugUserData;
+    std::lock_guard contextLock{native->mutex};
+#endif
     if (auto status = create_context(*native); !status.ok()) {
         return status;
     }
@@ -1405,10 +1414,19 @@ struct Probe {
 #endif
     const bool validationDebugOutput =
         desc.enableValidation && native->debugOutput;
+#if defined(TFL_GL_CONTEXT_WGL)
+    GLint timestampBits = 0;
+    glGetQueryiv(GL_TIMESTAMP, GL_QUERY_COUNTER_BITS, &timestampBits);
+    native->timestampQueries = timestampBits > 0;
+    const bool timestampQueries = native->timestampQueries;
+#else
+    constexpr bool timestampQueries = false;
+#endif
     return Probe{.context = std::move(native),
                  .adapterName = std::move(name),
                  .debugOutput = validationDebugOutput,
                  .textureViews = textureViews,
+                 .timestampQueries = timestampQueries,
                  .uniformAlignment = static_cast<std::uint32_t>(uniformAlignment),
                  .storageAlignment = static_cast<std::uint32_t>(storageAlignment),
                  .workgroupSize = {static_cast<std::uint32_t>(workgroup[0]),

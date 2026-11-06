@@ -5,7 +5,71 @@ This is the rolling execution handoff, not an implementation transcript.
 issues/Project own accepted work. Earlier phase details remain in their PRs,
 the support matrix and Git history.
 
-## Latest: Windows Vulkan Win32 integration (#265)
+## Latest: Windows WGL context, presentation and queries (#266)
+
+The Windows catch-up sequence is implemented on `fix/windows-baseline`.
+The DXC/Slang/DXIL phase (#264) and Win32 Vulkan phase (#265) were signed
+and pushed before WGL work. Studio's submodule pin remains unchanged.
+
+The desktop GL backend now has a private Windows WGL GL 4.5 core adapter.
+Pinned Khronos OpenGL/EGL registry headers supply native GL/WGL declarations
+and platform types only; no EGL runtime, SDL, GLFW, Shader or Renderer
+dependency is added. Normal builds use the checked-in typed dispatch table;
+`python tools/generate_wgl_api.py` regenerates it from the shared GL calls.
+The exact pins/licenses/preparation commands are in `docs/rhi1/dependencies.md`.
+No configure/build fetches dependencies.
+
+Each native context owns its dispatch table and a pbuffer. The temporary
+bootstrap HWND is destroyed on its creating thread before initialization
+returns. A context mutex scopes make-current/restore, releases ownership
+before another thread can use it, and preserves the caller's HGLRC/HDC.
+Worker threads can create/submit/destroy resources and retire the last
+offscreen or presentation owner without destroying a foreign-thread HWND.
+The backend owns neither host surface windows nor their message loops.
+An incompatible pre-existing host pixel format is explicitly unsupported.
+
+Shared GL presentation retains the offscreen texture/blit/capture owner;
+only native view/context binding and swapping differ between CGL and WGL.
+Windows surface/presentation calls require the HWND thread. Native images
+support FIFO/immediate, RGBA8/BGRA8, scaled `suboptimal`, resize/recreate,
+minimize/zero-client `out_of_date` and destroyed-window `surface_lost`.
+Failure consumption now stays consistent with the RHI acquired-image state.
+The existing GL execution/query/presentation files remain cohesive native
+owners; separate WGL context and host-view adapters keep platform lifetime
+policy out of the shared command implementation. No public API or
+architectural boundary changes.
+
+NVIDIA GeForce RTX 4080 SUPER, NVIDIA 610.88, reports GL 4.5 core with
+KHR_debug. The shared native resource/binding/graphics/compute suite passes
+with zero diagnostics. GLsync completion, host timeline timeout/retry,
+exact occlusion counts, ordered nonzero nanosecond timestamps plus an untouched
+sentinel, and four workers x24 resource/submission iterations pass.
+Win32 window back-buffer capture checks every split-color pixel and vertical
+orientation at 96x64 and 128x80; BGRA/immediate replacement output is exact
+at 64x48. Tests also cover host-context restoration, ownership rejection,
+minimize/zero-client restoration, window destruction, worker teardown and
+fresh-instance recovery after private context-loss injection.
+The host-window proof covers both cached/common and `CS_OWNDC` windows;
+presentation rejected on a worker thread remains retryable on the owner.
+Robust reset notification is requested where WGL advertises it, and native
+reset status maps to `device_lost`; actual physical GPU reset is unverified.
+Real reset recovery requires a fresh native instance/context.
+
+Strict Debug builds and all 14 focused GL/Vulkan/D3D12/Renderer/contract/matrix
+and installed-consumer checks pass without skips. Strict RHI doctor,
+architecture and whitespace checks pass; dispatch regeneration is identical.
+A backend-disabled package configure/export check contains no GL target,
+registry paths or GL libraries. The installed Windows GL consumer links only
+the public backend target and SDK closure, without registry include paths,
+and executes the native context/clear/readback smoke successfully.
+Other platforms were not rerun from this Windows machine.
+
+Windows OpenGL advances only to `native_smoke`, with validation/presentation
+evidence. Apple GL 4.1 and Linux/GLES capabilities are unchanged. Parents
+#61/#63 remain open for remaining platform scopes, not silently closed by
+the Windows slice. No hosted work, machine installs or software/ARM64 claims.
+
+## Earlier: Windows Vulkan Win32 integration (#265)
 
 The Windows batch remains `fix/windows-baseline`; signed issue-scoped commits
 are pushed before the next task. Studio's submodule pin is unchanged.

@@ -1,9 +1,10 @@
 #pragma once
 
 // GL fences, semaphores, queries and context ownership. With sync objects
-// (macOS GL 4.1) this proves deterministic fence/semaphore timeouts, exact
+// (macOS GL 4.1 / Windows GL 4.5) this proves fence/semaphore timeouts, exact
 // occlusion sample counts, explicit unsupported query types and concurrent
-// recording/submission from several threads on one context. Elsewhere it
+// recording/submission from several threads on one context. WGL additionally
+// proves ordered, nonzero native timestamps. Elsewhere it
 // asserts that semaphores and query pools are reported unsupported.
 
 #include "gl_graphics_tests.hpp"
@@ -16,18 +17,19 @@
 namespace truffle::tests {
 
 inline void verify_gl_sync(rhi::Result<rhi::Instance> result, bool expectSync,
-                           const std::size_t* diagnostics) {
+                           const std::size_t* diagnostics,
+                           bool expectTimestamps = false) {
     assert(result.ok());
     auto instance = std::move(result).value();
     auto adapterResult = instance.adapter(0);
     assert(adapterResult.ok());
     auto adapter = std::move(adapterResult).value();
     const auto info = adapter.info();
-    // No GL context advertises timestamps: macOS reports zero counter bits.
-    assert(std::find(info.supportedFeatures.begin(), info.supportedFeatures.end(),
-                     rhi::Feature::timestamp_queries) ==
-           info.supportedFeatures.end());
-    assert(info.timestampPeriodNanoseconds == 0.0);
+    const bool timestamps = std::find(
+        info.supportedFeatures.begin(), info.supportedFeatures.end(),
+        rhi::Feature::timestamp_queries) != info.supportedFeatures.end();
+    assert(timestamps == expectTimestamps);
+    assert(info.timestampPeriodNanoseconds == (expectTimestamps ? 1.0 : 0.0));
     auto deviceResult = adapter.request_device();
     assert(deviceResult.ok());
     auto device = std::move(deviceResult).value();
@@ -36,7 +38,9 @@ inline void verify_gl_sync(rhi::Result<rhi::Instance> result, bool expectSync,
         auto pool = device.create_query_pool({.type = type, .count = 2});
         assert(!pool.ok() && pool.status().code == rhi::StatusCode::unsupported);
     };
-    unsupported_pool(rhi::QueryType::timestamp);
+    if (!expectTimestamps) {
+        unsupported_pool(rhi::QueryType::timestamp);
+    }
     unsupported_pool(rhi::QueryType::pipeline_statistics);
     if (!expectSync) {
         unsupported_pool(rhi::QueryType::occlusion);
@@ -51,6 +55,35 @@ inline void verify_gl_sync(rhi::Result<rhi::Instance> result, bool expectSync,
     assert(queueResult.ok() && poolResult.ok());
     auto queue = std::move(queueResult).value();
     auto commandPool = std::move(poolResult).value();
+
+    if (expectTimestamps) {
+        auto queries = device.create_query_pool({
+            .type = rhi::QueryType::timestamp, .count = 2});
+        auto output = device.create_buffer({
+            .size = 3 * sizeof(std::uint64_t),
+            .usage = rhi::BufferUsage::copy_destination,
+            .memory = rhi::MemoryDomain::readback});
+        auto list = commandPool.allocate();
+        assert(queries.ok() && output.ok() && list.ok());
+        assert(list.value().begin().ok());
+        auto copy = list.value().begin_copy();
+        assert(copy.ok());
+        assert(copy.value().fill_buffer(output.value(), 0,
+                                        3 * sizeof(std::uint64_t),
+                                        std::byte{0xa5}).ok());
+        assert(copy.value().end().ok());
+        assert(list.value().write_timestamp(queries.value(), 0).ok());
+        assert(list.value().write_timestamp(queries.value(), 1).ok());
+        assert(list.value().resolve_queries(queries.value(), 0, 2,
+                                            output.value()).ok());
+        assert(list.value().end().ok());
+        std::array<rhi::CommandList*, 1> lists{&list.value()};
+        assert(queue.submit(lists).ok());
+        std::array<std::uint64_t, 3> values{};
+        assert(output.value().read(0, std::as_writable_bytes(std::span{values})).ok());
+        assert(values[0] != 0 && values[1] >= values[0]);
+        assert(values[2] == 0xa5a5a5a5a5a5a5a5ULL);
+    }
 
     // Fences are timeline values reached when the GL submission returns.
     auto fenceResult = device.create_fence();

@@ -1,9 +1,11 @@
 #pragma once
 
 // Selects the native GL headers and the GL feature tiers shared by the
-// EGL (Linux desktop GL 4.5 / GLES 3.0) and CGL (macOS GL 4.1 core) contexts.
+// EGL (Linux GL 4.5 / GLES 3.0), WGL (Windows GL 4.5) and CGL (macOS GL 4.1).
 
-#if defined(TFL_GL_CONTEXT_CGL)
+#if defined(TFL_GL_CONTEXT_WGL)
+#include "wgl_api.hpp"
+#elif defined(TFL_GL_CONTEXT_CGL)
 #if !defined(TFL_GL_API_DESKTOP) || defined(TFL_GL_API_ES)
 #error "the CGL context only provides the desktop GL core profile"
 #endif
@@ -31,11 +33,11 @@
 #endif
 #endif
 
-// EGL desktop contexts request GL 4.5 core. CGL is capped at GL 4.1 core,
+// EGL and WGL desktop contexts request GL 4.5 core. CGL is capped at GL 4.1,
 // which lacks compute, storage blocks, immutable storage, texture views,
 // base-instance draws, memory barriers and KHR_debug. Sync objects and
-// occlusion queries (GL 3.2/3.3) are enabled only where verified: macOS.
-#if defined(TFL_GL_CONTEXT_EGL)
+// occlusion queries (GL 3.2/3.3) are enabled where verified: macOS and Windows.
+#if defined(TFL_GL_CONTEXT_EGL) || defined(TFL_GL_CONTEXT_WGL)
 #define TFL_GL_HAS_TEXTURE_STORAGE 1
 #define TFL_GL_HAS_DEBUG_OUTPUT 1
 #if defined(TFL_GL_API_DESKTOP)
@@ -44,6 +46,6 @@
 #define TFL_GL_HAS_BASE_INSTANCE 1
 #endif
 #endif
-#if defined(TFL_GL_CONTEXT_CGL)
+#if defined(TFL_GL_CONTEXT_CGL) || defined(TFL_GL_CONTEXT_WGL)
 #define TFL_GL_HAS_SYNC_OBJECTS 1
 #endif

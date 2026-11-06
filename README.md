@@ -93,6 +93,17 @@ for each backend/platform pair:
   GLES 3.0 gates those paths and supports identity texture views for sampling.
   Storage images, tessellation, bindless, indirect-count, asynchronous
   synchronization and presentation remain unsupported. Both stay `native_smoke`.
+  Windows desktop GL now uses WGL GL 4.5 core with private pinned Khronos
+  headers and per-context function tables (#266). The shared native suite,
+  completion fences, host timeline semaphores, occlusion/timestamp queries,
+  worker-thread context transfer/teardown and host-owned HWND presentation
+  have local RTX 4080 SUPER/KHR_debug evidence. `win32` surfaces borrow their
+  HWND in `NativeSurface::handle`; surface/presentation work stays on its
+  owning thread, while resource/submission work is serialized and restores
+  the caller's HGLRC/HDC. Windows/event loops remain host-owned. Resize,
+  minimize/restore, destroyed windows and replacement presentation are tested.
+  This is Windows x64 `native_smoke`, not full conformance or a Linux/GLES
+  capability promotion; see the support matrix for exact limits.
 - WebGPU remains an explicit `source_only` factory. WebGL2 has a browser-native
   context path when built with Emscripten but remains `source_only` until its
   browser CI evidence exists. Neither exposes a simulated adapter.

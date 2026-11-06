@@ -26,3 +26,8 @@ target_link_libraries(
         Truffle::GUI
         Truffle::GUIDock
         Truffle::Diagnostics)
+
+if(WIN32 AND TARGET Truffle::BackendOpenGL)
+    add_executable(truffle_opengl_package_consumer opengl.cpp)
+    target_link_libraries(truffle_opengl_package_consumer PRIVATE Truffle::BackendOpenGL)
+endif()

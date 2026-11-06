@@ -1,18 +1,22 @@
 #pragma once
 
-// macOS GL presentation into a host-owned NSView.
+// Desktop GL presentation into a host-owned NSView or Win32 HWND.
 //
 // The device keeps rendering into an offscreen CGL context. Each swapchain
 // owns one back-buffer texture (image index 0) in that context and a second,
 // double-buffered presentation context attached to the host view that shares
 // its objects. Present blits the back buffer into the view's default
 // framebuffer with a vertical flip (texture row 0 is the top of the window)
-// and swaps. AppKit requires surface, swapchain, acquire, resize and present
-// calls on the main thread; other threads receive invalid_state.
+// and swaps. AppKit requires the main thread; WGL requires the window's
+// owning thread. Host windows and event loops are never owned here.
 
 #include "gl_probe.hpp"
 
+#if defined(TFL_GL_CONTEXT_WGL)
+#include "wgl_view.hpp"
+#else
 #include "cgl_view.hpp"
+#endif
 #include "opengl_backend_test.hpp"
 
 #include <atomic>
@@ -22,6 +26,12 @@
 #include <vector>
 
 namespace truffle::rhi::detail::gl_probe {
+
+#if defined(TFL_GL_CONTEXT_WGL)
+namespace native_view = wgl_view;
+#else
+namespace native_view = cgl_view;
+#endif
 
 struct PresentCaptureState {
     std::atomic_bool enabled{false};
@@ -35,17 +45,44 @@ struct PresentCaptureState {
 }
 
 [[nodiscard]] inline Status require_main_thread() {
+#if defined(TFL_GL_CONTEXT_WGL)
+    return Status::success();
+#else
     return cgl_view::on_main_thread()
                ? Status::success()
                : Status::failure(
                      StatusCode::invalid_state,
                      "macOS GL presentation must run on the AppKit main thread");
+#endif
 }
 
 struct SurfaceResource {
     std::shared_ptr<Context> context;
-    std::shared_ptr<cgl_view::View> view;
+    std::shared_ptr<native_view::View> view;
 };
+
+[[nodiscard]] inline Status presentation_view_status(const SurfaceResource& surface) {
+#if defined(TFL_GL_CONTEXT_WGL)
+    return wgl_view::view_status(*surface.view);
+#else
+    (void)surface;
+    return require_main_thread();
+#endif
+}
+
+[[nodiscard]] inline Status make_presenter_current(
+    native_view::Presenter& presenter,
+    StatusCode failureCode = StatusCode::surface_lost) {
+#if defined(TFL_GL_CONTEXT_WGL)
+    (void)failureCode;
+    return wgl_view::make_current(presenter);
+#else
+    const auto error = CGLSetCurrentContext(cgl_view::presenter_context(presenter));
+    return error == kCGLNoError ? Status::success()
+        : cgl_failure(failureCode,
+                      "CGL could not bind the presentation context", error);
+#endif
+}
 
 struct SwapchainResource {
     ~SwapchainResource() {
@@ -53,9 +90,7 @@ struct SwapchainResource {
             return;
         }
         std::lock_guard lock{context->mutex};
-        if (readFramebuffer != 0 &&
-            CGLSetCurrentContext(cgl_view::presenter_context(*presenter)) ==
-                kCGLNoError) {
+        if (readFramebuffer != 0 && make_presenter_current(*presenter).ok()) {
             glDeleteFramebuffers(1, &readFramebuffer);
         }
         presenter.reset();
@@ -64,7 +99,7 @@ struct SwapchainResource {
 
     std::shared_ptr<Context> context;
     std::shared_ptr<SurfaceResource> surface;
-    std::shared_ptr<cgl_view::Presenter> presenter;
+    std::shared_ptr<native_view::Presenter> presenter;
     std::shared_ptr<TextureResource> image;
     SwapchainDesc desc;
     Extent2D drawable;
@@ -101,15 +136,21 @@ create_back_buffer(const std::shared_ptr<Context>& context,
         return Status::failure(StatusCode::device_lost,
                                "the native GL context is unavailable");
     }
-    if (desc.native.kind != NativeSurfaceKind::cocoa_view) {
+#if defined(TFL_GL_CONTEXT_WGL)
+    constexpr auto surfaceKind = NativeSurfaceKind::win32;
+    constexpr auto surfaceMessage = "Windows GL surfaces require a host-owned win32 HWND";
+#else
+    constexpr auto surfaceKind = NativeSurfaceKind::cocoa_view;
+    constexpr auto surfaceMessage = "macOS GL surfaces require a host-owned cocoa_view NSView";
+#endif
+    if (desc.native.kind != surfaceKind) {
         return Status::failure(
-            StatusCode::unsupported,
-            "macOS GL surfaces require a host-owned cocoa_view NSView handle");
+            StatusCode::unsupported, surfaceMessage);
     }
     if (auto status = require_main_thread(); !status.ok()) {
         return status;
     }
-    auto view = cgl_view::borrow_view(desc.native.handle);
+    auto view = native_view::borrow_view(desc.native.handle);
     if (!view.ok()) {
         return view.status();
     }
@@ -132,6 +173,9 @@ create_back_buffer(const std::shared_ptr<Context>& context,
         return Status::failure(StatusCode::surface_lost,
                                "GL surface is no longer available");
     }
+    if (auto status = presentation_view_status(*surface); !status.ok()) {
+        return status;
+    }
     if (auto status = require_main_thread(); !status.ok()) {
         return status;
     }
@@ -139,12 +183,12 @@ create_back_buffer(const std::shared_ptr<Context>& context,
         desc.format != TextureFormat::bgra8_unorm) {
         return Status::failure(
             StatusCode::unsupported,
-            "macOS GL swapchains support rgba8_unorm and bgra8_unorm only");
+            "GL swapchains support rgba8_unorm and bgra8_unorm only");
     }
     if (desc.presentMode == PresentMode::mailbox) {
         return Status::failure(
             StatusCode::unsupported,
-            "macOS GL has no mailbox presentation; use fifo or immediate");
+            "GL has no mailbox presentation; use fifo or immediate");
     }
     auto image = create_back_buffer(context, desc);
     if (!image.ok()) {
@@ -156,22 +200,26 @@ create_back_buffer(const std::shared_ptr<Context>& context,
     swapchain->image = std::move(image).value();
     swapchain->desc = desc;
     std::lock_guard lock{context->mutex};
+#if defined(TFL_GL_CONTEXT_WGL)
+    auto presenter = wgl_view::create_presenter(
+        swapchain->surface->view, *context,
+        desc.presentMode == PresentMode::fifo ? 1 : 0);
+#else
     auto presenter = cgl_view::create_presenter(
         swapchain->surface->view, context->context,
         desc.presentMode == PresentMode::fifo ? 1 : 0);
+#endif
     if (!presenter.ok()) {
         (void)make_current(*context);
         return presenter.status();
     }
     swapchain->presenter = std::move(presenter).value();
-    swapchain->drawable = cgl_view::drawable_extent(*swapchain->surface->view);
-    const auto error =
-        CGLSetCurrentContext(cgl_view::presenter_context(*swapchain->presenter));
-    if (error != kCGLNoError) {
+    swapchain->drawable = native_view::drawable_extent(*swapchain->surface->view);
+    if (auto status = make_presenter_current(*swapchain->presenter,
+                                              StatusCode::unavailable);
+        !status.ok()) {
         (void)make_current(*context);
-        return cgl_failure(StatusCode::unavailable,
-                           "CGL could not make the presentation context current",
-                           error);
+        return status;
     }
     glGenFramebuffers(1, &swapchain->readFramebuffer);
     const bool failed =
@@ -202,7 +250,10 @@ create_back_buffer(const std::shared_ptr<Context>& context,
         return Status::failure(StatusCode::invalid_state,
                                "GL swapchain image is already acquired");
     }
-    const auto drawable = cgl_view::drawable_extent(*swapchain->surface->view);
+    if (auto status = presentation_view_status(*swapchain->surface); !status.ok()) {
+        return status;
+    }
+    const auto drawable = native_view::drawable_extent(*swapchain->surface->view);
     if (drawable.width == 0 || drawable.height == 0) {
         return Status::failure(
             StatusCode::out_of_date,
@@ -237,6 +288,9 @@ create_back_buffer(const std::shared_ptr<Context>& context,
         return Status::failure(StatusCode::invalid_state,
                                "GL swapchain cannot resize an acquired image");
     }
+    if (auto status = presentation_view_status(*swapchain->surface); !status.ok()) {
+        return status;
+    }
     auto desc = swapchain->desc;
     desc.extent = extent;
     auto image = create_back_buffer(swapchain->context, desc);
@@ -246,8 +300,10 @@ create_back_buffer(const std::shared_ptr<Context>& context,
     swapchain->image = std::move(image).value();
     swapchain->desc = desc;
     std::lock_guard contextLock{swapchain->context->mutex};
+#if defined(TFL_GL_CONTEXT_CGL)
     cgl_view::update_drawable(*swapchain->presenter);
-    swapchain->drawable = cgl_view::drawable_extent(*swapchain->surface->view);
+#endif
+    swapchain->drawable = native_view::drawable_extent(*swapchain->surface->view);
     return make_current(*swapchain->context);
 }
 
@@ -295,27 +351,39 @@ inline void capture_presented_pixels(Extent2D drawable) {
     }
     // Present waits were reached on the host before this call and every GL
     // submission completes before it returns, so the image is final here.
-    swapchain->acquired = false;
     auto& context = *swapchain->context;
     std::lock_guard contextLock{context.mutex};
-    const auto drawable = cgl_view::drawable_extent(*swapchain->surface->view);
+    if (auto status = presentation_view_status(*swapchain->surface); !status.ok()) {
+        return status;
+    }
+    const auto drawable = native_view::drawable_extent(*swapchain->surface->view);
     if (drawable.width == 0 || drawable.height == 0) {
+        swapchain->acquired = false;
         return Status::failure(
             StatusCode::out_of_date,
             "GL view has no drawable: it is zero-sized or not in a window");
     }
     // Reattaches a view the host moved between windows and tracks live
     // resizes before drawing.
+#if defined(TFL_GL_CONTEXT_CGL)
     cgl_view::update_drawable(*swapchain->presenter);
+#endif
     swapchain->drawable = drawable;
-    if (const auto error = CGLSetCurrentContext(
-            cgl_view::presenter_context(*swapchain->presenter));
-        error != kCGLNoError) {
-        return cgl_failure(StatusCode::surface_lost,
-                           "CGL could not make the presentation context current",
-                           error);
+#if defined(TFL_GL_CONTEXT_WGL)
+    wgl_view::DrawableBinding binding{*swapchain->presenter};
+    if (auto status = binding.bind(); !status.ok()) {
+        return status;
     }
+#else
+    if (auto status = make_presenter_current(*swapchain->presenter); !status.ok()) {
+        return status;
+    }
+#endif
     const auto restore = [&](Status status) {
+        if (status.ok() || status.code == StatusCode::suboptimal ||
+            status.code == StatusCode::out_of_date) {
+            swapchain->acquired = false;
+        }
         if (auto restored = make_current(context); !restored.ok()) {
             return restored;
         }
@@ -348,7 +416,13 @@ inline void capture_presented_pixels(Extent2D drawable) {
                            GL_TEXTURE_2D, 0, 0);
     glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
     auto error = glGetError();
+#if defined(TFL_GL_CONTEXT_WGL)
+    if (auto status = wgl_view::flush(binding.dc); !status.ok()) {
+        return restore(status);
+    }
+#else
     cgl_view::flush(*swapchain->presenter);
+#endif
     // The device context reuses the back buffer next frame; the blit read
     // in this context must complete first.
     if (auto status = wait_for_completion("GL presentation"); !status.ok()) {

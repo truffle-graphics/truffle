@@ -15,10 +15,9 @@ constexpr BackendEvidence validated_native_smoke{
     .nativeSmoke = true,
     .validation = true,
 };
-// macOS validation is per-call glGetError checking with zero errors
-// required; no debug-message layer exists on macOS GL 4.1. Presentation is
-// exercised into a host-owned NSView with back-buffer pixel checks.
-constexpr BackendEvidence gl_error_checked_smoke{
+// Desktop GL requires zero native errors and exact window back-buffer pixels.
+// Windows adds KHR_debug; macOS GL 4.1 has only per-call glGetError checking.
+constexpr BackendEvidence gl_presentation_smoke{
     .compiles = true,
     .nativeSmoke = true,
     .validation = true,
@@ -104,11 +103,14 @@ constexpr std::array support{
                            "EGL surfaceless buffers, views, copies, fills, and "
                            "exact readback"},
     BackendPlatformSupport{BackendKind::opengl, PlatformKind::windows,
-                           BackendMaturity::source_only, true, source_only,
-                           "target identified; no WGL execution lane yet"},
+                           BackendMaturity::native_smoke, true,
+                           gl_presentation_smoke,
+                           "Windows x64 WGL GL 4.5 core resources, graphics, "
+                           "compute, sync, queries and host HWND presentation; "
+                           "KHR_debug and exact native GPU output"},
     BackendPlatformSupport{BackendKind::opengl, PlatformKind::macos,
                            BackendMaturity::native_smoke, true,
-                           gl_error_checked_smoke,
+                           gl_presentation_smoke,
                            "deprecated GL 4.1 core CGL resources, bindings, "
                            "and graphics with exact readback, presented into "
                            "a host-owned NSView with resize; GL fence-sync "

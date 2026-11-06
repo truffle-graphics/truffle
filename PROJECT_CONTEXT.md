@@ -219,7 +219,12 @@ host-owned Win32 presentation/resize/recovery evidence on an NVIDIA GeForce
 RTX 4080 SUPER with Khronos validation (#265). Its backend-platform maturity
 is `native_smoke`, not full conformance. The broader #58 still owns missing
 software-driver, ARM64 and repeatable hosted/local-runner assessment; no
-hosted run is authorized by this local evidence. Windows WGL (#61/#63) is next.
+hosted run is authorized by this local evidence.
+Windows WGL GL 4.5 core resources/graphics/compute, synchronization/queries,
+context ownership and host-owned HWND presentation/resize/recovery are also
+verified on that GPU with KHR_debug (#266), at `native_smoke` only.
+Linux EGL presentation and remaining GL/GLES platform scopes stay under
+#61/#63; physical GPU reset, software drivers and ARM64 were not verified.
 
 The accepted next scope is the minimum flexible Renderer (#206), following
 [ADR 0012](docs/adr/0012-app-defined-render-data.md): explicit app-defined data,

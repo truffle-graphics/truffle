@@ -442,6 +442,10 @@ endif()
 if(TFL_BUILD_BACKEND_OPENGL)
     add_executable(truffle_opengl_tests opengl_backend_tests.cpp)
     target_link_libraries(truffle_opengl_tests PRIVATE truffle_backend_opengl)
+    if(WIN32)
+        target_compile_definitions(truffle_opengl_tests
+                                   PRIVATE TFL_EXPECT_WGL_OPENGL=1 NOMINMAX WIN32_LEAN_AND_MEAN)
+    endif()
     if(TFL_EGL_INCLUDE_DIR AND TFL_OPENGL_INCLUDE_DIR AND
        TFL_EGL_LIBRARY AND TFL_OPENGL_LIBRARY)
         target_compile_definitions(truffle_opengl_tests
@@ -452,7 +456,24 @@ if(TFL_BUILD_BACKEND_OPENGL)
                                    PRIVATE TFL_EXPECT_CGL_OPENGL=1)
     endif()
     add_test(NAME truffle_opengl_tests COMMAND truffle_opengl_tests)
-    if(TFL_EGL_INCLUDE_DIR AND TFL_OPENGL_INCLUDE_DIR AND
+    if(WIN32)
+        add_executable(truffle_opengl_presentation_tests
+                       opengl_win32_presentation_tests.cpp)
+        target_link_libraries(truffle_opengl_presentation_tests PRIVATE
+                              truffle_backend_opengl opengl32 gdi32 user32)
+        target_compile_definitions(truffle_opengl_presentation_tests PRIVATE
+                                   NOMINMAX WIN32_LEAN_AND_MEAN)
+        target_include_directories(truffle_opengl_presentation_tests PRIVATE
+                                   "${PROJECT_SOURCE_DIR}/src/backends/opengl")
+        add_test(NAME truffle_opengl_presentation_tests
+                 COMMAND truffle_opengl_presentation_tests)
+        set_tests_properties(truffle_opengl_presentation_tests PROPERTIES
+                             LABELS "native-smoke;presentation;validation" TIMEOUT 120
+                             FAIL_REGULAR_EXPRESSION "WGL cleanup failed")
+        set_tests_properties(truffle_opengl_tests PROPERTIES
+                             LABELS "native-smoke;validation" TIMEOUT 120
+                             FAIL_REGULAR_EXPRESSION "WGL cleanup failed")
+    elseif(TFL_EGL_INCLUDE_DIR AND TFL_OPENGL_INCLUDE_DIR AND
        TFL_EGL_LIBRARY AND TFL_OPENGL_LIBRARY)
         set_tests_properties(truffle_opengl_tests PROPERTIES
                              LABELS "native-smoke;validation")

@@ -1,6 +1,6 @@
 #pragma once
 
-// Private native-test hooks for the macOS GL backend. Not installed.
+// Private native-test hooks for desktop GL presentation. Not installed.
 
 #include "truffle/rhi/types.hpp"
 
@@ -18,5 +18,8 @@ struct OpenGLPresentCapture {
 
 void set_opengl_present_capture_for_testing(bool enabled) noexcept;
 [[nodiscard]] OpenGLPresentCapture opengl_last_present_capture_for_testing();
+
+// Windows only; a deterministic failure, never physical context-loss evidence.
+void set_opengl_context_loss_for_testing(bool enabled) noexcept;
 
 } // namespace truffle::rhi::detail
