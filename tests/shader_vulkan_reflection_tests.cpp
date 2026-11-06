@@ -207,7 +207,8 @@ void main() {
     for (std::size_t i = 0; i < images.size(); ++i) {
         images[i] = tests::require(device.create_texture({
             .extent = {1, 1, 1}, .format = rhi::TextureFormat::rgba8_unorm,
-            .usage = rhi::TextureUsage::sampled | rhi::TextureUsage::copy_destination}));
+            .usage = rhi::TextureUsage::sampled | rhi::TextureUsage::copy_destination |
+                     rhi::TextureUsage::copy_source}));
         auto upload = tests::require(device.create_buffer({
             .size = 4, .usage = rhi::BufferUsage::copy_source, .memory = rhi::MemoryDomain::upload}));
         const std::array pixel{std::byte{static_cast<unsigned char>(i == 0 ? 20 : 31)},
@@ -237,6 +238,9 @@ void main() {
     auto group = tests::require(device.create_bind_group(desc));
     auto pool = tests::require(device.create_command_pool(rhi::QueueKind::compute));
     auto queue = tests::require(device.queue(rhi::QueueKind::compute));
+    auto texelReadback = tests::require(device.create_buffer({
+        .size = 4, .usage = rhi::BufferUsage::copy_destination,
+        .memory = rhi::MemoryDomain::readback}));
     for (int pass = 0; pass < 2; ++pass) {
         auto list = tests::require(pool.allocate());
         tests::require(list.begin());
@@ -253,6 +257,19 @@ void main() {
         tests::require(list.end());
         const std::array<rhi::CommandList*, 1> lists{&list};
         tests::require(queue.submit(lists));
+        auto readbackList = tests::require(uploadPool.allocate());
+        tests::require(readbackList.begin());
+        auto copy = tests::require(readbackList.begin_copy());
+        tests::require(copy.copy_texture_to_buffer(images[0], texelReadback, {
+            .texture = {.extent = {1, 1, 1}}}));
+        tests::require(copy.end());
+        tests::require(readbackList.end());
+        const std::array<rhi::CommandList*, 1> readbackLists{&readbackList};
+        tests::require(uploadQueue.submit(readbackLists));
+        std::array<std::byte, 4> texel{};
+        tests::require(texelReadback.read(0, texel));
+        TFL_SHADER_CHECK((texel == std::array{
+            std::byte{20}, std::byte{0}, std::byte{0}, std::byte{255}}));
         for (std::size_t index = 0; index < output.size(); ++index) {
             std::array<std::uint32_t, 4> actual{};
             tests::require(output[index].read(0, std::as_writable_bytes(std::span{actual})));
@@ -261,7 +278,8 @@ void main() {
             TFL_SHADER_CHECK(actual == expected);
         }
     }
-    std::cout << "exact scalar defaults/overrides + offset push + buffer/image/sampler-array readback passed\n";
+    std::cout << "exact scalar defaults/overrides + offset push + buffer/image/sampler-array readback passed\n"
+                 "graphics/compute sampled/transfer layout round trips and exact texel readback passed\n";
     specialized_workgroups(device, compiler);
     return 0;
 }

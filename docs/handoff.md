@@ -5,7 +5,7 @@ This is the rolling execution handoff, not an implementation transcript.
 issues/Project own accepted work. Earlier phase details remain in their PRs,
 the support matrix and Git history.
 
-## Latest: Windows Debug baseline (#262)
+## Latest: Windows Debug baseline and queue-safe Vulkan layouts (#262/#263)
 
 The Windows batch is `fix/windows-baseline`, based on `b4ba538`. The owner
 authorized signed issue-scoped commits with immediate pushes. Studio's
@@ -27,10 +27,22 @@ Initial `ctest --preset debug --parallel 4 --timeout 120` passes 66/67 tests,
 including installed Shader/package consumers, GUI/text, D3D12 resources and
 DXGI presentation. These passes do not constitute backend promotion.
 
-The remaining failure is tracked separately in #263: native Vulkan reflection
-readback succeeds, but validation rejects graphics shader destination stages
-on the adapter's dedicated compute queue. Fix the queue-aware barrier stage
-mapping next; do not disable validation or claim an all-green baseline yet.
+The Vulkan validation failure is fixed separately in #263. Implicit
+shader-read layout barriers now use `ALL_COMMANDS`, which Vulkan expands only
+to stages supported by the recording queue, instead of unconditionally naming
+vertex/fragment/compute stages. The existing native reflection test now also
+cycles an image between graphics-queue transfer and compute-queue sampling,
+checking exact texel readback and the original shader results.
+
+Final Windows x64 strict Debug baseline: all 67 CTests pass, none skip.
+Vulkan reflection runs on an NVIDIA GeForce RTX 4080 SUPER with validation
+active; the targeted Vulkan/contract selection passes all six tests.
+Installed Shader/package consumers and both D3D12 tests pass in the complete
+baseline. This is native evidence for these tests, not a maturity promotion,
+full hardware matrix, or GUI native-window proof.
+The Vulkan backend file remains the existing owner of implicit layout barriers;
+the change adds no responsibilities or cross-module dependencies.
+
 Windows Vulkan WSI (#58), full D3D12 assessment (#122), optional DXC routes,
 Windows GUI native hosts and the Studio Windows port remain outside #262.
 Linux setup/native execution remains unverified here.

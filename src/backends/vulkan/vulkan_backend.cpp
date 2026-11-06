@@ -2824,9 +2824,8 @@ struct VulkanRenderPassDepthStencil {
         return VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
                VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
     case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
-        return VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
-               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
-               VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+        // ALL_COMMANDS expands only to stages supported by the recording queue.
+        return VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
     default:
         return VK_PIPELINE_STAGE_TRANSFER_BIT;
     }
