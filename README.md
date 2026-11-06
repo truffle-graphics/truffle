@@ -325,13 +325,18 @@ On Windows, from PowerShell:
 .\build.ps1 release
 .\build.ps1 debug -WarningsAsErrors on
 .\build.ps1 debug -WarningsAsErrors off
+ctest --preset debug --output-on-failure
+python tools\test_windows_scripts.py
 ```
 
 Setup checks Git, CMake 3.23+, Ninja and the native C++ toolchain. Missing tools
 are installed only after confirmation, using existing Homebrew, apt-get or
 winget. Homebrew itself is not bootstrapped. On Windows, setup can install the
-Visual Studio 2022 C++ Build Tools and Windows SDK; build activates the installed
-x64 developer environment when necessary. If an installer needs a new terminal
+Visual Studio 2022 C++ Build Tools and Windows SDK. Setup and build activate the
+installed x64 developer environment when necessary; setup discovers its bundled
+CMake/Ninja before requesting separate installations. First-party MSVC targets
+use UTF-8 source and execution encodings, independent of the system code page.
+If an installer needs a new terminal
 or Apple's graphical installer needs to finish, setup stops and asks you to rerun.
 `setup.sh --check` / `setup.ps1 -Check` perform no installation or fetching.
 

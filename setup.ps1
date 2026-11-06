@@ -13,8 +13,6 @@ try {
         if (-not (Get-Command $Command -ErrorAction SilentlyContinue)) { throw "Restart PowerShell after installing $Package, then rerun setup." }
     }
     Install-MissingTool git Git.Git
-    Install-MissingTool cmake Kitware.CMake
-    Install-MissingTool ninja Ninja-build.Ninja
     $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
     $installation = $null
     if (Test-Path $vswhere) {
@@ -30,6 +28,8 @@ try {
     }
     . (Join-Path $PSScriptRoot 'scripts/WindowsToolchain.ps1')
     Initialize-WindowsToolchain
+    Install-MissingTool cmake Kitware.CMake
+    Install-MissingTool ninja Ninja-build.Ninja
     Push-Location $PSScriptRoot
     try {
         & cmake --list-presets

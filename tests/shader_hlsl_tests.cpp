@@ -206,7 +206,7 @@ float4 sampleMain() : SV_Target0 { return value; }
     compiled = tests::require(compiler.compile(request));
     const auto& reflected = compiled.package.desc().variants.front().reflection.bindings;
     TFL_SHADER_CHECK(reflected.size() == 1 &&
-        reflected[0].binding == (target == rhi::ShaderTarget::spirv ? 2 : 3));
+        reflected[0].binding == (target == rhi::ShaderTarget::spirv ? 2U : 3U));
     if (target == rhi::ShaderTarget::dxil) {
         request.stage = rhi::ShaderStage::vertex;
         request.source.text = "float4 sampleMain(float4 v:POSITION):SV_Position { return v; }";

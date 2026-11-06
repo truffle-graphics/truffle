@@ -3076,6 +3076,9 @@ create_direct3d_query_pool(const std::shared_ptr<void> &nativeContext,
   case QueryType::pipeline_statistics:
     return Status::failure(StatusCode::unsupported,
                            "D3D12 pipeline-statistics queries are unsupported");
+  default:
+    return Status::failure(StatusCode::invalid_argument,
+                           "D3D12 query type is invalid");
   }
   auto pool = std::make_shared<Direct3DQueryPoolResource>();
   pool->type = desc.type;

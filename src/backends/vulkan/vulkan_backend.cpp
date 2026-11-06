@@ -4373,8 +4373,8 @@ void prepare_vulkan_binding_images(VulkanContext& context,
             .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
             .pNext = nullptr,
             .srcAccessMask = vulkan_layout_access(oldLayout),
-            .dstAccessMask = write ? VK_ACCESS_HOST_WRITE_BIT
-                                   : VK_ACCESS_HOST_READ_BIT,
+            .dstAccessMask = static_cast<VkAccessFlags>(
+                write ? VK_ACCESS_HOST_WRITE_BIT : VK_ACCESS_HOST_READ_BIT),
             .oldLayout = oldLayout,
             .newLayout = VK_IMAGE_LAYOUT_GENERAL,
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,

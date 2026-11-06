@@ -365,11 +365,11 @@ void Context::route_input(const InputEvent& event) {
         if (!focus_event->focused) {
             static_cast<void>(focus({}));
             std::vector<std::uint32_t> pointers;
-            for (const auto& [pointer, target] : captures_) {
+            for (const auto& [pointer_id, target] : captures_) {
                 static_cast<void>(target);
-                pointers.push_back(pointer);
+                pointers.push_back(pointer_id);
             }
-            for (auto pointer : pointers) { release_pointer(pointer); }
+            for (auto pointer_id : pointers) { release_pointer(pointer_id); }
             pointer_buttons_.clear();
             update_hover({});
         }

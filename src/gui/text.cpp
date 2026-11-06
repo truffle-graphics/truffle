@@ -598,11 +598,11 @@ base::Result<TextLayout> TextEngine::shape(FontId font, std::string_view utf8) {
                     const auto total = hb_ot_layout_get_ligature_carets(
                         hb_font, direction, it->second.glyph, 0, &caret_count, nullptr);
                     if (total == visible_count - 1) {
-                        std::vector<hb_position_t> positions(total);
+                        std::vector<hb_position_t> caret_positions(total);
                         caret_count = total;
                         hb_ot_layout_get_ligature_carets(hb_font, direction, it->second.glyph,
-                                                         0, &caret_count, positions.data());
-                        for (const auto position : positions) {
+                                                         0, &caret_count, caret_positions.data());
+                        for (const auto position : caret_positions) {
                             stops.push_back(it->second.origin + static_cast<float>(position) / 64.0F);
                         }
                         std::sort(stops.begin() + 1, stops.end());

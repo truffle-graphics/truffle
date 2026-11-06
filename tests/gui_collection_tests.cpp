@@ -25,7 +25,7 @@ FrameStats frame(Context& c) {
 
 void set_height(Context& c, ElementId element, float height) {
     auto params = need(c.layout_params(element));
-    params.width = 300;
+    params.width = 300.0F;
     params.height = height;
     need(c.set_layout_params(element, params));
 }

@@ -486,22 +486,22 @@ struct TextEdit::State {
                 event.stop_propagation();
                 return status;
             }
-        } else if (const auto* input = event.input<TextEvent>()) {
+        } else if (const auto* text_input = event.input<TextEvent>()) {
             event.prevent_default();
             event.stop_propagation();
             std::optional<TextRange> range;
-            if (input->replacement) {
-                auto mapped = model_range(*input->replacement);
+            if (text_input->replacement) {
+                auto mapped = model_range(*text_input->replacement);
                 if (!mapped.ok()) { return mapped.status(); }
                 range = mapped.value();
             }
-            return replace(input->text, range);
-        } else if (const auto* input = event.input<CompositionEvent>()) {
+            return replace(text_input->text, range);
+        } else if (const auto* composition_input = event.input<CompositionEvent>()) {
             event.prevent_default();
             event.stop_propagation();
-            return preedit(*input);
-        } else if (const auto* input = event.input<KeyEvent>()) {
-            const auto status = key(*input, event);
+            return preedit(*composition_input);
+        } else if (const auto* key_input = event.input<KeyEvent>()) {
+            const auto status = key(*key_input, event);
             if (event.handled) { event.stop_propagation(); }
             return status;
         }

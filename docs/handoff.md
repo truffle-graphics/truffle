@@ -5,7 +5,37 @@ This is the rolling execution handoff, not an implementation transcript.
 issues/Project own accepted work. Earlier phase details remain in their PRs,
 the support matrix and Git history.
 
-## Latest: Truffle Dark/Light themes and dock gap (#260)
+## Latest: Windows Debug baseline (#262)
+
+The Windows batch is `fix/windows-baseline`, based on `b4ba538`. The owner
+authorized signed issue-scoped commits with immediate pushes. Studio's
+submodule pin is not advanced by this work.
+
+Normal-shell `setup.ps1 -Check` now activates Visual Studio before looking for
+CMake/Ninja, using its bundled tools without installation. Shader marks glslang
+consumer headers as system headers while preserving strict first-party warnings.
+MSVC targets explicitly use UTF-8. GUI shadowing and optional-float literal
+warnings, a Vulkan access-mask narrowing conversion, and D3D12 query-type
+exhaustiveness are corrected without changing valid-input behavior.
+The backend files remain cohesive native backend owners; these narrow fixes
+add no subsystem responsibilities or architectural boundary changes.
+
+Native Windows x64, VS 2022/MSVC 19.44: `setup.ps1 -Check` and the complete
+`build.ps1 debug -WarningsAsErrors on --parallel 4` pass. All six isolated
+`python tools/test_windows_scripts.py` checks pass; the architecture guard passes.
+Initial `ctest --preset debug --parallel 4 --timeout 120` passes 66/67 tests,
+including installed Shader/package consumers, GUI/text, D3D12 resources and
+DXGI presentation. These passes do not constitute backend promotion.
+
+The remaining failure is tracked separately in #263: native Vulkan reflection
+readback succeeds, but validation rejects graphics shader destination stages
+on the adapter's dedicated compute queue. Fix the queue-aware barrier stage
+mapping next; do not disable validation or claim an all-green baseline yet.
+Windows Vulkan WSI (#58), full D3D12 assessment (#122), optional DXC routes,
+Windows GUI native hosts and the Studio Windows port remain outside #262.
+Linux setup/native execution remains unverified here.
+
+## Earlier: Truffle Dark/Light themes and dock gap (#260)
 
 The user chose one theme system (tokens plus widget styles), with layout kept
 separate. GUI now ships neutral Truffle Dark/Light token sets (`themes.hpp`):

@@ -93,7 +93,7 @@ int shapes_follow_changes() {
     TFL_CHECK(context.set_layout_params(b, moved).ok());
     frame(context);
     TFL_CHECK(context.update_shapes().regenerated == 0);
-    moved.width = 25;
+    moved.width = 25.0F;
     TFL_CHECK(context.set_layout_params(b, moved).ok());
     frame(context);
     TFL_CHECK(context.update_shapes().regenerated == 1);
