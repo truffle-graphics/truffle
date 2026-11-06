@@ -1,5 +1,7 @@
 #include "truffle/gui/widgets.hpp"
 
+#include "truffle/gui/themes.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <utility>
@@ -10,30 +12,6 @@ namespace {
 base::Status invalid_widget() {
     return base::Status::failure(base::StatusCode::invalid_argument,
                                  "GUI widget is stale or has the wrong kind");
-}
-
-base::Status defaults(Context& context) {
-    const std::pair<const char*, ThemeValue> values[] = {
-        {"gui.surface", Color{0.12F, 0.14F, 0.18F, 1}},
-        {"gui.control", Color{0.20F, 0.23F, 0.29F, 1}},
-        {"gui.hover", Color{0.28F, 0.33F, 0.42F, 1}},
-        {"gui.pressed", Color{0.14F, 0.18F, 0.26F, 1}},
-        {"gui.disabled", Color{0.15F, 0.16F, 0.18F, 1}},
-        {"gui.accent", Color{0.25F, 0.65F, 0.95F, 1}},
-        {"gui.border", Color{0.4F, 0.45F, 0.55F, 1}},
-        {"gui.text", Color{0.94F, 0.96F, 1, 1}},
-        {"gui.image", Color{1, 1, 1, 1}},
-        {"gui.radius", 4.0F},
-        {"gui.border_width", 1.0F},
-        {"gui.padding", Edges{8, 8, 8, 8}},
-    };
-    for (const auto& [name, value] : values) {
-        if (!context.theme_value(name).ok()) {
-            const auto status = context.set_theme_value(name, value);
-            if (!status.ok()) { return status; }
-        }
-    }
-    return base::Status::success();
 }
 
 class SliderBuilder final : public ShapeBuilder {
@@ -324,7 +302,7 @@ base::Result<Widget> Widget::create(Context& context, ElementId parent, WidgetDe
         return base::Status::failure(base::StatusCode::invalid_argument,
                                      "GUI text widgets require an engine, font and atlas");
     }
-    auto status = defaults(context);
+    auto status = install_default_theme(context);
     if (!status.ok()) { return status; }
     if (desc.kind == WidgetKind::text_edit) {
         auto editor = TextEdit::create(context, parent, {

@@ -130,10 +130,14 @@ consumer selects concrete loading, upload, and backend behavior.
 - macOS support targets Apple Silicon only (#171). Intel Macs are not an
   intended target; code that happens to work there is fine, but no Intel
   verification or Intel-specific work is planned.
-- Truffle has no consumers yet, so it keeps no backward-compatibility,
-  deprecation, or migration scaffolding: no aliases, forwarding headers,
-  shims, migration tables, or API compatibility helpers (#163). Revisit at the
-  first release. TSP is likewise an evolving unreleased draft: approved
+- Until Truffle's first release tag (a prerelease such as `0.1.0` counts),
+  it keeps no backward-compatibility, deprecation, or migration scaffolding:
+  no aliases, forwarding headers, shims, migration tables, or API
+  compatibility helpers (#163). Breaking changes between Truffle's own
+  modules, and towards Truffle Studio, need no version bump; every caller is
+  updated in the same change. Truffle Studio is the co-developed proving-ground
+  application, not a conventional consumer. From the first release tag
+  onwards, breaking and patch changes are versioned and Studio adapts. TSP is likewise an evolving unreleased draft: approved
   contract/codec/fixture changes retain current `1.0` identifiers. Stable
   format/versioning guarantees begin with release (#186 comment 6527097946).
 - Shader mechanisms belong to an independently usable library: source

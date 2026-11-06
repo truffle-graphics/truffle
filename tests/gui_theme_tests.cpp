@@ -3,6 +3,8 @@
 #include "rhi_test_utils.hpp"
 #include "test_support.hpp"
 #include "truffle/gui/context.hpp"
+#include "truffle/gui/themes.hpp"
+#include "truffle/gui/widgets.hpp"
 
 #include <limits>
 
@@ -114,7 +116,56 @@ int fonts() {
 }
 } // namespace
 
+int builtin_themes() {
+    TFL_CHECK(builtin_theme_name(BuiltinTheme::truffle_dark) == "Truffle Dark");
+    TFL_CHECK(builtin_theme_name(BuiltinTheme::truffle_light) == "Truffle Light");
+    const auto colour = [](const Context& c, std::string_view name) {
+        return std::get<Color>(c.theme_value(name).value());
+    };
+    const char* names[] = {"gui.surface", "gui.control", "gui.hover", "gui.pressed",
+                           "gui.disabled", "gui.accent", "gui.border", "gui.text",
+                           "gui.selection", "gui.caret", "gui.composition",
+                           "dock.background", "dock.area", "dock.tab", "dock.tab_active",
+                           "dock.divider", "dock.marker", "dock.marker_border"};
+    for (const auto theme : {BuiltinTheme::truffle_dark, BuiltinTheme::truffle_light}) {
+        Context c;
+        TFL_CHECK(apply_theme(c, theme).ok());
+        for (const char* name : names) {
+            const Color value = colour(c, name);
+            TFL_CHECK(value.r == value.g && value.g == value.b); // neutral greys only
+        }
+        const bool dark = theme == BuiltinTheme::truffle_dark;
+        TFL_CHECK((colour(c, "gui.text").r > colour(c, "gui.surface").r) == dark);
+    }
+
+    // Defaults fill gaps only; application values survive.
+    Context c;
+    TFL_CHECK(c.set_theme_value("gui.accent", Color{1, 0, 0, 1}).ok());
+    TFL_CHECK(install_default_theme(c).ok());
+    TFL_CHECK((colour(c, "gui.accent") == Color{1, 0, 0, 1}));
+    TFL_CHECK((colour(c, "gui.surface") == Color{0.12F, 0.12F, 0.12F, 1}));
+
+    // Switching repaints bound widgets.
+    TFL_CHECK(c.set_viewport({100, 100}).ok());
+    auto panel = Widget::create(c, c.root(), {.kind = WidgetKind::panel});
+    TFL_CHECK(panel.ok());
+    const auto element = panel.value().element();
+    TFL_CHECK(c.prepare_frame(Context::Clock::now()).status.ok());
+    TFL_CHECK((c.decoration(element).value().fill == Color{0.12F, 0.12F, 0.12F, 1}));
+    TFL_CHECK(apply_theme(c, BuiltinTheme::truffle_light).ok());
+    TFL_CHECK(c.prepare_frame(Context::Clock::now()).status.ok());
+    TFL_CHECK((c.decoration(element).value().fill == Color{0.96F, 0.96F, 0.96F, 1}));
+    TFL_CHECK((colour(c, "gui.accent") == Color{0.22F, 0.22F, 0.22F, 1}));
+
+    // A conflicting value type is rejected before any token changes.
+    Context mismatch;
+    TFL_CHECK(mismatch.set_theme_value("gui.radius", Color{1, 1, 1, 1}).ok());
+    TFL_CHECK(!apply_theme(mismatch, BuiltinTheme::truffle_dark).ok());
+    TFL_CHECK(!mismatch.theme_value("gui.surface").ok());
+    return 0;
+}
+
 int main() {
-    if (dependencies() != 0) { return 1; }
+    if (dependencies() != 0 || builtin_themes() != 0) { return 1; }
     return fonts();
 }

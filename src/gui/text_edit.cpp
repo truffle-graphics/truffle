@@ -1,7 +1,10 @@
 #include "truffle/gui/text_edit.hpp"
 
+#include "truffle/gui/themes.hpp"
+
 #include <algorithm>
 #include <cmath>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -28,22 +31,31 @@ std::string normalize(std::string_view text, bool multiline) {
     return result;
 }
 
+Color token(const Context& context, std::string_view name) {
+    const auto value = context.theme_value(name);
+    const Color* color = value.ok() ? std::get_if<Color>(&value.value()) : nullptr;
+    return color != nullptr ? *color : Color{1, 1, 1, 1};
+}
+
+// Colours are read while building, so a theme change that repaints the label
+// (it binds gui.text) also refreshes selection, caret and composition marks.
 class EditShapes final : public ShapeBuilder {
 public:
+    const Context* context = nullptr;
     std::vector<Rect> selection;
     std::vector<Rect> marked;
     std::optional<Rect> caret;
 
     void build(ShapeWriter& out, Size, const Decoration&) const override {
         for (const auto rect : selection) {
-            out.rect(rect, {.fill = {0.25F, 0.5F, 0.9F, 0.55F}});
+            out.rect(rect, {.fill = token(*context, "gui.selection")});
         }
         for (auto rect : marked) {
             rect.y += std::max(0.0F, rect.height - 1);
             rect.height = 1;
-            out.rect(rect, {.fill = {0.85F, 0.85F, 1, 1}});
+            out.rect(rect, {.fill = token(*context, "gui.composition")});
         }
-        if (caret) { out.rect(*caret, {.fill = {1, 1, 1, 1}}); }
+        if (caret) { out.rect(*caret, {.fill = token(*context, "gui.caret")}); }
     }
 };
 
@@ -136,13 +148,17 @@ struct TextEdit::State {
         if (text != displayed || shaped_font != desc.font) {
             auto shaped = desc.text_engine->shape(desc.font, text);
             if (!shaped.ok()) { return shaped.status(); }
-            auto status = context->set_text(label, shaped.value(), desc.atlas);
+            const auto color = context->property(label, Property::text_color);
+            if (!color.ok()) { return color.status(); }
+            auto status = context->set_text(label, shaped.value(), desc.atlas,
+                                            std::get<Color>(color.value()));
             if (!status.ok()) { return status; }
             layout = std::move(shaped).value();
             displayed = std::move(text);
             shaped_font = desc.font;
         }
         auto shapes = std::make_shared<EditShapes>();
+        shapes->context = context;
         const auto range = composition
             ? TextRange{replaced.begin + composition->selection_begin,
                         replaced.begin + composition->selection_end}
@@ -429,8 +445,8 @@ struct TextEdit::State {
                 context->host().set_text_input_area(std::nullopt);
                 context->host().set_text_input_state(std::nullopt);
             }
-            auto status = context->set_property_override(root, Property::border_color,
-                focused ? Color{0.25F, 0.65F, 0.95F, 1} : Color{0.4F, 0.45F, 0.55F, 1});
+            auto status = context->bind_property(root, Property::border_color,
+                                                 focused ? "gui.accent" : "gui.border");
             return status.ok() ? render() : status;
         } else if (std::holds_alternative<CaptureLostEvent>(event.payload)) {
             pointer.reset();
@@ -545,6 +561,7 @@ base::Result<TextEdit> TextEdit::create(Context& context, ElementId parent, Text
     state->desc = std::move(desc);
     state->boundaries = std::move(boundaries).value();
     const auto setup = [&]() -> base::Status {
+        if (auto status = install_default_theme(context); !status.ok()) { return status; }
         auto label = context.create(state->root);
         if (!label.ok()) { return label.status(); }
         state->label = label.value();
@@ -559,9 +576,16 @@ base::Result<TextEdit> TextEdit::create(Context& context, ElementId parent, Text
             status = context.set_layout_params(state->root, params);
         }
         if (status.ok()) {
-            status = context.set_decoration(state->root, {
-                .fill = {0.12F, 0.14F, 0.18F, 1}, .border = {0.4F, 0.45F, 0.55F, 1},
-                .border_width = 1, .corner_radius = 4});
+            const std::pair<Property, const char*> bindings[] = {
+                {Property::fill, "gui.surface"}, {Property::border_color, "gui.border"},
+                {Property::border_width, "gui.border_width"},
+                {Property::corner_radius, "gui.radius"}};
+            for (const auto& [property, name] : bindings) {
+                if (status.ok()) { status = context.bind_property(state->root, property, name); }
+            }
+        }
+        if (status.ok()) {
+            status = context.bind_property(state->label, Property::text_color, "gui.text");
         }
         if (status.ok()) {
             status = context.set_semantics(state->root, {Context::Role::text_edit, "Text editor"});

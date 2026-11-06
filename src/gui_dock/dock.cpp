@@ -1,5 +1,7 @@
 #include "truffle/gui/dock/dock.hpp"
 
+#include "truffle/gui/themes.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <utility>
@@ -116,8 +118,11 @@ struct DockSpace::State : std::enable_shared_from_this<DockSpace::State> {
             if (!created.ok()) { return created.status(); }
             const auto id = created.value();
             elements.push_back(id);
-            auto status = context->set_decoration(id, divider ? options.style.divider_fill
-                                                              : options.style.area);
+            auto status = context->bind_property(id, Property::fill,
+                                                 divider ? "dock.divider" : "dock.area");
+            if (status.ok() && !divider) {
+                status = context->bind_property(id, Property::corner_radius, "dock.radius");
+            }
             if (status.ok()) { status = context->set_interaction(id, {.hit_test = divider}); }
             if (status.ok() && divider) {
                 status = context->set_event_handler(
@@ -167,9 +172,9 @@ struct DockSpace::State : std::enable_shared_from_this<DockSpace::State> {
                 const Panel* panel = find(tabs.panels[i]);
                 status = show(panel->tab);
                 if (status.ok()) {
-                    status = context->set_decoration(panel->tab, i == tabs.active
-                                                                     ? options.style.active_tab
-                                                                     : options.style.tab);
+                    status = context->bind_property(panel->tab, Property::fill,
+                                                    i == tabs.active ? "dock.tab_active"
+                                                                     : "dock.tab");
                 }
             }
         }
@@ -321,14 +326,14 @@ struct DockSpace::State : std::enable_shared_from_this<DockSpace::State> {
 
     void place(LayoutPass& pass, const DockNode& node, Rect rect, std::size_t& area,
                std::size_t& divider) {
-        const auto& style = options.style;
+        const auto& metrics = options.metrics;
         if (node.kind == DockNode::Kind::tabs) {
             if (node.panels.empty()) { return; }
             areas[area].rect = rect;
             put(pass, backgrounds[area++], rect);
             const float count = static_cast<float>(node.panels.size());
-            const float width = std::min(style.max_tab_width, rect.width / count);
-            const float strip = std::min(style.tab_height, rect.height);
+            const float width = std::min(metrics.max_tab_width, rect.width / count);
+            const float strip = std::min(metrics.tab_height, rect.height);
             for (std::size_t i = 0; i < node.panels.size(); ++i) {
                 put(pass, find(node.panels[i])->tab,
                     {rect.x + static_cast<float>(i) * width, rect.y, width, strip});
@@ -339,7 +344,8 @@ struct DockSpace::State : std::enable_shared_from_this<DockSpace::State> {
         }
         const bool across = node.axis == Axis::horizontal;
         const float extent = across ? rect.width : rect.height;
-        const float gaps = style.divider * static_cast<float>(node.children.size() - 1);
+        const float spacing = metrics.divider + metrics.gap;
+        const float gaps = spacing * static_cast<float>(node.children.size() - 1);
         const float available = std::max(0.0F, extent - gaps);
         const float end = (across ? rect.x : rect.y) + extent;
         float position = across ? rect.x : rect.y;
@@ -353,10 +359,13 @@ struct DockSpace::State : std::enable_shared_from_this<DockSpace::State> {
             position += size;
             if (!last) {
                 dividers[divider].available = available;
+                // The splitter is centred in its spacing; the gap either side
+                // leaves the dock background visible between areas.
+                const float at = position + metrics.gap * 0.5F;
                 put(pass, divider_elements[divider++],
-                    across ? Rect{position, rect.y, style.divider, rect.height}
-                           : Rect{rect.x, position, rect.width, style.divider});
-                position += style.divider;
+                    across ? Rect{at, rect.y, metrics.divider, rect.height}
+                           : Rect{rect.x, at, rect.width, metrics.divider});
+                position += spacing;
             }
         }
     }
@@ -379,7 +388,7 @@ struct DockSpace::State : std::enable_shared_from_this<DockSpace::State> {
             });
             if (anchor == tabs.panels.end()) { return std::nullopt; }
             DropPreview preview{std::string(panel), *anchor, DropSide::center, r};
-            if (p.y < r.y + options.style.tab_height) { return preview; }
+            if (p.y < r.y + options.metrics.tab_height) { return preview; }
             const float u = (p.x - r.x) / r.width;
             const float v = (p.y - r.y) / r.height;
             const float nearest = std::min({u, 1 - u, v, 1 - v});
@@ -427,7 +436,7 @@ struct DockSpace::State : std::enable_shared_from_this<DockSpace::State> {
         case PointerAction::move: {
             if (!drag || drag->panel != panel) { return base::Status::success(); }
             if (!drag->moving && std::hypot(p.x - drag->start.x, p.y - drag->start.y) <
-                                     options.style.drag_threshold) {
+                                     options.metrics.drag_threshold) {
                 return base::Status::success();
             }
             drag->moving = true;
@@ -495,8 +504,8 @@ struct DockSpace::State : std::enable_shared_from_this<DockSpace::State> {
             float& second = split.fractions[divider.index + 1];
             const float a = first * divider.available;
             const float b = second * divider.available;
-            const float low = options.style.min_area - a;
-            const float high = b - options.style.min_area;
+            const float low = options.metrics.min_area - a;
+            const float high = b - options.metrics.min_area;
             const float delta = low > high ? 0.0F : std::clamp(position - resize->last, low, high);
             if (delta == 0) { return; }
             first = (a + delta) / divider.available;
@@ -542,6 +551,10 @@ private:
 
 base::Result<DockSpace> DockSpace::create(Context& context, ElementId parent,
                                           DockSpaceOptions options) {
+    if (!std::isfinite(options.metrics.gap) || options.metrics.gap < 0) {
+        return invalid("GUI dock gap must be finite and non-negative");
+    }
+    if (auto status = install_default_theme(context); !status.ok()) { return status; }
     auto created = context.create(parent);
     if (!created.ok()) { return created.status(); }
     auto state = std::make_shared<State>();
@@ -560,7 +573,15 @@ base::Result<DockSpace> DockSpace::create(Context& context, ElementId parent,
     state->marker = marker.value();
     auto status = context.set_interaction(state->stash, {.hit_test = false, .enabled = false});
     if (status.ok()) { status = context.set_interaction(state->marker, {.hit_test = false}); }
-    if (status.ok()) { status = context.set_decoration(state->marker, state->options.style.marker); }
+    const std::pair<ElementId, std::pair<Property, const char*>> bindings[] = {
+        {state->root, {Property::fill, "dock.background"}},
+        {state->marker, {Property::fill, "dock.marker"}},
+        {state->marker, {Property::border_color, "dock.marker_border"}},
+        {state->marker, {Property::border_width, "dock.marker_border_width"}},
+    };
+    for (const auto& [element, binding] : bindings) {
+        if (status.ok()) { status = context.bind_property(element, binding.first, binding.second); }
+    }
     if (status.ok()) { status = context.set_overlay(state->marker, true); }
     if (status.ok()) { status = context.set_layout(state->root, std::make_shared<DockLayout>(state)); }
     if (status.ok()) {
@@ -592,7 +613,10 @@ base::Status DockSpace::add_panel(std::string id, std::string title, ElementId c
     LayoutParams params;
     params.padding = {8, 4, 8, 4};
     if (status.ok()) { status = s.context->set_layout_params(tab_id, params); }
-    if (status.ok()) { status = s.context->set_decoration(tab_id, s.options.style.tab); }
+    if (status.ok()) { status = s.context->bind_property(tab_id, Property::fill, "dock.tab"); }
+    if (status.ok()) {
+        status = s.context->bind_property(tab_id, Property::corner_radius, "dock.tab_radius");
+    }
     if (status.ok() && s.options.text_engine != nullptr && !title.empty()) {
         status = s.context->set_text_source(tab_id, *s.options.text_engine, s.options.font, title,
                                             s.options.atlas);
