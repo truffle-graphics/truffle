@@ -336,7 +336,16 @@ if(TFL_BUILD_BACKEND_VULKAN)
             "TFL_VULKAN_COMPUTE_PACKAGE_PATH=\"${_truffle_scratch_dir}/shaderc-glslang-smoke/work-es.tsp\"")
     endif()
     add_test(NAME truffle_vulkan_tests COMMAND truffle_vulkan_tests)
-    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID)
+    if(WIN32)
+        target_compile_definitions(truffle_vulkan_tests
+                                  PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+        target_link_libraries(truffle_vulkan_tests PRIVATE user32)
+        set_tests_properties(truffle_vulkan_tests PROPERTIES
+                             LABELS "native-smoke;presentation;validation"
+                             TIMEOUT 180
+                             SKIP_RETURN_CODE 77
+                             FAIL_REGULAR_EXPRESSION "Validation (Error|Warning)")
+    elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID)
         find_library(TFL_XCB_LIBRARY xcb REQUIRED)
         target_link_libraries(truffle_vulkan_tests
                               PRIVATE "${TFL_XCB_LIBRARY}")

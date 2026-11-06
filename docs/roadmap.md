@@ -105,7 +105,9 @@ lanes, or Intel-specific work is planned.
 
 ### Pending Verification
 
-- Vulkan on Windows (#58).
+- Vulkan Windows x64 hardware smoke and Win32 presentation/resize/recovery
+  are verified locally (#265). Broader software-driver, ARM64 and repeatable
+  runner assessment remain under #58; no hosted lane was run.
 - Current Shader-provider/native-output checks on Windows D3D12 (#122), Linux
   Vulkan (#124), Linux GL/GLES (#125), and browser WGSL (#123). Older backend
   smoke receipts are not evidence for the newly added Shader routes.

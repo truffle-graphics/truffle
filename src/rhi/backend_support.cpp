@@ -37,7 +37,7 @@ constexpr BackendEvidence d3d12_smoke{
     .validation = true,
     .presentation = true,
 };
-constexpr BackendEvidence vulkan_moltenvk_smoke{
+constexpr BackendEvidence vulkan_presentation_smoke{
     .compiles = true,
     .nativeSmoke = true,
     .validation = true,
@@ -76,14 +76,17 @@ constexpr std::array support{
                            "native buffers and selected 2D texture transfers "
                            "using bundled headers and volk"},
     BackendPlatformSupport{BackendKind::vulkan, PlatformKind::windows,
-                           BackendMaturity::source_only, true, source_only,
-                           "native loader source is present; no official runtime lane yet"},
+                           BackendMaturity::native_smoke, true,
+                           vulkan_presentation_smoke,
+                           "Windows x64 native GPU resources, pipelines, sync "
+                           "and Win32 presentation with Khronos validation; "
+                           "no software-driver, ARM64 or hosted CI evidence"},
     BackendPlatformSupport{BackendKind::vulkan, PlatformKind::android,
                            BackendMaturity::source_only, true, source_only,
                            "target identified; no NDK lane yet"},
     BackendPlatformSupport{BackendKind::vulkan, PlatformKind::macos,
                            BackendMaturity::native_smoke, true,
-                           vulkan_moltenvk_smoke,
+                           vulkan_presentation_smoke,
                            "host MoltenVK resources, pipelines, sync and "
                            "CAMetalLayer presentation under Khronos "
                            "validation; D24S8 and timestamps unsupported"},

@@ -5,7 +5,46 @@ This is the rolling execution handoff, not an implementation transcript.
 issues/Project own accepted work. Earlier phase details remain in their PRs,
 the support matrix and Git history.
 
-## Latest: Windows source compilers and native DXIL (#264)
+## Latest: Windows Vulkan Win32 integration (#265)
+
+The Windows batch remains `fix/windows-baseline`; signed issue-scoped commits
+are pushed before the next task. Studio's submodule pin is unchanged.
+The Vulkan backend privately enables `VK_KHR_win32_surface`, borrows the
+host HWND and its owning HINSTANCE, and reuses the existing native swapchain
+and synchronization owner. An explicit HINSTANCE must match the window;
+omitting it derives the owner from the HWND. Windows headers and `user32`
+stay target-private; no public contract or architectural boundary changes.
+The existing cohesive Vulkan native owner remains the right location for
+this platform branch, not a new window/event-loop subsystem.
+
+Enabling WSI exposed incorrect portability negotiation: the enumeration
+flag now requires the portability extension itself, not merely any instance
+extension. Destroyed windows return `surface_lost`; minimized/zero-client
+windows suspend acquisition/recreation with `out_of_date` until restored.
+
+The Windows test previously only probed adapter creation. It now executes
+the shared native resource/pipeline/synchronization suite and Win32 presentation,
+requiring active Khronos validation and rejecting validation errors/warnings.
+An NVIDIA GeForce RTX 4080 SUPER produces exact padded BGRA(191,128,64,255)
+swapchain pixels at 64x48 and 80x60, before presentation and after recreation.
+Tests cover minimize/zero-client restoration, native window destruction,
+replacement HWND presentation, and deterministic acquire/present/device-loss
+faults. Injected device loss is not physical removal evidence.
+Exact UNORM code-point clears replace ambiguous 0.5 quantization ties without
+loosening byte assertions. Borderless host test windows avoid OS decoration
+minimum sizes; test assertions report directly to stderr instead of GUI dialogs.
+
+Strict Debug builds of the affected targets and all seven focused
+Vulkan/Renderer/contract/matrix tests pass without skips. Strict RHI doctor,
+the architecture guard and whitespace checks pass. No dependencies were
+installed and no hosted work ran.
+
+Windows Vulkan advances only to `native_smoke`, with presentation evidence,
+not conformance. Android/iOS remain `source_only`; software-driver, ARM64 and
+hosted/runner assessment remain under parent #58. Next: Windows desktop
+OpenGL WGL and applicable synchronization/query checks (#61/#63).
+
+## Earlier: Windows source compilers and native DXIL (#264)
 
 The Windows batch remains `fix/windows-baseline`; signed issue-scoped commits
 are pushed before starting the next task. Studio's submodule pin is unchanged.

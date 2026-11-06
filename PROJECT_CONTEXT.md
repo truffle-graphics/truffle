@@ -214,6 +214,13 @@ Windows DXC/Slang source builds, Vulkan output and fresh DXIL consumption on
 D3D12 WARP are verified separately in #264. New Linux/GLES output checks and
 browser execution remain separately tracked, not simulated or blocking this baseline.
 
+Windows x64 Vulkan now has native resource/pipeline/synchronization and
+host-owned Win32 presentation/resize/recovery evidence on an NVIDIA GeForce
+RTX 4080 SUPER with Khronos validation (#265). Its backend-platform maturity
+is `native_smoke`, not full conformance. The broader #58 still owns missing
+software-driver, ARM64 and repeatable hosted/local-runner assessment; no
+hosted run is authorized by this local evidence. Windows WGL (#61/#63) is next.
+
 The accepted next scope is the minimum flexible Renderer (#206), following
 [ADR 0012](docs/adr/0012-app-defined-render-data.md): explicit app-defined data,
 mesh byte uploads (#207), optional camera/depth helpers and composed example

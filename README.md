@@ -64,6 +64,14 @@ for each backend/platform pair:
   occlusion query resolves are validation-tested. Linux additionally consumes
   host-owned XCB handles for native acquire/render/present, exact swapchain
   readback, and resize recreation under a validation-enabled Xvfb lane.
+  Windows x64 additionally proves the shared native suite and Win32
+  acquire/render/readback/present, resize and recovery on an RTX 4080 SUPER
+  with Khronos validation (#265). A `win32` surface borrows its HWND in
+  `NativeSurface::handle`; `display` may supply its HINSTANCE or be null to
+  derive the owning instance from that window. RHI owns neither the window
+  nor its message loop. Minimized/zero-client windows return `out_of_date`
+  until restored; destroyed windows return `surface_lost`. The host Vulkan
+  runtime and validation layer are prerequisites, not bundled dependencies.
 - `truffle_backend_direct3d` initializes the Windows SDK D3D12 WARP device,
   owns upload/readback and default-heap buffers plus device-local textures and
   descriptor views, consumes packaged native HLSL or offline DXIL, maps logical
