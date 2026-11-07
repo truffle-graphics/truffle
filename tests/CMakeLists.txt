@@ -815,16 +815,43 @@ target_compile_definitions(truffle_gui_text_edit_tests PRIVATE
 truffle_target_warnings(truffle_gui_text_edit_tests)
 add_test(NAME truffle_gui_text_edit_tests COMMAND truffle_gui_text_edit_tests)
 
-# The GUI program ships as prepared MSL, so no shader compiler is required.
+# GUI native tests consume the shipped packages without a shader compiler.
 if(APPLE AND TFL_BUILD_BACKEND_METAL)
-    add_executable(truffle_gui_drawing_metal_tests gui_drawing_metal_tests.cpp)
+    add_executable(truffle_gui_drawing_metal_tests gui_drawing_native_tests.cpp)
     target_link_libraries(truffle_gui_drawing_metal_tests PRIVATE
         truffle_gui truffle_backend_metal)
     target_compile_definitions(truffle_gui_drawing_metal_tests PRIVATE
-        TFL_TEST_GUI_TEXT=$<BOOL:${TFL_GUI_ENABLE_TEXT}>)
+        TFL_TEST_GUI_TEXT=$<BOOL:${TFL_GUI_ENABLE_TEXT}> TFL_TEST_GUI_VULKAN=0)
     truffle_target_warnings(truffle_gui_drawing_metal_tests)
     add_test(NAME truffle_gui_drawing_metal_tests COMMAND truffle_gui_drawing_metal_tests)
     set_tests_properties(truffle_gui_drawing_metal_tests PROPERTIES
         LABELS "native-smoke;validation;gui" TIMEOUT 60
         ENVIRONMENT "MTL_DEBUG_LAYER=1;MTL_SHADER_VALIDATION=1;METAL_DEVICE_WRAPPER_TYPE=1")
+endif()
+if(TFL_BUILD_BACKEND_VULKAN)
+    add_executable(truffle_gui_drawing_vulkan_tests gui_drawing_native_tests.cpp)
+    target_link_libraries(truffle_gui_drawing_vulkan_tests PRIVATE
+        truffle_gui truffle_backend_vulkan)
+    target_include_directories(truffle_gui_drawing_vulkan_tests PRIVATE
+        "${PROJECT_SOURCE_DIR}/src/backends/vulkan")
+    target_compile_definitions(truffle_gui_drawing_vulkan_tests PRIVATE
+        TFL_TEST_GUI_TEXT=$<BOOL:${TFL_GUI_ENABLE_TEXT}> TFL_TEST_GUI_VULKAN=1)
+    truffle_target_warnings(truffle_gui_drawing_vulkan_tests)
+    add_test(NAME truffle_gui_drawing_vulkan_tests COMMAND truffle_gui_drawing_vulkan_tests)
+    set_tests_properties(truffle_gui_drawing_vulkan_tests PROPERTIES
+        LABELS "native-smoke;validation;gui" TIMEOUT 60
+        FAIL_REGULAR_EXPRESSION "Validation (Error|Warning)")
+    if(APPLE AND _truffle_vulkan_loader_dir)
+        set_property(TEST truffle_gui_drawing_vulkan_tests APPEND PROPERTY ENVIRONMENT
+            "DYLD_FALLBACK_LIBRARY_PATH=${_truffle_vulkan_loader_dir}:/usr/local/lib:/usr/lib")
+    endif()
+endif()
+if(TFL_SHADER_ENABLE_GLSLANG)
+    add_executable(truffle_gui_shader_package ../tools/generate_gui_vulkan.cpp)
+    target_link_libraries(truffle_gui_shader_package PRIVATE truffle_shader)
+    truffle_target_warnings(truffle_gui_shader_package)
+    add_test(NAME truffle_gui_vulkan_package_check
+        COMMAND truffle_gui_shader_package "${PROJECT_SOURCE_DIR}/src/gui/shaders"
+            "${PROJECT_SOURCE_DIR}/src/gui/shaders/gui-vulkan.tsp" --check)
+    set_tests_properties(truffle_gui_vulkan_package_check PROPERTIES LABELS "gui;shader")
 endif()

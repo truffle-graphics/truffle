@@ -102,12 +102,15 @@ else()
     target_compile_definitions(truffle_gui PRIVATE TFL_GUI_HAS_TEXT=0)
 endif()
 
-# GUI shaders ship as prepared native source: the package is built in memory
-# from the embedded source and its hash, so no shader compiler runs.
+# Prepared Metal source and Vulkan SPIR-V need no compiler at configure or runtime.
 set(_truffle_gui_metal "${CMAKE_CURRENT_SOURCE_DIR}/shaders/gui.metal")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_truffle_gui_metal}")
 file(READ "${_truffle_gui_metal}" TFL_GUI_METAL_SOURCE)
 file(SHA256 "${_truffle_gui_metal}" TFL_GUI_METAL_SHA256)
+set(_truffle_gui_vulkan "${CMAKE_CURRENT_SOURCE_DIR}/shaders/gui-vulkan.tsp")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_truffle_gui_vulkan}")
+file(READ "${_truffle_gui_vulkan}" _truffle_gui_vulkan_hex HEX)
+string(REGEX REPLACE "(..)" "0x\\1," TFL_GUI_VULKAN_BYTES "${_truffle_gui_vulkan_hex}")
 configure_file(gui_shaders.hpp.in
     "${CMAKE_CURRENT_BINARY_DIR}/generated/truffle_gui_shaders.hpp" @ONLY)
 target_include_directories(truffle_gui PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")

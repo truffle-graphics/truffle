@@ -261,7 +261,13 @@ host-owned detached docking windows with divider cursor feedback. Detached
 surfaces preserve elements in the same Context with independent host/input/
 viewport state; saved layouts normalize detached panels back into docking
 rather than persisting OS window geometry. Native execution evidence remains
-macOS/Metal, not a broader GUI backend claim. Contexts have stable, non-movable
+macOS/Metal for host-window execution. Prepared Painter drawing now also has
+native Windows x64 Vulkan evidence (#268) on RTX 4080 SUPER with required
+Khronos validation: shapes/text/textures, clips, streamed geometry,
+premultiplied alpha, canvas primitives, overlays and logical scaling.
+GUI embeds checked-in SPIR-V without a runtime compiler; Metal is unchanged.
+This is not software-driver/ARM64/full conformance or broader native-host
+evidence. Contexts have stable, non-movable
 ownership; application text engines/atlases outlive their elements.
 Assets, a general material system and later application work are not started; the owner reviews the
 Renderer architecture later at their discretion, without committing to phases.

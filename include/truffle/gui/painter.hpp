@@ -32,7 +32,7 @@ struct PaintStats {
 // The host owns the device, pacing and render pass: it calls `record` with
 // the FramePacer slot and adds the batches to its own RenderPassNode, whose
 // color attachment must use `color_format` and match `target`.
-// Currently Metal only. Single-thread-owned; the device and cache outlive it.
+// Supports Metal and Vulkan. Single-thread-owned; the device and cache outlive it.
 class Painter {
 public:
     Painter();

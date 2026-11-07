@@ -72,9 +72,10 @@ Painter& Painter::operator=(Painter&&) noexcept = default;
 
 base::Result<Painter> Painter::create(rhi::Device& device, renderer::PipelineCache& programs,
                                       const PainterDesc& desc) {
-    if (device.adapter_info().backend != rhi::BackendKind::metal) {
+    const auto backend = device.adapter_info().backend;
+    if (backend != rhi::BackendKind::metal && backend != rhi::BackendKind::vulkan) {
         return failure(base::StatusCode::unsupported,
-                       "Truffle GUI drawing currently ships Metal programs only");
+                       "Truffle GUI drawing ships Metal and Vulkan programs only");
     }
     auto state = std::make_unique<State>();
     state->desc = desc;
@@ -106,14 +107,19 @@ base::Result<Painter> Painter::create(rhi::Device& device, renderer::PipelineCac
     }
     state->stream = std::move(stream).value();
 
-    auto package = metal_package();
+    const bool vulkan = backend == rhi::BackendKind::vulkan;
+    auto package = vulkan
+                       ? rhi::ShaderPackage::load(
+                             std::as_bytes(std::span{detail::gui_vulkan_package}))
+                       : metal_package();
     if (!package.ok()) {
         return package.status();
     }
     renderer::ProgramDesc program;
-    program.vertex = {&package.value(), rhi::ShaderTarget::metal_source, "gui_vertex",
+    const auto target = vulkan ? rhi::ShaderTarget::spirv : rhi::ShaderTarget::metal_source;
+    program.vertex = {&package.value(), target, vulkan ? "main" : "gui_vertex",
                       rhi::ShaderStage::vertex, {}};
-    program.fragment = {&package.value(), rhi::ShaderTarget::metal_source, "gui_fragment",
+    program.fragment = {&package.value(), target, vulkan ? "main" : "gui_fragment",
                         rhi::ShaderStage::fragment, {}};
     program.pipeline.layout = &state->layout.pipeline_layout();
     program.pipeline.vertexBuffers = {{
@@ -168,7 +174,9 @@ base::Result<std::vector<renderer::RenderBatch>> Painter::record(
     const Context& context, std::uint32_t slot, rhi::Extent2D target) {
     State& state = *state_;
     state.stats = {};
-    assemble(context, {.target = target, .scale = context.scale(), .clip_y_up = true}, state.draw);
+    assemble(context, {.target = target, .scale = context.scale(),
+                       .clip_y_up = state.device->adapter_info().backend == rhi::BackendKind::metal},
+             state.draw);
     const DrawData& draw = state.draw;
     state.stats.elements = draw.elements;
     state.stats.clipped = draw.clipped;

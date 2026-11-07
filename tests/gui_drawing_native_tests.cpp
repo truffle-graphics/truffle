@@ -4,7 +4,12 @@
 #include "truffle/gui/painter.hpp"
 #include "truffle/gui/widgets.hpp"
 #include "truffle/renderer/frame_stream.hpp"
+#if TFL_TEST_GUI_VULKAN
+#include "truffle/rhi/vulkan_backend.hpp"
+#include "vulkan_backend_test.hpp"
+#else
 #include "truffle/rhi/metal_backend.hpp"
+#endif
 
 #include <algorithm>
 #include <chrono>
@@ -148,13 +153,13 @@ std::vector<Pixel> reference(const std::vector<Layer>& layers) {
 }
 
 void compare(const std::vector<std::byte>& bytes, const std::vector<Pixel>& expected,
-             const char* label) {
+             const char* label, int tolerance = 2) {
     for (std::uint32_t y = 0; y < kSize; ++y) {
         for (std::uint32_t x = 0; x < kSize; ++x) {
             for (std::size_t c = 0; c < 4; ++c) {
                 const int actual = std::to_integer<int>(bytes[y * 256 + x * 4 + c]);
                 const int want = expected[y * kSize + x][c];
-                if (std::abs(actual - want) > 2) {
+                if (std::abs(actual - want) > tolerance) {
                     throw std::runtime_error(std::string(label) + ": pixel " +
                         std::to_string(x) + "," + std::to_string(y) + " channel " +
                         std::to_string(c) + " is " + std::to_string(actual) +
@@ -163,14 +168,19 @@ void compare(const std::vector<std::byte>& bytes, const std::vector<Pixel>& expe
             }
         }
     }
-    std::cout << label << ": " << kSize * kSize << " pixels match the reference\n";
+    std::cout << label << ": " << kSize * kSize
+              << (tolerance == 0 ? " pixels match exactly\n" : " pixels match the reference\n");
 }
 
 void expect_pixel(const std::vector<std::byte>& bytes, std::uint32_t x, std::uint32_t y,
                   Pixel want, const char* what) {
     for (std::size_t c = 0; c < 4; ++c) {
-        if (std::abs(std::to_integer<int>(bytes[y * 256 + x * 4 + c]) - want[c]) > 1) {
-            throw std::runtime_error(std::string("unexpected pixel: ") + what);
+        const int actual = std::to_integer<int>(bytes[y * 256 + x * 4 + c]);
+        if (std::abs(actual - want[c]) > 1) {
+            throw std::runtime_error(std::string("unexpected pixel: ") + what +
+                " at " + std::to_string(x) + "," + std::to_string(y) +
+                " channel " + std::to_string(c) + " is " + std::to_string(actual) +
+                ", expected " + std::to_string(want[c]));
         }
     }
 }
@@ -193,8 +203,20 @@ Decoration fill(Color color) {
 }
 
 int run() {
+#if TFL_TEST_GUI_VULKAN
+    auto instance = tests::require(rhi::create_vulkan_instance({.enableValidation = true}));
+    if (rhi::detail::last_vulkan_validation_state_for_testing() !=
+        rhi::detail::VulkanValidationState::active) {
+        throw std::runtime_error("GUI Vulkan evidence requires active Khronos validation");
+    }
+#else
     auto instance = tests::require(rhi::create_metal_instance());
+#endif
     auto adapter = tests::require(instance.adapter(0));
+    if (!adapter.info().native) {
+        throw std::runtime_error("GUI native evidence requires a native adapter");
+    }
+    std::cout << "GUI native adapter: " << adapter.info().name << '\n';
     auto device = tests::require(adapter.request_device());
 
 #if TFL_TEST_GUI_TEXT
@@ -240,8 +262,9 @@ int run() {
     textured.texture = image_id;
     static_cast<void>(make(context, root, {18, 18, 8, 8}, textured));
 
-    const auto render_context = [&](gui::Context& tree, std::size_t expected_regenerated) {
-        tests::require(tree.set_viewport({kSize, kSize}));
+    const auto render_context = [&](gui::Context& tree, std::size_t expected_regenerated,
+                                    float scale = 1.0F) {
+        tests::require(tree.set_viewport({kSize / scale, kSize / scale}, scale));
         const auto frame = tree.prepare_frame(gui::Context::Clock::now());
         tests::require(frame.status);
         if (frame.shapes.regenerated != expected_regenerated) {
@@ -370,6 +393,15 @@ int run() {
     }
     {
         gui::Context tree;
+        tests::require(tree.set_theme_value("gui.surface", Color{0, 0, 0, 1}));
+        tests::require(tree.set_theme_value("gui.text", Color{1, 1, 1, 1}));
+        tests::require(tree.set_theme_value("gui.selection",
+                                            Color{35 / 255.0F, 70 / 255.0F, 126 / 255.0F, 1}));
+        tests::require(tree.set_theme_value("gui.caret", Color{1, 1, 1, 1}));
+        tests::require(tree.set_theme_value("gui.composition",
+                                            Color{217 / 255.0F, 217 / 255.0F, 1, 1}));
+        tests::require(tree.set_theme_value("gui.radius", 0.0F));
+        tests::require(tree.set_theme_value("gui.border_width", 0.0F));
         auto edit = tests::require(gui::TextEdit::create(tree, tree.root(), {
             .text = " A", .text_engine = &text_engine, .font = font, .atlas = atlas_id}));
         place_widget(tree, edit.element(), {2, 2, 24, 16});
@@ -470,6 +502,103 @@ int run() {
     std::cout << "Core widgets: native panel, label, image, button, checkbox, slider "
                  "and scroll-area pixel evidence\n";
 
+    {
+        gui::Context tree;
+        const auto parent = make(tree, tree.root(), {2, 2, 8, 8}, fill({0, 0, 1, 1}));
+        const auto canvas = make(tree, parent, {0, 0, 20, 20}, {});
+        tests::require(tree.set_shape_builder(canvas, std::make_shared<gui::CanvasBuilder>(
+            [](gui::ShapeWriter& out, gui::Size) {
+                constexpr gui::Point points[] = {{0, 0}, {16, 0}, {0, 4}, {16, 4}};
+                constexpr std::uint32_t indices[] = {0, 1, 2, 2, 1, 3};
+                out.triangles(points, indices, {1, 0, 0, 1});
+                out.line({2, 6}, {12, 6}, 2, {0, 1, 0, 1});
+            })));
+        const auto overlay = make(tree, parent, {6, 6, 8, 8}, fill({1, 0, 1, 1}));
+        tests::require(tree.set_overlay(overlay, true));
+        static_cast<void>(make(tree, tree.root(), {8, 8, 8, 8}, fill({1, 1, 0, 1})));
+        const auto expected = reference({
+            {{2, 2, 8, 8}, fill({0, 0, 1, 1})},
+            {{2, 2, 16, 4}, fill({1, 0, 0, 1}), {2, 2, 8, 8}},
+            {{3, 7, 12, 2}, fill({0, 1, 0, 1}), {2, 2, 8, 8}},
+            {{8, 8, 8, 8}, fill({1, 1, 0, 1})},
+            {{8, 8, 8, 8}, fill({1, 0, 1, 1})},
+        });
+        pixels = render_context(tree, tree.element_count());
+        compare(pixels, expected, "Canvas triangles, square-ended line and unclipped overlay", 0);
+        pixels = render_context(tree, 0);
+        compare(pixels, expected, "Canvas streamed slot reuse without regeneration", 0);
+    }
+    {
+        gui::Context tree;
+        Decoration look = fill({1, 0, 0, 1});
+        look.border = {0, 1, 0, 1};
+        look.border_width = 1;
+        static_cast<void>(make(tree, tree.root(), {2, 3, 4, 5}, look));
+        look.border_width = 2;
+        const auto expected = reference({{{4, 6, 8, 10}, look}});
+        pixels = render_context(tree, tree.element_count(), 2);
+        compare(pixels, expected, "Two physical pixels per logical unit", 0);
+    }
+    {
+        // Four distinct rows/columns catch texture Y inversion as well as clip Y inversion.
+        constexpr std::array<std::byte, 16> texels_2d{
+            std::byte{255}, std::byte{0}, std::byte{0}, std::byte{255},
+            std::byte{0}, std::byte{255}, std::byte{0}, std::byte{255},
+            std::byte{0}, std::byte{0}, std::byte{255}, std::byte{255},
+            std::byte{255}, std::byte{255}, std::byte{255}, std::byte{255}};
+        auto texture_2d = tests::require(renderer::SampledTexture::upload(device, {
+            .extent = {2, 2}, .bytes = texels_2d}));
+        const auto texture_id = tests::require(painter.add_texture(texture_2d));
+        gui::Context tree;
+        Decoration look = fill({1, 1, 1, 1});
+        look.texture = texture_id;
+        static_cast<void>(make(tree, tree.root(), {4, 6, 8, 8}, look));
+        std::vector<Pixel> expected(kSize * kSize, Pixel{0, 0, 0, 255});
+        for (std::uint32_t y = 6; y < 14; ++y) {
+            for (std::uint32_t x = 4; x < 12; ++x) {
+                const std::size_t texel = ((y >= 10 ? 2U : 0U) + (x >= 8 ? 1U : 0U)) * 4;
+                for (std::size_t channel = 0; channel < 4; ++channel) {
+                    expected[y * kSize + x][channel] =
+                        std::to_integer<int>(texels_2d[texel + channel]);
+                }
+            }
+        }
+        pixels = render_context(tree, tree.element_count());
+        compare(pixels, expected, "Two-dimensional nearest texture orientation", 0);
+        tests::require(painter.remove_texture(texture_id));
+    }
+    {
+        constexpr std::array<std::byte, 4> translucent{
+            std::byte{255}, std::byte{128}, std::byte{0}, std::byte{128}};
+        auto texture = tests::require(renderer::SampledTexture::upload(device, {
+            .extent = {1, 1}, .bytes = translucent}));
+        const auto texture_id = tests::require(painter.add_texture(texture));
+        gui::Context tree;
+        tests::require(tree.set_decoration(tree.root(), fill({1, 0, 0, 1})));
+        Decoration look = fill({0, 1, 1, 1});
+        look.texture = texture_id;
+        static_cast<void>(make(tree, tree.root(), {4, 6, 8, 8}, look));
+        const auto expected_image = [](Pixel sampled) {
+            std::vector<Pixel> expected(kSize * kSize, Pixel{255, 0, 0, 255});
+            for (std::uint32_t y = 6; y < 14; ++y) {
+                for (std::uint32_t x = 4; x < 12; ++x) {
+                    expected[y * kSize + x] = sampled;
+                }
+            }
+            return expected;
+        };
+        pixels = render_context(tree, tree.element_count());
+        compare(pixels, expected_image({127, 64, 0, 255}),
+                "Texture tint and sampled alpha premultiplied over opaque red", 0);
+        constexpr std::array<std::byte, 4> updated{
+            std::byte{0}, std::byte{0}, std::byte{255}, std::byte{64}};
+        tests::require(texture.update(device, {0, 0, 0}, {1, 1}, updated));
+        pixels = render_context(tree, 0);
+        compare(pixels, expected_image({191, 0, 64, 255}),
+                "Updated translucent texture with retained geometry", 0);
+        tests::require(painter.remove_texture(texture_id));
+    }
+
     tests::require(painter.remove_texture(image_id));
     if (painter.record(context, tests::require(pacer.begin_frame()), {kSize, kSize}).ok()) {
         throw std::runtime_error("an unregistered texture must fail recording");
@@ -485,7 +614,7 @@ int main() {
     try {
         return run();
     } catch (const std::exception& error) {
-        std::cerr << "GUI drawing Metal test failed: " << error.what() << '\n';
+        std::cerr << "GUI drawing native test failed: " << error.what() << '\n';
         return 1;
     }
 }

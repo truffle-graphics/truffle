@@ -154,7 +154,7 @@ schema or fixed transform/light/material model. GUI-readiness primitives add
 clip rectangles, sampled textures, streamed geometry and frame pacing. The GUI
 module's architecture is accepted in
 [ADR 0013](docs/adr/0013-truffle-gui-architecture.md) (#217). `Truffle::GUI`
-provides the persistent tree, incremental layout, Renderer drawing (Metal),
+provides the persistent tree, incremental layout, Renderer drawing (Metal and Vulkan),
 host boundary, text, event routing, themes and core widgets (#221-#229),
 plus grid layout, placement overrides, canvas drawing and overlays (#230-#231),
 a nested C++ builder (#232), immediate-style regions (#233) and virtualized
@@ -172,6 +172,13 @@ macOS/Metal rather than claimed for every platform.
 The [native widget demo](examples/gui_window/README.md) records idle and
 selective-update evidence. Epic #217 (#221-#235) is delivered; this
 is a usable baseline, not a finished GUI framework.
+The prepared Vulkan Painter program (#268) has native Windows x64 readback
+evidence on an RTX 4080 SUPER with required Khronos validation. It preserves
+the existing shape/text/texture, clipping, canvas and premultiplied-alpha
+contracts without a runtime compiler. Metal remains the macOS path; other
+GUI backend/platform execution is not implied. See
+[`docs/architecture.md`](docs/architecture.md#gui-prepared-rendering-268)
+for package regeneration and focused checks.
 Assets, a general material system and later application work are not started.
 [`docs/roadmap.md`](docs/roadmap.md) records the review and evidence boundaries.
 GUI text support is enabled by default and uses private pinned FreeType,

@@ -353,6 +353,47 @@ plus explicitly enabled private Apple APIs.
 
 See [the shader package contract](rhi1/shader-package.md).
 
+## GUI Prepared Rendering (#268)
+
+`gui::Painter` supports Metal and Vulkan through the same public Renderer/RHI
+contracts. GUI owns its prepared programs: embedded native MSL keeps the
+existing Metal path, and a checked-in TSP embeds native SPIR-V for Vulkan 1.1 /
+SPIR-V 1.3. Configure embeds the package bytes; it never runs a compiler.
+Painter selects the native target and clip-space Y convention while retaining
+the shared vertex layout, sampled texture/sampler slots, signed-distance
+coverage, premultiplied blending, streamed geometry and scissor batches.
+Unsupported backends fail explicitly. No public signature or architectural
+boundary changes; Shader remains an optional compiler beneath Renderer,
+not a new GUI-owned runtime requirement.
+
+`src/gui/shaders/gui.vert` and `gui.frag` match `gui.metal`. The test-only
+`truffle_gui_shader_package` target uses the existing pinned Shader/glslang
+adapter to produce the checked-in `src/gui/shaders/gui-vulkan.tsp`, including
+canonical reflection, compiler identity and machine-independent authoring paths.
+With tests and `TFL_SHADER_ENABLE_GLSLANG=ON`, regenerate from the repository root:
+
+```powershell
+cmake --build --preset debug --target truffle_gui_shader_package
+.\out\debug\bin\truffle_gui_shader_package.exe src\gui\shaders src\gui\shaders\gui-vulkan.tsp
+ctest --preset debug -R '^truffle_gui_vulkan_package_check$' --output-on-failure
+```
+
+The generator's output argument also works with native executable paths on
+other hosts. Normal builds, installed GUI consumers and native GUI tests need
+neither this tool nor a compiler-enabled Shader library. The package check
+recompiles both sources and requires byte-identical output.
+
+`truffle_gui_drawing_metal_tests` and `truffle_gui_drawing_vulkan_tests` share
+one native drawing suite. The Vulkan test requires active Khronos validation
+and fails on validation warnings/errors, rather than reporting a skip.
+Windows x64 RTX 4080 SUPER evidence covers four 32x32 signed-distance CPU
+references (two-code-point tolerance for rounded edges/blending), glyph atlas
+and core widget/editor probes, plus byte-exact full images for canvas triangles,
+square-ended lines, overlays, retained frame-slot reuse, 2x logical scaling,
+2D texture orientation, tint/alpha and texture updates. The same Vulkan suite
+also passes with all Shader compilers disabled. No macOS rerun, software-driver,
+ARM64, other GUI platform or full-conformance claim is implied.
+
 ## GUI Usability And Native Surfaces (#251-#253)
 
 GUI owns Unicode text shaping, font fallback and plain-text editing above
