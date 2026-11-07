@@ -27,6 +27,13 @@ int main() {
             foundNull = true;
             assert(!row.gpuBackend);
             assert(row.maturity == BackendMaturity::validation_only);
+        } else if ((row.backend == BackendKind::vulkan ||
+                    row.backend == BackendKind::opengl) &&
+                   row.platform == PlatformKind::windows) {
+            assert(row.maturity == BackendMaturity::native_smoke);
+            assert(row.evidence.presentation);
+            assert(!row.evidence.conformance);
+            foundHostGpu = foundHostGpu || row.platform == host_platform();
         } else if (row.platform == host_platform() && row.gpuBackend) {
             foundHostGpu = true;
         }

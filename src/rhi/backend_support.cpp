@@ -15,10 +15,9 @@ constexpr BackendEvidence validated_native_smoke{
     .nativeSmoke = true,
     .validation = true,
 };
-// macOS validation is per-call glGetError checking with zero errors
-// required; no debug-message layer exists on macOS GL 4.1. Presentation is
-// exercised into a host-owned NSView with back-buffer pixel checks.
-constexpr BackendEvidence gl_error_checked_smoke{
+// Desktop GL requires zero native errors and exact window back-buffer pixels.
+// Windows adds KHR_debug; macOS GL 4.1 has only per-call glGetError checking.
+constexpr BackendEvidence gl_presentation_smoke{
     .compiles = true,
     .nativeSmoke = true,
     .validation = true,
@@ -37,7 +36,7 @@ constexpr BackendEvidence d3d12_smoke{
     .validation = true,
     .presentation = true,
 };
-constexpr BackendEvidence vulkan_moltenvk_smoke{
+constexpr BackendEvidence vulkan_presentation_smoke{
     .compiles = true,
     .nativeSmoke = true,
     .validation = true,
@@ -76,14 +75,17 @@ constexpr std::array support{
                            "native buffers and selected 2D texture transfers "
                            "using bundled headers and volk"},
     BackendPlatformSupport{BackendKind::vulkan, PlatformKind::windows,
-                           BackendMaturity::source_only, true, source_only,
-                           "native loader source is present; no official runtime lane yet"},
+                           BackendMaturity::native_smoke, true,
+                           vulkan_presentation_smoke,
+                           "Windows x64 native GPU resources, pipelines, sync "
+                           "and Win32 presentation with Khronos validation; "
+                           "no software-driver, ARM64 or hosted CI evidence"},
     BackendPlatformSupport{BackendKind::vulkan, PlatformKind::android,
                            BackendMaturity::source_only, true, source_only,
                            "target identified; no NDK lane yet"},
     BackendPlatformSupport{BackendKind::vulkan, PlatformKind::macos,
                            BackendMaturity::native_smoke, true,
-                           vulkan_moltenvk_smoke,
+                           vulkan_presentation_smoke,
                            "host MoltenVK resources, pipelines, sync and "
                            "CAMetalLayer presentation under Khronos "
                            "validation; D24S8 and timestamps unsupported"},
@@ -101,11 +103,14 @@ constexpr std::array support{
                            "EGL surfaceless buffers, views, copies, fills, and "
                            "exact readback"},
     BackendPlatformSupport{BackendKind::opengl, PlatformKind::windows,
-                           BackendMaturity::source_only, true, source_only,
-                           "target identified; no WGL execution lane yet"},
+                           BackendMaturity::native_smoke, true,
+                           gl_presentation_smoke,
+                           "Windows x64 WGL GL 4.5 core resources, graphics, "
+                           "compute, sync, queries and host HWND presentation; "
+                           "KHR_debug and exact native GPU output"},
     BackendPlatformSupport{BackendKind::opengl, PlatformKind::macos,
                            BackendMaturity::native_smoke, true,
-                           gl_error_checked_smoke,
+                           gl_presentation_smoke,
                            "deprecated GL 4.1 core CGL resources, bindings, "
                            "and graphics with exact readback, presented into "
                            "a host-owned NSView with resize; GL fence-sync "

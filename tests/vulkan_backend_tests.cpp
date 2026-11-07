@@ -28,6 +28,10 @@
 
 #if defined(__linux__) && !defined(__ANDROID__)
 #define TFL_VULKAN_TEST_XCB 1
+#elif defined(_WIN32)
+#define TFL_VULKAN_TEST_WIN32 1
+#include <windows.h>
+#include <crtdbg.h>
 #elif defined(__APPLE__) && TARGET_OS_OSX
 #define TFL_VULKAN_TEST_METAL_LAYER 1
 #include "vulkan_metal_layer.hpp"
@@ -56,10 +60,15 @@ void verify_vulkan_buffers() {
         rhi::create_vulkan_instance({.enableValidation = true});
     assert(instanceResult.ok());
     auto instance = std::move(instanceResult).value();
+#if defined(TFL_VULKAN_TEST_WIN32)
+    assert(rhi::detail::last_vulkan_validation_state_for_testing() ==
+           rhi::detail::VulkanValidationState::active);
+#endif
     auto adapterResult = instance.adapter(0);
     assert(adapterResult.ok());
     auto adapter = std::move(adapterResult).value();
     const auto info = adapter.info();
+    std::printf("Vulkan native adapter: %s\n", info.name.c_str());
     assert(info.backend == rhi::BackendKind::vulkan);
     assert(info.platform == rhi::host_platform());
     assert(info.maturity == rhi::BackendMaturity::native_smoke);
@@ -1588,7 +1597,7 @@ void verify_vulkan_buffers() {
         assert(copy
                    .clear_texture(clearTexture.value(), region,
                                   {.color = {.r = 1.0F,
-                                             .g = 0.5F,
+                                             .g = 128.0F / 255.0F,
                                              .b = 0.0F,
                                              .a = 1.0F}})
                    .ok());
@@ -1716,8 +1725,8 @@ void verify_vulkan_buffers() {
         const rhi::TextureRegion destinationRegion{.extent = {4, 4, 1}};
         assert(copy
                    .clear_texture(blitSource.value(), sourceRegion,
-                                  {.color = {.r = 0.25F,
-                                             .g = 0.5F,
+                                  {.color = {.r = 64.0F / 255.0F,
+                                             .g = 128.0F / 255.0F,
                                              .b = 0.75F,
                                              .a = 1.0F}})
                    .ok());
@@ -1966,6 +1975,92 @@ private:
     xcb_screen_t* screen_ = nullptr;
     xcb_window_t window_ = XCB_WINDOW_NONE;
 };
+#elif defined(TFL_VULKAN_TEST_WIN32)
+class VulkanTestWindow {
+public:
+    VulkanTestWindow(std::uint32_t width, std::uint32_t height) {
+        instance_ = GetModuleHandleW(nullptr);
+        const WNDCLASSW windowClass{
+            .lpfnWndProc = DefWindowProcW,
+            .hInstance = instance_,
+            .lpszClassName = className_,
+        };
+        atom_ = RegisterClassW(&windowClass);
+        assert(atom_ != 0 || GetLastError() == ERROR_CLASS_ALREADY_EXISTS);
+        window_ = CreateWindowExW(
+            0, className_, L"Truffle Vulkan Win32 proof", WS_POPUP,
+            CW_USEDEFAULT, CW_USEDEFAULT, 1, 1, nullptr, nullptr, instance_,
+            nullptr);
+        assert(window_ != nullptr);
+        resize(width, height);
+        ShowWindow(window_, SW_SHOW);
+        pump_messages();
+    }
+
+    ~VulkanTestWindow() {
+        destroy();
+        if (atom_ != 0) {
+            assert(UnregisterClassW(className_, instance_));
+        }
+    }
+
+    VulkanTestWindow(const VulkanTestWindow&) = delete;
+    VulkanTestWindow& operator=(const VulkanTestWindow&) = delete;
+
+    [[nodiscard]] truffle::rhi::NativeSurface native_surface() const noexcept {
+        return {.kind = truffle::rhi::NativeSurfaceKind::win32,
+                .handle = window_,
+                .display = instance_};
+    }
+
+    void resize(std::uint32_t width, std::uint32_t height) {
+        RECT rectangle{0, 0, static_cast<LONG>(width), static_cast<LONG>(height)};
+        assert(AdjustWindowRect(&rectangle, WS_POPUP, FALSE));
+        assert(SetWindowPos(window_, nullptr, 0, 0,
+                            rectangle.right - rectangle.left,
+                            rectangle.bottom - rectangle.top,
+                            SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE));
+        pump_messages();
+        RECT client{};
+        assert(GetClientRect(window_, &client));
+        assert(client.right - client.left == static_cast<LONG>(width));
+        assert(client.bottom - client.top == static_cast<LONG>(height));
+    }
+
+    void minimize() {
+        ShowWindow(window_, SW_MINIMIZE);
+        pump_messages();
+        assert(IsIconic(window_));
+    }
+
+    void restore() {
+        ShowWindow(window_, SW_RESTORE);
+        pump_messages();
+        assert(!IsIconic(window_));
+    }
+
+    void destroy() {
+        if (window_ != nullptr) {
+            assert(DestroyWindow(window_));
+            window_ = nullptr;
+            pump_messages();
+        }
+    }
+
+private:
+    static void pump_messages() {
+        MSG message{};
+        while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+            TranslateMessage(&message);
+            DispatchMessageW(&message);
+        }
+    }
+
+    static constexpr auto className_ = L"TruffleVulkanPresentationProof";
+    HINSTANCE instance_ = nullptr;
+    HWND window_ = nullptr;
+    ATOM atom_ = 0;
+};
 #elif defined(TFL_VULKAN_TEST_METAL_LAYER)
 class VulkanTestWindow {
 public:
@@ -1986,7 +2081,8 @@ private:
 };
 #endif
 
-#if defined(TFL_VULKAN_TEST_XCB) || defined(TFL_VULKAN_TEST_METAL_LAYER)
+#if defined(TFL_VULKAN_TEST_XCB) || defined(TFL_VULKAN_TEST_METAL_LAYER) || \
+    defined(TFL_VULKAN_TEST_WIN32)
 
 struct VulkanPresentationContext {
     truffle::rhi::Instance instance;
@@ -2000,6 +2096,10 @@ struct VulkanPresentationContext {
     namespace rhi = truffle::rhi;
     auto instance = rhi::create_vulkan_instance({.enableValidation = true});
     assert(instance.ok());
+#if defined(TFL_VULKAN_TEST_WIN32)
+    assert(rhi::detail::last_vulkan_validation_state_for_testing() ==
+           rhi::detail::VulkanValidationState::active);
+#endif
     auto adapter = instance.value().adapter(0);
     assert(adapter.ok());
     assert(adapter.value().info().presentation);
@@ -2057,7 +2157,8 @@ void render_readback_and_present(VulkanPresentationContext& context,
     auto render = list.value().begin_rendering({
         .extent = extent,
         .colorAttachments = {{.texture = acquired.image,
-                              .clear = {0.25F, 0.5F, 0.75F, 1.0F}}},
+                              .clear = {64.0F / 255.0F, 128.0F / 255.0F,
+                                        191.0F / 255.0F, 1.0F}}},
     });
     assert(render.ok());
     assert(render.value().end().ok());
@@ -2240,13 +2341,85 @@ void verify_vulkan_presentation() {
     window.resize(80, 60);
     assert(swapchain.value().resize({80, 60}).ok());
     render_readback_and_present(context, swapchain.value(), {80, 60});
+#if defined(TFL_VULKAN_TEST_WIN32)
+    window.minimize();
+    assert(swapchain.value().acquire_next_image().status.code ==
+           rhi::StatusCode::out_of_date);
+    assert(swapchain.value().resize({80, 60}).code ==
+           rhi::StatusCode::out_of_date);
+    window.restore();
+    window.resize(0, 0);
+    assert(swapchain.value().acquire_next_image().status.code ==
+           rhi::StatusCode::out_of_date);
+    window.resize(80, 60);
+    assert(swapchain.value().resize({80, 60}).ok());
+    render_readback_and_present(context, swapchain.value(), {80, 60});
+#endif
     verify_vulkan_presentation_statuses(context, swapchain.value());
 }
+
+#if defined(TFL_VULKAN_TEST_WIN32)
+void verify_vulkan_win32_lifetime() {
+    namespace rhi = truffle::rhi;
+    auto context = create_vulkan_presentation_context();
+    VulkanTestWindow window{64, 48};
+    auto invalid = context.device.create_surface({
+        .native = {.kind = rhi::NativeSurfaceKind::win32},
+    });
+    assert(invalid.status().code == rhi::StatusCode::invalid_argument);
+    auto native = window.native_surface();
+    native.display = nullptr;
+    auto surface = context.device.create_surface({
+        .native = native,
+        .initialExtent = {64, 48},
+    });
+    assert(surface.ok());
+    auto swapchain = context.device.create_swapchain(
+        surface.value(), {.extent = {64, 48}});
+    assert(swapchain.ok());
+    render_readback_and_present(context, swapchain.value(), {64, 48});
+    auto acquired = swapchain.value().acquire_next_image();
+    assert(acquired.ok());
+    window.destroy();
+    assert(context.queue.present(swapchain.value(), acquired.imageIndex).code ==
+           rhi::StatusCode::surface_lost);
+    assert(!context.device.lost());
+    auto second = context.device.create_swapchain(
+        surface.value(), {.extent = {64, 48}});
+    assert(second.status().code == rhi::StatusCode::surface_lost);
+
+    VulkanTestWindow replacement{64, 48};
+    auto replacementSurface = context.device.create_surface({
+        .native = replacement.native_surface(),
+        .initialExtent = {64, 48},
+    });
+    assert(replacementSurface.ok());
+    auto replacementSwapchain = context.device.create_swapchain(
+        replacementSurface.value(), {.extent = {64, 48}});
+    assert(replacementSwapchain.ok());
+    render_readback_and_present(context, replacementSwapchain.value(), {64, 48});
+    replacement.destroy();
+    assert(replacementSwapchain.value().acquire_next_image().status.code ==
+           rhi::StatusCode::surface_lost);
+    assert(replacementSwapchain.value().resize({64, 48}).code ==
+           rhi::StatusCode::surface_lost);
+    std::puts("Win32 Vulkan presentation, resize, recovery and exact readback passed");
+}
+#endif
 #endif
 
 } // namespace
 
 int main() {
+#if defined(TFL_VULKAN_TEST_WIN32)
+    SetErrorMode(SEM_NOGPFAULTERRORBOX);
+    _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+#if defined(_DEBUG)
+    _CrtSetReportMode(_CRT_ASSERT, _CRTDBG_MODE_FILE);
+    _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);
+#endif
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
+#endif
 #if defined(TFL_VULKAN_TEST_XCB)
     verify_vulkan_buffers();
     if (std::getenv("DISPLAY") != nullptr) {
@@ -2256,7 +2429,7 @@ int main() {
     auto result = truffle::rhi::create_vulkan_instance();
     if (!result.ok()) {
         truffle::tests::verify_unavailable_backend(result);
-#if defined(TFL_VULKAN_TEST_METAL_LAYER)
+#if defined(TFL_VULKAN_TEST_METAL_LAYER) || defined(TFL_VULKAN_TEST_WIN32)
         // No Vulkan loader or MoltenVK driver is installed: report a skip.
         return 77;
 #else
@@ -2286,9 +2459,12 @@ int main() {
         std::fprintf(stderr, "note: running without VK_LAYER_KHRONOS_validation\n");
     }
 #endif
-#if defined(TFL_VULKAN_TEST_METAL_LAYER)
+#if defined(TFL_VULKAN_TEST_METAL_LAYER) || defined(TFL_VULKAN_TEST_WIN32)
     verify_vulkan_buffers();
     verify_vulkan_presentation();
+#endif
+#if defined(TFL_VULKAN_TEST_WIN32)
+    verify_vulkan_win32_lifetime();
 #endif
 #endif
     return 0;

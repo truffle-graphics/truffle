@@ -70,8 +70,8 @@ int frame_scheduling() {
     TFL_CHECK(!context.needs_frame(t0));
 
     LayoutParams moved;
-    moved.width = 10;
-    moved.height = 10;
+    moved.width = 10.0F;
+    moved.height = 10.0F;
     moved.position = {5, 5};
     TFL_CHECK(context.set_layout_params(panel, moved).ok());
     TFL_CHECK(context.needs_frame(t0));

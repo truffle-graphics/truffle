@@ -424,7 +424,8 @@ int main(int argc, char** argv) {
                       << " target=" << rhi::shader_target_name(remap.target)
                       << " stage=" << static_cast<unsigned>(remap.stage)
                       << " native=" << remap.nativeGroup << ':' << remap.nativeBinding
-                      << ':' << remap.nativeArrayElement << '\n';
+                      << ':' << remap.nativeArrayElement
+                      << " buffer-stride=" << remap.nativeBufferStride << '\n';
         }
         for (const auto& variant : desc.variants) {
             std::cout << "target=" << rhi::shader_target_name(variant.target)

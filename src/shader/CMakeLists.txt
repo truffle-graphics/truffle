@@ -147,9 +147,12 @@ if(TFL_SHADER_ENABLE_DXC)
     target_sources(truffle_shader PRIVATE dxc_adapter.cpp dxil_reflection.cpp)
     target_link_libraries(truffle_shader PRIVATE Truffle::DXC)
     target_include_directories(truffle_shader SYSTEM PRIVATE
-        "${PROJECT_SOURCE_DIR}/vendor/spirv-headers/include"
-        "${PROJECT_SOURCE_DIR}/vendor/dxc/external/DirectX-Headers/include/directx"
-        "${PROJECT_SOURCE_DIR}/vendor/dxc/external/DirectX-Headers/include/wsl/stubs")
+        "${PROJECT_SOURCE_DIR}/vendor/spirv-headers/include")
+    if(NOT WIN32)
+        target_include_directories(truffle_shader SYSTEM PRIVATE
+            "${PROJECT_SOURCE_DIR}/vendor/dxc/external/DirectX-Headers/include/directx"
+            "${PROJECT_SOURCE_DIR}/vendor/dxc/external/DirectX-Headers/include/wsl/stubs")
+    endif()
     target_compile_definitions(truffle_shader PRIVATE
         TFL_SHADER_HAS_DXC=1
         TFL_DXC_REVISION="01b62ad47db7dee3dd33f90e7339cf9e860b3f93")
@@ -176,6 +179,10 @@ if(TFL_SHADER_ENABLE_GLSLANG)
                      "${PROJECT_BINARY_DIR}/dependencies/glslang")
     set_target_properties(glslang SPIRV glslang-default-resource-limits
                           PROPERTIES DEBUG_POSTFIX "")
+    foreach(target glslang glslang-default-resource-limits)
+        set_property(TARGET ${target} APPEND PROPERTY INTERFACE_SYSTEM_INCLUDE_DIRECTORIES
+                     "$<TARGET_PROPERTY:${target},INTERFACE_INCLUDE_DIRECTORIES>")
+    endforeach()
     # Upstream installs these legacy static stubs, although SPIRV no longer links them.
     if(TFL_INSTALL AND NOT BUILD_SHARED_LIBS)
         add_dependencies(truffle_shader OSDependent MachineIndependent GenericCodeGen)

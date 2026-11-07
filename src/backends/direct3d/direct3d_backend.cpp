@@ -5,6 +5,7 @@
 
 #ifdef _WIN32
 #include <d3d12.h>
+#include <d3d12sdklayers.h>
 #include <d3dcompiler.h>
 #include <dxgi1_6.h>
 #include <windows.h>
@@ -82,8 +83,11 @@ struct Direct3DContext {
   ComPtr<ID3D12Fence> fence;
   std::uint64_t fenceValue = 0;
   bool tearingSupported = false;
+  bool validationActive = false;
   std::mutex mutex;
 };
+
+thread_local std::weak_ptr<Direct3DContext> gDirect3DValidationContextForTesting;
 
 struct Direct3DSurfaceResource {
   HWND window = nullptr;
@@ -303,6 +307,7 @@ struct Direct3DBindingSlot {
   std::uint32_t descriptorCount = 1;
   std::uint32_t rootParameter = 0;
   bool readOnly = true;
+  std::uint32_t bufferStride = 0;
 };
 
 struct Direct3DPipelineResource {
@@ -402,11 +407,20 @@ struct Direct3DRootLayout {
           direct3d_binding_map(shader->desc, binding.group, binding.binding);
       const auto nativeGroup = mapping ? mapping->nativeGroup : binding.group;
       const auto nativeBinding = mapping ? mapping->nativeBinding : binding.binding;
+      const auto bufferStride = mapping ? mapping->nativeBufferStride : 0;
+      for (const auto &element : shader->desc.bindingMap) {
+        if (element.group == binding.group && element.binding == binding.binding &&
+            element.nativeBufferStride != bufferStride) {
+          return Status::failure(StatusCode::invalid_argument,
+                                 "D3D12 buffer stride disagrees across descriptor elements");
+        }
+      }
       if (existing != reflected.end()) {
         if (existing->slot.type != logicalType ||
             existing->slot.descriptorCount != binding.arrayCount ||
             existing->nativeGroup != nativeGroup ||
-            existing->nativeBinding != nativeBinding) {
+            existing->nativeBinding != nativeBinding ||
+            existing->slot.bufferStride != bufferStride) {
           return Status::failure(StatusCode::invalid_argument,
                                  "D3D12 shader binding maps disagree across stages");
         }
@@ -419,7 +433,8 @@ struct Direct3DRootLayout {
                    .binding = binding.binding,
                    .type = logicalType,
                    .descriptorCount = binding.arrayCount,
-                   .readOnly = binding.readOnly},
+                   .readOnly = binding.readOnly,
+                   .bufferStride = bufferStride},
           .visibility = shader_stage_mask(binding.stage),
           .nativeGroup = nativeGroup,
           .nativeBinding = nativeBinding,
@@ -448,6 +463,10 @@ struct Direct3DRootLayout {
     entry.slot.type = binding->type;
     entry.slot.descriptorCount = binding->arrayCount;
     entry.visibility = binding->visibility;
+    if (entry.slot.bufferStride != 0 && entry.slot.type != BindingType::storage_buffer) {
+      return Status::failure(StatusCode::invalid_argument,
+                             "D3D12 structured buffers require a storage-buffer layout entry");
+    }
   }
 
   std::uint32_t pushBytes = 0;
@@ -2161,18 +2180,21 @@ direct3d_gpu_handle(ID3D12DescriptorHeap &heap, UINT index, UINT increment) {
       case BindingType::storage_buffer: {
         const auto resource =
             std::static_pointer_cast<Direct3DBufferResource>(found->resource);
-        if (!resource || found->offset % 4 != 0 || found->size % 4 != 0) {
+        const auto stride = slot.bufferStride != 0 ? slot.bufferStride : 4u;
+        if (!resource || found->offset % stride != 0 || found->size % stride != 0 ||
+            found->size / stride > std::numeric_limits<UINT>::max()) {
           return Status::failure(StatusCode::invalid_argument,
                                  "D3D12 storage-buffer binding is invalid");
         }
         if (slot.readOnly) {
           D3D12_SHADER_RESOURCE_VIEW_DESC view{};
-          view.Format = DXGI_FORMAT_R32_TYPELESS;
+          view.Format = slot.bufferStride != 0 ? DXGI_FORMAT_UNKNOWN : DXGI_FORMAT_R32_TYPELESS;
           view.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
           view.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-          view.Buffer.FirstElement = found->offset / 4;
-          view.Buffer.NumElements = static_cast<UINT>(found->size / 4);
-          view.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_RAW;
+          view.Buffer.FirstElement = found->offset / stride;
+          view.Buffer.NumElements = static_cast<UINT>(found->size / stride);
+          view.Buffer.StructureByteStride = slot.bufferStride;
+          view.Buffer.Flags = slot.bufferStride != 0 ? D3D12_BUFFER_SRV_FLAG_NONE : D3D12_BUFFER_SRV_FLAG_RAW;
           context.device->CreateShaderResourceView(resource->resource.Get(), &view, cpu);
           if (auto status = transition_direct3d_buffer(
                   commandList, *resource,
@@ -2183,11 +2205,12 @@ direct3d_gpu_handle(ID3D12DescriptorHeap &heap, UINT index, UINT increment) {
           }
         } else {
           D3D12_UNORDERED_ACCESS_VIEW_DESC view{};
-          view.Format = DXGI_FORMAT_R32_TYPELESS;
+          view.Format = slot.bufferStride != 0 ? DXGI_FORMAT_UNKNOWN : DXGI_FORMAT_R32_TYPELESS;
           view.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
-          view.Buffer.FirstElement = found->offset / 4;
-          view.Buffer.NumElements = static_cast<UINT>(found->size / 4);
-          view.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_RAW;
+          view.Buffer.FirstElement = found->offset / stride;
+          view.Buffer.NumElements = static_cast<UINT>(found->size / stride);
+          view.Buffer.StructureByteStride = slot.bufferStride;
+          view.Buffer.Flags = slot.bufferStride != 0 ? D3D12_BUFFER_UAV_FLAG_NONE : D3D12_BUFFER_UAV_FLAG_RAW;
           context.device->CreateUnorderedAccessView(resource->resource.Get(), nullptr,
                                                     &view, cpu);
           if (auto status = transition_direct3d_buffer(
@@ -2855,6 +2878,8 @@ record_direct3d_commands(Direct3DContext &context, ID3D12GraphicsCommandList &co
 }
 
 [[nodiscard]] Result<Direct3DProbe> initialize_direct3d(const InstanceDesc &desc) {
+  gDirect3DValidationContextForTesting.reset();
+  bool validationActive = false;
   UINT factoryFlags = 0;
   if (desc.enableValidation) {
     ComPtr<ID3D12Debug> debug;
@@ -2863,6 +2888,7 @@ record_direct3d_commands(Direct3DContext &context, ID3D12GraphicsCommandList &co
       ComPtr<ID3D12Debug1> debugWithGpuValidation;
       if (SUCCEEDED(debug.As(&debugWithGpuValidation))) {
         debugWithGpuValidation->SetEnableGPUBasedValidation(TRUE);
+        validationActive = true;
       }
       factoryFlags |= DXGI_CREATE_FACTORY_DEBUG;
     }
@@ -2886,6 +2912,7 @@ record_direct3d_commands(Direct3DContext &context, ID3D12GraphicsCommandList &co
   }
 
   auto context = std::make_shared<Direct3DContext>();
+  context->validationActive = validationActive;
   context->factory = factory;
   BOOL tearingSupported = FALSE;
   if (SUCCEEDED(factory->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING,
@@ -2951,6 +2978,7 @@ record_direct3d_commands(Direct3DContext &context, ID3D12GraphicsCommandList &co
 
   DXGI_ADAPTER_DESC1 adapterDesc{};
   adapter->GetDesc1(&adapterDesc);
+  gDirect3DValidationContextForTesting = context;
   return Direct3DProbe{
       .context = std::move(context),
       .adapterName = utf8_name(adapterDesc.Description),
@@ -3076,6 +3104,9 @@ create_direct3d_query_pool(const std::shared_ptr<void> &nativeContext,
   case QueryType::pipeline_statistics:
     return Status::failure(StatusCode::unsupported,
                            "D3D12 pipeline-statistics queries are unsupported");
+  default:
+    return Status::failure(StatusCode::invalid_argument,
+                           "D3D12 query type is invalid");
   }
   auto pool = std::make_shared<Direct3DQueryPoolResource>();
   pool->type = desc.type;
@@ -3435,6 +3466,49 @@ present_direct3d_swapchain(const std::shared_ptr<void> &nativeSwapchain,
 
 } // namespace
 #endif
+
+Status detail::direct3d_validation_status_for_testing() {
+#ifdef _WIN32
+  const auto context = gDirect3DValidationContextForTesting.lock();
+  if (!context || !context->validationActive) {
+    return Status::failure(StatusCode::unavailable,
+                           "D3D12 native evidence requires debug layer and GPU validation");
+  }
+  ComPtr<ID3D12InfoQueue> messages;
+  auto result = context->device.As(&messages);
+  if (FAILED(result)) {
+    return direct3d_failure(StatusCode::unavailable,
+                            "D3D12 validation info queue is unavailable", result);
+  }
+  if (messages->GetNumMessagesDiscardedByMessageCountLimit() != 0) {
+    return Status::failure(StatusCode::backend_error,
+                           "D3D12 validation messages were discarded");
+  }
+  const auto count = messages->GetNumStoredMessagesAllowedByRetrievalFilter();
+  for (UINT64 i = 0; i < count; ++i) {
+    SIZE_T size = 0;
+    result = messages->GetMessage(i, nullptr, &size);
+    if (FAILED(result)) {
+      return direct3d_failure(StatusCode::backend_error,
+                              "D3D12 validation message size query failed", result);
+    }
+    std::vector<std::byte> storage(size);
+    auto *message = reinterpret_cast<D3D12_MESSAGE *>(storage.data());
+    result = messages->GetMessage(i, message, &size);
+    if (FAILED(result)) {
+      return direct3d_failure(StatusCode::backend_error,
+                              "D3D12 validation message query failed", result);
+    }
+    if (message->Severity <= D3D12_MESSAGE_SEVERITY_WARNING) {
+      return Status::failure(StatusCode::backend_error,
+                             "D3D12 validation: " + std::string{message->pDescription});
+    }
+  }
+  return Status::success();
+#else
+  return Status::failure(StatusCode::unavailable, "D3D12 validation requires Windows");
+#endif
+}
 
 Result<Instance> create_direct3d12_instance(const InstanceDesc &desc) {
 #ifdef _WIN32

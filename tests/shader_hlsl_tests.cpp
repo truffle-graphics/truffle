@@ -63,6 +63,13 @@ void stages() {
                         [](const auto& binding) { return binding.binding == 9; });
                     TFL_SHADER_CHECK(storage != reflection.bindings.end() &&
                         storage->group == 1 && !storage->readOnly && storage->minimumSize == 4);
+                    if (route.target == rhi::ShaderTarget::dxil) {
+                        TFL_SHADER_CHECK(loaded.desc().remaps.size() == 1);
+                        const auto& map = loaded.desc().remaps.front();
+                        TFL_SHADER_CHECK(map.group == 1 && map.binding == 9 &&
+                            map.nativeGroup == 1 && map.nativeBinding == 9 &&
+                            map.nativeBufferStride == 4);
+                    }
                 } else {
                     TFL_SHADER_CHECK(reflection.interfaces.size() == 2);
                     const auto varying = std::find_if(reflection.interfaces.begin(), reflection.interfaces.end(),
@@ -206,7 +213,7 @@ float4 sampleMain() : SV_Target0 { return value; }
     compiled = tests::require(compiler.compile(request));
     const auto& reflected = compiled.package.desc().variants.front().reflection.bindings;
     TFL_SHADER_CHECK(reflected.size() == 1 &&
-        reflected[0].binding == (target == rhi::ShaderTarget::spirv ? 2 : 3));
+        reflected[0].binding == (target == rhi::ShaderTarget::spirv ? 2U : 3U));
     if (target == rhi::ShaderTarget::dxil) {
         request.stage = rhi::ShaderStage::vertex;
         request.source.text = "float4 sampleMain(float4 v:POSITION):SV_Position { return v; }";

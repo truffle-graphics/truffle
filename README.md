@@ -64,6 +64,14 @@ for each backend/platform pair:
   occlusion query resolves are validation-tested. Linux additionally consumes
   host-owned XCB handles for native acquire/render/present, exact swapchain
   readback, and resize recreation under a validation-enabled Xvfb lane.
+  Windows x64 additionally proves the shared native suite and Win32
+  acquire/render/readback/present, resize and recovery on an RTX 4080 SUPER
+  with Khronos validation (#265). A `win32` surface borrows its HWND in
+  `NativeSurface::handle`; `display` may supply its HINSTANCE or be null to
+  derive the owning instance from that window. RHI owns neither the window
+  nor its message loop. Minimized/zero-client windows return `out_of_date`
+  until restored; destroyed windows return `surface_lost`. The host Vulkan
+  runtime and validation layer are prerequisites, not bundled dependencies.
 - `truffle_backend_direct3d` initializes the Windows SDK D3D12 WARP device,
   owns upload/readback and default-heap buffers plus device-local textures and
   descriptor views, consumes packaged native HLSL or offline DXIL, maps logical
@@ -85,6 +93,17 @@ for each backend/platform pair:
   GLES 3.0 gates those paths and supports identity texture views for sampling.
   Storage images, tessellation, bindless, indirect-count, asynchronous
   synchronization and presentation remain unsupported. Both stay `native_smoke`.
+  Windows desktop GL now uses WGL GL 4.5 core with private pinned Khronos
+  headers and per-context function tables (#266). The shared native suite,
+  completion fences, host timeline semaphores, occlusion/timestamp queries,
+  worker-thread context transfer/teardown and host-owned HWND presentation
+  have local RTX 4080 SUPER/KHR_debug evidence. `win32` surfaces borrow their
+  HWND in `NativeSurface::handle`; surface/presentation work stays on its
+  owning thread, while resource/submission work is serialized and restores
+  the caller's HGLRC/HDC. Windows/event loops remain host-owned. Resize,
+  minimize/restore, destroyed windows and replacement presentation are tested.
+  This is Windows x64 `native_smoke`, not full conformance or a Linux/GLES
+  capability promotion; see the support matrix for exact limits.
 - WebGPU remains an explicit `source_only` factory. WebGL2 has a browser-native
   context path when built with Emscripten but remains `source_only` until its
   browser CI evidence exists. Neither exposes a simulated adapter.
@@ -262,6 +281,10 @@ see [Slang's pinned source build and bounded target matrix](docs/shader-slang.md
 HLSL compilation is independently enabled with
 `-DTFL_SHADER_ENABLE_DXC=ON -DTFL_SHADER_ENABLE_SPIRV_TOOLS=ON`;
 it uses pinned in-process DXC for SPIR-V and DXIL, without requiring glslang.
+On Windows, source-built DXC also requires the Visual Studio **C++ ATL for
+latest v143 build tools (x86 & x64)** component. Activate the developer shell
+for an installation containing ATL before configuring/building; an already
+active toolchain is preserved by the build scripts.
 Portable native outputs additionally require
 `-DTFL_SHADER_ENABLE_SPIRV_TOOLS=ON -DTFL_SHADER_ENABLE_SPIRV_CROSS=ON`.
 Explicitly prepare their pinned submodules first; configure never downloads.
@@ -325,13 +348,18 @@ On Windows, from PowerShell:
 .\build.ps1 release
 .\build.ps1 debug -WarningsAsErrors on
 .\build.ps1 debug -WarningsAsErrors off
+ctest --preset debug --output-on-failure
+python tools\test_windows_scripts.py
 ```
 
 Setup checks Git, CMake 3.23+, Ninja and the native C++ toolchain. Missing tools
 are installed only after confirmation, using existing Homebrew, apt-get or
 winget. Homebrew itself is not bootstrapped. On Windows, setup can install the
-Visual Studio 2022 C++ Build Tools and Windows SDK; build activates the installed
-x64 developer environment when necessary. If an installer needs a new terminal
+Visual Studio 2022 C++ Build Tools and Windows SDK. Setup and build activate the
+installed x64 developer environment when necessary; setup discovers its bundled
+CMake/Ninja before requesting separate installations. First-party MSVC targets
+use UTF-8 source and execution encodings, independent of the system code page.
+If an installer needs a new terminal
 or Apple's graphical installer needs to finish, setup stops and asks you to rerun.
 `setup.sh --check` / `setup.ps1 -Check` perform no installation or fetching.
 

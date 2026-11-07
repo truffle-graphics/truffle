@@ -85,10 +85,19 @@ if(TFL_SHADER_ENABLE_DXC)
     target_include_directories(truffle_shader_hlsl_tests PRIVATE "${PROJECT_SOURCE_DIR}/src/shader")
     target_link_libraries(truffle_shader_hlsl_tests PRIVATE Truffle::DXC)
 endif()
-if(TFL_SHADER_ENABLE_DXC AND TFL_BUILD_BACKEND_VULKAN)
+if(TFL_SHADER_ENABLE_DXC AND (TFL_BUILD_BACKEND_VULKAN OR (WIN32 AND TFL_BUILD_BACKEND_DIRECT3D)))
     add_executable(truffle_shader_hlsl_native_tests shader_hlsl_native_tests.cpp)
-    target_link_libraries(truffle_shader_hlsl_native_tests PRIVATE truffle_shader truffle_backend_vulkan)
-    target_include_directories(truffle_shader_hlsl_native_tests PRIVATE "${PROJECT_SOURCE_DIR}/src/backends/vulkan")
+    target_link_libraries(truffle_shader_hlsl_native_tests PRIVATE truffle_shader)
+    if(TFL_BUILD_BACKEND_VULKAN)
+        target_link_libraries(truffle_shader_hlsl_native_tests PRIVATE truffle_backend_vulkan)
+        target_include_directories(truffle_shader_hlsl_native_tests PRIVATE "${PROJECT_SOURCE_DIR}/src/backends/vulkan")
+        target_compile_definitions(truffle_shader_hlsl_native_tests PRIVATE TFL_HLSL_TEST_VULKAN=1)
+    endif()
+    if(WIN32 AND TFL_BUILD_BACKEND_DIRECT3D)
+        target_link_libraries(truffle_shader_hlsl_native_tests PRIVATE truffle_backend_direct3d)
+        target_include_directories(truffle_shader_hlsl_native_tests PRIVATE "${PROJECT_SOURCE_DIR}/src/backends/direct3d")
+        target_compile_definitions(truffle_shader_hlsl_native_tests PRIVATE TFL_HLSL_TEST_DIRECT3D=1)
+    endif()
     target_compile_definitions(truffle_shader_hlsl_native_tests PRIVATE
         "TFL_HLSL_FIXTURE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/fixtures/shader-hlsl\"")
     truffle_target_warnings(truffle_shader_hlsl_native_tests)
@@ -327,7 +336,16 @@ if(TFL_BUILD_BACKEND_VULKAN)
             "TFL_VULKAN_COMPUTE_PACKAGE_PATH=\"${_truffle_scratch_dir}/shaderc-glslang-smoke/work-es.tsp\"")
     endif()
     add_test(NAME truffle_vulkan_tests COMMAND truffle_vulkan_tests)
-    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID)
+    if(WIN32)
+        target_compile_definitions(truffle_vulkan_tests
+                                  PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+        target_link_libraries(truffle_vulkan_tests PRIVATE user32)
+        set_tests_properties(truffle_vulkan_tests PROPERTIES
+                             LABELS "native-smoke;presentation;validation"
+                             TIMEOUT 180
+                             SKIP_RETURN_CODE 77
+                             FAIL_REGULAR_EXPRESSION "Validation (Error|Warning)")
+    elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID)
         find_library(TFL_XCB_LIBRARY xcb REQUIRED)
         target_link_libraries(truffle_vulkan_tests
                               PRIVATE "${TFL_XCB_LIBRARY}")
@@ -424,6 +442,10 @@ endif()
 if(TFL_BUILD_BACKEND_OPENGL)
     add_executable(truffle_opengl_tests opengl_backend_tests.cpp)
     target_link_libraries(truffle_opengl_tests PRIVATE truffle_backend_opengl)
+    if(WIN32)
+        target_compile_definitions(truffle_opengl_tests
+                                   PRIVATE TFL_EXPECT_WGL_OPENGL=1 NOMINMAX WIN32_LEAN_AND_MEAN)
+    endif()
     if(TFL_EGL_INCLUDE_DIR AND TFL_OPENGL_INCLUDE_DIR AND
        TFL_EGL_LIBRARY AND TFL_OPENGL_LIBRARY)
         target_compile_definitions(truffle_opengl_tests
@@ -434,7 +456,24 @@ if(TFL_BUILD_BACKEND_OPENGL)
                                    PRIVATE TFL_EXPECT_CGL_OPENGL=1)
     endif()
     add_test(NAME truffle_opengl_tests COMMAND truffle_opengl_tests)
-    if(TFL_EGL_INCLUDE_DIR AND TFL_OPENGL_INCLUDE_DIR AND
+    if(WIN32)
+        add_executable(truffle_opengl_presentation_tests
+                       opengl_win32_presentation_tests.cpp)
+        target_link_libraries(truffle_opengl_presentation_tests PRIVATE
+                              truffle_backend_opengl opengl32 gdi32 user32)
+        target_compile_definitions(truffle_opengl_presentation_tests PRIVATE
+                                   NOMINMAX WIN32_LEAN_AND_MEAN)
+        target_include_directories(truffle_opengl_presentation_tests PRIVATE
+                                   "${PROJECT_SOURCE_DIR}/src/backends/opengl")
+        add_test(NAME truffle_opengl_presentation_tests
+                 COMMAND truffle_opengl_presentation_tests)
+        set_tests_properties(truffle_opengl_presentation_tests PROPERTIES
+                             LABELS "native-smoke;presentation;validation" TIMEOUT 120
+                             FAIL_REGULAR_EXPRESSION "WGL cleanup failed")
+        set_tests_properties(truffle_opengl_tests PROPERTIES
+                             LABELS "native-smoke;validation" TIMEOUT 120
+                             FAIL_REGULAR_EXPRESSION "WGL cleanup failed")
+    elseif(TFL_EGL_INCLUDE_DIR AND TFL_OPENGL_INCLUDE_DIR AND
        TFL_EGL_LIBRARY AND TFL_OPENGL_LIBRARY)
         set_tests_properties(truffle_opengl_tests PROPERTIES
                              LABELS "native-smoke;validation")

@@ -262,7 +262,8 @@ inline void verify_native_texture_backend(rhi::Result<rhi::Instance> result,
     submit_copy([&](rhi::CopyEncoder& copy) {
         assert(copy.clear_texture(
                        destination, region.texture,
-                       {.color = {0.25F, 0.5F, 0.75F, 1.0F}})
+                       {.color = {64.0F / 255.0F, 128.0F / 255.0F,
+                                  191.0F / 255.0F, 1.0F}})
                    .ok());
         assert(copy.fill_buffer(readback, 0, byteCount, std::byte{0}).ok());
         assert(copy.copy_texture_to_buffer(destination, readback, region).ok());
@@ -490,7 +491,8 @@ inline void verify_native_texture_backend(rhi::Result<rhi::Instance> result,
         assert(resolved.ok());
         submit_copy([&](rhi::CopyEncoder& copy) {
             assert(copy.clear_texture(multisample.value(), color4Region,
-                                      {.color = {0.25F, 0.5F, 0.75F, 1.0F}})
+                                      {.color = {64.0F / 255.0F, 128.0F / 255.0F,
+                                                 191.0F / 255.0F, 1.0F}})
                        .ok());
             assert(copy.resolve_texture(
                            multisample.value(), resolved.value(),

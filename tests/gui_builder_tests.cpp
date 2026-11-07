@@ -67,7 +67,7 @@ int matches_object_api() {
     const auto button = need(Widget::create(manual, row.element(),
         {.kind = WidgetKind::button}));
     auto params = need(manual.layout_params(button.element()));
-    params.width = 100;
+    params.width = 100.0F;
     need(manual.set_layout_params(button.element(), params));
     need(Widget::create(manual, row.element(),
         {.kind = WidgetKind::checkbox, .checked = true}));
@@ -80,21 +80,21 @@ int matches_object_api() {
     need(off.set_enabled(false));
     const auto box = need(Widget::create(manual, col.element()));
     params = need(manual.layout_params(box.element()));
-    params.width = 50;
-    params.height = 20;
+    params.width = 50.0F;
+    params.height = 20.0F;
     need(manual.set_layout_params(box.element(), params));
     need(manual.set_property_override(box.element(), Property::padding,
                                                 Edges{4, 4, 4, 4}));
     const auto scroll = need(Widget::create(manual, col.element(),
         {.kind = WidgetKind::scroll_area}));
     params = need(manual.layout_params(scroll.element()));
-    params.height = 60;
+    params.height = 60.0F;
     need(manual.set_layout_params(scroll.element(), params));
     const auto inner = need(Widget::create(manual, scroll.content()));
     params = need(manual.layout_params(inner.element()));
     params.position = {0, 300};
-    params.width = 10;
-    params.height = 10;
+    params.width = 10.0F;
+    params.height = 10.0F;
     need(manual.set_layout_params(inner.element(), params));
 
     for (Context* c : {&built, &manual}) {

@@ -99,7 +99,8 @@ rhi::Status validate_dxil(IDxcBlob& code) {
 }
 
 rhi::Status reflect_dxil(IDxcUtils& utils, IDxcBlob& code,
-                         rhi::ShaderStage stage, rhi::ShaderReflection& reflection) {
+                         rhi::ShaderStage stage, rhi::ShaderReflection& reflection,
+                         std::vector<rhi::ShaderBindingRemap>& remaps) {
     const DxcBuffer buffer{code.GetBufferPointer(), code.GetBufferSize(), 0};
     ID3D12ShaderReflection* raw = nullptr;
     const auto reflected = utils.CreateReflection(&buffer, IID_PPV_ARGS(&raw));
@@ -167,6 +168,19 @@ rhi::Status reflect_dxil(IDxcUtils& utils, IDxcBlob& code,
             break;
         case D3D_SIT_SAMPLER: binding.type = rhi::ResourceBindingType::sampler; break;
         default: return unsupported("Resource kind is not representable: " + binding.name);
+        }
+        if (resource.Type == D3D_SIT_STRUCTURED || resource.Type == D3D_SIT_UAV_RWSTRUCTURED) {
+            if (resource.NumSamples > 2048 || resource.NumSamples % 4 != 0)
+                return unsupported("Structured buffer stride must be a multiple of four, at most 2048 bytes");
+            if (resource.BindCount > 4096 || remaps.size() > 4096 - resource.BindCount)
+                return unsupported("Too many structured-buffer descriptor elements");
+            for (UINT element = 0; element < resource.BindCount; ++element) {
+                remaps.push_back({
+                    .target = rhi::ShaderTarget::dxil, .stage = stage,
+                    .group = resource.Space, .binding = resource.BindPoint, .arrayElement = element,
+                    .nativeGroup = resource.Space, .nativeBinding = resource.BindPoint,
+                    .nativeArrayElement = element, .nativeBufferStride = resource.NumSamples});
+            }
         }
         reflection.bindings.push_back(std::move(binding));
     }

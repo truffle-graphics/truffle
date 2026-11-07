@@ -8,18 +8,21 @@
 // serialized. A submission completes on the GPU before it returns, so RHI
 // fences and semaphores are host timeline values reached at submit.
 //
-// With TFL_GL_HAS_SYNC_OBJECTS (GL 3.2 sync objects; macOS GL 4.1),
+// With TFL_GL_HAS_SYNC_OBJECTS (macOS GL 4.1 / Windows GL 4.5),
 // completion is a glFenceSync waited with glClientWaitSync and a bounded
 // timeout, and occlusion query pools map to GL_SAMPLES_PASSED. Timestamp
-// query pools are unsupported: Apple's GL 4.1 reports zero
+// query pools on macOS are unsupported: Apple's GL 4.1 reports zero
 // GL_QUERY_COUNTER_BITS for GL_TIMESTAMP and returns zero counters. Pipeline
-// statistics queries need GL 4.6 and are unsupported.
+// statistics queries need GL 4.6 and are unsupported. Windows timestamps
+// require nonzero native counter bits and are calibrated in nanoseconds.
 
 #include "foundation_backend.hpp"
 
 #include "gl_api.hpp"
 #if defined(TFL_GL_CONTEXT_CGL)
 #include "cgl_context.hpp"
+#elif defined(TFL_GL_CONTEXT_WGL)
+#include "wgl_context.hpp"
 #else
 #include "egl_context.hpp"
 #endif
@@ -117,13 +120,17 @@ struct QueryPoolResource {
         return Status::failure(StatusCode::device_lost,
                                "the native GL context is unavailable");
     }
-    if (desc.type == QueryType::timestamp) {
+    bool timestampSupported = false;
+#if defined(TFL_GL_CONTEXT_WGL)
+    timestampSupported = context->timestampQueries;
+#endif
+    if (desc.type == QueryType::timestamp && !timestampSupported) {
         return Status::failure(
             StatusCode::unsupported,
             "GL timestamp queries are unavailable: the context reports zero "
             "GL_TIMESTAMP counter bits");
     }
-    if (desc.type != QueryType::occlusion) {
+    if (desc.type != QueryType::occlusion && desc.type != QueryType::timestamp) {
         return Status::failure(
             StatusCode::unsupported,
             "GL pipeline statistics queries require GL 4.6");
@@ -158,6 +165,12 @@ struct QueryPoolResource {
     }
     const auto query = static_cast<std::uint32_t>(command.arguments[0]);
     switch (command.kind) {
+#if defined(TFL_GL_CONTEXT_WGL)
+    case NativeCommandKind::write_timestamp:
+        glQueryCounter(pool->names[query], GL_TIMESTAMP);
+        pool->ended[query] = true;
+        return Status::success();
+#endif
     case NativeCommandKind::begin_occlusion_query:
         if (pool->active != UINT32_MAX) {
             return Status::failure(StatusCode::invalid_state,

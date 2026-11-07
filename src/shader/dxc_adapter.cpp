@@ -290,7 +290,8 @@ rhi::Result<Compilation> compile_dxc(const CompileRequest& request,
     if (dxil) {
         const auto validation = detail::validate_dxil(*code.value());
         if (!validation.ok()) return validation;
-        const auto reflected = detail::reflect_dxil(*utils, *code.value(), request.stage, variant.reflection);
+        const auto reflected = detail::reflect_dxil(
+            *utils, *code.value(), request.stage, variant.reflection, desc.remaps);
         if (!reflected.ok()) return reflected;
     } else {
         if (code.value()->GetBufferSize() % sizeof(unsigned int) != 0)

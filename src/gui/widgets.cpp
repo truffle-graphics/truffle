@@ -378,8 +378,8 @@ base::Result<Widget> Widget::create(Context& context, ElementId parent, WidgetDe
             if (!mark.ok()) { return mark.status(); }
             state->mark = mark.value();
             LayoutParams mark_params;
-            mark_params.width = 16;
-            mark_params.height = 16;
+            mark_params.width = 16.0F;
+            mark_params.height = 16.0F;
             mark_params.position = {-24, 0};
             result = context.set_layout_params(state->mark, mark_params);
             if (!result.ok()) { return result; }

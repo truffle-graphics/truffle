@@ -95,8 +95,9 @@ Installed consumers exercise the private compiler closure and actual shaderc
 without loader overrides. Compiler-off consumers acquire no compiler
 dependency; installed glslang notices are checked against the pinned source.
 
-Remaining platform evidence is deliberately separate: new DXIL consumption on
-Windows/D3D12 is tracked in #122; current provider/native-output revalidation
+Windows source-built DXC/Slang, installed consumption and fresh DXIL execution
+on D3D12 WARP are verified in #264; the broader D3D12 assessment stays in #122.
+Remaining platform evidence is deliberately separate: provider/native-output revalidation
 on Linux Vulkan in #124, GL/GLES in #125, and browser WGSL in #123. Existing
 backend evidence does not substitute for those new Shader-output checks.
 Higher GL profiles, Apple mobile execution, advanced GPU stages, Slang output
@@ -309,12 +310,19 @@ cmake -S . -B build/_scratch/hlsl -G Ninja -DTFL_SHADER_ENABLE_DXC=ON \
 
 The source build is deliberately isolated from Truffle's CMake target namespace,
 uses already-prepared pinned sources, and builds only `dxcompiler` with bounded
-parallelism. Ninja, Python and the platform C/C++ SDK are prerequisites. The
-enabled install includes the private compiler shared library and license
-closure; no DXC headers become a public requirement. Apple Silicon source-build
-and installed-consumer execution are verified. The release has Windows/Linux
+parallelism. Ninja, Python and the platform C/C++ SDK are prerequisites.
+Windows MSVC source build additionally requires the Visual Studio C++ ATL
+component for the selected toolchain; activate its developer shell first.
+Configure checks this prerequisite before starting the LLVM source build.
+The normal Windows build stages `dxcompiler.dll` beside its executables.
+Installed or embedded consumers must deploy enabled compiler DLLs beside
+their own executables (CMake's `TARGET_RUNTIME_DLLS` can enumerate them);
+changing a machine-global `PATH` is not required.
+The enabled install includes the private compiler shared library and license
+closure; no DXC headers become a public requirement. Apple Silicon and Windows
+x64 source-build and installed-consumer execution are verified. The release has Windows/Linux
 binary assets but **no macOS binary**; these artifacts are not silently used as
-a fallback. Windows/Linux build execution remains separate evidence.
+a fallback. Linux build execution remains separate evidence.
 
 Set `request.language = rhi::ShaderSourceLanguage::hlsl`, choose an entry point,
 and set `request.hlslShaderModel = HlslShaderModel::v6_0` (the default).
@@ -347,8 +355,11 @@ in-process validator, `ID3D12ShaderReflection`, and upstream checked PSV
 metadata for exact interpolation. It is **not** reflected by separately
 compiling the source to SPIR-V: target-predefined macros can change resources.
 Tests exercise that distinction and reject deliberately corrupted DXIL.
-Native D3D12 execution/Windows driver acceptance is not established by the
-open-source validator on this Mac.
+The open-source validator alone does not establish native D3D12 acceptance.
+The separate Windows #264 test loads the emitted TSP and executes the fresh
+DXIL on WARP with the debug layer and GPU validation required. Structured
+buffer strides survive in target-native binding metadata, not canonical
+cross-target reflection or a runtime compiler dependency.
 
 DXIL's bounded canonical contract requires `TEXCOORDn` for arbitrary user IO
 (including vertex inputs, matching the current D3D12 backend); fragment
@@ -371,6 +382,15 @@ Vulkan/MoltenVK, Metal and OpenGL 4.1. Vulkan and Metal compute write exactly
 Compiler-off installed Shader/Renderer consumers have no optional compiler
 link dependencies. Shader completion and other-host evidence remain tracked
 by #192/#193; this route does not resume Renderer feature work.
+
+Windows x64 evidence (#264) additionally covers nine HLSL stage/configuration
+combinations and CLI/library byte equality, Vulkan graphics/compute on an
+RTX 4080 SUPER, and fresh DXIL graphics/compute on WARP. HLSL graphics uses
+64/255 and 128/255 uniform values to avoid halfway UNORM quantization while
+retaining exact RGBA(64,128,255,255) readback. D3D12 checks both structured and
+raw compute, structured SRV/UAV descriptor arrays at a 12-byte stride, and
+untouched sentinels. Missing native validation or stored D3D12 warnings/errors
+fail the test. This is WARP evidence, not physical-GPU or ARM64 acceptance.
 
 ### Portable native generation (#187)
 

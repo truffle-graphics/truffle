@@ -5,7 +5,213 @@ This is the rolling execution handoff, not an implementation transcript.
 issues/Project own accepted work. Earlier phase details remain in their PRs,
 the support matrix and Git history.
 
-## Latest: Truffle Dark/Light themes and dock gap (#260)
+## Latest: Windows batch completion and issue reconciliation
+
+All 155 repository issues were checked against their acceptance criteria,
+merged PRs, delivery receipts and the support matrix. Twenty-two historical
+closed issues had stale acceptance checkboxes; these now record their
+delivered scope and explicit deferrals. Closed issues #219, #221 and #257
+were still In Review in the delivery Project and are now Done.
+The completed Windows issues #262-#266 are closed and marked Done.
+Parent #58 records the completed Win32/validation acceptance without closing
+its runner/software-driver/ARM64 assessment. Other incomplete platform,
+advanced-feature and hardening issues remain open.
+
+The owner authorized merge-commit delivery into `develop` and removal of
+the merged batch branch locally and remotely. Preserve `develop` and
+`master`, signed phase history, and Studio's existing gitlink. No hosted
+workflow, new version, compatibility reader or architectural change is
+part of this closeout. Review confirmed that the TSP 1.0 layout change is
+the explicitly documented unreleased-draft policy, not a release-format
+compatibility guarantee.
+
+## Earlier: Windows WGL context, presentation and queries (#266)
+
+The Windows catch-up sequence is implemented on `fix/windows-baseline`.
+The DXC/Slang/DXIL phase (#264) and Win32 Vulkan phase (#265) were signed
+and pushed before WGL work. Studio's submodule pin remains unchanged.
+
+The desktop GL backend now has a private Windows WGL GL 4.5 core adapter.
+Pinned Khronos OpenGL/EGL registry headers supply native GL/WGL declarations
+and platform types only; no EGL runtime, SDL, GLFW, Shader or Renderer
+dependency is added. Normal builds use the checked-in typed dispatch table;
+`python tools/generate_wgl_api.py` regenerates it from the shared GL calls.
+The exact pins/licenses/preparation commands are in `docs/rhi1/dependencies.md`.
+No configure/build fetches dependencies.
+
+Each native context owns its dispatch table and a pbuffer. The temporary
+bootstrap HWND is destroyed on its creating thread before initialization
+returns. A context mutex scopes make-current/restore, releases ownership
+before another thread can use it, and preserves the caller's HGLRC/HDC.
+Worker threads can create/submit/destroy resources and retire the last
+offscreen or presentation owner without destroying a foreign-thread HWND.
+The backend owns neither host surface windows nor their message loops.
+An incompatible pre-existing host pixel format is explicitly unsupported.
+
+Shared GL presentation retains the offscreen texture/blit/capture owner;
+only native view/context binding and swapping differ between CGL and WGL.
+Windows surface/presentation calls require the HWND thread. Native images
+support FIFO/immediate, RGBA8/BGRA8, scaled `suboptimal`, resize/recreate,
+minimize/zero-client `out_of_date` and destroyed-window `surface_lost`.
+Failure consumption now stays consistent with the RHI acquired-image state.
+The existing GL execution/query/presentation files remain cohesive native
+owners; separate WGL context and host-view adapters keep platform lifetime
+policy out of the shared command implementation. No public API or
+architectural boundary changes.
+
+NVIDIA GeForce RTX 4080 SUPER, NVIDIA 610.88, reports GL 4.5 core with
+KHR_debug. The shared native resource/binding/graphics/compute suite passes
+with zero diagnostics. GLsync completion, host timeline timeout/retry,
+exact occlusion counts, ordered nonzero nanosecond timestamps plus an untouched
+sentinel, and four workers x24 resource/submission iterations pass.
+Win32 window back-buffer capture checks every split-color pixel and vertical
+orientation at 96x64 and 128x80; BGRA/immediate replacement output is exact
+at 64x48. Tests also cover host-context restoration, ownership rejection,
+minimize/zero-client restoration, window destruction, worker teardown and
+fresh-instance recovery after private context-loss injection.
+The host-window proof covers both cached/common and `CS_OWNDC` windows;
+presentation rejected on a worker thread remains retryable on the owner.
+Robust reset notification is requested where WGL advertises it, and native
+reset status maps to `device_lost`; actual physical GPU reset is unverified.
+Real reset recovery requires a fresh native instance/context.
+
+Strict Debug builds and all 14 focused GL/Vulkan/D3D12/Renderer/contract/matrix
+and installed-consumer checks pass without skips. Strict RHI doctor,
+architecture and whitespace checks pass; dispatch regeneration is identical.
+A backend-disabled package configure/export check contains no GL target,
+registry paths or GL libraries. The installed Windows GL consumer links only
+the public backend target and SDK closure, without registry include paths,
+and executes the native context/clear/readback smoke successfully.
+Other platforms were not rerun from this Windows machine.
+
+Windows OpenGL advances only to `native_smoke`, with validation/presentation
+evidence. Apple GL 4.1 and Linux/GLES capabilities are unchanged. Parents
+#61/#63 remain open for remaining platform scopes, not silently closed by
+the Windows slice. No hosted work, machine installs or software/ARM64 claims.
+
+## Earlier: Windows Vulkan Win32 integration (#265)
+
+The Windows batch remains `fix/windows-baseline`; signed issue-scoped commits
+are pushed before the next task. Studio's submodule pin is unchanged.
+The Vulkan backend privately enables `VK_KHR_win32_surface`, borrows the
+host HWND and its owning HINSTANCE, and reuses the existing native swapchain
+and synchronization owner. An explicit HINSTANCE must match the window;
+omitting it derives the owner from the HWND. Windows headers and `user32`
+stay target-private; no public contract or architectural boundary changes.
+The existing cohesive Vulkan native owner remains the right location for
+this platform branch, not a new window/event-loop subsystem.
+
+Enabling WSI exposed incorrect portability negotiation: the enumeration
+flag now requires the portability extension itself, not merely any instance
+extension. Destroyed windows return `surface_lost`; minimized/zero-client
+windows suspend acquisition/recreation with `out_of_date` until restored.
+
+The Windows test previously only probed adapter creation. It now executes
+the shared native resource/pipeline/synchronization suite and Win32 presentation,
+requiring active Khronos validation and rejecting validation errors/warnings.
+An NVIDIA GeForce RTX 4080 SUPER produces exact padded BGRA(191,128,64,255)
+swapchain pixels at 64x48 and 80x60, before presentation and after recreation.
+Tests cover minimize/zero-client restoration, native window destruction,
+replacement HWND presentation, and deterministic acquire/present/device-loss
+faults. Injected device loss is not physical removal evidence.
+Exact UNORM code-point clears replace ambiguous 0.5 quantization ties without
+loosening byte assertions. Borderless host test windows avoid OS decoration
+minimum sizes; test assertions report directly to stderr instead of GUI dialogs.
+
+Strict Debug builds of the affected targets and all seven focused
+Vulkan/Renderer/contract/matrix tests pass without skips. Strict RHI doctor,
+the architecture guard and whitespace checks pass. No dependencies were
+installed and no hosted work ran.
+
+Windows Vulkan advances only to `native_smoke`, with presentation evidence,
+not conformance. Android/iOS remain `source_only`; software-driver, ARM64 and
+hosted/runner assessment remain under parent #58. Next: Windows desktop
+OpenGL WGL and applicable synchronization/query checks (#61/#63).
+
+## Earlier: Windows source compilers and native DXIL (#264)
+
+The Windows batch remains `fix/windows-baseline`; signed issue-scoped commits
+are pushed before starting the next task. Studio's submodule pin is unchanged.
+DXC and Slang now build from their documented clean pinned source closures on
+Windows x64, MSVC 19.44. The selected developer environment needs C++ ATL for
+DXC; configure reports that requirement early. An installed ATL-capable
+developer shell was used without installing components or modifying vendor code.
+DXC stages its DLL beside normal build executables, and Slang exports/installs
+its Windows import library. Installed consumers deploy their enabled compiler
+DLLs using CMake runtime dependency metadata, without global PATH changes.
+
+Native DXIL exposed a real D3D12 descriptor bug: structured buffers were bound
+as raw buffers. Existing per-target binding maps now carry
+`nativeBufferStride`; DXC emits it, the package codec validates/preserves it,
+and D3D12 constructs structured SRV/UAVs with the actual stride. Zero preserves
+raw-buffer behavior. This extends the unreleased TSP 1.0 draft in place, not a
+version bump or compatibility layer. RHI owns native binding metadata and the
+backend owns descriptors; neither acquires a Shader/compiler dependency.
+The RHI/codec/backend cohesion candidates remain existing contract/native
+owners, with no architectural boundary change.
+
+Strict optional-provider build and 22 focused Shader/D3D12 checks pass, including
+installed Shader/Renderer consumers and CLI/library byte equality. Fresh DXIL
+on WARP gives 256 exact RGBA(64,128,255,255) pixels, exact structured and raw
+compute words 107..110 plus untouched sentinels, and exact structured SRV/UAV
+arrays at a 12-byte stride. The test requires the debug layer and GPU validation
+and rejects stored warnings/errors or lost diagnostics. HLSL SPIR-V and native
+Slang graphics/compute run on the NVIDIA RTX 4080 SUPER with Vulkan validation.
+HLSL graphics uses exact UNORM code points rather than the GPU-dependent 0.5
+quantization tie; byte-exact assertions remain unchanged.
+
+The normal Debug configuration retains DXC/Slang disabled: its strict build and
+19 focused Shader/binding/D3D12/package checks pass. The architecture guard
+passes. Optional build/install outputs are isolated in `build/windows-shader`,
+`out/windows-shader`, and `install/windows-shader`; use the debug preset with
+explicit output/install overrides and the DXC/Slang/SPIRV-Tools options.
+No Windows portable Metal/GL output, D3D12 physical-GPU or ARM64 claim is made.
+The broader D3D12 assessment #122 stays open. Next, in order: Vulkan Win32 WSI
+#58, then desktop OpenGL WGL #61/#63. Backend maturity is unchanged.
+
+## Earlier: Windows Debug baseline and queue-safe Vulkan layouts (#262/#263)
+
+The Windows batch is `fix/windows-baseline`, based on `b4ba538`. The owner
+authorized signed issue-scoped commits with immediate pushes. Studio's
+submodule pin is not advanced by this work.
+
+Normal-shell `setup.ps1 -Check` now activates Visual Studio before looking for
+CMake/Ninja, using its bundled tools without installation. Shader marks glslang
+consumer headers as system headers while preserving strict first-party warnings.
+MSVC targets explicitly use UTF-8. GUI shadowing and optional-float literal
+warnings, a Vulkan access-mask narrowing conversion, and D3D12 query-type
+exhaustiveness are corrected without changing valid-input behavior.
+The backend files remain cohesive native backend owners; these narrow fixes
+add no subsystem responsibilities or architectural boundary changes.
+
+Native Windows x64, VS 2022/MSVC 19.44: `setup.ps1 -Check` and the complete
+`build.ps1 debug -WarningsAsErrors on --parallel 4` pass. All six isolated
+`python tools/test_windows_scripts.py` checks pass; the architecture guard passes.
+Initial `ctest --preset debug --parallel 4 --timeout 120` passes 66/67 tests,
+including installed Shader/package consumers, GUI/text, D3D12 resources and
+DXGI presentation. These passes do not constitute backend promotion.
+
+The Vulkan validation failure is fixed separately in #263. Implicit
+shader-read layout barriers now use `ALL_COMMANDS`, which Vulkan expands only
+to stages supported by the recording queue, instead of unconditionally naming
+vertex/fragment/compute stages. The existing native reflection test now also
+cycles an image between graphics-queue transfer and compute-queue sampling,
+checking exact texel readback and the original shader results.
+
+Final Windows x64 strict Debug baseline: all 67 CTests pass, none skip.
+Vulkan reflection runs on an NVIDIA GeForce RTX 4080 SUPER with validation
+active; the targeted Vulkan/contract selection passes all six tests.
+Installed Shader/package consumers and both D3D12 tests pass in the complete
+baseline. This is native evidence for these tests, not a maturity promotion,
+full hardware matrix, or GUI native-window proof.
+The Vulkan backend file remains the existing owner of implicit layout barriers;
+the change adds no responsibilities or cross-module dependencies.
+
+Windows Vulkan WSI (#58), full D3D12 assessment (#122), optional DXC routes,
+Windows GUI native hosts and the Studio Windows port remain outside #262.
+Linux setup/native execution remains unverified here.
+
+## Earlier: Truffle Dark/Light themes and dock gap (#260)
 
 The user chose one theme system (tokens plus widget styles), with layout kept
 separate. GUI now ships neutral Truffle Dark/Light token sets (`themes.hpp`):

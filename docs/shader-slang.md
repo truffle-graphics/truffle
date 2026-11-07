@@ -79,9 +79,15 @@ other. There are no local upstream patches. Updating requires reviewing APIs,
 source and third-party licenses, exact pins, runtime version, the focused
 tests below, and native execution; advancing a release tag alone is insufficient.
 
-Native host evidence is Apple Silicon macOS; Windows/Linux source build support
-is upstream capability, not local evidence. No binary SDK or system fallback is
-implemented. The initially audited 2025.10.1 release was rejected because it
+Native host evidence includes Apple Silicon macOS and Windows x64/MSVC 19.44
+(#264). The Windows source build, module/cache/CLI equality tests, installed
+Shader/Renderer consumers and exact Vulkan graphics/compute pass on an
+RTX 4080 SUPER with validation. The Windows install includes the compiler DLL
+and its import library; downstream executables deploy the enabled compiler
+DLLs beside themselves using CMake runtime dependency metadata, without
+changing global PATH. Linux source build support remains upstream capability,
+not local evidence. No binary SDK or system fallback is implemented.
+The initially audited 2025.10.1 release was rejected because it
 unconditionally probed an optional downstream optimizer, even for direct
 unoptimized SPIR-V. The selected clean upstream release contains fix
 `fcfaa5f96eaaa0731b00348497146a922743508b` (#11797), so this route can disable

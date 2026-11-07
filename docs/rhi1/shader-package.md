@@ -60,6 +60,17 @@ Every package records:
 - compiler identities, versions, and revisions;
 - bounded diagnostics and provenance for every variant.
 
+DXIL native binding remaps additionally carry `nativeBufferStride`: zero
+selects a raw byte-address buffer; a multiple of four in `4..2048` selects
+a structured SRV/UAV element size. It is target-specific native layout, not
+the canonical buffer minimum or a cross-target reflection agreement field.
+DXC emits the actual structured stride and descriptor-element mappings.
+RHI passes this metadata to the backend without linking a compiler; D3D12
+checks stride agreement and buffer-range divisibility before constructing
+descriptors. Direct `ShaderDesc` callers can supply the same metadata through
+`ShaderBindingMap`. Other package targets reject a nonzero stride.
+This extends the unreleased TSP 1.0 draft in place, without a compatibility shim.
+
 Reflection for variants with the same entry point, stage, and permutation must
 normalize to the same logical contract. Package creation fails if resource
 types, arrays, access, stage visibility, push-constant ranges, specialization

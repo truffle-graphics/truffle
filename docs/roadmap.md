@@ -105,13 +105,20 @@ lanes, or Intel-specific work is planned.
 
 ### Pending Verification
 
-- Vulkan on Windows (#58).
-- Current Shader-provider/native-output checks on Windows D3D12 (#122), Linux
-  Vulkan (#124), Linux GL/GLES (#125), and browser WGSL (#123). Older backend
-  smoke receipts are not evidence for the newly added Shader routes.
-- Desktop OpenGL on Windows (WGL, #61), and on Linux beyond its current EGL
-  evidence, including the refactored EGL context path and window
-  presentation (#61).
+- Vulkan Windows x64 hardware smoke and Win32 presentation/resize/recovery
+  are verified locally (#265). Broader software-driver, ARM64 and repeatable
+  runner assessment remain under #58; no hosted lane was run.
+- Windows DXC/Slang source builds and freshly compiled DXIL graphics/compute
+  consumption on D3D12 WARP are verified locally (#264). The broader D3D12
+  maturity assessment remains under #122; this is not physical-GPU evidence.
+- Current Shader-provider/native-output checks on Linux Vulkan (#124), Linux
+  GL/GLES (#125), and browser WGSL (#123). Older backend smoke receipts are
+  not evidence for the newly added Shader routes.
+- Windows WGL GL 4.5 core resources, graphics/compute, sync/query ownership
+  and host-window presentation/resize/recovery are verified locally (#266).
+  Linux beyond its current EGL evidence, including the refactored EGL context
+  path and window presentation, remains under #61; remaining GL/GLES
+  synchronization/platform scopes remain under #63.
 - Any baseline backend feature first verified on only one platform.
 
 ## Deferred Backlog
@@ -240,6 +247,9 @@ Tracked by #33.
   - [x] Complete the macOS MoltenVK lane (suite, `CAMetalLayer` presentation,
     validation-clean `native_smoke`) through #56; packaging and iOS-family
     lanes are deferred to #172.
+  - [x] Complete Windows x64 Win32 presentation, resize/recovery and
+    validation-clean hardware smoke through #265; the broader assessment
+    remains under #58.
 - [ ] Complete OpenGL/OpenGL ES resources, pipelines, synchronization, and
   desktop presentation through #60-#63; Android GLES (#64) is deferred.
   - [x] Complete shared GL-family resources and transfers with separate desktop
@@ -247,6 +257,9 @@ Tracked by #33.
   - [x] Complete reflected native GLSL bindings and expanded graphics, with
     desktop GL compute/indirect/MSAA and explicit GLES 3.0 gates through #62;
     Build `40230852839` proves exact native output without changing maturity.
+  - [x] Complete Windows WGL 4.5 context ownership, native resources and
+    graphics/compute, sync/query evidence and HWND presentation/recovery
+    through #266; remaining platform scopes stay under #61/#63.
 - [ ] Deferred: WebGPU and WebGL2 runtime, rendering, browser presentation,
   and recovery through #65-#68 and #70.
 - [x] Complete Metal macOS advertised-capability conformance through #69

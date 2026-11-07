@@ -40,3 +40,9 @@
 [submodule "vendor/utf8proc"]
 	path = vendor/utf8proc
 	url = https://github.com/JuliaStrings/utf8proc.git
+[submodule "vendor/opengl-registry"]
+	path = vendor/opengl-registry
+	url = https://github.com/KhronosGroup/OpenGL-Registry.git
+[submodule "vendor/egl-registry"]
+	path = vendor/egl-registry
+	url = https://github.com/KhronosGroup/EGL-Registry.git

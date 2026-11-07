@@ -47,6 +47,7 @@ if(TFL_INSTALL)
     # optional plugins, generator executables or unrelated targets.
     set_target_properties(slang PROPERTIES EXPORT_NAME SlangCompiler PUBLIC_HEADER "")
     install(TARGETS slang EXPORT TruffleTargets
+        ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
         LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
         RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
     install(FILES "${PROJECT_SOURCE_DIR}/vendor/slang/LICENSE"

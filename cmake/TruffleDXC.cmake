@@ -1,6 +1,17 @@
 include(ExternalProject)
 find_package(Git REQUIRED QUIET)
 
+if(MSVC)
+    include(CheckCXXSourceCompiles)
+    check_cxx_source_compiles("#include <atlbase.h>\nint main() { return 0; }"
+        TFL_DXC_HAS_ATL)
+    if(NOT TFL_DXC_HAS_ATL)
+        message(FATAL_ERROR
+            "Source-built DXC requires the Visual Studio C++ ATL component. "
+            "Install it for the selected MSVC toolchain and activate that developer shell.")
+    endif()
+endif()
+
 truffle_shader_require_pin(dxc 01b62ad47db7dee3dd33f90e7339cf9e860b3f93)
 foreach(dependency SPIRV-Headers SPIRV-Tools DirectX-Headers)
     if(NOT EXISTS "${PROJECT_SOURCE_DIR}/vendor/dxc/external/${dependency}/CMakeLists.txt")
@@ -55,6 +66,16 @@ ExternalProject_Add(truffle_dxc_build
     INSTALL_COMMAND ""
     BUILD_BYPRODUCTS "${_truffle_dxc_library}" ${_truffle_dxc_implib})
 
+if(WIN32 AND CMAKE_RUNTIME_OUTPUT_DIRECTORY)
+    ExternalProject_Add_Step(truffle_dxc_build stage-runtime
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "${_truffle_dxc_library}" "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/dxcompiler.dll"
+        DEPENDEES build
+        ALWAYS TRUE
+        BYPRODUCTS "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/dxcompiler.dll")
+endif()
+
 add_library(Truffle::DXC SHARED IMPORTED GLOBAL)
 set_target_properties(Truffle::DXC PROPERTIES
     IMPORTED_LOCATION "${_truffle_dxc_library}"
@@ -65,11 +86,13 @@ endif()
 add_dependencies(Truffle::DXC truffle_dxc_build)
 
 if(TFL_INSTALL)
-    install(DIRECTORY "${_truffle_dxc_binary}/lib/"
-            DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-            FILES_MATCHING PATTERN "*dxcompiler*")
     if(WIN32)
+        install(FILES "${_truffle_dxc_implib}" DESTINATION "${CMAKE_INSTALL_LIBDIR}")
         install(FILES "${_truffle_dxc_library}" DESTINATION "${CMAKE_INSTALL_BINDIR}")
+    else()
+        install(DIRECTORY "${_truffle_dxc_binary}/lib/"
+                DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+                FILES_MATCHING PATTERN "*dxcompiler*")
     endif()
     install(FILES "${PROJECT_SOURCE_DIR}/vendor/dxc/LICENSE.TXT"
                   "${PROJECT_SOURCE_DIR}/vendor/dxc/ThirdPartyNotices.txt"

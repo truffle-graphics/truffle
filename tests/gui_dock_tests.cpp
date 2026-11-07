@@ -92,8 +92,8 @@ int dock_space() {
     TFL_CHECK(c.set_viewport({400, 300}).ok());
     auto dock = need(DockSpace::create(c, c.root()));
     LayoutParams params;
-    params.width = 400;
-    params.height = 300;
+    params.width = 400.0F;
+    params.height = 300.0F;
     need(c.set_layout_params(dock.element(), params));
     const ElementId a = need(c.create(c.root()));
     const ElementId b = need(c.create(c.root()));
@@ -455,8 +455,8 @@ int theme_and_gap() {
     options.metrics.gap = 6;
     auto dock = need(DockSpace::create(c, c.root(), options));
     LayoutParams params;
-    params.width = 400;
-    params.height = 300;
+    params.width = 400.0F;
+    params.height = 300.0F;
     need(c.set_layout_params(dock.element(), params));
     const ElementId a = need(c.create(c.root()));
     const ElementId b = need(c.create(c.root()));

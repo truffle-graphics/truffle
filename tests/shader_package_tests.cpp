@@ -199,6 +199,38 @@ int main() {
     assert(unavailableShader.status().message.find("wgsl") !=
            std::string::npos);
 
+    auto structuredDesc = package_desc();
+    structuredDesc.remaps.push_back({
+        .target = ShaderTarget::dxil, .stage = ShaderStage::fragment,
+        .group = 0, .binding = 0, .nativeBufferStride = 12});
+    const auto structured = ShaderPackage::create(structuredDesc);
+    assert(structured.ok());
+    const auto structuredLoaded = ShaderPackage::load(structured.value().bytes());
+    assert(structuredLoaded.ok());
+    assert(std::any_of(structuredLoaded.value().desc().remaps.begin(),
+                       structuredLoaded.value().desc().remaps.end(),
+                       [](const auto& map) { return map.nativeBufferStride == 12; }));
+    for (const auto stride : {1u, 6u, 2052u}) {
+        auto invalidStride = structuredDesc;
+        invalidStride.remaps.back().nativeBufferStride = stride;
+        assert(!ShaderPackage::create(std::move(invalidStride)).ok());
+    }
+    for (const auto target : {ShaderTarget::spirv, ShaderTarget::metal_source}) {
+        auto invalidStride = structuredDesc;
+        invalidStride.remaps.back().target = target;
+        assert(!ShaderPackage::create(std::move(invalidStride)).ok());
+    }
+    auto invalidStride = structuredDesc;
+    invalidStride.remaps.back().group = 1;
+    invalidStride.remaps.back().binding = 3;
+    assert(!ShaderPackage::create(invalidStride).ok());
+    invalidStride = structuredDesc;
+    invalidStride.remaps.back().arrayElement = 1;
+    assert(!ShaderPackage::create(invalidStride).ok());
+    invalidStride = structuredDesc;
+    invalidStride.remaps.back().stage = ShaderStage::compute;
+    assert(!ShaderPackage::create(invalidStride).ok());
+
     ShaderPackageOptions missingCapabilities{
         .availableFeatures = {Feature::transfer},
         .enforceCapabilities = true,

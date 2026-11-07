@@ -3,13 +3,18 @@
 #include "foundation_backend.hpp"
 #include "vulkan_backend_test.hpp"
 
+#if defined(VK_USE_PLATFORM_WIN32_KHR)
+#include <windows.h>
+#endif
+
 #include <volk.h>
 
 #if defined(__APPLE__)
 #include <dlfcn.h>
 #endif
 
-#if defined(VK_USE_PLATFORM_XCB_KHR) || defined(VK_USE_PLATFORM_METAL_EXT)
+#if defined(VK_USE_PLATFORM_XCB_KHR) || defined(VK_USE_PLATFORM_METAL_EXT) || \
+    defined(VK_USE_PLATFORM_WIN32_KHR)
 #define TFL_VULKAN_HAS_WSI 1
 #else
 #define TFL_VULKAN_HAS_WSI 0
@@ -63,6 +68,9 @@ constexpr auto portability_subset_extension = "VK_KHR_portability_subset";
 #if defined(VK_USE_PLATFORM_XCB_KHR)
 constexpr auto vulkan_platform_surface_extension =
     VK_KHR_XCB_SURFACE_EXTENSION_NAME;
+#elif defined(VK_USE_PLATFORM_WIN32_KHR)
+constexpr auto vulkan_platform_surface_extension =
+    VK_KHR_WIN32_SURFACE_EXTENSION_NAME;
 #elif defined(VK_USE_PLATFORM_METAL_EXT)
 constexpr auto vulkan_platform_surface_extension =
     VK_EXT_METAL_SURFACE_EXTENSION_NAME;
@@ -710,8 +718,9 @@ struct VulkanTextureResource {
 #if TFL_VULKAN_HAS_WSI
 struct VulkanSurfaceResource {
     VulkanSurfaceResource(std::shared_ptr<VulkanContext> contextValue,
-                          VkSurfaceKHR surfaceValue)
-        : context(std::move(contextValue)), surface(surfaceValue) {}
+                          VkSurfaceKHR surfaceValue, NativeSurface nativeValue)
+        : context(std::move(contextValue)), surface(surfaceValue),
+          native(nativeValue) {}
 
     ~VulkanSurfaceResource() {
         if (context && context->instance != VK_NULL_HANDLE &&
@@ -724,6 +733,7 @@ struct VulkanSurfaceResource {
 
     std::shared_ptr<VulkanContext> context;
     VkSurfaceKHR surface = VK_NULL_HANDLE;
+    NativeSurface native;
 };
 
 struct VulkanSwapchainResource {
@@ -2824,9 +2834,8 @@ struct VulkanRenderPassDepthStencil {
         return VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
                VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
     case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
-        return VK_PIPELINE_STAGE_VERTEX_SHADER_BIT |
-               VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
-               VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+        // ALL_COMMANDS expands only to stages supported by the recording queue.
+        return VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
     default:
         return VK_PIPELINE_STAGE_TRANSFER_BIT;
     }
@@ -4373,8 +4382,8 @@ void prepare_vulkan_binding_images(VulkanContext& context,
             .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
             .pNext = nullptr,
             .srcAccessMask = vulkan_layout_access(oldLayout),
-            .dstAccessMask = write ? VK_ACCESS_HOST_WRITE_BIT
-                                   : VK_ACCESS_HOST_READ_BIT,
+            .dstAccessMask = static_cast<VkAccessFlags>(
+                write ? VK_ACCESS_HOST_WRITE_BIT : VK_ACCESS_HOST_READ_BIT),
             .oldLayout = oldLayout,
             .newLayout = VK_IMAGE_LAYOUT_GENERAL,
             .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
@@ -4895,8 +4904,38 @@ void prepare_vulkan_binding_images(VulkanContext& context,
                      "Vulkan swapchain image initialization failed", result);
 }
 
+#if defined(VK_USE_PLATFORM_WIN32_KHR)
+[[nodiscard]] Status vulkan_win32_surface_status(
+    const VulkanSurfaceResource& surface, bool requireDrawable) {
+    const auto window = static_cast<HWND>(surface.native.handle);
+    if (!IsWindow(window)) {
+        return Status::failure(StatusCode::surface_lost,
+                               "the host-owned Vulkan Win32 window was destroyed");
+    }
+    if (requireDrawable) {
+        RECT rectangle{};
+        if (!GetClientRect(window, &rectangle)) {
+            return Status::failure(StatusCode::surface_lost,
+                                   "the Vulkan Win32 client extent is unavailable");
+        }
+        if (IsIconic(window) || rectangle.right <= rectangle.left ||
+            rectangle.bottom <= rectangle.top) {
+            return Status::failure(StatusCode::out_of_date,
+                                   "the Vulkan Win32 window has no drawable extent");
+        }
+    }
+    return Status::success();
+}
+#endif
+
 [[nodiscard]] Status recreate_vulkan_swapchain(
     VulkanSwapchainResource& swapchain, Extent2D requestedExtent) {
+#if defined(VK_USE_PLATFORM_WIN32_KHR)
+    if (auto status = vulkan_win32_surface_status(*swapchain.surface, true);
+        !status.ok()) {
+        return status;
+    }
+#endif
     auto& context = *swapchain.context;
     VkBool32 presentSupported = VK_FALSE;
     auto result = context.instanceTable.vkGetPhysicalDeviceSurfaceSupportKHR(
@@ -5085,6 +5124,39 @@ void prepare_vulkan_binding_images(VulkanContext& context,
     if (result != VK_SUCCESS) {
         return vulkan_wsi_failure("Vulkan XCB surface creation failed", result);
     }
+#elif defined(VK_USE_PLATFORM_WIN32_KHR)
+    if (desc.native.kind != NativeSurfaceKind::win32) {
+        return Status::failure(StatusCode::unsupported,
+                               "Windows Vulkan surfaces require a Win32 HWND");
+    }
+    const auto window = static_cast<HWND>(desc.native.handle);
+    if (window == nullptr || !IsWindow(window)) {
+        return Status::failure(StatusCode::invalid_argument,
+                               "a valid host-owned Vulkan Win32 window is required");
+    }
+    const auto windowInstance = reinterpret_cast<HINSTANCE>(
+        GetWindowLongPtrW(window, GWLP_HINSTANCE));
+    if (windowInstance == nullptr ||
+        (desc.native.display != nullptr &&
+         desc.native.display != windowInstance)) {
+        return Status::failure(
+            StatusCode::invalid_argument,
+            "the Vulkan Win32 instance must match the host window instance");
+    }
+    const VkWin32SurfaceCreateInfoKHR createInfo{
+        .sType = VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
+        .pNext = nullptr,
+        .flags = 0,
+        .hinstance = windowInstance,
+        .hwnd = window,
+    };
+    VkSurfaceKHR surface = VK_NULL_HANDLE;
+    std::lock_guard lock{context->mutex};
+    const auto result = context->instanceTable.vkCreateWin32SurfaceKHR(
+        context->instance, &createInfo, nullptr, &surface);
+    if (result != VK_SUCCESS) {
+        return vulkan_wsi_failure("Vulkan Win32 surface creation failed", result);
+    }
 #elif defined(VK_USE_PLATFORM_METAL_EXT)
     if (desc.native.kind != NativeSurfaceKind::cocoa_layer) {
         return Status::failure(StatusCode::unsupported,
@@ -5110,7 +5182,7 @@ void prepare_vulkan_binding_images(VulkanContext& context,
     }
 #endif
     return std::static_pointer_cast<void>(
-        std::make_shared<VulkanSurfaceResource>(context, surface));
+        std::make_shared<VulkanSurfaceResource>(context, surface, desc.native));
 }
 
 [[nodiscard]] Result<std::shared_ptr<void>> create_vulkan_swapchain(
@@ -5157,6 +5229,12 @@ void prepare_vulkan_binding_images(VulkanContext& context,
         return Status::failure(StatusCode::invalid_state,
                                "the Vulkan swapchain image is already acquired");
     }
+#if defined(VK_USE_PLATFORM_WIN32_KHR)
+    if (auto status = vulkan_win32_surface_status(*swapchain->surface, true);
+        !status.ok()) {
+        return status;
+    }
+#endif
     const VkFenceCreateInfo fenceInfo{
         .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
         .pNext = nullptr,
@@ -5259,6 +5337,12 @@ void prepare_vulkan_binding_images(VulkanContext& context,
         return Status::failure(StatusCode::invalid_state,
                                "the Vulkan presentation image is not acquired");
     }
+#if defined(VK_USE_PLATFORM_WIN32_KHR)
+    if (auto status = vulkan_win32_surface_status(*swapchain->surface, false);
+        !status.ok()) {
+        return status;
+    }
+#endif
     // Injected suboptimal/out-of-date results still present natively: as with
     // real WSI results, the image is consumed and must return to the driver,
     // otherwise later acquisitions can exhaust the swapchain.
@@ -5441,6 +5525,7 @@ void prepare_vulkan_binding_images(VulkanContext& context,
         .apiVersion = VK_API_VERSION_1_1,
     };
     std::vector<const char*> extensions;
+    bool portabilityEnumeration = false;
     bool platformSurfaceExtensions = false;
     std::uint32_t extensionCount = 0;
     if (vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount,
@@ -5461,6 +5546,7 @@ void prepare_vulkan_binding_images(VulkanContext& context,
             if (portability != availableExtensions.end()) {
                 extensions.push_back(
                     VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+                portabilityEnumeration = true;
             }
 #if TFL_VULKAN_HAS_WSI
             const auto has_extension = [&](const char* name) {
@@ -5481,9 +5567,10 @@ void prepare_vulkan_binding_images(VulkanContext& context,
         }
     }
     const auto instanceFlags =
-        extensions.empty() ? VkInstanceCreateFlags{0}
-                           : VkInstanceCreateFlags{
-                                 VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR};
+        portabilityEnumeration
+            ? VkInstanceCreateFlags{
+                  VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR}
+            : VkInstanceCreateFlags{0};
     const VkInstanceCreateInfo instanceInfo{
         .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         .pNext = nullptr,
@@ -5864,7 +5951,8 @@ Result<Instance> create_vulkan_instance(const InstanceDesc& desc) {
     config.kind = BackendKind::vulkan;
     config.platform = host_platform();
     config.maturity = host_platform() == PlatformKind::linux_host ||
-                              host_platform() == PlatformKind::macos
+                              host_platform() == PlatformKind::macos ||
+                              host_platform() == PlatformKind::windows
                           ? BackendMaturity::native_smoke
                           : BackendMaturity::source_only;
     config.adapterName = std::move(native.adapterName);

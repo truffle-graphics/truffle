@@ -57,6 +57,7 @@ rhi::Shader make_hlsl_shader(rhi::Device &device, std::string name,
         .nativeGroup = mapping.nativeGroup,
         .nativeBinding = mapping.nativeBinding,
         .nativeArrayElement = mapping.nativeArrayElement,
+        .nativeBufferStride = mapping.nativeBufferStride,
     });
   }
   auto package = rhi::ShaderPackage::create(std::move(packageDesc));
