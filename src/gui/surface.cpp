@@ -206,6 +206,21 @@ Surface* Context::surface_of(ElementId element) const noexcept {
     return nullptr;
 }
 
+base::Result<float> Context::scale(ElementId element) const {
+    if (!alive(element)) {
+        return base::Status::failure(base::StatusCode::invalid_argument,
+                                     "DPI scale requires a live GUI element");
+    }
+    if (auto* surface = surface_of(element); surface != nullptr) {
+        return root_ == surface->root_ ? scale_ : surface->scale_;
+    }
+    // Surface dispatch temporarily parks the primary scale in the active view.
+    if (auto* active = surface_of(root_); active != nullptr) {
+        return active->scale_;
+    }
+    return scale_;
+}
+
 base::Status Context::run_element_update(ElementId element, const Updater& update) {
     if (auto* surface = surface_of(element); surface != nullptr && root_ != surface->root()) {
         return surface->update(update);

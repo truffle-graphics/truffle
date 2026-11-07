@@ -210,6 +210,8 @@ public:
     [[nodiscard]] base::Status set_viewport(Size size, float scale = 1.0F);
     [[nodiscard]] Size viewport() const noexcept;
     [[nodiscard]] float scale() const noexcept;
+    // DPI scale for this element's actual surface, even outside its dispatch.
+    [[nodiscard]] base::Result<float> scale(ElementId element) const;
 
     // Records host input and routes it through the current laid-out tree.
     // Input only requests a frame when a handler makes a visible change.

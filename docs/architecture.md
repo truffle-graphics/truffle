@@ -217,6 +217,15 @@ creation, input/platform services and the event loop remain outside Truffle.
 GUI and custom rendering share the same device, Renderer and frame graph.
 See [presentation usage, recovery and lifetime](presentation.md).
 
+GUI's `Viewport` (#271) owns only layout/input, scene-redraw state and image
+composition. Application batches render into existing Renderer sampled targets
+and precede Painter in the same graph with explicit attachment/sample barriers.
+FrameGraph can retain wrappers borrowed by per-frame nodes; RHI retains native
+submitted resources. Painter's stable texture-ID rebinding preserves cached
+GUI shapes. Per-element DPI follows its GUI Surface, including detached views.
+No Engine, scene policy, CPU readback or direct-swapchain scene path is
+required. [Viewport usage and lifetime](gui-viewport.md) defines the contract.
+
 ## Dependency Boundary
 
 Backend-neutral runtime code depends only on C++20 and the standard library.

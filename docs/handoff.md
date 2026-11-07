@@ -5,7 +5,44 @@ This is the rolling execution handoff, not an implementation transcript.
 issues/Project own accepted work. Earlier phase details remain in their PRs,
 the support matrix and Git history.
 
-## Latest: Renderer presentation (#270)
+## Latest: GUI offscreen viewport (#271)
+
+The same `feat/gui-menus` batch builds on signed/pushed presentation phase
+`51868acb6f04ef051deaa968a7642a3034be56c4`, immediately delivered before
+viewport implementation. `gui::Viewport` is a Context-owned checked image/input
+reference; applications supply scene batches/shaders and optional depth.
+It reports logical bounds, rounded-up pixels and actual host DPI scale, follows
+detached Surface DPI and preserves normal routing/focus/capture and clipping/
+overlays. GUI root transparency is unchanged.
+
+`prepare_frame`, `append_render_pass`, `display`, `composite` and `finish_frame`
+compose existing Renderer sampled targets and Painter on one device/frame.
+Attachment/sample barriers and an app-to-GUI dependency are explicit. Safe
+slots retain stable targets; unchanged GUI repaints reuse the last submitted
+scene. Resize/DPI/revision changes render again; hidden/minimized/clipped views
+allocate nothing. Submission, not presentation success, commits scene state.
+Painter texture rebinding preserves a stable ID and retained GUI shapes.
+The small FrameGraph retention hook keeps state/target wrappers alive after
+element removal while a per-frame graph still borrows them. Device/Painter/cache
+lifetimes and explicit GPU release before host transfer/teardown are documented.
+These remain cohesive GUI viewport, Renderer graph and Painter binding owners,
+with no scene/window policy, Engine or CPU-readback dependency.
+
+See `docs/gui-viewport.md` and compiled `examples/gui_viewport/viewport_frame.hpp`.
+The GUI-only example exposes its shared Painter/Renderer/cache for integration.
+FrameGraph storage and RendererFrameStats changed: rebuild all Renderer/GUI
+consumers with matching headers and archives rather than mixing class layouts.
+Strict incremental MSVC Debug compilation covered both new Null/CPU contract
+targets, the public examples and the new Vulkan viewport test. Only the two
+Null/CPU contracts ran and passed (0.31 seconds combined CTest wall time);
+architecture and whitespace guards passed. Native Metal/Vulkan pixel tests
+are committed for owner execution, not native evidence. Native presentation/
+viewport execution, multi-window integration and broader verification were
+deliberately skipped; Metal compilation was not performed on Windows.
+Both issues remain open/In Review for owner integration; no PR/merge, Studio
+file/gitlink edit, version bump, dependency install or hosted work.
+
+## Earlier: Renderer presentation (#270)
 
 The existing `feat/gui-menus` batch continues from signed/pushed menu commit
 `985f3050add4802be091b9e4e21f2eca167cfab8`. `renderer::Presentation` now composes

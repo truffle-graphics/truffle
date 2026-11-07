@@ -85,9 +85,10 @@ No asset
 system, general materials, or later application phases are planned by this
 work. Delivery remains signed issue-scoped commits, immediate pushes and
 owner-reviewed PRs.
-The approved presentation/viewport follow-up adds Renderer-owned host-surface
+The approved presentation/viewport follow-up implements Renderer-owned host-surface
 presentation (#270) first, then a GUI offscreen application-rendering viewport
-(#271). Both stay on the existing related GUI batch with no Studio edits,
+(#271), with layout/DPI/input and same-device/frame composition. Both stay on
+the existing related GUI batch with no Studio edits,
 Engine/windowing dependency or new backend-maturity claim. Owner-run native
 verification follows the focused library contract delivery.
 The common compiled-result boundary remains the existing RHI ShaderPackage;

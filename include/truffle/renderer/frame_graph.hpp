@@ -94,6 +94,12 @@ class FrameGraph {
 public:
     using NodeId = std::uint32_t;
 
+    // Keep wrappers borrowed by nodes/batches alive until the per-frame graph
+    // is discarded. Native in-flight retention remains an RHI responsibility.
+    void retain(std::shared_ptr<void> resource) {
+        retained_.push_back(std::move(resource));
+    }
+
     NodeId add_node(std::unique_ptr<IFrameGraphNode> node) {
         nodes_.push_back(std::move(node));
         resourceUsages_.emplace_back();
@@ -260,6 +266,7 @@ public:
 private:
     std::vector<std::vector<NodeResourceUsage>> resourceUsages_;
     std::vector<std::pair<NodeId, NodeId>> dependencies_;
+    std::vector<std::shared_ptr<void>> retained_;
     std::vector<std::unique_ptr<IFrameGraphNode>> nodes_;
 };
 

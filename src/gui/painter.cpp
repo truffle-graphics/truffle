@@ -4,6 +4,7 @@
 #include "truffle_gui_shaders.hpp"
 
 #include <array>
+#include <cassert>
 #include <cstddef>
 #include <span>
 #include <string>
@@ -163,11 +164,42 @@ base::Result<TextureId> Painter::add_texture(renderer::SampledTexture& texture,
 }
 
 base::Status Painter::remove_texture(TextureId texture) {
+    if (!state_) {
+        return failure(base::StatusCode::invalid_state, "GUI Painter is not created");
+    }
     if (state_->textures.erase(texture.value) == 0) {
         return failure(base::StatusCode::invalid_argument,
                        "GUI texture is not registered with this painter");
     }
     return base::Status::success();
+}
+
+base::Status Painter::replace_texture(TextureId id, renderer::SampledTexture& texture,
+                                      const rhi::SamplerDesc& sampler) {
+    if (!state_) {
+        return failure(base::StatusCode::invalid_state, "GUI Painter is not created");
+    }
+    auto found = state_->textures.find(id.value);
+    if (found == state_->textures.end()) {
+        return failure(base::StatusCode::invalid_argument, "GUI texture is not registered");
+    }
+    auto binding = renderer::TextureBinding::create(*state_->device, state_->layout,
+                                                    texture, sampler);
+    if (!binding.ok()) {
+        return binding.status();
+    }
+    found->second = std::move(binding).value();
+    return base::Status::success();
+}
+
+bool Painter::valid() const noexcept { return state_ != nullptr; }
+rhi::Device& Painter::device() const noexcept {
+    assert(valid());
+    return *state_->device;
+}
+std::uint32_t Painter::frames_in_flight() const noexcept {
+    assert(valid());
+    return state_->desc.frames_in_flight;
 }
 
 base::Result<std::vector<renderer::RenderBatch>> Painter::record(

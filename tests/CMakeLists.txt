@@ -769,6 +769,35 @@ target_link_libraries(truffle_gui_drawing_tests PRIVATE truffle_gui)
 truffle_target_warnings(truffle_gui_drawing_tests)
 add_test(NAME truffle_gui_drawing_tests COMMAND truffle_gui_drawing_tests)
 
+add_executable(truffle_gui_viewport_tests gui_viewport_tests.cpp)
+target_link_libraries(truffle_gui_viewport_tests PRIVATE truffle_gui truffle_backend_null)
+truffle_target_warnings(truffle_gui_viewport_tests)
+add_test(NAME truffle_gui_viewport_tests COMMAND truffle_gui_viewport_tests)
+
+if(TFL_BUILD_BACKEND_METAL AND APPLE)
+    add_executable(truffle_gui_viewport_metal_tests gui_viewport_native_tests.cpp)
+    target_link_libraries(truffle_gui_viewport_metal_tests PRIVATE truffle_gui truffle_backend_metal)
+    target_compile_definitions(truffle_gui_viewport_metal_tests PRIVATE TFL_TEST_VIEWPORT_VULKAN=0)
+    truffle_target_warnings(truffle_gui_viewport_metal_tests)
+    add_test(NAME truffle_gui_viewport_metal_tests COMMAND truffle_gui_viewport_metal_tests)
+    set_tests_properties(truffle_gui_viewport_metal_tests PROPERTIES
+        LABELS "native-smoke;validation;gui"
+        ENVIRONMENT "MTL_DEBUG_LAYER=1;MTL_SHADER_VALIDATION=1")
+endif()
+if(TFL_BUILD_BACKEND_VULKAN)
+    add_executable(truffle_gui_viewport_vulkan_tests gui_viewport_native_tests.cpp)
+    target_link_libraries(truffle_gui_viewport_vulkan_tests PRIVATE truffle_gui truffle_backend_vulkan)
+    target_compile_definitions(truffle_gui_viewport_vulkan_tests PRIVATE TFL_TEST_VIEWPORT_VULKAN=1)
+    target_include_directories(truffle_gui_viewport_vulkan_tests PRIVATE
+        "${PROJECT_SOURCE_DIR}/src/backends/vulkan")
+    truffle_target_warnings(truffle_gui_viewport_vulkan_tests)
+    add_test(NAME truffle_gui_viewport_vulkan_tests COMMAND truffle_gui_viewport_vulkan_tests)
+    set_tests_properties(truffle_gui_viewport_vulkan_tests PROPERTIES
+        LABELS "native-smoke;validation;gui"
+        FAIL_REGULAR_EXPRESSION "Validation (Error|Warning)"
+        ENVIRONMENT "DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib:/usr/local/lib:/usr/lib")
+endif()
+
 add_executable(truffle_gui_host_tests gui_host_tests.cpp)
 target_link_libraries(truffle_gui_host_tests PRIVATE truffle_gui)
 truffle_target_warnings(truffle_gui_host_tests)

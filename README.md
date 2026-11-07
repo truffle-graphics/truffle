@@ -173,6 +173,10 @@ Detached panels keep their live elements in an independent `Surface` of the same
 Context. Saved layouts normalize them back into docking; OS window geometry is
 not persisted. Native windows remain a host integration, demonstrated on
 macOS/Metal rather than claimed for every platform.
+`gui::Viewport` (#271) displays application-owned offscreen rendering in GUI
+with pixel/DPI metrics, routed input, on-demand scene redraw and shared-device/
+frame-graph synchronization. It uses Renderer targets and Painter, not Engine
+or CPU readback; see [viewport usage](docs/gui-viewport.md).
 The [native widget demo](examples/gui_window/README.md) records idle and
 selective-update evidence. Epic #217 (#221-#235) is delivered; this
 is a usable baseline, not a finished GUI framework.

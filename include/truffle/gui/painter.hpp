@@ -52,6 +52,14 @@ public:
     [[nodiscard]] base::Result<TextureId> add_texture(renderer::SampledTexture& texture,
                                                       const rhi::SamplerDesc& sampler = {});
     [[nodiscard]] base::Status remove_texture(TextureId texture);
+    // Rebind a stable ID (retained shapes do not change). Previously recorded
+    // batches must already have been rendered/discarded. The old texture may
+    // then be retired; RHI retains native resources of submitted commands.
+    [[nodiscard]] base::Status replace_texture(TextureId id, renderer::SampledTexture& texture,
+                                                const rhi::SamplerDesc& sampler = {});
+    [[nodiscard]] bool valid() const noexcept;
+    [[nodiscard]] rhi::Device& device() const noexcept; // requires valid()
+    [[nodiscard]] std::uint32_t frames_in_flight() const noexcept; // requires valid()
 
     // Assembles the stored shapes of `context` and streams them into frame
     // `slot` (from FramePacer::begin_frame). Batches stay valid until the slot

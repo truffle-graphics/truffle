@@ -39,6 +39,9 @@ public:
   }
 
   [[nodiscard]] gui::Context &gui_context() noexcept { return context_; }
+  [[nodiscard]] gui::Painter &gui_painter() noexcept { return painter_; }
+  [[nodiscard]] renderer::Renderer &gpu_renderer() noexcept { return renderer_; }
+  [[nodiscard]] renderer::PipelineCache &pipeline_cache() noexcept { return programs_; }
   [[nodiscard]] renderer::Presentation &presentation() noexcept { return presentation_; }
   [[nodiscard]] base::Status resize(rhi::Extent2D pixels, float scale = 1.0F) {
     // Context validates the scale, including infinity/NaN and zero.
@@ -92,8 +95,8 @@ private:
   renderer::Presentation presentation_; // destroyed after its GPU consumers
   renderer::PipelineCache programs_;
   renderer::Renderer renderer_;
+  gui::Painter painter_; // outlives Context-owned viewport registrations
   gui::Context context_;
-  gui::Painter painter_;
 };
 
 } // namespace truffle::examples

@@ -124,6 +124,14 @@ remain backend-independent. GUI/application passes share one device/frame.
 See `docs/presentation.md`; new native execution is owner-run, not a maturity
 promotion.
 
+GUI's `Viewport` (#271) composes application-owned offscreen passes with Painter
+on the same device/frame graph. It reports layout pixels and host DPI scale,
+routes ordinary viewport input, reuses unchanged submitted scenes and manages
+safe-slot target resize/retention. Renderer keeps GPU target/graph ownership;
+there is no Engine dependency, CPU readback or special background widget.
+Per-element DPI follows detached Surfaces. See `docs/gui-viewport.md`; focused
+contracts do not promote unrun native paths.
+
 ## Constraints And Durable Decisions
 
 - Shared status/result, handle, configuration, and version contracts belong to
