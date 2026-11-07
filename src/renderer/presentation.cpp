@@ -1,4 +1,5 @@
 #include "truffle/renderer/presentation.hpp"
+#include "window_rhi.hpp"
 
 #include "truffle/rhi/validation.hpp"
 
@@ -14,7 +15,11 @@ base::Status invalid(base::StatusCode code, const char *message) {
 }
 
 base::Status validate(const PresentationDesc &desc) {
-  if (!rhi::validation::native_surface_handles_valid(desc.native) ||
+  auto native = native_surface(desc.native);
+  if (!native.ok()) {
+    return native.status();
+  }
+  if (!rhi::validation::native_surface_handles_valid(native.value()) ||
       desc.imageCount == 0 || desc.framesInFlight == 0) {
     return invalid(
         base::StatusCode::invalid_argument,
@@ -174,10 +179,14 @@ base::Status Presentation::resize(rhi::Extent2D extent) {
   return base::Status::success();
 }
 
-base::Status Presentation::replace_surface(rhi::NativeSurface native,
+base::Status Presentation::replace_surface(WindowHandle native,
                                            rhi::Extent2D extent,
                                            std::chrono::nanoseconds timeout) {
-  if (!rhi::validation::native_surface_handles_valid(native)) {
+  auto converted = native_surface(native);
+  if (!converted.ok()) {
+    return converted.status();
+  }
+  if (!rhi::validation::native_surface_handles_valid(converted.value())) {
     return invalid(base::StatusCode::invalid_argument,
                    "Presentation: replacement native handles are invalid");
   }
@@ -207,8 +216,12 @@ base::Status Presentation::prepare_surface(std::chrono::nanoseconds timeout) {
   // owns native retirement; the pacer protects resources of submitted frames.
   state_->swapchain = {};
   if (!state_->surface.valid()) {
+    auto native = native_surface(state_->desc.native);
+    if (!native.ok()) {
+      return native.status();
+    }
     auto surface = state_->device->create_surface({
-        .native = state_->desc.native,
+        .native = native.value(),
         .initialExtent = state_->desc.extent,
         .debugName = "Renderer presentation surface",
     });

@@ -15,15 +15,15 @@ create_native_presentation(const PresentationDesc &desc,
   auto backend = options.backend;
   if (!backend) {
     switch (desc.native.kind) {
-    case rhi::NativeSurfaceKind::cocoa_layer:
+    case WindowKind::cocoa_layer:
 #if defined(TFL_PRESENTATION_METAL)
       backend = rhi::BackendKind::metal;
 #else
       backend = rhi::BackendKind::vulkan;
 #endif
       break;
-    case rhi::NativeSurfaceKind::win32:
-    case rhi::NativeSurfaceKind::xcb:
+    case WindowKind::win32:
+    case WindowKind::xcb:
       backend = rhi::BackendKind::vulkan;
       break;
     default:

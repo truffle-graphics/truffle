@@ -12,7 +12,7 @@ namespace truffle::examples {
 class GuiApplication {
 public:
   [[nodiscard]] static base::Result<std::unique_ptr<GuiApplication>>
-  create(rhi::NativeSurface native, rhi::Extent2D pixels, float scale = 1.0F) {
+  create(renderer::WindowHandle native, rhi::Extent2D pixels, float scale = 1.0F) {
     auto presentation = renderer::create_native_presentation({
         .native = native,
         .extent = pixels,

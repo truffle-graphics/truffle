@@ -5,7 +5,23 @@ This is the rolling execution handoff, not an implementation transcript.
 issues/Project own accepted work. Earlier phase details remain in their PRs,
 the support matrix and Git history.
 
-## Latest: GUI offscreen viewport (#271)
+## Latest: consumer layer cutover (#273), host values (#274)
+
+The approved GUI/Renderer/RHI consumption model is audited in
+`docs/consumer-layers.md`. Structural children #274-#277 are in the delivery
+Project/milestone. Engine #272 and Studio are excluded.
+The first phase replaces normal Presentation native handles with Base-owned
+`WindowHandle`/`WindowKind`, re-exported by Renderer/GUI; shared pixel size/rect
+values are also defined for the later layers. Conversion to existing RHI surface
+kinds is internal, preserving HWND/CAMetalLayer/XCB and typed failures.
+This is a breaking pre-release public contract change, no shim/version bump.
+The remaining raw resource/frame, GUI setup/text/image and viewport contracts
+follow as separate signed immediately pushed child commits on feat/gui-menus.
+The incremental strict Debug Presentation contract/example compiled and its
+single focused contract passed (0.17 seconds CTest wall time), including invalid
+window-kind rejection. No native or broad validation was run.
+
+## Earlier: GUI offscreen viewport (#271)
 
 The same `feat/gui-menus` batch builds on signed/pushed presentation phase
 `51868acb6f04ef051deaa968a7642a3034be56c4`, immediately delivered before

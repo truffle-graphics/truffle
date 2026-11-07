@@ -45,7 +45,9 @@ int main() {
   TFL_CHECK(!renderer::Presentation::create(device, {.framesInFlight = 0}).ok());
   TFL_CHECK(!renderer::Presentation::create(device, {.imageCount = 0}).ok());
   TFL_CHECK(!renderer::Presentation::create(
-                 device, {.native = {.kind = rhi::NativeSurfaceKind::win32}})
+      device, {.native = {.kind = static_cast<renderer::WindowKind>(999)}}).ok());
+  TFL_CHECK(!renderer::Presentation::create(
+                 device, {.native = {.kind = renderer::WindowKind::win32}})
                  .ok());
   renderer::Presentation empty;
   TFL_CHECK(!empty.valid());

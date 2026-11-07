@@ -1,5 +1,9 @@
 # Renderer Presentation (#270)
 
+Normal host handles now use `renderer::WindowHandle`/`WindowKind` (#274), shared
+Base values re-exported by Renderer and GUI. They are not RHI aliases; native
+conversion is internal. The broader consumer-layer cutover is tracked by #273.
+
 `renderer::Presentation` owns graphics-side surface/swapchain lifetime and
 frames-in-flight pacing. The host still owns its window, native handles, event
 loop, input, DPI reporting and platform services. No SDL, GLFW or Engine

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "truffle/renderer/frame_stream.hpp"
+#include "truffle/renderer/window.hpp"
 
 #include <chrono>
 #include <memory>
@@ -9,7 +10,7 @@
 namespace truffle::renderer {
 
 struct PresentationDesc {
-  rhi::NativeSurface native;
+  WindowHandle native;
   rhi::Extent2D extent{1, 1}; // physical pixels; either zero dimension suspends
   rhi::TextureFormat format = rhi::TextureFormat::bgra8_unorm;
   rhi::PresentMode presentMode = rhi::PresentMode::fifo;
@@ -55,7 +56,7 @@ public:
   // Retire graphics objects before the host destroys the old native handle.
   // A lost device instead requires a new Presentation (and new GPU resources).
   [[nodiscard]] base::Status
-  replace_surface(rhi::NativeSurface native, rhi::Extent2D extent,
+  replace_surface(WindowHandle native, rhi::Extent2D extent,
                   std::chrono::nanoseconds timeout = std::chrono::seconds(10));
   [[nodiscard]] base::Result<PresentationFrame>
   begin_frame(std::chrono::nanoseconds timeout = std::chrono::seconds(10));

@@ -140,6 +140,12 @@ are separate dimensions.
 
 ## Consumption Levels
 
+The approved independently usable GUI/Renderer/RHI model and full public
+contract audit are recorded in [consumer layers](consumer-layers.md), #273.
+GUI owns GUI graphics orchestration; Renderer owns ordinary GPU resources and
+rendering; RHI remains explicitly available for specialist work. Shared native
+window/pixel values belong to Base (#274); neither upper layer owns windows.
+
 ### Level 1 — Graphics API
 
 Link `truffle_base`, `truffle_rhi`, and one enabled backend. The application
