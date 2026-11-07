@@ -1,4 +1,4 @@
-#include "truffle/renderer/presentation.hpp"
+#include "truffle/renderer/specialist/presentation.hpp"
 
 #if defined(TFL_PRESENTATION_METAL)
 #include "truffle/rhi/metal_backend.hpp"
@@ -7,7 +7,7 @@
 #include "truffle/rhi/vulkan_backend.hpp"
 #endif
 
-namespace truffle::renderer {
+namespace truffle::renderer::specialist {
 
 base::Result<Presentation>
 create_native_presentation(const PresentationDesc &desc,
@@ -55,4 +55,4 @@ create_native_presentation(const PresentationDesc &desc,
   return Presentation::create(std::move(instance).value(), desc, options.device);
 }
 
-} // namespace truffle::renderer
+} // namespace truffle::renderer::specialist

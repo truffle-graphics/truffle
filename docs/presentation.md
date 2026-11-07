@@ -1,4 +1,4 @@
-# Renderer Presentation (#270)
+# Renderer Presentation (#270, #274, #275)
 
 Normal host handles now use `renderer::WindowHandle`/`WindowKind` (#274), shared
 Base values re-exported by Renderer and GUI. They are not RHI aliases; native
@@ -11,7 +11,7 @@ dependency is introduced.
 
 ## Native setup without backend headers
 
-Link `Truffle::GUI` and `Truffle::RendererPresentation`. Enable the existing
+Renderer clients link `Truffle::RendererPresentation`. Enable the existing
 `TFL_BUILD_BACKEND_METAL` or `TFL_BUILD_BACKEND_VULKAN` option for the desired
 platform. `TFL_BUILD_RENDERER_PRESENTATION` builds the optional native factory
 and defaults to ON; linking only `Truffle::Renderer` does **not** link that
@@ -19,7 +19,6 @@ factory or any backend implementation. The install/export includes the
 optional target only when enabled. Compiler toolchains are not required.
 
 ```cpp
-#include <truffle/gui/painter.hpp>
 #include <truffle/renderer/presentation.hpp>
 
 // Host supplies an HWND on Windows, or a CAMetalLayer on macOS.
@@ -29,15 +28,14 @@ auto presentation = renderer::create_native_presentation({
 // Check every Result/Status before accessing its value.
 renderer::PipelineCache programs(presentation.value().device());
 renderer::Renderer renderer(presentation.value().device(), &programs);
-auto painter = gui::Painter::create(presentation.value().device(), programs, {
-    .color_format = presentation.value().desc().format,
-    .frames_in_flight = presentation.value().desc().framesInFlight,
-});
+// Load prepared renderer::ShaderPackage bytes and register renderer::ProgramDesc.
+// Submit renderer::Mesh batches / offscreen and window passes in a FrameGraph.
 ```
 
 Automatic setup chooses Metal for a `cocoa_layer` (Vulkan when Metal is not
 built), Vulkan for `win32` or `xcb`. `NativePresentationOptions` accepts an
-explicit backend, instance validation/diagnostics and device feature requests.
+explicit backend and validation. Raw instance/feature/diagnostic customization
+is specialist-only.
 The selected factory's real errors are preserved; a failed Metal initialization
 does not silently choose another device/backend. Disabled or other native
 backends return `unsupported`, never Null. Metal/macOS borrows a CAMetalLayer;
@@ -47,9 +45,9 @@ An SDL host obtains these native handles itself (and creates the Metal layer
 when needed). Truffle does not include SDL or own its window.
 
 See the compiled, host-independent
-[`GuiApplication` example](../examples/gui_presentation/gui_application.hpp)
-for a complete setup/draw/resize/error path without backend headers or RHI
-initialization calls.
+[`Renderer frame` example](../examples/renderer_consumer/frame.hpp)
+for normal mesh/window composition without backend headers or RHI types.
+GUI-owned setup is tracked by #276; its Application hides these Renderer details.
 
 ## One shared frame
 
@@ -67,8 +65,9 @@ The Renderer must reference the **same device object**. Pass custom shaders,
 application data and dependencies through the existing PipelineCache and
 FrameGraph; no fixed scene/camera/material model is imposed. Advanced hosts can
 instead use `Presentation::create(existingDevice, desc)` to borrow their device,
-or supply an owned `rhi::Instance` for device selection without the optional
-factory. `device()` and `swapchain()` expose the existing lower-level contracts.
+The wrapper shares stable owned-device storage, or explicitly borrows raw
+objects through `renderer/rhi_interop.hpp`. Native swapchain/fence access lives
+under `renderer::specialist` for specialized integration.
 Submission outside this convenience is the caller's synchronization
 responsibility; its idle wait covers only frames submitted through it.
 

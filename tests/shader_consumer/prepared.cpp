@@ -1,5 +1,5 @@
 #include <truffle/renderer/shaders.hpp>
-#include <truffle/renderer/source_program.hpp>
+#include <truffle/renderer/specialist/source_program.hpp>
 #include <truffle/rhi/shader_package.hpp>
 
 int main() {

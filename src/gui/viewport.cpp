@@ -30,17 +30,17 @@ struct Viewport::State {
   Painter *painter = nullptr;
   TextureId texture;
   ViewportTargetDesc desc;
-  std::vector<std::shared_ptr<renderer::SampledTexture>> slots;
-  std::shared_ptr<renderer::SampledTexture> committed;
-  std::shared_ptr<renderer::SampledTexture> pending;
-  std::shared_ptr<renderer::SampledTexture> displayed;
+  std::vector<std::shared_ptr<renderer::specialist::SampledTexture>> slots;
+  std::shared_ptr<renderer::specialist::SampledTexture> committed;
+  std::shared_ptr<renderer::specialist::SampledTexture> pending;
+  std::shared_ptr<renderer::specialist::SampledTexture> displayed;
   ViewportMetrics committedMetrics;
   ViewportMetrics pendingMetrics;
   std::uint64_t revision = 1;
   std::uint64_t committedRevision = 0;
   std::uint64_t pendingRevision = 0;
-  renderer::FrameGraph *graph = nullptr;
-  std::optional<renderer::FrameGraph::NodeId> appPass;
+  renderer::specialist::FrameGraph *graph = nullptr;
+  std::optional<renderer::specialist::FrameGraph::NodeId> appPass;
   bool redraw = false;
   bool linked = false;
   bool open = false;
@@ -270,7 +270,7 @@ base::Result<ViewportFrame> Viewport::prepare_frame(rhi::Device &device,
       const auto pixels = measured.value().pixels;
       if (!target || target->texture().desc().extent !=
                          rhi::Extent3D{pixels.width, pixels.height, 1}) {
-        auto created = renderer::SampledTexture::render_target(
+        auto created = renderer::specialist::SampledTexture::render_target(
             device, {
                         .extent = pixels,
                         .format = desc.format,
@@ -279,7 +279,7 @@ base::Result<ViewportFrame> Viewport::prepare_frame(rhi::Device &device,
         if (!created.ok()) {
           return created.status();
         }
-        target = std::make_shared<renderer::SampledTexture>(std::move(created).value());
+        target = std::make_shared<renderer::specialist::SampledTexture>(std::move(created).value());
       }
       state_->pending = target;
     } else {
@@ -290,9 +290,9 @@ base::Result<ViewportFrame> Viewport::prepare_frame(rhi::Device &device,
   return ViewportFrame{state_->pendingMetrics, state_->pending.get(), state_->redraw};
 }
 
-base::Result<renderer::FrameGraph::NodeId>
-Viewport::append_render_pass(renderer::FrameGraph &graph,
-                             std::vector<renderer::RenderBatch> batches,
+base::Result<renderer::specialist::FrameGraph::NodeId>
+Viewport::append_render_pass(renderer::specialist::FrameGraph &graph,
+                             std::vector<renderer::specialist::RenderBatch> batches,
                              rhi::RenderPassDesc pass) {
   if (!alive() || !state_->open || !state_->redraw || !state_->pending ||
       state_->appPass) {
@@ -312,7 +312,7 @@ Viewport::append_render_pass(renderer::FrameGraph &graph,
   pass.extent = state_->pendingMetrics.pixels;
   pass.colorAttachments.front().texture = &state_->pending->texture();
   auto node =
-      std::make_unique<renderer::RenderPassNode>(std::move(pass), std::move(batches));
+      std::make_unique<renderer::specialist::RenderPassNode>(std::move(pass), std::move(batches));
   node->transition_before(state_->pending->to_attachment());
   state_->appPass = graph.add_node(std::move(node));
   graph.retain(state_);
@@ -364,15 +364,15 @@ base::Status Viewport::display(Painter &painter) {
   return state_->context->set_decoration(state_->element, decoration.value());
 }
 
-base::Status Viewport::composite(renderer::FrameGraph &graph,
-                                 renderer::FrameGraph::NodeId guiPass) {
+base::Status Viewport::composite(renderer::specialist::FrameGraph &graph,
+                                 renderer::specialist::FrameGraph::NodeId guiPass) {
   if (!alive() || !state_->open) {
     return invalid(base::StatusCode::invalid_state,
                    "Viewport: prepare a frame before compositing");
   }
   if (state_->linked || guiPass >= graph.nodes().size() ||
       graph.nodes()[guiPass] == nullptr ||
-      graph.nodes()[guiPass]->kind() != renderer::FrameGraphNodeKind::Render) {
+      graph.nodes()[guiPass]->kind() != renderer::specialist::FrameGraphNodeKind::Render) {
     return invalid(
         base::StatusCode::invalid_argument,
         "Viewport: composite needs one GUI render pass in the application's graph");
@@ -385,7 +385,7 @@ base::Status Viewport::composite(renderer::FrameGraph &graph,
     if (auto status = graph.add_dependency(*state_->appPass, guiPass); !status.ok()) {
       return status;
     }
-    auto *node = static_cast<renderer::RenderPassNode *>(graph.nodes()[guiPass].get());
+    auto *node = static_cast<renderer::specialist::RenderPassNode *>(graph.nodes()[guiPass].get());
     node->transition_before(state_->pending->to_shader_read());
   }
   graph.retain(state_);

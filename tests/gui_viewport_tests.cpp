@@ -5,7 +5,7 @@
 #include "truffle/gui/draw.hpp"
 #include "truffle/gui/surface.hpp"
 #include "truffle/gui/viewport.hpp"
-#include "truffle/renderer/frame_stream.hpp"
+#include "truffle/renderer/specialist/frame_stream.hpp"
 
 #include <limits>
 
@@ -22,11 +22,11 @@ void place(gui::Context &context, gui::ElementId element, gui::Rect bounds) {
                                                     }));
 }
 
-renderer::FrameGraph::NodeId gui_pass(renderer::FrameGraph &graph, rhi::Texture &color) {
-  return graph.add_node(std::make_unique<renderer::RenderPassNode>(
+renderer::specialist::FrameGraph::NodeId gui_pass(renderer::specialist::FrameGraph &graph, rhi::Texture &color) {
+  return graph.add_node(std::make_unique<renderer::specialist::RenderPassNode>(
       rhi::RenderPassDesc{.extent = {400, 240},
                           .colorAttachments = {{.texture = &color}}},
-      std::vector<renderer::RenderBatch>{}));
+      std::vector<renderer::specialist::RenderBatch>{}));
 }
 
 } // namespace
@@ -128,8 +128,8 @@ int main() {
 
   auto gpu = tests::make_null_context();
   auto &device = gpu.device;
-  renderer::Renderer renderer(device);
-  auto pacerResult = renderer::FramePacer::create(device);
+  renderer::specialist::Renderer renderer(device);
+  auto pacerResult = renderer::specialist::FramePacer::create(device);
   TFL_CHECK(pacerResult.ok());
   auto pacer = std::move(pacerResult).value();
   auto output = device.create_texture({
@@ -148,7 +148,7 @@ int main() {
   auto *firstTarget = frame.value().target;
   TFL_CHECK(!viewport.prepare_frame(device, slot.value()).ok());
   TFL_CHECK(!viewport.release_gpu().ok());
-  renderer::FrameGraph graph;
+  renderer::specialist::FrameGraph graph;
   TFL_CHECK(!viewport
                  .append_render_pass(graph, {},
                                      {.colorAttachments = {{.texture = &output.value()}}})
@@ -156,12 +156,12 @@ int main() {
   auto appPass = viewport.append_render_pass(graph, {});
   TFL_CHECK(appPass.ok());
   const auto *app =
-      static_cast<const renderer::RenderPassNode *>(graph.node(appPass.value()));
+      static_cast<const renderer::specialist::RenderPassNode *>(graph.node(appPass.value()));
   TFL_CHECK(app->explicit_desc()->colorAttachments.front().texture ==
             &firstTarget->texture());
   TFL_CHECK(app->barriers_before().front().oldLayout ==
             rhi::TextureLayout::shader_read_only);
-  renderer::FrameGraph foreignGraph;
+  renderer::specialist::FrameGraph foreignGraph;
   TFL_CHECK(
       !viewport.composite(foreignGraph, gui_pass(foreignGraph, output.value())).ok());
   TFL_CHECK(!viewport.composite(graph, appPass.value()).ok());
@@ -169,7 +169,7 @@ int main() {
   TFL_CHECK(viewport.composite(graph, composite).ok());
   TFL_CHECK(!viewport.composite(graph, composite).ok());
   const auto *guiNode =
-      static_cast<const renderer::RenderPassNode *>(graph.node(composite));
+      static_cast<const renderer::specialist::RenderPassNode *>(graph.node(composite));
   TFL_CHECK(guiNode->barriers_before().front().newLayout ==
             rhi::TextureLayout::shader_read_only);
   TFL_CHECK(graph.dependencies().size() == 1);
@@ -199,7 +199,7 @@ int main() {
   TFL_CHECK(context.needs_frame(now));
   auto retry = viewport.prepare_frame(device, 1);
   TFL_CHECK(retry.ok() && retry.value().redraw);
-  renderer::FrameGraph retryGraph;
+  renderer::specialist::FrameGraph retryGraph;
   TFL_CHECK(viewport.append_render_pass(retryGraph, {}).ok());
   TFL_CHECK(viewport.composite(retryGraph, gui_pass(retryGraph, output.value())).ok());
   TFL_CHECK(renderer.render(retryGraph).ok());
@@ -273,7 +273,7 @@ int main() {
   TFL_CHECK(context.prepare_frame(now).status.ok());
   auto outstanding = viewport.prepare_frame(device, 0);
   TFL_CHECK(outstanding.ok() && outstanding.value().redraw);
-  renderer::FrameGraph lastGraph;
+  renderer::specialist::FrameGraph lastGraph;
   TFL_CHECK(viewport.append_render_pass(lastGraph, {}).ok());
   TFL_CHECK(viewport.composite(lastGraph, gui_pass(lastGraph, output.value())).ok());
   TFL_CHECK(context.destroy(outer.value()).ok());
@@ -287,7 +287,7 @@ int main() {
   gui::Painter emptyPainter;
   TFL_CHECK(!emptyPainter.valid());
   TFL_CHECK(!emptyPainter.remove_texture({1}).ok());
-  renderer::SampledTexture emptyTexture;
+  renderer::specialist::SampledTexture emptyTexture;
   TFL_CHECK(!emptyPainter.replace_texture({1}, emptyTexture).ok());
 
   // A callback may destroy the element that owns the handler.

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "truffle/renderer/renderer.hpp"
+#include "truffle/renderer/specialist/renderer.hpp"
 
 #include <array>
 #include <iostream>
@@ -121,15 +121,15 @@ inline void check_color(rhi::Device& device, rhi::Texture& target,
               << std::to_integer<unsigned>(expected[3]) << ")\n";
 }
 
-inline renderer::FrameGraph color_graph(rhi::Texture& target,
-                                        renderer::RenderBatch batch) {
-    renderer::FrameGraph graph;
-    graph.add_node(std::make_unique<renderer::RenderPassNode>(
+inline renderer::specialist::FrameGraph color_graph(rhi::Texture& target,
+                                        renderer::specialist::RenderBatch batch) {
+    renderer::specialist::FrameGraph graph;
+    graph.add_node(std::make_unique<renderer::specialist::RenderPassNode>(
         rhi::RenderPassDesc{
             .extent = {16, 16},
             .colorAttachments = {{.texture = &target, .clear = {0, 0, 0, 1}}},
         },
-        std::vector<renderer::RenderBatch>{std::move(batch)}));
+        std::vector<renderer::specialist::RenderBatch>{std::move(batch)}));
     return graph;
 }
 

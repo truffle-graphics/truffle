@@ -1,6 +1,6 @@
 #include "renderer_native_test_utils.hpp"
 #include "truffle/gui/viewport.hpp"
-#include "truffle/renderer/frame_stream.hpp"
+#include "truffle/renderer/specialist/frame_stream.hpp"
 
 #if TFL_TEST_VIEWPORT_VULKAN
 #include "truffle/rhi/vulkan_backend.hpp"
@@ -87,10 +87,10 @@ int run() {
 #endif
   auto adapter = tests::require(instance.adapter(0));
   auto device = tests::require(adapter.request_device());
-  renderer::PipelineCache programs(device);
-  renderer::Renderer renderer(device, &programs);
+  renderer::specialist::PipelineCache programs(device);
+  renderer::specialist::Renderer renderer(device, &programs);
   auto painter = tests::require(gui::Painter::create(device, programs));
-  auto pacer = tests::require(renderer::FramePacer::create(device));
+  auto pacer = tests::require(renderer::specialist::FramePacer::create(device));
   auto color = tests::make_color_target(device);
   gui::Context context;
   tests::require(context.set_viewport({16, 16}));
@@ -113,7 +113,7 @@ int run() {
     if (frame.redraw != (index != 1)) {
       throw std::runtime_error("viewport scene redraw/reuse contract changed");
     }
-    renderer::FrameGraph graph;
+    renderer::specialist::FrameGraph graph;
     if (frame.redraw) {
       rhi::RenderPassDesc pass;
       pass.colorAttachments.push_back({.clear = {1, index == 3 ? 1.0F : 0.0F, 0, 1}});
@@ -131,7 +131,7 @@ int run() {
       throw std::runtime_error("scene-only redraw regenerated GUI shapes");
     }
     auto batches = tests::require(painter.record(context, slot, {16, 16}));
-    const auto guiPass = graph.add_node(std::make_unique<renderer::RenderPassNode>(
+    const auto guiPass = graph.add_node(std::make_unique<renderer::specialist::RenderPassNode>(
         rhi::RenderPassDesc{
             .extent = {16, 16},
             .colorAttachments = {{.texture = &color, .clear = {0, 0, 1, 1}}}},

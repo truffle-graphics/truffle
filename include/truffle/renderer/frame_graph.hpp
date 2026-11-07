@@ -1,273 +1,65 @@
 #pragma once
 
-#include "truffle/base/status.hpp"
-#include "truffle/renderer/render_batch.hpp"
-#include "truffle/renderer/transform_compute_pass.hpp"
-#include "truffle/rhi/rhi.hpp"
-
-#include <cstdint>
-#include <deque>
-#include <memory>
-#include <span>
-#include <unordered_set>
-#include <utility>
-#include <vector>
+#include "truffle/renderer/texture.hpp"
 
 namespace truffle::renderer {
 
-enum class FrameGraphNodeKind {
-    Compute,
-    Render,
+struct ColorAttachmentDesc {
+  Texture texture, resolveTexture;
+  LoadOp loadOp = LoadOp::clear;
+  StoreOp storeOp = StoreOp::store;
+  ClearColor clear;
 };
-
-enum class ResourceAccess {
-    Read,
-    Write,
+struct DepthStencilAttachmentDesc {
+  Texture texture;
+  LoadOp depthLoadOp = LoadOp::clear;
+  StoreOp depthStoreOp = StoreOp::store;
+  float clearDepth = 1;
+  LoadOp stencilLoadOp = LoadOp::clear;
+  StoreOp stencilStoreOp = StoreOp::store;
+  std::uint32_t clearStencil = 0;
 };
-
+struct RenderPassDesc {
+  PixelSize extent{1, 1};
+  std::vector<ColorAttachmentDesc> colorAttachments;
+  DepthStencilAttachmentDesc depthStencilAttachment;
+};
+enum class ResourceAccess { Read, Write };
 struct NodeResourceUsage {
-    std::uint64_t resourceId = 0;
-    ResourceAccess access = ResourceAccess::Read;
+  std::uint64_t resourceId = 0;
+  ResourceAccess access = ResourceAccess::Read;
+};
+struct RenderPassNode {
+  RenderPassDesc pass;
+  std::vector<RenderBatch> batches;
+  bool useWindow = false;
+  std::vector<TextureTransition> transitions;
+  void transition_before(TextureTransition transition) {
+    transitions.push_back(std::move(transition));
+  }
 };
 
-class IFrameGraphNode {
-public:
-    virtual ~IFrameGraphNode() = default;
-    [[nodiscard]] virtual FrameGraphNodeKind kind() const noexcept = 0;
-};
-
-class ComputePassNode final : public IFrameGraphNode {
-public:
-    explicit ComputePassNode(TransformComputePass& pass, TransformComputePassDesc desc)
-        : pass_(&pass), desc_(std::move(desc)) {}
-
-    [[nodiscard]] FrameGraphNodeKind kind() const noexcept override {
-        return FrameGraphNodeKind::Compute;
-    }
-
-    TransformComputePass* pass() const noexcept { return pass_; }
-    const TransformComputePassDesc& desc() const noexcept { return desc_; }
-
-private:
-    TransformComputePass* pass_ = nullptr;
-    TransformComputePassDesc desc_;
-};
-
-class RenderPassNode final : public IFrameGraphNode {
-public:
-    // If desc is std::nullopt, it falls back to the swapchain default or minimal headless desc.
-    explicit RenderPassNode(bool useSwapchain, std::vector<RenderBatch> batches)
-        : useSwapchain_(useSwapchain), batches_(std::move(batches)) {}
-
-    // A swapchain pass may supply depth and color clear/load/store settings.
-    // Its color texture comes from acquisition and its extent from the swapchain.
-    explicit RenderPassNode(rhi::RenderPassDesc desc, std::vector<RenderBatch> batches,
-                            bool useSwapchain = false)
-        : useSwapchain_(useSwapchain), explicitDesc_(std::make_unique<rhi::RenderPassDesc>(desc)), batches_(std::move(batches)) {}
-
-    [[nodiscard]] FrameGraphNodeKind kind() const noexcept override {
-        return FrameGraphNodeKind::Render;
-    }
-
-    bool uses_swapchain() const noexcept { return useSwapchain_; }
-    const rhi::RenderPassDesc* explicit_desc() const noexcept { return explicitDesc_.get(); }
-    std::span<const RenderBatch> batches() const noexcept { return batches_; }
-
-    // Recorded before this pass begins, in order. The caller states layouts:
-    // e.g. an earlier pass's color target moving to shader_read_only before
-    // this pass samples it. Resource usages order passes; they add no barriers.
-    void transition_before(const rhi::TextureBarrier& barrier) {
-        barriersBefore_.push_back(barrier);
-    }
-    std::span<const rhi::TextureBarrier> barriers_before() const noexcept {
-        return barriersBefore_;
-    }
-
-private:
-    bool useSwapchain_ = false;
-    std::unique_ptr<rhi::RenderPassDesc> explicitDesc_;
-    std::vector<RenderBatch> batches_;
-    std::vector<rhi::TextureBarrier> barriersBefore_;
-};
-
+// Per-frame graph; nodes retain the ordinary resources referenced by their
+// passes/batches. Streamed slots still obey pacing, never resubmit stale graphs.
 class FrameGraph {
 public:
-    using NodeId = std::uint32_t;
-
-    // Keep wrappers borrowed by nodes/batches alive until the per-frame graph
-    // is discarded. Native in-flight retention remains an RHI responsibility.
-    void retain(std::shared_ptr<void> resource) {
-        retained_.push_back(std::move(resource));
-    }
-
-    NodeId add_node(std::unique_ptr<IFrameGraphNode> node) {
-        nodes_.push_back(std::move(node));
-        resourceUsages_.emplace_back();
-        return static_cast<NodeId>(nodes_.size() - 1);
-    }
-
-    [[nodiscard]] base::Status add_dependency(NodeId before, NodeId after) {
-        if (before >= nodes_.size() || after >= nodes_.size()) {
-            return base::Status::failure(
-                base::StatusCode::invalid_argument,
-                "FrameGraph: dependency references unknown node id");
-        }
-        if (before == after) {
-            return base::Status::failure(
-                base::StatusCode::invalid_argument,
-                "FrameGraph: self dependency is not allowed");
-        }
-        dependencies_.emplace_back(before, after);
-        return base::Status::success();
-    }
-
-    [[nodiscard]] base::Status add_resource_usage(NodeId nodeId,
-                                                  NodeResourceUsage usage) {
-        if (nodeId >= nodes_.size()) {
-            return base::Status::failure(
-                base::StatusCode::invalid_argument,
-                "FrameGraph: resource usage references unknown node id");
-        }
-        resourceUsages_[nodeId].push_back(usage);
-        return base::Status::success();
-    }
-
-    [[nodiscard]] base::Result<std::vector<NodeId>> resolve_execution_order() const {
-        std::vector<NodeId> order;
-        order.reserve(nodes_.size());
-
-        if (nodes_.empty()) {
-            return order;
-        }
-
-        std::vector<std::pair<NodeId, NodeId>> allEdges = dependencies_;
-        auto append_edge = [&](NodeId before, NodeId after) {
-            allEdges.emplace_back(before, after);
-        };
-
-        std::unordered_set<std::uint64_t> explicitPairEdges;
-        for (const auto& edge : dependencies_) {
-            const auto lo = edge.first < edge.second ? edge.first : edge.second;
-            const auto hi = edge.first < edge.second ? edge.second : edge.first;
-            const std::uint64_t pairKey =
-                (static_cast<std::uint64_t>(lo) << 32u) |
-                static_cast<std::uint64_t>(hi);
-            explicitPairEdges.insert(pairKey);
-        }
-
-        for (NodeId before = 0; before < nodes_.size(); ++before) {
-            for (NodeId after = before + 1; after < nodes_.size(); ++after) {
-                bool hazard = false;
-                for (const auto& lhs : resourceUsages_[before]) {
-                    for (const auto& rhs : resourceUsages_[after]) {
-                        if (lhs.resourceId != rhs.resourceId) {
-                            continue;
-                        }
-                        if (lhs.access == ResourceAccess::Write ||
-                            rhs.access == ResourceAccess::Write) {
-                            hazard = true;
-                            break;
-                        }
-                    }
-                    if (hazard) {
-                        break;
-                    }
-                }
-                if (hazard) {
-                    const std::uint64_t pairKey =
-                        (static_cast<std::uint64_t>(before) << 32u) |
-                        static_cast<std::uint64_t>(after);
-                    if (explicitPairEdges.contains(pairKey)) {
-                        // Keep caller-defined ordering when a direct dependency exists.
-                        continue;
-                    }
-                    append_edge(before, after);
-                }
-            }
-        }
-
-        std::vector<std::uint32_t> indegree(nodes_.size(), 0);
-        std::vector<std::vector<NodeId>> outgoing(nodes_.size());
-        std::unordered_set<std::uint64_t> dedupe;
-        for (const auto& edge : allEdges) {
-            const auto before = edge.first;
-            const auto after = edge.second;
-            if (before >= nodes_.size() || after >= nodes_.size()) {
-                return base::Status::failure(
-                    base::StatusCode::invalid_argument,
-                    "FrameGraph: dependency graph contains invalid node id");
-            }
-            const std::uint64_t key =
-                (static_cast<std::uint64_t>(before) << 32u) |
-                static_cast<std::uint64_t>(after);
-            if (!dedupe.insert(key).second) {
-                continue;
-            }
-            outgoing[before].push_back(after);
-            ++indegree[after];
-        }
-
-        std::deque<NodeId> ready;
-        for (NodeId nodeId = 0; nodeId < nodes_.size(); ++nodeId) {
-            if (indegree[nodeId] == 0) {
-                ready.push_back(nodeId);
-            }
-        }
-
-        while (!ready.empty()) {
-            const NodeId nodeId = ready.front();
-            ready.pop_front();
-            order.push_back(nodeId);
-
-            for (const NodeId next : outgoing[nodeId]) {
-                --indegree[next];
-                if (indegree[next] == 0) {
-                    ready.push_back(next);
-                }
-            }
-        }
-
-        if (order.size() != nodes_.size()) {
-            return base::Status::failure(
-                base::StatusCode::invalid_argument,
-                "FrameGraph: dependency cycle detected");
-        }
-
-        return order;
-    }
-
-    std::span<const std::unique_ptr<IFrameGraphNode>> nodes() const noexcept {
-        return nodes_;
-    }
-
-    std::span<const std::pair<NodeId, NodeId>> dependencies() const noexcept {
-        return dependencies_;
-    }
-
-    std::span<const std::vector<NodeResourceUsage>> resource_usages()
-        const noexcept {
-        return resourceUsages_;
-    }
-
-    std::span<const NodeResourceUsage> resource_usages(NodeId id) const noexcept {
-        if (id >= resourceUsages_.size()) {
-            return {};
-        }
-        return resourceUsages_[id];
-    }
-
-    [[nodiscard]] const IFrameGraphNode* node(NodeId id) const noexcept {
-        if (id >= nodes_.size()) {
-            return nullptr;
-        }
-        return nodes_[id].get();
-    }
+  using NodeId = std::uint32_t;
+  FrameGraph();
+  ~FrameGraph();
+  FrameGraph(FrameGraph &&) noexcept;
+  FrameGraph &operator=(FrameGraph &&) noexcept;
+  FrameGraph(const FrameGraph &) = delete;
+  FrameGraph &operator=(const FrameGraph &) = delete;
+  [[nodiscard]] base::Result<NodeId> add_render_pass(RenderPassNode);
+  [[nodiscard]] base::Status add_dependency(NodeId before, NodeId after);
+  [[nodiscard]] base::Status add_resource_usage(NodeId, NodeResourceUsage);
+  [[nodiscard]] base::Result<std::vector<NodeId>> resolve_execution_order() const;
+  void retain(std::shared_ptr<void>);
 
 private:
-    std::vector<std::vector<NodeResourceUsage>> resourceUsages_;
-    std::vector<std::pair<NodeId, NodeId>> dependencies_;
-    std::vector<std::shared_ptr<void>> retained_;
-    std::vector<std::unique_ptr<IFrameGraphNode>> nodes_;
+  struct State;
+  std::unique_ptr<State> state_;
+  friend struct RhiInterop;
 };
 
 } // namespace truffle::renderer

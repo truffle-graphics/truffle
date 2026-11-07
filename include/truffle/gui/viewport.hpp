@@ -1,7 +1,7 @@
 #pragma once
 
 #include "truffle/gui/painter.hpp"
-#include "truffle/renderer/frame_graph.hpp"
+#include "truffle/renderer/specialist/frame_graph.hpp"
 
 #include <functional>
 #include <memory>
@@ -34,7 +34,7 @@ struct ViewportTargetDesc {
 
 struct ViewportFrame {
   ViewportMetrics metrics;
-  renderer::SampledTexture *target = nullptr; // borrowed until finish_frame
+  renderer::specialist::SampledTexture *target = nullptr; // borrowed until finish_frame
   bool redraw = false;
 };
 
@@ -64,17 +64,17 @@ public:
                 const ViewportTargetDesc &desc = {});
   // Adds an offscreen pass with explicit shader-read -> attachment transition.
   // `pass` may specify clear/load/store/depth, but not another color target.
-  [[nodiscard]] base::Result<renderer::FrameGraph::NodeId>
-  append_render_pass(renderer::FrameGraph &graph,
-                     std::vector<renderer::RenderBatch> batches,
+  [[nodiscard]] base::Result<renderer::specialist::FrameGraph::NodeId>
+  append_render_pass(renderer::specialist::FrameGraph &graph,
+                     std::vector<renderer::specialist::RenderBatch> batches,
                      rhi::RenderPassDesc pass = {});
   // Bind the prepared target before Painter::record. Then update_shapes once
   // for all changed viewport decorations; no style/layout rerun is needed.
   [[nodiscard]] base::Status display(Painter &painter);
   // After adding the GUI pass, order it after the app pass and transition the
   // target back to shader-readable. Required before submitting a redraw.
-  [[nodiscard]] base::Status composite(renderer::FrameGraph &graph,
-                                       renderer::FrameGraph::NodeId guiPass);
+  [[nodiscard]] base::Status composite(renderer::specialist::FrameGraph &graph,
+                                       renderer::specialist::FrameGraph::NodeId guiPass);
   // Pass RendererFrameStats::submitted, not Status::ok()/presented. Submission
   // commits scene revision even if presentation later failed.
   [[nodiscard]] base::Status finish_frame(bool submitted);

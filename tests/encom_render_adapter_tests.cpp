@@ -1,7 +1,7 @@
 #include "test_support.hpp"
 #include "rhi_test_utils.hpp"
-#include "truffle/renderer/renderer.hpp"
-#include "truffle/renderer/frame_graph.hpp"
+#include "truffle/renderer/specialist/renderer.hpp"
+#include "truffle/renderer/specialist/frame_graph.hpp"
 #include "truffle/rhi/null_backend.hpp"
 #include "truffle/encom_renderer/encom_render_adapter.hpp"
 
@@ -51,7 +51,7 @@ int main() {
     TFL_CHECK(batch.bindings[0].size == 3 * 64);
 
     // --- Render the extracted batches ---
-    TFL_CHECK(truffle::renderer::Renderer{context.device}.render([&]() { truffle::renderer::FrameGraph fg; fg.add_node(std::make_unique<truffle::renderer::RenderPassNode>(true, frame.meshBatches)); return fg; }()).ok());
+    TFL_CHECK(truffle::renderer::specialist::Renderer{context.device}.render([&]() { truffle::renderer::specialist::FrameGraph fg; fg.add_node(std::make_unique<truffle::renderer::specialist::RenderPassNode>(true, frame.meshBatches)); return fg; }()).ok());
     TFL_CHECK(context.instance.stats().drawsRecorded == 1);
     TFL_CHECK(context.instance.stats().submissions == 1);
 

@@ -31,7 +31,7 @@ public:
     [[nodiscard]] base::Status handle(const InputEvent& event,
                                      Context::Clock::time_point now = Context::Clock::now());
     void assemble(const DrawOptions& options, DrawData& out);
-    [[nodiscard]] base::Result<std::vector<renderer::RenderBatch>> record(
+    [[nodiscard]] base::Result<std::vector<renderer::specialist::RenderBatch>> record(
         Painter& painter, std::uint32_t slot, rhi::Extent2D target);
 
 private:

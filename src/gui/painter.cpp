@@ -1,6 +1,6 @@
 #include "truffle/gui/painter.hpp"
 
-#include "truffle/renderer/frame_stream.hpp"
+#include "truffle/renderer/specialist/frame_stream.hpp"
 #include "truffle_gui_shaders.hpp"
 
 #include <array>
@@ -55,13 +55,13 @@ namespace {
 
 struct Painter::State {
     PainterDesc desc;
-    renderer::TextureBindingLayout layout;
-    renderer::SampledTexture white;
-    renderer::TextureBinding white_binding;
-    std::unordered_map<std::uint64_t, renderer::TextureBinding> textures;
+    renderer::specialist::TextureBindingLayout layout;
+    renderer::specialist::SampledTexture white;
+    renderer::specialist::TextureBinding white_binding;
+    std::unordered_map<std::uint64_t, renderer::specialist::TextureBinding> textures;
     std::uint64_t next_texture = 1;
     rhi::Device* device = nullptr;
-    renderer::StreamBuffer stream;
+    renderer::specialist::StreamBuffer stream;
     DrawData draw;
     PaintStats stats;
 };
@@ -71,7 +71,7 @@ Painter::~Painter() = default;
 Painter::Painter(Painter&&) noexcept = default;
 Painter& Painter::operator=(Painter&&) noexcept = default;
 
-base::Result<Painter> Painter::create(rhi::Device& device, renderer::PipelineCache& programs,
+base::Result<Painter> Painter::create(rhi::Device& device, renderer::specialist::PipelineCache& programs,
                                       const PainterDesc& desc) {
     const auto backend = device.adapter_info().backend;
     if (backend != rhi::BackendKind::metal && backend != rhi::BackendKind::vulkan) {
@@ -82,25 +82,25 @@ base::Result<Painter> Painter::create(rhi::Device& device, renderer::PipelineCac
     state->desc = desc;
     state->device = &device;
 
-    auto layout = renderer::TextureBindingLayout::create(device);
+    auto layout = renderer::specialist::TextureBindingLayout::create(device);
     if (!layout.ok()) {
         return layout.status();
     }
     state->layout = std::move(layout).value();
     constexpr std::array<std::byte, 4> white{std::byte{255}, std::byte{255},
                                              std::byte{255}, std::byte{255}};
-    auto texture = renderer::SampledTexture::upload(
+    auto texture = renderer::specialist::SampledTexture::upload(
         device, {.extent = {1, 1}, .bytes = white, .debugName = "Truffle GUI white"});
     if (!texture.ok()) {
         return texture.status();
     }
     state->white = std::move(texture).value();
-    auto binding = renderer::TextureBinding::create(device, state->layout, state->white);
+    auto binding = renderer::specialist::TextureBinding::create(device, state->layout, state->white);
     if (!binding.ok()) {
         return binding.status();
     }
     state->white_binding = std::move(binding).value();
-    auto stream = renderer::StreamBuffer::create(
+    auto stream = renderer::specialist::StreamBuffer::create(
         device, {.usage = rhi::BufferUsage::vertex | rhi::BufferUsage::index,
                  .framesInFlight = desc.frames_in_flight});
     if (!stream.ok()) {
@@ -116,7 +116,7 @@ base::Result<Painter> Painter::create(rhi::Device& device, renderer::PipelineCac
     if (!package.ok()) {
         return package.status();
     }
-    renderer::ProgramDesc program;
+    renderer::specialist::ProgramDesc program;
     const auto target = vulkan ? rhi::ShaderTarget::spirv : rhi::ShaderTarget::metal_source;
     program.vertex = {&package.value(), target, vulkan ? "main" : "gui_vertex",
                       rhi::ShaderStage::vertex, {}};
@@ -151,9 +151,9 @@ base::Result<Painter> Painter::create(rhi::Device& device, renderer::PipelineCac
     return painter;
 }
 
-base::Result<TextureId> Painter::add_texture(renderer::SampledTexture& texture,
+base::Result<TextureId> Painter::add_texture(renderer::specialist::SampledTexture& texture,
                                              const rhi::SamplerDesc& sampler) {
-    auto binding = renderer::TextureBinding::create(*state_->device, state_->layout, texture,
+    auto binding = renderer::specialist::TextureBinding::create(*state_->device, state_->layout, texture,
                                                     sampler);
     if (!binding.ok()) {
         return binding.status();
@@ -174,7 +174,7 @@ base::Status Painter::remove_texture(TextureId texture) {
     return base::Status::success();
 }
 
-base::Status Painter::replace_texture(TextureId id, renderer::SampledTexture& texture,
+base::Status Painter::replace_texture(TextureId id, renderer::specialist::SampledTexture& texture,
                                       const rhi::SamplerDesc& sampler) {
     if (!state_) {
         return failure(base::StatusCode::invalid_state, "GUI Painter is not created");
@@ -183,7 +183,7 @@ base::Status Painter::replace_texture(TextureId id, renderer::SampledTexture& te
     if (found == state_->textures.end()) {
         return failure(base::StatusCode::invalid_argument, "GUI texture is not registered");
     }
-    auto binding = renderer::TextureBinding::create(*state_->device, state_->layout,
+    auto binding = renderer::specialist::TextureBinding::create(*state_->device, state_->layout,
                                                     texture, sampler);
     if (!binding.ok()) {
         return binding.status();
@@ -202,7 +202,7 @@ std::uint32_t Painter::frames_in_flight() const noexcept {
     return state_->desc.frames_in_flight;
 }
 
-base::Result<std::vector<renderer::RenderBatch>> Painter::record(
+base::Result<std::vector<renderer::specialist::RenderBatch>> Painter::record(
     const Context& context, std::uint32_t slot, rhi::Extent2D target) {
     State& state = *state_;
     state.stats = {};
@@ -213,7 +213,7 @@ base::Result<std::vector<renderer::RenderBatch>> Painter::record(
     state.stats.elements = draw.elements;
     state.stats.clipped = draw.clipped;
 
-    std::vector<renderer::TextureBinding*> bindings;
+    std::vector<renderer::specialist::TextureBinding*> bindings;
     bindings.reserve(draw.commands.size());
     for (const DrawCommand& command : draw.commands) {
         if (!command.texture.valid()) {
@@ -231,7 +231,7 @@ base::Result<std::vector<renderer::RenderBatch>> Painter::record(
     if (auto status = state.stream.begin_frame(slot); !status.ok()) {
         return status;
     }
-    std::vector<renderer::RenderBatch> batches;
+    std::vector<renderer::specialist::RenderBatch> batches;
     if (draw.indices.empty()) {
         return batches;
     }
@@ -247,11 +247,11 @@ base::Result<std::vector<renderer::RenderBatch>> Painter::record(
     batches.reserve(draw.commands.size());
     for (std::size_t i = 0; i < draw.commands.size(); ++i) {
         const DrawCommand& command = draw.commands[i];
-        renderer::RenderBatch batch;
+        renderer::specialist::RenderBatch batch;
         batch.material = state.desc.material;
         batch.variantHash = state.desc.variant_hash;
         batch.instanceCount = 1;
-        batch.kind = renderer::DrawKind::Indexed;
+        batch.kind = renderer::specialist::DrawKind::Indexed;
         batch.indexFormat = rhi::IndexFormat::uint32;
         batch.vertexCount = command.index_count;
         batch.vertexElementCount = static_cast<std::uint32_t>(draw.vertices.size());

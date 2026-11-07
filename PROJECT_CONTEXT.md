@@ -105,6 +105,12 @@ backend implementation. Renderer, assets, EnCom, EnCom–Renderer integration, a
 remain independently linkable. Consumers can work directly with RHI, with
 Renderer batches, or with the optional EnCom–Renderer integration.
 
+Normal Renderer resource/frame/presentation headers expose Renderer-owned
+values and opaque retained resources, not RHI contracts (#273/#275).
+Explicit raw extensions use `renderer::specialist`, specialist headers and
+`renderer/rhi_interop.hpp`. GUI-owned setup and Renderer-level viewport
+integration follow under #276/#277; Engine #272 remains design-only.
+
 RHI 1 uses move-only RAII objects over opaque generation-checked handles and a
 backend dispatch table. It separates portable typed results from optional
 backend diagnostics, owns explicit resource/synchronization/presentation

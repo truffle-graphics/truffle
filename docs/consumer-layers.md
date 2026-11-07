@@ -70,3 +70,42 @@ NSWindow/NSView conversion. Existing XCB and unsupported-kind conventions remain
 Verification is limited to affected incremental compilation/focused contracts.
 Native execution, multi-window integration, uncompiled platforms, full suites
 and package/install/hosted matrices are owner-run, not inferred from API work.
+
+## Renderer contracts (#275)
+
+Ordinary Renderer headers contain independent graphics values and retained
+resources: `Device`, `Buffer`/`BufferSlice`, `Mesh`, `SampledTexture`/`Texture`,
+`DepthTarget`, `ProgramLayout`/`ResourceBindings`, `ShaderPackage`,
+`PipelineCache`, `FrameGraph`, `Renderer`, `FramePacer`, `StreamBuffer` and
+`Presentation`. They neither include nor name RHI; the architecture guard
+enforces this surface. Normal passes own texture references and batches own
+buffer/binding references. The graph retains those wrappers through recording.
+Streamed slots still require the pacing wait; never resubmit a stale graph
+after reusing its slot. Program publication retains packages/layouts and
+Renderer retains its cache state.
+
+Load prepared `.tsp` bytes with `renderer::ShaderPackage::load`, describe
+vertex/graphics state with Renderer values and register a `ProgramDesc`.
+The actual device selects the prepared target; absent/incompatible variants
+fail rather than triggering runtime compilation or changing backend.
+Application-defined mesh/buffer packing remains unchanged. `Mesh::batch`
+returns a checked retained batch. `TextureTransition` expresses attachment/
+sample use instead of exposing raw barriers. GUI/scene passes can inhabit
+the same `FrameGraph`.
+
+Native owned setup uses `Device::create` or `create_native_presentation` and
+links the optional `Truffle::RendererPresentation`. Borrowed setup uses
+`Presentation::create(Device&, desc)`. Specialists can explicitly include
+`renderer/rhi_interop.hpp` to import an existing raw device or resource and
+access the native implementations under `renderer::specialist` and
+`renderer/specialist/`. Borrowed raw objects stay alive and unmoved; imports
+without a supplied lifetime owner do not acquire ownership. These are opt-in
+extension contracts, not compatibility shims.
+
+`examples/renderer_consumer/frame.hpp` demonstrates a normal window frame.
+Existing explicit-native examples and readback proofs now name specialist
+contracts. The focused Null contract covers retained mesh/buffer/texture/
+bindings, program publication, semantic transitions, pacing, offscreen
+rendering, borrowed identity and owned storage. It is not GPU evidence.
+The optional EnCom UploadRing adapter and raw diagnostics remain specialist
+integration paths; they are not prerequisites for normal Renderer consumption.

@@ -1,6 +1,6 @@
 #include "rhi_test_utils.hpp"
 #include "test_support.hpp"
-#include "truffle/renderer/renderer.hpp"
+#include "truffle/renderer/specialist/renderer.hpp"
 
 #include <array>
 #include <cassert>
@@ -31,9 +31,9 @@ truffle::rhi::ShaderPackage make_package() {
     return std::move(result).value();
 }
 
-truffle::renderer::ProgramDesc program_desc(const truffle::rhi::ShaderPackage& package) {
+truffle::renderer::specialist::ProgramDesc program_desc(const truffle::rhi::ShaderPackage& package) {
     using namespace truffle;
-    renderer::ProgramDesc desc;
+    renderer::specialist::ProgramDesc desc;
     desc.vertex = {&package, rhi::ShaderTarget::metal_source, "vertex_main",
                    rhi::ShaderStage::vertex, "configured"};
     desc.fragment = {&package, rhi::ShaderTarget::metal_source, "fragment_main",
@@ -46,7 +46,7 @@ truffle::renderer::ProgramDesc program_desc(const truffle::rhi::ShaderPackage& p
 int main() {
     using namespace truffle;
     auto context = tests::make_null_context();
-    renderer::PipelineCache cache(context.device);
+    renderer::specialist::PipelineCache cache(context.device);
     auto missing = cache.get_or_create({}, 7);
     TFL_CHECK(!missing.ok());
     TFL_CHECK(missing.status().code == base::StatusCode::invalid_argument);
@@ -57,8 +57,8 @@ int main() {
     }
     const auto first = cache.get_or_create({}, 7).value()->id();
     const auto created = context.instance.stats().pipelinesCreated;
-    renderer::InstanceLayout metadata;
-    metadata.channels.push_back({renderer::ChannelKind::Color, 3, 0, 16});
+    renderer::specialist::InstanceLayout metadata;
+    metadata.channels.push_back({renderer::specialist::ChannelKind::Color, 3, 0, 16});
     TFL_CHECK(cache.get_or_create(metadata, 7).value()->id() == first);
     TFL_CHECK(context.instance.stats().pipelinesCreated == created);
     TFL_CHECK(!cache.get_or_create({}, 7, 42).ok());
@@ -123,7 +123,7 @@ int main() {
     auto candidate = cache.stage_program(desc);
     TFL_CHECK(candidate.ok());
     TFL_CHECK(cache.get_or_create({}, 7).value()->id() == first);
-    renderer::PipelineCache otherCache(context.device);
+    renderer::specialist::PipelineCache otherCache(context.device);
     TFL_CHECK(!otherCache.commit_program(7, std::move(candidate).value()).ok());
     TFL_CHECK(cache.commit_program(7, std::move(candidate).value()).ok());
     const auto second = cache.get_or_create({}, 7).value()->id();
@@ -132,7 +132,7 @@ int main() {
     TFL_CHECK(cache.register_program(7, desc, 42).ok());
     TFL_CHECK(cache.get_or_create({}, 7, 42).value()->id() != second);
 
-    auto wrongStages = renderer::ShaderBinding{
+    auto wrongStages = renderer::specialist::ShaderBinding{
         tests::make_shader(context.device, rhi::ShaderStage::compute),
         tests::make_shader(context.device, rhi::ShaderStage::fragment)};
     TFL_CHECK(!cache.register_shaders(7, std::move(wrongStages), {}).ok());
@@ -152,7 +152,7 @@ int main() {
     TFL_CHECK(pipelineLayoutResult.ok());
     auto pipelineLayout = std::move(pipelineLayoutResult).value();
     const auto shaders = [&](std::size_t minimumSize = 16) {
-        return renderer::ShaderBinding{
+        return renderer::specialist::ShaderBinding{
             tests::make_shader(context.device, rhi::ShaderStage::vertex),
             tests::make_shader(context.device, rhi::ShaderStage::fragment,
                                {{.name = "color", .stage = rhi::ShaderStage::fragment,
@@ -187,14 +187,14 @@ int main() {
     TFL_CHECK(groupResult.ok());
     auto group = std::move(groupResult).value();
 
-    renderer::Renderer renderer(context.device, &cache);
-    renderer::RenderBatch batch;
+    renderer::specialist::Renderer renderer(context.device, &cache);
+    renderer::specialist::RenderBatch batch;
     batch.material = 8;
     batch.instanceCount = 1;
     const auto graph = [&]() {
-        renderer::FrameGraph result;
-        result.add_node(std::make_unique<renderer::RenderPassNode>(
-            rhi::RenderPassDesc{}, std::vector<renderer::RenderBatch>{batch}));
+        renderer::specialist::FrameGraph result;
+        result.add_node(std::make_unique<renderer::specialist::RenderPassNode>(
+            rhi::RenderPassDesc{}, std::vector<renderer::specialist::RenderBatch>{batch}));
         return result;
     };
     TFL_CHECK(!renderer.render(graph()).ok());

@@ -1,8 +1,8 @@
 #include "rhi_test_utils.hpp"
 #include "test_support.hpp"
-#include "truffle/renderer/frame_stream.hpp"
-#include "truffle/renderer/renderer.hpp"
-#include "truffle/renderer/texture.hpp"
+#include "truffle/renderer/specialist/frame_stream.hpp"
+#include "truffle/renderer/specialist/renderer.hpp"
+#include "truffle/renderer/specialist/texture.hpp"
 
 #include <array>
 #include <vector>
@@ -12,14 +12,14 @@ namespace {
 using namespace truffle;
 
 // Shaderless Null pipeline whose only property under test is dynamic scissor.
-class ScissorCache final : public renderer::IPipelineCache {
+class ScissorCache final : public renderer::specialist::IPipelineCache {
 public:
     ScissorCache(rhi::Device& device, bool dynamic) : device_(&device), dynamic_(dynamic) {}
     base::Status prepare_render_pass(const rhi::RenderPassDesc&) override {
         return base::Status::success();
     }
-    base::Result<rhi::Pipeline*> get_or_create(const renderer::InstanceLayout&,
-                                               renderer::MaterialId, std::size_t) override {
+    base::Result<rhi::Pipeline*> get_or_create(const renderer::specialist::InstanceLayout&,
+                                               renderer::specialist::MaterialId, std::size_t) override {
         if (!pipeline_.valid()) {
             rhi::PipelineDesc desc;
             desc.colorTargets.push_back({.format = rhi::TextureFormat::rgba8_unorm});
@@ -32,7 +32,7 @@ public:
         }
         return &pipeline_;
     }
-    void invalidate(renderer::MaterialId) override {}
+    void invalidate(renderer::specialist::MaterialId) override {}
     void invalidate_all() override { pipeline_ = {}; }
 
 private:
@@ -41,11 +41,11 @@ private:
     rhi::Pipeline pipeline_;
 };
 
-renderer::FrameGraph pass_with(rhi::Texture& target, std::vector<renderer::RenderBatch> batches) {
-    renderer::FrameGraph graph;
+renderer::specialist::FrameGraph pass_with(rhi::Texture& target, std::vector<renderer::specialist::RenderBatch> batches) {
+    renderer::specialist::FrameGraph graph;
     rhi::RenderPassDesc pass{.extent = {16, 8}};
     pass.colorAttachments.push_back({.texture = &target});
-    graph.add_node(std::make_unique<renderer::RenderPassNode>(pass, std::move(batches)));
+    graph.add_node(std::make_unique<renderer::specialist::RenderPassNode>(pass, std::move(batches)));
     return graph;
 }
 
@@ -65,16 +65,16 @@ int main() {
     TFL_CHECK(target.ok());
 
     // Clip rectangles: intersected with the pass, empty ones skip the draw.
-    renderer::RenderBatch inside;
+    renderer::specialist::RenderBatch inside;
     inside.instanceCount = 1;
     inside.scissor = rhi::ScissorRect{-4, 2, 8, 100};
-    renderer::RenderBatch outside = inside;
+    renderer::specialist::RenderBatch outside = inside;
     outside.scissor = rhi::ScissorRect{16, 0, 4, 4};
-    renderer::RenderBatch unclipped;
+    renderer::specialist::RenderBatch unclipped;
     unclipped.instanceCount = 1;
     {
         ScissorCache cache(device, true);
-        renderer::Renderer renderer(device, &cache);
+        renderer::specialist::Renderer renderer(device, &cache);
         auto fence = device.create_fence();
         TFL_CHECK(fence.ok());
         const auto graph = pass_with(target.value(), {inside, outside, unclipped});
@@ -89,7 +89,7 @@ int main() {
     }
     {
         ScissorCache cache(device, false);
-        renderer::Renderer renderer(device, &cache);
+        renderer::specialist::Renderer renderer(device, &cache);
         TFL_CHECK(renderer.render(pass_with(target.value(), {unclipped})).ok());
         TFL_CHECK(!renderer.render(pass_with(target.value(), {inside})).ok());
     }
@@ -97,9 +97,9 @@ int main() {
     // Pass transitions: recorded before the pass; a missing texture is rejected.
     {
         ScissorCache cache(device, true);
-        renderer::Renderer renderer(device, &cache);
+        renderer::specialist::Renderer renderer(device, &cache);
         auto graph = pass_with(target.value(), {unclipped});
-        auto* pass = static_cast<renderer::RenderPassNode*>(graph.nodes().front().get());
+        auto* pass = static_cast<renderer::specialist::RenderPassNode*>(graph.nodes().front().get());
         pass->transition_before({.texture = &target.value(),
                                  .oldLayout = rhi::TextureLayout::undefined,
                                  .newLayout = rhi::TextureLayout::color_attachment});
@@ -111,15 +111,15 @@ int main() {
     }
 
     // Frame pacing over one fence.
-    TFL_CHECK(!renderer::FramePacer::create(device, 0).ok());
-    auto pacerResult = renderer::FramePacer::create(device, 2);
+    TFL_CHECK(!renderer::specialist::FramePacer::create(device, 0).ok());
+    auto pacerResult = renderer::specialist::FramePacer::create(device, 2);
     TFL_CHECK(pacerResult.ok());
     auto pacer = std::move(pacerResult).value();
     TFL_CHECK(pacer.signal().fence == nullptr);
     TFL_CHECK(pacer.wait_idle().ok());
     {
         ScissorCache cache(device, true);
-        renderer::Renderer renderer(device, &cache);
+        renderer::specialist::Renderer renderer(device, &cache);
         const auto graph = pass_with(target.value(), {unclipped});
         for (std::uint32_t frame = 0; frame < 5; ++frame) {
             auto slot = pacer.begin_frame();
@@ -137,8 +137,8 @@ int main() {
     }
 
     // Streamed bytes: aligned, per-slot, growing without invalidating views.
-    TFL_CHECK(!renderer::StreamBuffer::create(device, {.initialBytes = 0}).ok());
-    auto streamResult = renderer::StreamBuffer::create(device, {.initialBytes = 32});
+    TFL_CHECK(!renderer::specialist::StreamBuffer::create(device, {.initialBytes = 0}).ok());
+    auto streamResult = renderer::specialist::StreamBuffer::create(device, {.initialBytes = 32});
     TFL_CHECK(streamResult.ok());
     auto stream = std::move(streamResult).value();
     const auto first = bytes(20, std::byte{1});
@@ -170,31 +170,31 @@ int main() {
 
     // Sampled textures: validation of formats, regions and byte layouts.
     const auto pixels = bytes(4 * 4 * 4, std::byte{0x7f});
-    TFL_CHECK(!renderer::SampledTexture::upload(device, {.extent = {0, 4}, .bytes = pixels}).ok());
-    TFL_CHECK(!renderer::SampledTexture::upload(
+    TFL_CHECK(!renderer::specialist::SampledTexture::upload(device, {.extent = {0, 4}, .bytes = pixels}).ok());
+    TFL_CHECK(!renderer::specialist::SampledTexture::upload(
         device, {.extent = {4, 4}, .format = rhi::TextureFormat::bc1_rgba_unorm, .bytes = pixels}).ok());
-    TFL_CHECK(!renderer::SampledTexture::upload(
+    TFL_CHECK(!renderer::specialist::SampledTexture::upload(
         device, {.extent = {4, 4}, .bytes = std::span(pixels).first(60)}).ok());
-    TFL_CHECK(!renderer::SampledTexture::upload(
+    TFL_CHECK(!renderer::specialist::SampledTexture::upload(
         device, {.extent = {4, 4}, .bytes = pixels, .bytesPerRow = 8}).ok());
-    auto texture = renderer::SampledTexture::upload(device, {.extent = {4, 4}, .bytes = pixels});
+    auto texture = renderer::specialist::SampledTexture::upload(device, {.extent = {4, 4}, .bytes = pixels});
     TFL_CHECK(texture.ok());
     TFL_CHECK(texture.value().view().valid());
     TFL_CHECK(texture.value().update(device, {2, 2, 0}, {2, 2}, pixels).ok());
     TFL_CHECK(!texture.value().update(device, {3, 0, 0}, {2, 1}, pixels).ok());
     TFL_CHECK(!texture.value().update(device, {0, 0, 1}, {1, 1}, pixels).ok());
-    renderer::SampledTexture empty;
+    renderer::specialist::SampledTexture empty;
     TFL_CHECK(!empty.update(device, {}, {1, 1}, pixels).ok());
     const auto atlas = bytes(3 * 2, std::byte{9});
-    TFL_CHECK(renderer::SampledTexture::upload(
+    TFL_CHECK(renderer::specialist::SampledTexture::upload(
         device, {.extent = {3, 2}, .format = rhi::TextureFormat::r8_unorm, .bytes = atlas}).ok());
 
     // Texture bindings: one texture+sampler group usable as a batch bind group.
-    auto bindingLayout = renderer::TextureBindingLayout::create(device);
+    auto bindingLayout = renderer::specialist::TextureBindingLayout::create(device);
     TFL_CHECK(bindingLayout.ok());
     TFL_CHECK(bindingLayout.value().group_layout().valid());
     TFL_CHECK(bindingLayout.value().pipeline_layout().valid());
-    auto binding = renderer::TextureBinding::create(device, bindingLayout.value(),
+    auto binding = renderer::specialist::TextureBinding::create(device, bindingLayout.value(),
                                                     texture.value(),
                                                     {.minFilter = rhi::Filter::linear});
     TFL_CHECK(binding.ok());
@@ -203,8 +203,8 @@ int main() {
     TFL_CHECK(group.group == 2 && group.bindings == &moved.group());
     TFL_CHECK(moved.group().valid() &&
                   moved.group().layout_id() == bindingLayout.value().group_layout().id());
-    TFL_CHECK(!renderer::TextureBinding::create(device, bindingLayout.value(), empty).ok());
-    renderer::TextureBindingLayout missing;
-    TFL_CHECK(!renderer::TextureBinding::create(device, missing, texture.value()).ok());
+    TFL_CHECK(!renderer::specialist::TextureBinding::create(device, bindingLayout.value(), empty).ok());
+    renderer::specialist::TextureBindingLayout missing;
+    TFL_CHECK(!renderer::specialist::TextureBinding::create(device, missing, texture.value()).ok());
     return 0;
 }

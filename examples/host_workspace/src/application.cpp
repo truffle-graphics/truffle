@@ -2,7 +2,7 @@
 
 #include "host_window.hpp"
 
-#include "truffle/renderer/renderer.hpp"
+#include "truffle/renderer/specialist/renderer.hpp"
 #include "truffle/rhi/null_backend.hpp"
 #include "truffle/encom_renderer/encom_render_adapter.hpp"
 
@@ -116,7 +116,7 @@ public:
 
         workspace_->build_scene(world_);
         systems_ = workspace_->systems();
-        renderer_ = std::make_unique<renderer::Renderer>(device_);
+        renderer_ = std::make_unique<renderer::specialist::Renderer>(device_);
         extent_ = extent;
         return base::Status::success();
     }
@@ -140,9 +140,9 @@ public:
                 base::StatusCode::invalid_state,
                 "workspace extracted frame shape changed");
         }
-        renderer::FrameGraph graph;
-        graph.add_node(std::make_unique<renderer::RenderPassNode>(
-            true, std::vector<renderer::RenderBatch>(frame.meshBatches.begin(),
+        renderer::specialist::FrameGraph graph;
+        graph.add_node(std::make_unique<renderer::specialist::RenderPassNode>(
+            true, std::vector<renderer::specialist::RenderBatch>(frame.meshBatches.begin(),
                                                    frame.meshBatches.end())));
         if (auto status = renderer_->render(graph, &swapchain_); !status.ok()) {
             return status;
@@ -187,7 +187,7 @@ private:
     std::vector<encom::World::System> systems_;
     encom_renderer::EnComRenderAdapter sceneAdapter_;
     rhi::UploadRing ring_;
-    std::unique_ptr<renderer::Renderer> renderer_;
+    std::unique_ptr<renderer::specialist::Renderer> renderer_;
     rhi::Extent2D extent_;
     std::uint32_t renderedFrames_ = 0;
 };

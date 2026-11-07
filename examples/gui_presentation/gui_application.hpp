@@ -1,7 +1,7 @@
 #pragma once
 
 #include "truffle/gui/painter.hpp"
-#include "truffle/renderer/presentation.hpp"
+#include "truffle/renderer/specialist/presentation.hpp"
 
 #include <memory>
 
@@ -13,7 +13,7 @@ class GuiApplication {
 public:
   [[nodiscard]] static base::Result<std::unique_ptr<GuiApplication>>
   create(renderer::WindowHandle native, rhi::Extent2D pixels, float scale = 1.0F) {
-    auto presentation = renderer::create_native_presentation({
+    auto presentation = renderer::specialist::create_native_presentation({
         .native = native,
         .extent = pixels,
     });
@@ -40,9 +40,9 @@ public:
 
   [[nodiscard]] gui::Context &gui_context() noexcept { return context_; }
   [[nodiscard]] gui::Painter &gui_painter() noexcept { return painter_; }
-  [[nodiscard]] renderer::Renderer &gpu_renderer() noexcept { return renderer_; }
-  [[nodiscard]] renderer::PipelineCache &pipeline_cache() noexcept { return programs_; }
-  [[nodiscard]] renderer::Presentation &presentation() noexcept { return presentation_; }
+  [[nodiscard]] renderer::specialist::Renderer &gpu_renderer() noexcept { return renderer_; }
+  [[nodiscard]] renderer::specialist::PipelineCache &pipeline_cache() noexcept { return programs_; }
+  [[nodiscard]] renderer::specialist::Presentation &presentation() noexcept { return presentation_; }
   [[nodiscard]] base::Status resize(rhi::Extent2D pixels, float scale = 1.0F) {
     // Context validates the scale, including infinity/NaN and zero.
     auto status = context_.set_viewport({static_cast<float>(pixels.width) / scale,
@@ -73,10 +73,10 @@ public:
     if (!batches.ok()) {
       return fail(batches.status());
     }
-    renderer::FrameGraph graph;
+    renderer::specialist::FrameGraph graph;
     rhi::RenderPassDesc pass;
     pass.colorAttachments.push_back({.clear = clear});
-    graph.add_node(std::make_unique<renderer::RenderPassNode>(
+    graph.add_node(std::make_unique<renderer::specialist::RenderPassNode>(
         pass, std::move(batches).value(), true));
     auto status = presentation_.render(renderer_, graph);
     if (!status.ok()) {
@@ -88,13 +88,13 @@ public:
   [[nodiscard]] base::Status wait_idle() { return presentation_.wait_idle(); }
 
 private:
-  explicit GuiApplication(renderer::Presentation presentation)
+  explicit GuiApplication(renderer::specialist::Presentation presentation)
       : presentation_(std::move(presentation)), programs_(presentation_.device()),
         renderer_(presentation_.device(), &programs_) {}
 
-  renderer::Presentation presentation_; // destroyed after its GPU consumers
-  renderer::PipelineCache programs_;
-  renderer::Renderer renderer_;
+  renderer::specialist::Presentation presentation_; // destroyed after its GPU consumers
+  renderer::specialist::PipelineCache programs_;
+  renderer::specialist::Renderer renderer_;
   gui::Painter painter_; // outlives Context-owned viewport registrations
   gui::Context context_;
 };

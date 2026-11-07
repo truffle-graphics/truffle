@@ -3,9 +3,9 @@
 #include "truffle/base/status.hpp"
 #include "truffle/gui/context.hpp"
 #include "truffle/gui/draw.hpp"
-#include "truffle/renderer/pipeline_cache.hpp"
-#include "truffle/renderer/render_batch.hpp"
-#include "truffle/renderer/texture.hpp"
+#include "truffle/renderer/specialist/pipeline_cache.hpp"
+#include "truffle/renderer/specialist/render_batch.hpp"
+#include "truffle/renderer/specialist/texture.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -15,7 +15,7 @@ namespace truffle::gui {
 
 struct PainterDesc {
     // Program slot registered in the host's PipelineCache.
-    renderer::MaterialId material = 0x7467'7569'0000'0001ULL;
+    renderer::specialist::MaterialId material = 0x7467'7569'0000'0001ULL;
     std::size_t variant_hash = 0;
     rhi::TextureFormat color_format = rhi::TextureFormat::rgba8_unorm;
     std::uint32_t frames_in_flight = 2;
@@ -44,18 +44,18 @@ public:
 
     // Registers the GUI program in `programs` under `desc.material`.
     [[nodiscard]] static base::Result<Painter> create(rhi::Device& device,
-                                                      renderer::PipelineCache& programs,
+                                                      renderer::specialist::PipelineCache& programs,
                                                       const PainterDesc& desc = {});
 
     // Makes `texture` available to decorations. The texture is borrowed: keep
     // it alive and unmoved until it is removed or the painter is destroyed.
-    [[nodiscard]] base::Result<TextureId> add_texture(renderer::SampledTexture& texture,
+    [[nodiscard]] base::Result<TextureId> add_texture(renderer::specialist::SampledTexture& texture,
                                                       const rhi::SamplerDesc& sampler = {});
     [[nodiscard]] base::Status remove_texture(TextureId texture);
     // Rebind a stable ID (retained shapes do not change). Previously recorded
     // batches must already have been rendered/discarded. The old texture may
     // then be retired; RHI retains native resources of submitted commands.
-    [[nodiscard]] base::Status replace_texture(TextureId id, renderer::SampledTexture& texture,
+    [[nodiscard]] base::Status replace_texture(TextureId id, renderer::specialist::SampledTexture& texture,
                                                 const rhi::SamplerDesc& sampler = {});
     [[nodiscard]] bool valid() const noexcept;
     [[nodiscard]] rhi::Device& device() const noexcept; // requires valid()
@@ -65,7 +65,7 @@ public:
     // `slot` (from FramePacer::begin_frame). Batches stay valid until the slot
     // begins again. Logical units map to `target` pixels through the
     // context's scale. Fails if a shape uses an unregistered texture.
-    [[nodiscard]] base::Result<std::vector<renderer::RenderBatch>> record(
+    [[nodiscard]] base::Result<std::vector<renderer::specialist::RenderBatch>> record(
         const Context& context, std::uint32_t slot, rhi::Extent2D target);
 
     [[nodiscard]] const PaintStats& last_stats() const noexcept;

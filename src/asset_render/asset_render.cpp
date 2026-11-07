@@ -67,11 +67,11 @@ struct LocatedAttribute {
     return std::nullopt;
 }
 
-[[nodiscard]] base::Result<renderer::ChannelKind> default_channel_for(
+[[nodiscard]] base::Result<renderer::specialist::ChannelKind> default_channel_for(
     const assets::AttributeDesc& attribute) {
     using assets::AttributeFormat;
     using assets::AttributeSemantic;
-    using renderer::ChannelKind;
+    using renderer::specialist::ChannelKind;
 
     switch (attribute.semantic) {
     case AttributeSemantic::Transform:
@@ -135,7 +135,7 @@ struct LocatedAttribute {
                    "AssetRender: unsupported attribute semantic");
 }
 
-[[nodiscard]] base::Result<renderer::ChannelKind> channel_for(
+[[nodiscard]] base::Result<renderer::specialist::ChannelKind> channel_for(
     const assets::AttributeDesc& attribute,
     const RenderBatchPlanOptions& options) {
     if (const auto* mapping = find_mapping(options, attribute.semantic);
@@ -202,7 +202,7 @@ struct LocatedAttribute {
     }
 
     const auto binding = options.baseBinding + located.attribute->stream;
-    if (binding >= renderer::RenderBatch::kMaxBindings ||
+    if (binding >= renderer::specialist::RenderBatch::kMaxBindings ||
         binding < options.baseBinding) {
         return failure(base::StatusCode::invalid_argument,
                        "AssetRender: channel binding exceeds RenderBatch binding limit");
@@ -213,7 +213,7 @@ struct LocatedAttribute {
         return bindingStatus;
     }
 
-    renderer::ChannelDesc channel;
+    renderer::specialist::ChannelDesc channel;
     channel.kind = channelResult.value();
     channel.binding = binding;
     channel.offset = static_cast<std::uint32_t>(located.attribute->offset);
@@ -296,8 +296,8 @@ base::Result<RenderBatchPlan> plan_render_batch(
     plan.material = material.id;
     plan.batch.layout.bindingModel = options.bindingModel;
     plan.batch.vertexCount = mesh.vertexCount;
-    plan.batch.kind = mesh.indexCount == 0 ? renderer::DrawKind::Direct
-                                           : renderer::DrawKind::Indexed;
+    plan.batch.kind = mesh.indexCount == 0 ? renderer::specialist::DrawKind::Direct
+                                           : renderer::specialist::DrawKind::Indexed;
     plan.batch.material = material.id.value;
 
     for (const auto semantic : assets::collect_required_attributes(material)) {

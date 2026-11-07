@@ -5,7 +5,29 @@ This is the rolling execution handoff, not an implementation transcript.
 issues/Project own accepted work. Earlier phase details remain in their PRs,
 the support matrix and Git history.
 
-## Latest: consumer layer cutover (#273), host values (#274)
+## Latest: RHI-free Renderer contracts (#275)
+
+The second consumer-layer phase replaces normal Renderer resource/frame
+headers with independent values and opaque retained implementations. Existing
+raw contracts move to `renderer::specialist`/`renderer/specialist/`; RHI import,
+native access and externally owned resources require `renderer/rhi_interop.hpp`.
+The cutover updates every in-repo C++ caller, including native proofs and optional
+integrations. Normal mesh/buffer/texture/bindings, prepared program/pipeline,
+graph/Renderer/pacing and Presentation APIs require no RHI names or includes.
+Native creation remains in optional RendererPresentation, not core Renderer.
+See `docs/consumer-layers.md` and `examples/renderer_consumer/frame.hpp`.
+
+Resource/pass wrappers are retained through graph recording; streamed slots
+still obey pacing and never authorize stale-graph resubmission. Program
+publication retains package/layout ownership and Renderer retains cache state.
+The strict incremental Renderer contract compiled, passed on Null and the
+Vulkan native factory compiled. No native execution, full test/build suite,
+Metal compilation, dependency installs or package/hosted matrix was run.
+GUI-only Application ownership and Renderer-level viewport composition remain
+the next separately committed issues #276/#277. Studio and Engine stay excluded.
+This is an immediate breaking cutover, with no shims or version bump.
+
+## Earlier: consumer layer cutover (#273), host values (#274)
 
 The approved GUI/Renderer/RHI consumption model is audited in
 `docs/consumer-layers.md`. Structural children #274-#277 are in the delivery

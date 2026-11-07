@@ -10,15 +10,15 @@ namespace {
 constexpr std::size_t   kTransformBytes  = 64; // 16 floats × 4 bytes
 constexpr std::uint32_t kTransformStride = 64;
 
-renderer::InstanceLayout make_transform_layout() {
-    renderer::InstanceLayout layout;
-    layout.channels.push_back(renderer::ChannelDesc{
-        .kind    = renderer::ChannelKind::Transform,
+renderer::specialist::InstanceLayout make_transform_layout() {
+    renderer::specialist::InstanceLayout layout;
+    layout.channels.push_back(renderer::specialist::ChannelDesc{
+        .kind    = renderer::specialist::ChannelKind::Transform,
         .binding = 0,
         .offset  = 0,
         .stride  = kTransformStride,
     });
-    layout.bindingModel = renderer::BindingModel::Separate;
+    layout.bindingModel = renderer::specialist::BindingModel::Separate;
     return layout;
 }
 
@@ -71,13 +71,13 @@ EnComRenderFrame EnComRenderAdapter::extract(encom::World& world,
                     dst += 16;
                 });
 
-            renderer::RenderBatch batch;
+            renderer::specialist::RenderBatch batch;
             batch.layout        = make_transform_layout();
             batch.instanceCount = meshCount;
             batch.vertexCount   = firstVertexCount;
             batch.bindings[0]   = {alloc.buffer, alloc.offset,
                                    meshCount * kTransformBytes};
-            batch.kind          = renderer::DrawKind::Direct;
+            batch.kind          = renderer::specialist::DrawKind::Direct;
 
             frame.meshBatches.push_back(std::move(batch));
         }

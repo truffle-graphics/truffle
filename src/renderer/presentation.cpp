@@ -1,4 +1,4 @@
-#include "truffle/renderer/presentation.hpp"
+#include "truffle/renderer/specialist/presentation.hpp"
 #include "window_rhi.hpp"
 
 #include "truffle/rhi/validation.hpp"
@@ -7,7 +7,7 @@
 #include <cassert>
 #include <utility>
 
-namespace truffle::renderer {
+namespace truffle::renderer::specialist {
 namespace {
 
 base::Status invalid(base::StatusCode code, const char *message) {
@@ -338,4 +338,4 @@ base::Status Presentation::wait_idle(std::chrono::nanoseconds timeout) {
   return state_->pacer.wait_idle(timeout);
 }
 
-} // namespace truffle::renderer
+} // namespace truffle::renderer::specialist

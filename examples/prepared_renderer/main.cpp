@@ -1,4 +1,4 @@
-#include "truffle/renderer/renderer.hpp"
+#include "truffle/renderer/specialist/renderer.hpp"
 #if defined(TFL_EXAMPLE_METAL)
 #include "truffle/rhi/metal_backend.hpp"
 #endif
@@ -71,15 +71,15 @@ int main(int argc, char** argv) {
         auto instance = check(create_instance(targetKind));
         auto adapter = check(instance.adapter(0));
         auto device = check(adapter.request_device());
-        renderer::PipelineCache programs(device);
-        renderer::Renderer renderer(device, &programs);
-        constexpr renderer::MaterialId material = 1;
+        renderer::specialist::PipelineCache programs(device);
+        renderer::specialist::Renderer renderer(device, &programs);
+        constexpr renderer::specialist::MaterialId material = 1;
         const auto slot = static_cast<std::size_t>(std::stoull(argv[6]));
         {
             auto vertex = load_package(argv[2]);
             auto fragment = load_package(argv[4]);
             const std::string permutation = argc == 8 ? argv[7] : "";
-            renderer::ProgramDesc desc;
+            renderer::specialist::ProgramDesc desc;
             desc.vertex = {&vertex, targetKind, argv[3], rhi::ShaderStage::vertex, permutation};
             desc.fragment = {&fragment, targetKind, argv[5], rhi::ShaderStage::fragment, permutation};
             desc.pipeline.colorTargets = {{.format = rhi::TextureFormat::rgba8_unorm}};
@@ -106,15 +106,15 @@ int main(int argc, char** argv) {
         const std::array<rhi::CommandList*, 1> lists{&list};
         check(queue.submit(lists));
 
-        renderer::RenderBatch batch;
+        renderer::specialist::RenderBatch batch;
         batch.material = material;
         batch.variantHash = slot;
         batch.instanceCount = 1;
-        renderer::FrameGraph graph;
-        graph.add_node(std::make_unique<renderer::RenderPassNode>(
+        renderer::specialist::FrameGraph graph;
+        graph.add_node(std::make_unique<renderer::specialist::RenderPassNode>(
             rhi::RenderPassDesc{
                 .extent = {16, 16}, .colorAttachments = {{.texture = &target}}},
-            std::vector<renderer::RenderBatch>{batch}));
+            std::vector<renderer::specialist::RenderBatch>{batch}));
         check(renderer.render(graph));
         std::cout << "Rendered " << renderer.last_frame_stats().renderBatchesExecuted
                   << " prepared TSP batch after destroying caller packages\n";

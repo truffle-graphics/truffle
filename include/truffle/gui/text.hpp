@@ -3,7 +3,7 @@
 #include "truffle/base/handle.hpp"
 #include "truffle/base/status.hpp"
 #include "truffle/gui/shapes.hpp"
-#include "truffle/renderer/texture.hpp"
+#include "truffle/renderer/specialist/texture.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -126,7 +126,7 @@ public:
 
     // The glyph atlas to register with a Painter. Fails with `invalid_state`
     // for a default-constructed or moved-from engine.
-    [[nodiscard]] base::Result<std::reference_wrapper<renderer::SampledTexture>>
+    [[nodiscard]] base::Result<std::reference_wrapper<renderer::specialist::SampledTexture>>
     atlas_texture() noexcept;
     [[nodiscard]] const TextStats& last_stats() const noexcept;
 

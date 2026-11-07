@@ -1,8 +1,8 @@
-#include "truffle/renderer/frame_stream.hpp"
+#include "truffle/renderer/specialist/frame_stream.hpp"
 
 #include <algorithm>
 
-namespace truffle::renderer {
+namespace truffle::renderer::specialist {
 namespace {
 
 base::Status invalid(base::StatusCode code, const char* message) {
@@ -133,4 +133,4 @@ base::Result<BufferView> StreamBuffer::write(std::span<const std::byte> bytes,
     return BufferView{buffer, offset, bytes.size()};
 }
 
-} // namespace truffle::renderer
+} // namespace truffle::renderer::specialist

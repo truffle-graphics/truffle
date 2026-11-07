@@ -1,8 +1,8 @@
-#include "truffle/renderer/depth_target.hpp"
+#include "truffle/renderer/specialist/depth_target.hpp"
 
 #include <array>
 
-namespace truffle::renderer {
+namespace truffle::renderer::specialist {
 
 base::Status DepthTarget::resize(rhi::Extent2D extent, rhi::TextureFormat format,
                                  std::uint32_t samples) {
@@ -75,4 +75,4 @@ base::Status DepthTarget::resize(rhi::Extent2D extent, rhi::TextureFormat format
     return base::Status::success();
 }
 
-} // namespace truffle::renderer
+} // namespace truffle::renderer::specialist

@@ -11,11 +11,11 @@
 #include "truffle/gui/dock/dock.hpp"
 #include "truffle/gui/widgets.hpp"
 #include "../gui_text_fixture.hpp"
-#include "truffle/renderer/data_layout.hpp"
-#include "truffle/renderer/depth_target.hpp"
-#include "truffle/renderer/frame_stream.hpp"
-#include "truffle/renderer/mesh.hpp"
-#include "truffle/renderer/texture.hpp"
+#include "truffle/renderer/specialist/data_layout.hpp"
+#include "truffle/renderer/specialist/depth_target.hpp"
+#include "truffle/renderer/specialist/frame_stream.hpp"
+#include "truffle/renderer/specialist/mesh.hpp"
+#include "truffle/renderer/specialist/texture.hpp"
 #include "truffle/renderer/view.hpp"
 
 #include <array>
@@ -66,7 +66,7 @@ int main() {
     truffle::asset_render::RenderBatchPlanOptions planning;
     planning.channelMappings.push_back({
         truffle::assets::AttributeSemantic::Position,
-        truffle::renderer::ChannelKind::CustomFloat4,
+        truffle::renderer::specialist::ChannelKind::CustomFloat4,
     });
     auto plannedBatch =
         truffle::asset_render::plan_render_batch(mesh, material, planning);
@@ -103,7 +103,7 @@ int main() {
         return 1;
     }
 
-    static_assert(!std::is_copy_constructible_v<truffle::renderer::Mesh>);
+    static_assert(!std::is_copy_constructible_v<truffle::renderer::specialist::Mesh>);
     auto projection = truffle::renderer::perspective(1, 1, .1F, 10);
     if (!projection.ok()) {
         std::cerr << projection.status().message << '\n';
@@ -111,9 +111,9 @@ int main() {
     }
     const std::array<float, 12> vertices{-1, -1, 0, 1, 3, -1, 0, 1, -1, 3, 0, 1};
     const std::array streams{
-        truffle::renderer::MeshStream{std::as_bytes(std::span{vertices}), 16},
+        truffle::renderer::specialist::MeshStream{std::as_bytes(std::span{vertices}), 16},
     };
-    auto gpuMesh = truffle::renderer::Mesh::upload(device, {
+    auto gpuMesh = truffle::renderer::specialist::Mesh::upload(device, {
         .streams = streams, .vertexCount = 3,
     });
     if (!gpuMesh.ok()) {
@@ -123,19 +123,19 @@ int main() {
     const std::array<truffle::rhi::VertexBufferLayoutDesc, 1> layouts{{
         {.stride = 16, .attributes = {{.location = 0}}},
     }};
-    const auto dataStatus = truffle::renderer::validate_batch_data(
+    const auto dataStatus = truffle::renderer::specialist::validate_batch_data(
         gpuMesh.value().batch(1), layouts);
-    truffle::renderer::DepthTarget depth(device);
+    truffle::renderer::specialist::DepthTarget depth(device);
     const auto depthStatus = depth.resize({16, 16});
     if (!dataStatus.ok() || !depthStatus.ok()) {
         std::cerr << dataStatus.message << ' ' << depthStatus.message << '\n';
         return 1;
     }
 
-    auto pacer = truffle::renderer::FramePacer::create(device);
-    auto streamed = truffle::renderer::StreamBuffer::create(device);
+    auto pacer = truffle::renderer::specialist::FramePacer::create(device);
+    auto streamed = truffle::renderer::specialist::StreamBuffer::create(device);
     const std::array<std::byte, 4> texel{};
-    auto atlas = truffle::renderer::SampledTexture::upload(device, {
+    auto atlas = truffle::renderer::specialist::SampledTexture::upload(device, {
         .extent = {1, 1}, .bytes = texel,
     });
     if (!pacer.ok() || !streamed.ok() || !atlas.ok()) {

@@ -93,7 +93,7 @@ int run(bool smoke) {
     auto swapchain = require(device.create_swapchain(surface, {
         .extent = extent, .format = rhi::TextureFormat::bgra8_unorm,
     }));
-    renderer::DepthTarget depth(device);
+    renderer::specialist::DepthTarget depth(device);
     require(depth.resize(extent));
     minimum_renderer::Scene scene(device, rhi::TextureFormat::bgra8_unorm);
     scene.set_cube();
@@ -151,8 +151,8 @@ int run(bool smoke) {
                 require(renderer::look_at({0, 1, 4}, {0, 0, 0})));
             view.lightDirectionIntensity = {-1, -2, -3, 1};
             scene.set_view(view);
-            renderer::FrameGraph graph;
-            graph.add_node(std::make_unique<renderer::RenderPassNode>(
+            renderer::specialist::FrameGraph graph;
+            graph.add_node(std::make_unique<renderer::specialist::RenderPassNode>(
                 rhi::RenderPassDesc{
                     .colorAttachments = {{.clear = {.03F, .04F, .07F, 1}}},
                     .depthStencilAttachment = {.texture = depth.texture()},

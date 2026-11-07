@@ -1,4 +1,4 @@
-#include "truffle/renderer/source_program.hpp"
+#include "truffle/renderer/specialist/source_program.hpp"
 
 #include <algorithm>
 #include <memory>
@@ -6,7 +6,7 @@
 #include <string>
 #include <utility>
 
-namespace truffle::renderer {
+namespace truffle::renderer::specialist {
 namespace {
 
 base::Status mismatch(std::string message) {
@@ -140,4 +140,4 @@ const shader::Compilation* SourceProgram::published_fragment() const noexcept {
     return published_ ? &published_->fragment : nullptr;
 }
 
-} // namespace truffle::renderer
+} // namespace truffle::renderer::specialist

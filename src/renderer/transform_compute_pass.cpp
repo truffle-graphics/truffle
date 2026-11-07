@@ -1,9 +1,9 @@
-#include "truffle/renderer/transform_compute_pass.hpp"
+#include "truffle/renderer/specialist/transform_compute_pass.hpp"
 
 #include <array>
 #include <utility>
 
-namespace truffle::renderer {
+namespace truffle::renderer::specialist {
 namespace {
 
 base::Status validate_compute_bindings(const TransformComputePassDesc& desc,
@@ -101,4 +101,4 @@ base::Status TransformComputePass::dispatch(
     return encoder.end();
 }
 
-} // namespace truffle::renderer
+} // namespace truffle::renderer::specialist

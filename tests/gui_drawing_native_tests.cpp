@@ -4,7 +4,7 @@
 #include "truffle/gui/menus.hpp"
 #include "truffle/gui/painter.hpp"
 #include "truffle/gui/widgets.hpp"
-#include "truffle/renderer/frame_stream.hpp"
+#include "truffle/renderer/specialist/frame_stream.hpp"
 #if TFL_TEST_GUI_VULKAN
 #include "truffle/rhi/vulkan_backend.hpp"
 #include "vulkan_backend_test.hpp"
@@ -227,9 +227,9 @@ int run() {
     const auto font = tests::require(text_engine.load_font(font_bytes, 7.0F));
     const auto text_layout = tests::require(text_engine.shape(font, "A"));
 #endif
-    renderer::PipelineCache programs(device);
-    renderer::Renderer renderer(device, &programs);
-    auto pacer = tests::require(renderer::FramePacer::create(device, 2));
+    renderer::specialist::PipelineCache programs(device);
+    renderer::specialist::Renderer renderer(device, &programs);
+    auto pacer = tests::require(renderer::specialist::FramePacer::create(device, 2));
     auto painter = tests::require(gui::Painter::create(device, programs));
     auto target = make_target(device);
 
@@ -237,7 +237,7 @@ int run() {
     const std::array<std::byte, 8> texels{
         std::byte{255}, std::byte{255}, std::byte{255}, std::byte{255},
         std::byte{255}, std::byte{0}, std::byte{0}, std::byte{255}};
-    auto image = tests::require(renderer::SampledTexture::upload(device, {
+    auto image = tests::require(renderer::specialist::SampledTexture::upload(device, {
         .extent = {2, 1}, .bytes = texels}));
     const gui::TextureId image_id = tests::require(painter.add_texture(image));
 #if TFL_TEST_GUI_TEXT
@@ -276,8 +276,8 @@ int run() {
         }
         const auto slot = tests::require(pacer.begin_frame());
         auto batches = tests::require(painter.record(tree, slot, {kSize, kSize}));
-        renderer::FrameGraph graph;
-        graph.add_node(std::make_unique<renderer::RenderPassNode>(
+        renderer::specialist::FrameGraph graph;
+        graph.add_node(std::make_unique<renderer::specialist::RenderPassNode>(
             rhi::RenderPassDesc{
                 .extent = {kSize, kSize},
                 .colorAttachments = {{.texture = &target, .clear = {0, 0, 0, 1}}},
@@ -540,8 +540,8 @@ int run() {
             tests::require(tree.prepare_frame(gui::Context::Clock::now()).status);
             const auto slot = tests::require(pacer.begin_frame());
             auto batches = tests::require(painter.record(tree, slot, extent));
-            renderer::FrameGraph graph;
-            graph.add_node(std::make_unique<renderer::RenderPassNode>(
+            renderer::specialist::FrameGraph graph;
+            graph.add_node(std::make_unique<renderer::specialist::RenderPassNode>(
                 rhi::RenderPassDesc{
                     .extent = extent,
                     .colorAttachments = {{.texture = &menu_target, .clear = {0, 0, 0, 1}}},
@@ -723,7 +723,7 @@ int run() {
             std::byte{0}, std::byte{255}, std::byte{0}, std::byte{255},
             std::byte{0}, std::byte{0}, std::byte{255}, std::byte{255},
             std::byte{255}, std::byte{255}, std::byte{255}, std::byte{255}};
-        auto texture_2d = tests::require(renderer::SampledTexture::upload(device, {
+        auto texture_2d = tests::require(renderer::specialist::SampledTexture::upload(device, {
             .extent = {2, 2}, .bytes = texels_2d}));
         const auto texture_id = tests::require(painter.add_texture(texture_2d));
         gui::Context tree;
@@ -747,7 +747,7 @@ int run() {
     {
         constexpr std::array<std::byte, 4> translucent{
             std::byte{255}, std::byte{128}, std::byte{0}, std::byte{128}};
-        auto texture = tests::require(renderer::SampledTexture::upload(device, {
+        auto texture = tests::require(renderer::specialist::SampledTexture::upload(device, {
             .extent = {1, 1}, .bytes = translucent}));
         const auto texture_id = tests::require(painter.add_texture(texture));
         gui::Context tree;

@@ -7,55 +7,55 @@ namespace truffle::diagnostics {
 
 namespace {
 
-const char* channel_kind_name(renderer::ChannelKind kind) noexcept {
+const char* channel_kind_name(renderer::specialist::ChannelKind kind) noexcept {
     switch (kind) {
-    case renderer::ChannelKind::Transform:
+    case renderer::specialist::ChannelKind::Transform:
         return "Transform";
-    case renderer::ChannelKind::LocalTransform:
+    case renderer::specialist::ChannelKind::LocalTransform:
         return "LocalTransform";
-    case renderer::ChannelKind::Color:
+    case renderer::specialist::ChannelKind::Color:
         return "Color";
-    case renderer::ChannelKind::Normal:
+    case renderer::specialist::ChannelKind::Normal:
         return "Normal";
-    case renderer::ChannelKind::TexCoord:
+    case renderer::specialist::ChannelKind::TexCoord:
         return "TexCoord";
-    case renderer::ChannelKind::ParentIndex:
+    case renderer::specialist::ChannelKind::ParentIndex:
         return "ParentIndex";
-    case renderer::ChannelKind::CustomFloat4:
+    case renderer::specialist::ChannelKind::CustomFloat4:
         return "CustomFloat4";
     }
     return "Unknown";
 }
 
-const char* draw_kind_name(renderer::DrawKind kind) noexcept {
+const char* draw_kind_name(renderer::specialist::DrawKind kind) noexcept {
     switch (kind) {
-    case renderer::DrawKind::Direct:
+    case renderer::specialist::DrawKind::Direct:
         return "Direct";
-    case renderer::DrawKind::Indexed:
+    case renderer::specialist::DrawKind::Indexed:
         return "Indexed";
-    case renderer::DrawKind::Indirect:
+    case renderer::specialist::DrawKind::Indirect:
         return "Indirect";
-    case renderer::DrawKind::IndirectIndexed:
+    case renderer::specialist::DrawKind::IndirectIndexed:
         return "IndirectIndexed";
     }
     return "Unknown";
 }
 
-const char* node_kind_name(renderer::FrameGraphNodeKind kind) noexcept {
+const char* node_kind_name(renderer::specialist::FrameGraphNodeKind kind) noexcept {
     switch (kind) {
-    case renderer::FrameGraphNodeKind::Compute:
+    case renderer::specialist::FrameGraphNodeKind::Compute:
         return "Compute";
-    case renderer::FrameGraphNodeKind::Render:
+    case renderer::specialist::FrameGraphNodeKind::Render:
         return "Render";
     }
     return "Unknown";
 }
 
-const char* resource_access_name(renderer::ResourceAccess access) noexcept {
+const char* resource_access_name(renderer::specialist::ResourceAccess access) noexcept {
     switch (access) {
-    case renderer::ResourceAccess::Read:
+    case renderer::specialist::ResourceAccess::Read:
         return "Read";
-    case renderer::ResourceAccess::Write:
+    case renderer::specialist::ResourceAccess::Write:
         return "Write";
     }
     return "Unknown";
@@ -265,7 +265,7 @@ void record_debug_overlay_metadata(DebugOverlaySummary& summary,
 }
 
 std::string find_node_label(const FrameGraphInspectionOptions& options,
-                            renderer::FrameGraph::NodeId nodeId) {
+                            renderer::specialist::FrameGraph::NodeId nodeId) {
     for (const auto& label : options.nodeLabels) {
         if (label.id == nodeId) {
             return label.name;
@@ -335,12 +335,12 @@ AssetCatalogSummary summarize_asset_catalog(
     return summary;
 }
 
-RenderBatchSummary summarize_render_batch(const renderer::RenderBatch& batch) {
+RenderBatchSummary summarize_render_batch(const renderer::specialist::RenderBatch& batch) {
     return summarize_render_batch(batch, {});
 }
 
 RenderBatchSummary summarize_render_batch(
-    const renderer::RenderBatch& batch,
+    const renderer::specialist::RenderBatch& batch,
     const RenderBatchInspectionOptions& options) {
     RenderBatchSummary summary;
     summary.name          = options.name;
@@ -362,7 +362,7 @@ RenderBatchSummary summarize_render_batch(
         });
     }
 
-    for (std::uint32_t binding = 0; binding < renderer::RenderBatch::kMaxBindings;
+    for (std::uint32_t binding = 0; binding < renderer::specialist::RenderBatch::kMaxBindings;
          ++binding) {
         const auto& view = batch.bindings[binding];
         if (view.buffer == nullptr) {
@@ -452,12 +452,12 @@ AssetRenderGroupPlanSummary summarize_asset_render_group_plan(
 }
 
 base::Result<FrameGraphSummary> summarize_frame_graph(
-    const renderer::FrameGraph& graph) {
+    const renderer::specialist::FrameGraph& graph) {
     return summarize_frame_graph(graph, {});
 }
 
 base::Result<FrameGraphSummary> summarize_frame_graph(
-    const renderer::FrameGraph& graph,
+    const renderer::specialist::FrameGraph& graph,
     const FrameGraphInspectionOptions& options) {
     auto executionOrder = graph.resolve_execution_order();
     if (!executionOrder.ok()) {
@@ -478,7 +478,7 @@ base::Result<FrameGraphSummary> summarize_frame_graph(
     }
 
     const auto resourceUsages = graph.resource_usages();
-    for (renderer::FrameGraph::NodeId nodeId = 0;
+    for (renderer::specialist::FrameGraph::NodeId nodeId = 0;
          nodeId < resourceUsages.size(); ++nodeId) {
         for (const auto& usage : resourceUsages[nodeId]) {
             summary.resourceUsages.push_back({
@@ -492,7 +492,7 @@ base::Result<FrameGraphSummary> summarize_frame_graph(
 
     const auto nodes = graph.nodes();
     summary.nodes.reserve(nodes.size());
-    for (renderer::FrameGraph::NodeId nodeId = 0; nodeId < nodes.size(); ++nodeId) {
+    for (renderer::specialist::FrameGraph::NodeId nodeId = 0; nodeId < nodes.size(); ++nodeId) {
         const auto* node = graph.node(nodeId);
         if (node == nullptr) {
             return base::Status::failure(
@@ -505,11 +505,11 @@ base::Result<FrameGraphSummary> summarize_frame_graph(
         nodeSummary.name = find_node_label(options, nodeId);
         nodeSummary.kind = node->kind();
 
-        if (node->kind() == renderer::FrameGraphNodeKind::Compute) {
+        if (node->kind() == renderer::specialist::FrameGraphNodeKind::Compute) {
             ++summary.computeNodeCount;
         } else {
             const auto* renderNode =
-                static_cast<const renderer::RenderPassNode*>(node);
+                static_cast<const renderer::specialist::RenderPassNode*>(node);
             nodeSummary.usesSwapchain = renderNode->uses_swapchain();
             nodeSummary.hasExplicitRenderPass =
                 renderNode->explicit_desc() != nullptr;
@@ -530,7 +530,7 @@ base::Result<FrameGraphSummary> summarize_frame_graph(
 }
 
 RendererStatsSummary summarize_renderer_stats(
-    const renderer::RendererFrameStats& stats) noexcept {
+    const renderer::specialist::RendererFrameStats& stats) noexcept {
     return {
         .computeNodesExecuted = stats.computeNodesExecuted,
         .renderNodesExecuted  = stats.renderNodesExecuted,

@@ -229,6 +229,17 @@ def report_large_files(threshold: int) -> None:
     print("Review ownership and responsibility cohesion; this is not a God-file verdict.")
 
 
+def check_consumer_headers(errors: list[str]) -> None:
+    for path in (INCLUDE_ROOT / "renderer").glob("*.hpp"):
+        if path.name == "rhi_interop.hpp":
+            continue
+        text = path.read_text(encoding="utf-8")
+        if re.search(r"\brhi::|truffle/(?:rhi|renderer/specialist)/", text):
+            errors.append(
+                f"{path.relative_to(ROOT)}: ordinary Renderer headers must not expose RHI/specialist contracts"
+            )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -249,6 +260,7 @@ def main() -> int:
     errors: list[str] = []
     target_declarations, target_checks = check_target_dependencies(errors)
     include_checks = check_public_imports(errors)
+    check_consumer_headers(errors)
 
     if errors:
         print("Architecture guard failed:", file=sys.stderr)

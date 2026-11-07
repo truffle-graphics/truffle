@@ -88,7 +88,7 @@ int main() {
     asset_render::RenderBatchPlanOptions assetRenderOptions;
     assetRenderOptions.channelMappings.push_back({
         assets::AttributeSemantic::Position,
-        renderer::ChannelKind::CustomFloat4,
+        renderer::specialist::ChannelKind::CustomFloat4,
     });
     auto assetRenderPlanResult = asset_render::plan_render_batch(
         assetMesh, assetMaterial, assetRenderOptions);
@@ -106,7 +106,7 @@ int main() {
     TFL_CHECK(assetRenderSummary.attributes.front().semantic ==
                   assets::AttributeSemantic::Position);
     TFL_CHECK(assetRenderSummary.attributes.front().channel ==
-                  renderer::ChannelKind::CustomFloat4);
+                  renderer::specialist::ChannelKind::CustomFloat4);
     TFL_CHECK(assetRenderSummary.bindings.size() == 1);
     TFL_CHECK(assetRenderSummary.bindings.front().byteSize ==
                   assetStream.byteSize);
@@ -228,19 +228,19 @@ int main() {
     TFL_CHECK(instanceBufferResult.ok());
     auto instanceBuffer = std::move(instanceBufferResult).value();
 
-    renderer::RenderBatch batch;
+    renderer::specialist::RenderBatch batch;
     batch.instanceCount = 1'000'000;
     batch.vertexCount = 1;
     batch.material = 42;
-    batch.layout.bindingModel = renderer::BindingModel::Interleaved;
+    batch.layout.bindingModel = renderer::specialist::BindingModel::Interleaved;
     batch.layout.channels.push_back({
-        .kind = renderer::ChannelKind::Transform,
+        .kind = renderer::specialist::ChannelKind::Transform,
         .binding = 0,
         .offset = 0,
         .stride = 80,
     });
     batch.layout.channels.push_back({
-        .kind = renderer::ChannelKind::Color,
+        .kind = renderer::specialist::ChannelKind::Color,
         .binding = 0,
         .offset = 64,
         .stride = 80,
@@ -289,22 +289,22 @@ int main() {
     rhi::RenderPassDesc passDesc;
     passDesc.extent = {640, 480};
 
-    renderer::FrameGraph graph;
-    const auto nodeId = graph.add_node(std::make_unique<renderer::RenderPassNode>(
-        passDesc, std::vector<renderer::RenderBatch>{batch}));
+    renderer::specialist::FrameGraph graph;
+    const auto nodeId = graph.add_node(std::make_unique<renderer::specialist::RenderPassNode>(
+        passDesc, std::vector<renderer::specialist::RenderBatch>{batch}));
     TFL_CHECK(nodeId == 0);
     const auto presentNodeId = graph.add_node(
-        std::make_unique<renderer::RenderPassNode>(
-            true, std::vector<renderer::RenderBatch>{}));
+        std::make_unique<renderer::specialist::RenderPassNode>(
+            true, std::vector<renderer::specialist::RenderBatch>{}));
     TFL_CHECK(presentNodeId == 1);
     TFL_CHECK(graph.add_dependency(nodeId, presentNodeId).ok());
     TFL_CHECK(graph.add_resource_usage(nodeId, {
         .resourceId = 99,
-        .access = renderer::ResourceAccess::Write,
+        .access = renderer::specialist::ResourceAccess::Write,
     }).ok());
     TFL_CHECK(graph.add_resource_usage(presentNodeId, {
         .resourceId = 99,
-        .access = renderer::ResourceAccess::Read,
+        .access = renderer::specialist::ResourceAccess::Read,
     }).ok());
 
     diagnostics::FrameGraphInspectionOptions options;
@@ -376,7 +376,7 @@ int main() {
         diagnostics::format_renderer_stats_summary(statsSummary);
     TFL_CHECK(statsReport.find("presented=true") != std::string::npos);
 
-    renderer::RendererFrameStats frameStats;
+    renderer::specialist::RendererFrameStats frameStats;
     frameStats.computeNodesExecuted = 1;
     frameStats.renderNodesExecuted = 2;
     frameStats.renderBatchesExecuted = 1;

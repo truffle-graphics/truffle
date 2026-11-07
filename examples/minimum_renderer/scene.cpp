@@ -90,7 +90,7 @@ Scene::Scene(rhi::Device& device, rhi::TextureFormat colorFormat)
     state.colorTargets = {{.format = colorFormat}};
     state.depthStencil = {.format = rhi::TextureFormat::depth32_float,
                            .depthWriteEnabled = true, .depthCompare = rhi::CompareOp::less};
-    renderer::SourceProgram program(programs_, 1, state);
+    renderer::specialist::SourceProgram program(programs_, 1, state);
     require(program.rebuild(compiler_, {
         .vertex = request(rhi::ShaderStage::vertex),
         .fragment = request(rhi::ShaderStage::fragment),
@@ -103,9 +103,9 @@ void Scene::set_mesh(std::span<const Vertex> vertices, std::span<const std::uint
         throw std::runtime_error("minimum Renderer: too many vertices");
     }
     const std::array streams{
-        renderer::MeshStream{std::as_bytes(vertices), sizeof(Vertex)},
+        renderer::specialist::MeshStream{std::as_bytes(vertices), sizeof(Vertex)},
     };
-    mesh_ = require(renderer::Mesh::upload(*device_, {
+    mesh_ = require(renderer::specialist::Mesh::upload(*device_, {
         .streams = streams, .vertexCount = static_cast<std::uint32_t>(vertices.size()),
         .indices = std::as_bytes(indices),
     }));
@@ -159,7 +159,7 @@ void Scene::set_view(const View& view) {
     require(view_.write(0, std::as_bytes(std::span{&view, 1})));
 }
 
-renderer::RenderBatch Scene::batch() {
+renderer::specialist::RenderBatch Scene::batch() {
     if (!mesh_ || !objects_.valid()) {
         throw std::runtime_error("minimum Renderer: mesh and objects must be supplied");
     }
@@ -170,7 +170,7 @@ renderer::RenderBatch Scene::batch() {
     return result;
 }
 
-base::Status Scene::render(const renderer::FrameGraph& graph, rhi::Swapchain* swapchain) {
+base::Status Scene::render(const renderer::specialist::FrameGraph& graph, rhi::Swapchain* swapchain) {
     // Even a recoverable present failure can follow a successful submission.
     const auto rendered = renderer_.render(graph, swapchain);
     auto poolResult = device_->create_command_pool(rhi::QueueKind::graphics);
@@ -209,7 +209,7 @@ base::Status Scene::render(const renderer::FrameGraph& graph, rhi::Swapchain* sw
     return rendered;
 }
 
-const renderer::RendererFrameStats& Scene::stats() const {
+const renderer::specialist::RendererFrameStats& Scene::stats() const {
     return renderer_.last_frame_stats();
 }
 

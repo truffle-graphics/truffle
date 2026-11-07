@@ -3,8 +3,8 @@
 
 #include "truffle/gui/dock/dock.hpp"
 #include "truffle/gui/widgets.hpp"
-#include "truffle/renderer/frame_stream.hpp"
-#include "truffle/renderer/renderer.hpp"
+#include "truffle/renderer/specialist/frame_stream.hpp"
+#include "truffle/renderer/specialist/renderer.hpp"
 #include "truffle/rhi/metal_backend.hpp"
 
 #include <algorithm>
@@ -111,9 +111,9 @@ struct Window {
     std::unique_ptr<gui::Surface> gui_surface;
     rhi::Surface surface;
     rhi::Swapchain swapchain;
-    renderer::PipelineCache programs;
-    renderer::Renderer renderer;
-    renderer::FramePacer pacer;
+    renderer::specialist::PipelineCache programs;
+    renderer::specialist::Renderer renderer;
+    renderer::specialist::FramePacer pacer;
     gui::Painter painter;
     rhi::Extent2D extent{};
     std::size_t frames = 0;
@@ -121,7 +121,7 @@ struct Window {
 
     Window(rhi::Device& device, gui::Context& context, bool detached, const gui::Rect& rect)
         : context(context), programs(device), renderer(device, &programs),
-          pacer(need(renderer::FramePacer::create(device, 2))),
+          pacer(need(renderer::specialist::FramePacer::create(device, 2))),
           painter(need(gui::Painter::create(
               device, programs, {.color_format = rhi::TextureFormat::bgra8_unorm}))) {
         native = [[NSWindow alloc]
@@ -191,8 +191,8 @@ struct Window {
         auto batches = need(gui_surface ? gui_surface->record(painter, slot, extent)
                                          : painter.record(context, slot, extent));
         drawn_elements = painter.last_stats().elements;
-        renderer::FrameGraph graph;
-        graph.add_node(std::make_unique<renderer::RenderPassNode>(
+        renderer::specialist::FrameGraph graph;
+        graph.add_node(std::make_unique<renderer::specialist::RenderPassNode>(
             rhi::RenderPassDesc{.colorAttachments = {{.clear = {0.035F, 0.035F, 0.045F, 1}}}},
             std::move(batches), true));
         auto status = renderer.render(graph, &swapchain, pacer.signal());

@@ -1,12 +1,12 @@
 #pragma once
 
-#include "truffle/renderer/pipeline_cache.hpp"
+#include "truffle/renderer/specialist/pipeline_cache.hpp"
 #include "truffle/shader/compiler.hpp"
 
 #include <cstddef>
 #include <memory>
 
-namespace truffle::renderer {
+namespace truffle::renderer::specialist {
 
 // Requests are compiled exactly as given: only their configured defines are built.
 struct SourceProgramRequest {
@@ -58,4 +58,4 @@ private:
     std::unique_ptr<Published> published_;
 };
 
-} // namespace truffle::renderer
+} // namespace truffle::renderer::specialist

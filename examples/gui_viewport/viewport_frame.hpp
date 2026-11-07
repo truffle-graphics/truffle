@@ -1,12 +1,12 @@
 #pragma once
 
 #include "truffle/gui/viewport.hpp"
-#include "truffle/renderer/presentation.hpp"
+#include "truffle/renderer/specialist/presentation.hpp"
 
 namespace truffle::examples {
 
 struct ViewportRenderData {
-  std::vector<renderer::RenderBatch> batches;
+  std::vector<renderer::specialist::RenderBatch> batches;
   rhi::RenderPassDesc pass; // optional application-owned depth and clear settings
 };
 
@@ -15,8 +15,8 @@ using RenderViewport = std::function<base::Result<ViewportRenderData>(
 
 // The host creates its window and Presentation/Painter as in gui_presentation.
 // Scene state, shaders and per-slot geometry/uniforms belong to renderViewport.
-inline base::Status draw_viewport(renderer::Presentation &presentation,
-                                  renderer::Renderer &renderer, gui::Context &context,
+inline base::Status draw_viewport(renderer::specialist::Presentation &presentation,
+                                  renderer::specialist::Renderer &renderer, gui::Context &context,
                                   gui::Painter &painter, gui::Viewport &viewport,
                                   const RenderViewport &renderViewport,
                                   gui::Context::Clock::time_point now) {
@@ -46,7 +46,7 @@ inline base::Status draw_viewport(renderer::Presentation &presentation,
     return fail(view.status());
   }
   preparedViewport = true;
-  renderer::FrameGraph graph;
+  renderer::specialist::FrameGraph graph;
   if (view.value().redraw) {
     if (!renderViewport) {
       return fail(
@@ -74,7 +74,7 @@ inline base::Status draw_viewport(renderer::Presentation &presentation,
   rhi::RenderPassDesc pass;
   pass.colorAttachments.push_back({.clear = {0, 0, 0, 0}});
   const auto guiPass = graph.add_node(
-      std::make_unique<renderer::RenderPassNode>(pass, std::move(batches).value(), true));
+      std::make_unique<renderer::specialist::RenderPassNode>(pass, std::move(batches).value(), true));
   if (auto status = viewport.composite(graph, guiPass); !status.ok()) {
     return fail(status);
   }

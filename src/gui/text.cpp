@@ -88,7 +88,7 @@ struct TextEngine::State {
 #if TFL_GUI_HAS_TEXT
     struct Atlas {
         rhi::Device* device = nullptr;
-        renderer::SampledTexture texture;
+        renderer::specialist::SampledTexture texture;
         rhi::Extent2D extent{};
         std::vector<std::byte> pixels;
         std::unordered_map<GlyphKey, GlyphInfo, GlyphKeyHash> glyphs;
@@ -256,7 +256,7 @@ base::Result<TextEngine> TextEngine::create(rhi::Device& device, const TextEngin
     const std::size_t pixel_count =
         static_cast<std::size_t>(desc.atlas_extent.width) * desc.atlas_extent.height;
     state->atlas.pixels.resize(pixel_count * 4, std::byte{0});
-    auto texture = renderer::SampledTexture::upload(
+    auto texture = renderer::specialist::SampledTexture::upload(
         device, {.extent = desc.atlas_extent,
                  .format = rhi::TextureFormat::rgba8_unorm,
                  .bytes = state->atlas.pixels,
@@ -685,7 +685,7 @@ base::Result<TextLayout> TextEngine::shape(FontId font, std::string_view utf8) {
 #endif
 }
 
-base::Result<std::reference_wrapper<renderer::SampledTexture>>
+base::Result<std::reference_wrapper<renderer::specialist::SampledTexture>>
 TextEngine::atlas_texture() noexcept {
 #if TFL_GUI_HAS_TEXT
     if (!state_) {

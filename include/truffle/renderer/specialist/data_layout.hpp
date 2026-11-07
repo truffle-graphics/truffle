@@ -1,10 +1,10 @@
 #pragma once
 
-#include "truffle/renderer/render_batch.hpp"
+#include "truffle/renderer/specialist/render_batch.hpp"
 
 #include <span>
 
-namespace truffle::renderer {
+namespace truffle::renderer::specialist {
 
 // Explicit locations are the portable link; reflected names are diagnostic.
 // This validates vertex input, not members inside uniform/storage buffers.
@@ -18,4 +18,4 @@ namespace truffle::renderer {
     const RenderBatch& batch,
     std::span<const rhi::VertexBufferLayoutDesc> buffers);
 
-} // namespace truffle::renderer
+} // namespace truffle::renderer::specialist

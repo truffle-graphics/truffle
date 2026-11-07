@@ -7,8 +7,8 @@
 
 #include "truffle/gui/context.hpp"
 #include "truffle/gui/painter.hpp"
-#include "truffle/renderer/frame_stream.hpp"
-#include "truffle/renderer/renderer.hpp"
+#include "truffle/renderer/specialist/frame_stream.hpp"
+#include "truffle/renderer/specialist/renderer.hpp"
 #include "truffle/rhi/metal_backend.hpp"
 
 #include <algorithm>
@@ -375,9 +375,9 @@ int run(bool smoke) {
     }));
     auto swapchain = require(device.create_swapchain(
         surface, {.extent = extent, .format = rhi::TextureFormat::bgra8_unorm}));
-    renderer::PipelineCache programs(device);
-    renderer::Renderer renderer(device, &programs);
-    auto pacer = require(renderer::FramePacer::create(device, 2));
+    renderer::specialist::PipelineCache programs(device);
+    renderer::specialist::Renderer renderer(device, &programs);
+    auto pacer = require(renderer::specialist::FramePacer::create(device, 2));
     auto painter = require(gui::Painter::create(
         device, programs, {.color_format = rhi::TextureFormat::bgra8_unorm}));
     auto text = require(gui::TextEngine::create(device));
@@ -388,7 +388,7 @@ int run(bool smoke) {
         std::byte{70}, std::byte{180}, std::byte{255}, std::byte{255},
         std::byte{70}, std::byte{180}, std::byte{255}, std::byte{255},
         std::byte{255}, std::byte{130}, std::byte{60}, std::byte{255}};
-    auto image = require(renderer::SampledTexture::upload(device, {
+    auto image = require(renderer::specialist::SampledTexture::upload(device, {
         .extent = {2, 2}, .bytes = texels}));
     const auto image_id = require(painter.add_texture(image));
     examples::GuiDemo app(text, font, atlas, image_id);
@@ -419,8 +419,8 @@ int run(bool smoke) {
         }
         const auto slot = require(pacer.begin_frame());
         auto batches = require(painter.record(app.context, slot, extent));
-        renderer::FrameGraph graph;
-        graph.add_node(std::make_unique<renderer::RenderPassNode>(
+        renderer::specialist::FrameGraph graph;
+        graph.add_node(std::make_unique<renderer::specialist::RenderPassNode>(
             rhi::RenderPassDesc{.colorAttachments = {{.clear = {0, 0, 0, 1}}}},
             std::move(batches), true));
         const auto status = renderer.render(graph, &swapchain, pacer.signal());

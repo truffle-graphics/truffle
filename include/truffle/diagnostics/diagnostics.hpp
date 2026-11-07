@@ -3,9 +3,9 @@
 #include "truffle/asset_render/asset_render.hpp"
 #include "truffle/assets/assets.hpp"
 #include "truffle/base/status.hpp"
-#include "truffle/renderer/frame_graph.hpp"
-#include "truffle/renderer/render_batch.hpp"
-#include "truffle/renderer/renderer.hpp"
+#include "truffle/renderer/specialist/frame_graph.hpp"
+#include "truffle/renderer/specialist/render_batch.hpp"
+#include "truffle/renderer/specialist/renderer.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -15,7 +15,7 @@
 namespace truffle::diagnostics {
 
 struct ChannelSummary {
-    renderer::ChannelKind kind = renderer::ChannelKind::Transform;
+    renderer::specialist::ChannelKind kind = renderer::specialist::ChannelKind::Transform;
     std::uint32_t       binding = 0;
     std::uint32_t       offset  = 0;
     std::uint32_t       stride  = 0;
@@ -41,11 +41,11 @@ struct RenderBatchSummary {
     std::string          name;
     std::uint32_t        instanceCount = 0;
     std::uint32_t        vertexCount   = 0;
-    renderer::MaterialId   material      = 0;
+    renderer::specialist::MaterialId   material      = 0;
     std::size_t          variantHash   = 0;
-    renderer::DrawKind     drawKind      = renderer::DrawKind::Direct;
+    renderer::specialist::DrawKind     drawKind      = renderer::specialist::DrawKind::Direct;
     std::size_t          layoutHash    = 0;
-    renderer::BindingModel bindingModel  = renderer::BindingModel::Separate;
+    renderer::specialist::BindingModel bindingModel  = renderer::specialist::BindingModel::Separate;
     std::vector<ChannelSummary> channels;
     std::vector<BufferBindingSummary> bindings;
     std::size_t totalBindingBytes = 0;
@@ -59,7 +59,7 @@ struct AssetRenderAttributeSummary {
     assets::AttributeSemantic semantic = assets::AttributeSemantic::Custom;
     assets::AttributeFormat format = assets::AttributeFormat::Float32;
     std::string name;
-    renderer::ChannelKind channel = renderer::ChannelKind::CustomFloat4;
+    renderer::specialist::ChannelKind channel = renderer::specialist::ChannelKind::CustomFloat4;
     std::uint32_t binding = 0;
     std::uint32_t offset = 0;
     std::uint32_t stride = 0;
@@ -78,8 +78,8 @@ struct AssetRenderBatchPlanSummary {
     assets::AssetId material;
     std::uint32_t instanceCount = 0;
     std::uint32_t vertexCount = 0;
-    renderer::DrawKind drawKind = renderer::DrawKind::Direct;
-    renderer::BindingModel bindingModel = renderer::BindingModel::Separate;
+    renderer::specialist::DrawKind drawKind = renderer::specialist::DrawKind::Direct;
+    renderer::specialist::BindingModel bindingModel = renderer::specialist::BindingModel::Separate;
     std::size_t layoutHash = 0;
     std::size_t variantHash = 0;
     std::vector<AssetRenderAttributeSummary> attributes;
@@ -96,7 +96,7 @@ struct AssetRenderGroupPlanSummary {
 };
 
 struct FrameGraphNodeLabel {
-    renderer::FrameGraph::NodeId id = 0;
+    renderer::specialist::FrameGraph::NodeId id = 0;
     std::string name;
 };
 
@@ -111,9 +111,9 @@ struct FrameGraphInspectionOptions {
 };
 
 struct FrameGraphNodeSummary {
-    renderer::FrameGraph::NodeId id = 0;
+    renderer::specialist::FrameGraph::NodeId id = 0;
     std::string name;
-    renderer::FrameGraphNodeKind kind = renderer::FrameGraphNodeKind::Render;
+    renderer::specialist::FrameGraphNodeKind kind = renderer::specialist::FrameGraphNodeKind::Render;
     bool usesSwapchain = false;
     bool hasExplicitRenderPass = false;
     std::uint32_t renderBatchCount = 0;
@@ -121,20 +121,20 @@ struct FrameGraphNodeSummary {
 };
 
 struct FrameGraphDependencySummary {
-    renderer::FrameGraph::NodeId before = 0;
-    renderer::FrameGraph::NodeId after = 0;
+    renderer::specialist::FrameGraph::NodeId before = 0;
+    renderer::specialist::FrameGraph::NodeId after = 0;
 };
 
 struct FrameGraphResourceUsageSummary {
-    renderer::FrameGraph::NodeId node = 0;
+    renderer::specialist::FrameGraph::NodeId node = 0;
     std::uint64_t resourceId = 0;
-    renderer::ResourceAccess access = renderer::ResourceAccess::Read;
+    renderer::specialist::ResourceAccess access = renderer::specialist::ResourceAccess::Read;
     std::string resourceName;
 };
 
 struct FrameGraphSummary {
     std::vector<FrameGraphNodeSummary> nodes;
-    std::vector<renderer::FrameGraph::NodeId> executionOrder;
+    std::vector<renderer::specialist::FrameGraph::NodeId> executionOrder;
     std::vector<FrameGraphDependencySummary> dependencies;
     std::vector<FrameGraphResourceUsageSummary> resourceUsages;
     std::vector<ResourceLabel> resourceLabels;
@@ -293,7 +293,7 @@ struct AssetCatalogSummary {
 };
 
 struct RenderBatchInspectionTarget {
-    const renderer::RenderBatch* batch = nullptr;
+    const renderer::specialist::RenderBatch* batch = nullptr;
     RenderBatchInspectionOptions options;
 };
 
@@ -301,9 +301,9 @@ struct DiagnosticsBundleOptions {
     const assets::AssetCatalog* assetCatalog = nullptr;
     AssetCatalogInspectionOptions assetCatalogOptions;
     std::vector<RenderBatchInspectionTarget> renderBatches;
-    const renderer::FrameGraph* frameGraph = nullptr;
+    const renderer::specialist::FrameGraph* frameGraph = nullptr;
     FrameGraphInspectionOptions frameGraphOptions;
-    const renderer::RendererFrameStats* rendererStats = nullptr;
+    const renderer::specialist::RendererFrameStats* rendererStats = nullptr;
     const DebugOverlayLayer* debugOverlay = nullptr;
     DebugOverlayInspectionOptions debugOverlayOptions;
     RenderBatchBudget renderBatchBudget;
@@ -329,21 +329,21 @@ struct DiagnosticsBundle {
     const assets::AssetCatalog& catalog,
     const AssetCatalogInspectionOptions& options);
 [[nodiscard]] RenderBatchSummary summarize_render_batch(
-    const renderer::RenderBatch& batch);
+    const renderer::specialist::RenderBatch& batch);
 [[nodiscard]] RenderBatchSummary summarize_render_batch(
-    const renderer::RenderBatch& batch,
+    const renderer::specialist::RenderBatch& batch,
     const RenderBatchInspectionOptions& options);
 [[nodiscard]] AssetRenderBatchPlanSummary summarize_asset_render_batch_plan(
     const asset_render::RenderBatchPlan& plan);
 [[nodiscard]] AssetRenderGroupPlanSummary summarize_asset_render_group_plan(
     const asset_render::AssetGroupRenderPlan& plan);
 [[nodiscard]] base::Result<FrameGraphSummary> summarize_frame_graph(
-    const renderer::FrameGraph& graph);
+    const renderer::specialist::FrameGraph& graph);
 [[nodiscard]] base::Result<FrameGraphSummary> summarize_frame_graph(
-    const renderer::FrameGraph& graph,
+    const renderer::specialist::FrameGraph& graph,
     const FrameGraphInspectionOptions& options);
 [[nodiscard]] RendererStatsSummary summarize_renderer_stats(
-    const renderer::RendererFrameStats& stats) noexcept;
+    const renderer::specialist::RendererFrameStats& stats) noexcept;
 [[nodiscard]] DebugOverlaySummary summarize_debug_overlay(
     const DebugOverlayLayer& layer);
 [[nodiscard]] DebugOverlaySummary summarize_debug_overlay(
