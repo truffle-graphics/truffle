@@ -5,7 +5,27 @@ This is the rolling execution handoff, not an implementation transcript.
 issues/Project own accepted work. Earlier phase details remain in their PRs,
 the support matrix and Git history.
 
-## Latest: Windows WGL context, presentation and queries (#266)
+## Latest: Windows batch completion and issue reconciliation
+
+All 155 repository issues were checked against their acceptance criteria,
+merged PRs, delivery receipts and the support matrix. Twenty-two historical
+closed issues had stale acceptance checkboxes; these now record their
+delivered scope and explicit deferrals. Closed issues #219, #221 and #257
+were still In Review in the delivery Project and are now Done.
+The completed Windows issues #262-#266 are closed and marked Done.
+Parent #58 records the completed Win32/validation acceptance without closing
+its runner/software-driver/ARM64 assessment. Other incomplete platform,
+advanced-feature and hardening issues remain open.
+
+The owner authorized merge-commit delivery into `develop` and removal of
+the merged batch branch locally and remotely. Preserve `develop` and
+`master`, signed phase history, and Studio's existing gitlink. No hosted
+workflow, new version, compatibility reader or architectural change is
+part of this closeout. Review confirmed that the TSP 1.0 layout change is
+the explicitly documented unreleased-draft policy, not a release-format
+compatibility guarantee.
+
+## Earlier: Windows WGL context, presentation and queries (#266)
 
 The Windows catch-up sequence is implemented on `fix/windows-baseline`.
 The DXC/Slang/DXIL phase (#264) and Win32 Vulkan phase (#265) were signed
