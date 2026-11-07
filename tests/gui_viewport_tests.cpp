@@ -3,8 +3,8 @@
 #include "rhi_test_utils.hpp"
 #include "test_support.hpp"
 #include "truffle/gui/draw.hpp"
+#include "truffle/gui/specialist/viewport.hpp"
 #include "truffle/gui/surface.hpp"
-#include "truffle/gui/viewport.hpp"
 #include "truffle/renderer/specialist/frame_stream.hpp"
 
 #include <limits>
@@ -22,7 +22,8 @@ void place(gui::Context &context, gui::ElementId element, gui::Rect bounds) {
                                                     }));
 }
 
-renderer::specialist::FrameGraph::NodeId gui_pass(renderer::specialist::FrameGraph &graph, rhi::Texture &color) {
+renderer::specialist::FrameGraph::NodeId gui_pass(renderer::specialist::FrameGraph &graph,
+                                                  rhi::Texture &color) {
   return graph.add_node(std::make_unique<renderer::specialist::RenderPassNode>(
       rhi::RenderPassDesc{.extent = {400, 240},
                           .colorAttachments = {{.texture = &color}}},
@@ -32,7 +33,7 @@ renderer::specialist::FrameGraph::NodeId gui_pass(renderer::specialist::FrameGra
 } // namespace
 
 int main() {
-  gui::Viewport invalid;
+  gui::specialist::Viewport invalid;
   TFL_CHECK(!invalid.alive());
   TFL_CHECK(!invalid.metrics().ok());
   TFL_CHECK(!invalid.request_redraw().ok());
@@ -42,7 +43,7 @@ int main() {
   auto outer = context.create(context.root());
   TFL_CHECK(outer.ok());
   place(context, outer.value(), {10, 5, 80, 60});
-  auto result = gui::Viewport::create(context, outer.value());
+  auto result = gui::specialist::Viewport::create(context, outer.value());
   TFL_CHECK(result.ok());
   auto viewport = result.value();
   place(context, viewport.element(), {5, 3, 40.25F, 20.25F});
@@ -50,7 +51,7 @@ int main() {
   const auto metrics = viewport.metrics();
   TFL_CHECK(metrics.ok() && metrics.value().drawable);
   TFL_CHECK((metrics.value().bounds == gui::Rect{15, 8, 40.25F, 20.25F}));
-  TFL_CHECK((metrics.value().pixels == rhi::Extent2D{81, 41}));
+  TFL_CHECK((metrics.value().pixels == gui::PixelSize{81, 41}));
   TFL_CHECK(metrics.value().dpi_scale == 2);
   TFL_CHECK(context.decoration(context.root()).value().fill.a == 0);
 
@@ -108,7 +109,7 @@ int main() {
   TFL_CHECK(detached.value()->attach(outer.value()).ok());
   TFL_CHECK(context.prepare_frame(now).status.ok());
   TFL_CHECK(viewport.metrics().value().dpi_scale == 1.25F);
-  TFL_CHECK((viewport.metrics().value().pixels == rhi::Extent2D{51, 26}));
+  TFL_CHECK((viewport.metrics().value().pixels == gui::PixelSize{51, 26}));
   TFL_CHECK(context.scale(context.root()).value() == 2);
   auto primary = context.create(context.root());
   TFL_CHECK(primary.ok());
@@ -155,8 +156,8 @@ int main() {
                  .ok());
   auto appPass = viewport.append_render_pass(graph, {});
   TFL_CHECK(appPass.ok());
-  const auto *app =
-      static_cast<const renderer::specialist::RenderPassNode *>(graph.node(appPass.value()));
+  const auto *app = static_cast<const renderer::specialist::RenderPassNode *>(
+      graph.node(appPass.value()));
   TFL_CHECK(app->explicit_desc()->colorAttachments.front().texture ==
             &firstTarget->texture());
   TFL_CHECK(app->barriers_before().front().oldLayout ==
@@ -291,7 +292,7 @@ int main() {
   TFL_CHECK(!emptyPainter.replace_texture({1}, emptyTexture).ok());
 
   // A callback may destroy the element that owns the handler.
-  auto removed = gui::Viewport::create(context, context.root());
+  auto removed = gui::specialist::Viewport::create(context, context.root());
   TFL_CHECK(removed.ok());
   place(context, removed.value().element(), {0, 0, 20, 20});
   TFL_CHECK(removed.value()
@@ -306,10 +307,10 @@ int main() {
   TFL_CHECK(!removed.value().alive());
 
   // Context teardown leaves checked references safely stale.
-  gui::Viewport stale;
+  gui::specialist::Viewport stale;
   {
     gui::Context owner;
-    auto reference = gui::Viewport::create(owner, owner.root());
+    auto reference = gui::specialist::Viewport::create(owner, owner.root());
     TFL_CHECK(reference.ok());
     stale = reference.value();
   }

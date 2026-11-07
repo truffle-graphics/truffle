@@ -240,10 +240,13 @@ def check_consumer_headers(errors: list[str]) -> None:
                 f"{path.relative_to(ROOT)}: ordinary Renderer headers must not expose RHI/specialist contracts"
             )
     for path in (INCLUDE_ROOT / "gui").rglob("*.hpp"):
-        if "specialist" in path.parts or path.name in {"rendering.hpp", "viewport.hpp"}:
+        if "specialist" in path.parts:
             continue
         text = path.read_text(encoding="utf-8")
-        if re.search(r"\brhi::|truffle/(?:rhi|renderer|gui/specialist)/", text):
+        forbidden = (r"\brhi::|truffle/(?:rhi|renderer/specialist|gui/specialist)/"
+                     if path.name == "rendering.hpp" else
+                     r"\brhi::|truffle/(?:rhi|renderer|gui/specialist)/")
+        if re.search(forbidden, text):
             errors.append(
                 f"{path.relative_to(ROOT)}: ordinary GUI headers must not expose Renderer/RHI/specialist contracts"
             )

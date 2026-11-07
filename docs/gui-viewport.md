@@ -1,173 +1,145 @@
-# GUI Rendering Viewport (#271)
+# GUI Rendering Viewport (#271/#277)
 
 `gui::Viewport` is a checked reference to a Context-owned image/input element.
-The application owns its scene, shaders, cameras, simulation and render data.
-Renderer's existing `SampledTexture` creates offscreen targets; Painter samples
-them in the GUI. There is no CPU readback in this path, no Engine/ECS dependency
-and no default direct-to-swapchain scene rendering.
+Its ordinary header imports GUI only. Application-owned scene rendering is an
+explicit `gui/rendering.hpp` opt-in using Renderer types, never raw Painter or
+RHI setup. The existing offscreen machinery remains underneath; there is no
+Engine, scene schema, CPU readback or default direct-swapchain scene rendering.
 
 ## Layout and input
 
-```cpp
-#include <truffle/gui/viewport.hpp>
+Include `truffle/gui/viewport.hpp`, create with
+`Viewport::create(context, parent)`, set ordinary element layout and install
+`set_event_handler(ViewportEventHandler)`. `metrics()` reports the last
+completed layout's logical bounds, GUI `PixelSize`, host DPI scale and
+drawable state. Pixel size is `ceil(full layout size * DPI)`, not the partially
+clipped size; hidden, fully clipped or zero-sized surfaces report zero.
+Detached `Surface` DPI remains element-specific.
 
-auto viewport = gui::Viewport::create(context, parent);
-// Check Result/Status values before using their contents.
-context.set_layout_params(viewport.value().element(), {
-    .width = 640, .height = 360, .weight = 1,
-});
-viewport.value().set_event_handler(
-    [&](gui::Context& owner, gui::ViewportEvent& input) {
-        if (const auto* pointer = input.routed.input<gui::PointerEvent>()) {
-            // input.local: viewport-local logical coordinates.
-            // input.pixels: viewport-local physical coordinates.
-            if (pointer->action == gui::PointerAction::down) {
-                owner.capture_pointer(viewport.value().element(), pointer->pointer);
-            }
-            // Update application state, then request a scene redraw when needed.
-            viewport.value().request_redraw();
-            input.routed.stop_propagation();
-        }
-    });
-```
+`ViewportEvent` retains the actual `RoutedEvent` reference and optional local
+logical/pixel coordinates for pointer/wheel input. Keyboard/focus/hover/
+capture-loss use normal routed payloads. Normal clipping, topmost hit testing,
+bubbling/defaults, focus and capture remain; the app chooses capture or
+propagation policy. Captured positions can be outside the image. Handlers may
+remove their own element safely.
 
-These abbreviated snippets show signatures; the compiled example checks every
-operation. `metrics()` reports the last completed layout's surface-relative
-logical bounds, rounded-up pixel size, host DPI scale and drawable state.
-`dpi_scale` means pixels per logical unit, not a fabricated physical monitor
-DPI. Size is the full laid-out image size, not the partially clipped rectangle.
-It is zero when hidden, fully clipped or on a zero-sized surface.
-`Context::scale(element)` follows an element's actual surface, including a
-detached docking surface, rather than accidentally using the primary window's
-DPI outside event dispatch.
+`request_redraw()` increments the application-scene revision and requests a
+GUI frame. It does not assume an Engine, camera or animation model.
 
-Normal GUI topmost hit testing, bubbling, clipping, focus/Tab traversal and
-capture are retained. The viewport is focusable; the application chooses when
-to capture drags, stop bubbling or prevent defaults. Pointer/wheel events expose
-local logical/pixel positions; keyboard, hover, focus and capture-loss
-notifications use the existing routed payload. Captured positions may be
-outside the viewport. Wheel deltas retain the normal GUI units/line convention.
-Handlers are snapshotted so they may remove their own element safely.
+## Owned and borrowed application integration
 
-## Render and composite in one frame
-
-Use the device and safe slot from the same Presentation/FramePacer as Painter
-and application per-frame data. After `Context::prepare_frame`:
+Both [Application paths](gui-application.md) use the same composition:
 
 ```cpp
-auto view = viewport.prepare_frame(device, slot, {
-    .format = rhi::TextureFormat::bgra8_unorm,
-    .frames_in_flight = framesInFlight,
-});
+#include <truffle/gui/rendering.hpp>
+
+auto frame = gui::Rendering::begin_frame(app);
+auto view = gui::Rendering::prepare_viewport(app, viewport, frame.value().slot);
+renderer::FrameGraph graph;
 if (view.value().redraw) {
-    // App builds arbitrary RenderBatch data/shaders and optional depth.
-    // view.target and view.metrics.pixels describe the offscreen destination.
-    auto appPass = viewport.append_render_pass(graph, appBatches, appPassSettings);
+    // App supplies Renderer batches, optional depth and clear/load/store.
+    auto scene = gui::Rendering::append_viewport_pass(
+        viewport, graph, sceneBatches, scenePass);
 }
-viewport.display(painter);
-context.update_shapes(); // only new/changed image decorations
-auto batches = painter.record(context, slot, windowPixels);
-auto guiPass = graph.add_node(std::make_unique<renderer::RenderPassNode>(
-    windowPassSettings, std::move(batches).value(), true));
-viewport.composite(graph, guiPass);
-auto status = presentation.render(renderer, graph);
-viewport.finish_frame(presentation.last_frame_stats().submitted);
+gui::Rendering::display_viewport(app, viewport);
+app.context().update_shapes();
+auto guiPass = gui::Rendering::append_gui_pass(app, graph, frame.value());
+gui::Rendering::composite_viewport(viewport, graph, guiPass.value());
+auto status = gui::Rendering::present(app, graph);
+gui::Rendering::finish_viewport(viewport, app.last_frame_stats().submitted);
 ```
 
-The complete error-aware
-[`draw_viewport` example](../examples/gui_viewport/viewport_frame.hpp) composes
-the [GUI-only presentation example](../examples/gui_presentation/gui_application.hpp).
-Its render callback supplies application batches and render-pass settings,
-including optional depth. `GuiApplication` exposes its Painter, Renderer and
-PipelineCache so GUI-only and custom rendering share the same resources.
+These abbreviated signatures are not error-handling examples. The compiled
+[`draw_viewport` example](../examples/gui_viewport/viewport_frame.hpp) checks
+every operation, finishes prepared viewports and cancels an abandoned frame.
+Its callback receives `ViewportFrame` and the safe slot and returns application
+batches/pass settings. GUI owns all GUI geometry, bindings and programs.
+Use `Rendering::programs(app)` and `renderer(app)` for the combined frame;
+an unrelated cache does not automatically contain the reserved GUI program.
 
-`append_render_pass` supplies the offscreen color attachment/extent and an
-explicit shader-read-to-color-attachment barrier. The app supplies clear,
-load/store, depth and batch content; no scene schema is assumed. `composite`
-adds the application-to-GUI dependency and the color-attachment-to-shader-read
-barrier to that GUI node. Resource-usage ordering alone would not insert this
-transition. Multiple viewports can append independent passes to one graph.
-Advanced applications retain the target, node ID and full FrameGraph API to
-compose other compute/render dependencies.
+`ViewportFrame::target` is a retained Renderer `Texture`, with size/format/
+identity and a sampled view for normal program bindings. It pins the exact
+target and device storage, not merely the viewport's mutable slot array.
+`ViewportTargetDesc` uses Renderer format values; the default is BGRA8.
+`frames_in_flight == 0` infers the Application's slot count; an explicit
+different count fails. Release GPU state before changing device, format or
+slot configuration.
 
-For detached windows, call `Context::prepare_frame` once for all views and use
-that view's `Surface::record` for its GUI batches, then composite into its GUI
-pass. Each independently paced Presentation needs its own Painter and
-slot-scoped application uploads: two independent pacing slots do not protect
-shared streamed buffers. The device/cache/Renderer may still be shared.
+`append_viewport_pass` supplies the offscreen color target/extent and the
+sample-to-attachment transition. The app supplies clear/load/store, depth and
+normal batches; another color target is rejected. `display_viewport` binds
+the image before GUI recording without exposing Painter. Stable TextureId
+rebinding preserves cached GUI shapes. Borders/tint/UVs, clipping, child
+overlays and root transparency remain ordinary GUI behavior.
+`composite_viewport` adds the scene-to-GUI graph dependency and
+attachment-to-sample transition. Multiple viewports can contribute independent
+scene passes before one GUI pass.
 
-`display` registers/rebinds the prepared target with the same-device Painter.
-`Painter::replace_texture` keeps its TextureId stable, so a scene-only redraw
-or target-slot change does not regenerate retained GUI shapes. It creates the
-new binding before replacing the old one and propagates errors. Viewport
-decorations retain ordinary tint, borders, corners and UVs; children/overlays
-remain ordinary GUI elements. Root transparency is unchanged. The application
-chooses its window-pass clear color; no special background widget is needed.
+For explicit offscreen scheduling, `prepare_viewport(renderer::Device&, ...)`
+uses a caller-protected slot; zero slot count defaults to two. The external
+FramePacer, application streams and GUI stream must use matching safe slots.
+`Rendering::record`/`append_gui_pass` accept a Surface belonging to the
+Application's Context. An offscreen GUI pass can supply Renderer texture
+transitions as the final `append_gui_pass` argument. A zero-pixel borrowed
+Application can be explicitly recorded using a nonzero external target; this
+does not create a window or make minimized `Application::draw` succeed.
 
-## Redraw, resize and lifetime
+One Application owns one Context and GUI stream. Surface DPI/input/recording
+does not imply a complete shared-context, independently paced multi-window
+Application API. Do not record two GUI views into one reused streamed slot:
+each independently paced window needs an independent Painter/stream owner.
+The normal borrowed-Context/per-surface ownership choice remains an explicit
+follow-up boundary in #276; use specialist owners for that existing advanced
+host arrangement rather than inventing a lifetime/pacing policy.
 
-`request_redraw()` increments the scene revision and requests a GUI frame.
-Application animations schedule those requests through the existing host loop
-or Context deadlines. An unrelated GUI repaint, movement without size change
-or another pacing slot reuses the last **submitted** scene target. First use,
-pixel-size or DPI change and an explicit scene revision require rendering.
-Hidden/fully clipped/minimized views allocate no target and leave the scene
-revision pending until drawable again.
+## Revision, synchronization and lifetime
 
-Each safe pacing slot has a stable sampled target for scene redraws. Resize
-replaces that slot's target and retains the previously submitted/displayed
-image until it is replaced. GUI-only frames can sample the last committed
-target across slots; all reads/writes stay on the same graphics queue, ordered
-with explicit barriers. Offscreen initialization uses the existing bounded
-Renderer layout-transition submission, never texture readback.
+First use, changed pixel size/DPI or an explicit scene revision redraws.
+Unrelated GUI repaints, movement without size/DPI change and another safe slot
+reuse the last **submitted** scene. Hidden/clipped/minimized views allocate no
+target and preserve pending scene work. Each safe slot has a retained target;
+resize replaces only that slot. Previously returned Texture values remain
+valid across replacement and `release_viewport` while their owners are kept.
 
-Pair every successful `prepare_frame` with `finish_frame`, even for hidden or
-cancelled work. Pass `RendererFrameStats::submitted`: presentation may fail
-after scene work was already submitted. Unsubmitted work remains dirty and
-requests another frame. Submitting a redraw without its composite transition
-is an explicit error. A frame graph is per-frame; after rendering/discarding
-it, do not resubmit it after texture rebinding or streamed-slot reuse.
+Pair every successful `prepare_viewport` with `finish_viewport`, including
+hidden/cancelled work. Use actual submission statistics, not presentation
+success: scene work can be submitted before the host presentation fails.
+Unsubmitted work requests another frame. A submitted redraw without its GUI
+transition is an explicit error.
 
-FrameGraph's narrow `retain(shared_ptr)` hook preserves the viewport state and
-target wrappers borrowed by its nodes/batches, even when the element/reference
-is removed after assembly. RHI retains the native resources of submitted
-commands. The device, Painter and cache stay alive and unmoved through their
-users and outstanding graphs; a Painter registration is private to the
-viewport and must not be removed independently.
+Graph insertion retains the normal pass/batch/texture owners and GUI owner
+needed by the underlying nodes. Graph moves preserve underlying identity.
+Context owns only the element/raw viewport state; it does not strongly own
+its enclosing Application through the normal wrapper. Native resources of
+submitted commands follow RHI retention. Host windows/services and imported
+raw devices remain externally owned and must stay alive/unmoved.
 
-FrameGraph storage and RendererFrameStats changed in this unreleased batch.
-Rebuild Renderer, GUI and every consumer against matching headers/archives;
-do not combine new headers with Studio or other binaries built against the old
-class layouts. This follows the pre-first-release policy, with no shim or
-version bump.
+Finish/discard frames, check the relevant Presentation/FramePacer idle wait and
+call `Rendering::release_viewport` before host/renderer transfer or teardown.
+Stale references fail. Device loss requires new GPU consumers. Do not reuse
+old graphs after slot reuse or texture/binding changes, and rebuild GUI,
+Renderer and every consumer against matching headers/archives.
 
-Before destroying/moving a Painter/device or transferring to another host's
-Painter, finish/discard outstanding frames, check the presentation/pacer idle
-wait and call `release_gpu()`. This removes the registration and clears the
-targets; the next prepared drawable frame renders again. Element/Context
-cleanup retires registrations automatically, deferring them through an
-outstanding graph. Stale object calls report an error. A lost device requires
-new GPU consumers, not reuse of old targets; all allocation, binding, recording
-and synchronization errors propagate as typed Status/Result values.
+Explicit raw extensions now use `gui::specialist::Viewport` and
+`gui/specialist/viewport.hpp`. This is a breaking pre-release cutover, not an
+old-name alias or compatibility shim; no version bump is made.
 
-## Focused contract evidence
+## Focused evidence
 
-`truffle_gui_viewport_tests` covers exact fractional pixel/DPI sizing, detached
-surface DPI, routed local input/focus/capture, scene revision/cancellation/reuse,
-target resize and graph barriers/dependencies, invalid configuration, hidden/
-zero-sized views, callback removal, stale references and graph retention using
-the strict Null backend. It also compiles the public shared-frame example.
+`truffle_gui_only_consumer_tests` compiles/links GUI alone and exercises normal
+viewport pixel metrics, input/focus, transparency and stale references.
+`truffle_gui_viewport_consumer_tests` covers normal retained meshes/targets,
+graph moves, submission/reuse/cancellation, resize and exact-target/device
+lifetime after release/owner teardown, using Null for validation only.
+The existing deep `truffle_gui_viewport_tests` preserves fractional/detached
+DPI, capture, revision, barriers, hidden allocation, callback removal and
+retention proofs through the specialist path.
 
-Owner-run `truffle_gui_viewport_metal_tests` and
-`truffle_gui_viewport_vulkan_tests` exercise four real shared GPU frames and
-exact offscreen-image/ancestor-clip/overlay pixels, stable TextureId rebinding
-and zero scene-only shape regeneration. These tests do not add readback to
-the public runtime path. Unrun native tests are not evidence or a platform
-promotion; the existing Metal/macOS and Vulkan/Windows Painter paths are
-preserved without a new compiler or dependency.
-
-This delivery ran only the two new Null/CPU presentation and viewport contracts
-in the existing strict Debug configuration. The new Vulkan viewport test also
-compiled on Windows; neither native viewport test nor native Presentation
-execution was run. Native runtime, multi-window integration and broader
-verification remain owner-run.
+All three focused CPU/Null contracts passed in the existing strict MSVC Debug
+configuration. The migrated Vulkan native target compiled; it was not run.
+Owner-run Metal/Vulkan native tests use the normal borrowed Application and
+shared-frame APIs for four exact clip/overlay/scene-reuse GPU frames. Only
+native initialization/readback remain specialist test harness code; BGRA
+readback is normalized there, not in the public runtime.
+Native owned/borrowed execution, Metal compilation, full suites, package/
+configuration matrices and multi-window integration remain unverified.

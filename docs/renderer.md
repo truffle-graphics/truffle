@@ -1,5 +1,22 @@
 # Programs in Renderer (#179, #181)
 
+## Normal consumer contracts (#275)
+
+Ordinary Renderer headers use Renderer-owned values and retained resources.
+Load prepared bytes with `renderer::ShaderPackage::load`, register a normal
+`renderer::ProgramDesc` and use Renderer `Device`, buffers/meshes/textures,
+typed passes, `FrameGraph` and pacing. The device selects the prepared shader
+target. No RHI headers/types or runtime compiler are required.
+See [consumer-layer contracts](consumer-layers.md) and the compiled
+[normal frame example](../examples/renderer_consumer/frame.hpp).
+
+The remaining detailed raw recipes below are **specialist APIs**, under
+`truffle/renderer/specialist/`. They describe explicit RHI package, reflection,
+layout, encoder/fence and source-compiler integration, not ordinary consumer
+setup. Camera/view math remains in the normal Renderer namespace/header.
+
+## Specialist program contracts
+
 Renderer depends on Shader, RHI and Base (Renderer → Shader → RHI → Base).
 Prepared **Truffle Shader Packages (TSP)**, including `.tsp` files loaded with
 `rhi::ShaderPackage::load`, are permanent first-class inputs and need no
@@ -11,10 +28,10 @@ Engine or window dependency.
 
 ```cpp
 using namespace truffle;
-renderer::PipelineCache programs(device);
-renderer::Renderer renderer(device, &programs);
+renderer::specialist::PipelineCache programs(device);
+renderer::specialist::Renderer render(device, &programs);
 
-renderer::ProgramDesc request;
+renderer::specialist::ProgramDesc request;
 request.vertex = {&vertexPackage, target, "vertex_main",
                   rhi::ShaderStage::vertex, configuration};
 request.fragment = {&fragmentPackage, target, "fragment_main",
@@ -96,7 +113,7 @@ types. Names are diagnostic, not portable binding identities; resource bindings
 use group/binding numbers. Renderer does not reflect or guess fields inside
 uniform/storage buffers: their packing remains an explicit app-shader contract.
 
-`Mesh::upload()` (`truffle/renderer/mesh.hpp`) accepts vertex byte streams and
+`Mesh::upload()` (`truffle/renderer/specialist/mesh.hpp`) accepts vertex byte streams and
 optional uint16/uint32 index bytes. It checks stream sizes and CPU index bounds,
 then writes those exact bytes into owned upload-domain GPU buffers. There is no
 asset parser, per-field conversion, or device-local staging optimization.
@@ -123,7 +140,7 @@ are right-handed, column vectors, view forward -Z, and projection depth [0,1].
 OpenGL-native [-1,1] projection requires an explicit shader/application mapping.
 Degenerate and nonfinite camera parameters return errors.
 
-`DepthTarget` (`truffle/renderer/depth_target.hpp`) owns a depth texture.
+`DepthTarget` (`truffle/renderer/specialist/depth_target.hpp`) owns a depth texture.
 `resize()` reuses an identical allocation or creates and transitions a new
 attachment on the device's graphics queue. Failed resize preserves the previous
 texture. Its device must outlive it; borrowed texture wrapper references are
@@ -168,9 +185,9 @@ batch.material = material;
 batch.instanceCount = 1;
 batch.bindGroups = {{.group = 0, .bindings = &group,
                      .dynamicOffsets = {}}};
-renderer::FrameGraph graph;
-graph.add_node(std::make_unique<renderer::RenderPassNode>(
-    pass, std::vector<renderer::RenderBatch>{batch}));
+renderer::specialist::FrameGraph graph;
+graph.add_node(std::make_unique<renderer::specialist::RenderPassNode>(
+    pass, std::vector<renderer::specialist::RenderBatch>{batch}));
 auto status = renderer.render(graph);
 ```
 
@@ -195,7 +212,7 @@ policy; vertex formats, atlas contents and shaders remain application-defined.
   receive the full pass extent. A clip on a static pipeline is rejected.
 - **Blending.** Alpha blending is ordinary `PipelineDesc::colorTargets[].blend`
   state on the registered program; no Renderer feature is involved.
-- **Sampled textures.** `renderer::SampledTexture` (`texture.hpp`) uploads an
+- **Sampled textures.** `renderer::specialist::SampledTexture` (`renderer/specialist/texture.hpp`) uploads an
   uncompressed 2D color texture (r8, rg8, rgba8/srgb, bgra8/srgb, rgba16f,
   rgba32f) through a staging copy and waits for it; `update` replaces a
   sub-rectangle (for example a growing glyph atlas). The texture is left
@@ -210,11 +227,11 @@ policy; vertex formats, atlas contents and shaders remain application-defined.
   `to_attachment()` before the pass that renders into it and `to_shader_read()`
   before the pass that samples it (`RenderPassNode::transition_before`), with a
   graph dependency between them. Render targets reject byte updates (#255).
-- **Streamed geometry.** `renderer::StreamBuffer` (`frame_stream.hpp`) copies
+- **Streamed geometry.** `renderer::specialist::StreamBuffer` (`renderer/specialist/frame_stream.hpp`) copies
   per-frame bytes (vertices, indices, uniforms) into per-slot upload buffers
   and returns `BufferView`s for `RenderBatch` bindings or index buffers; slots
   grow on demand. Sub-ranges of one buffer are expressed through view offsets.
-- **Frames in flight.** `renderer::FramePacer` paces slots over one fence.
+- **Frames in flight.** `renderer::specialist::FramePacer` paces slots over one fence.
   `Renderer::render(graph, swapchain, pacer.signal())` signals the frame's
   fence value at submission, and `RendererFrameStats::submitted` tells
   `end_frame` whether to wait for it later:
@@ -275,14 +292,14 @@ remains a Null-validation aid; native consumers pass a real `PipelineCache`.
 
 ## Source programs (#181)
 
-`renderer::SourceProgram` (`truffle/renderer/source_program.hpp`) owns one
+`renderer::specialist::SourceProgram` (`truffle/renderer/specialist/source_program.hpp`) owns one
 `(material, variantHash)` slot whose program is compiled from source:
 
 ```cpp
 shader::Compiler compiler;
-renderer::SourceProgram program(programs, material, state);
+renderer::specialist::SourceProgram program(programs, material, state);
 
-renderer::SourceProgramRequest request;
+renderer::specialist::SourceProgramRequest request;
 request.vertex.source = {"fullscreen.vert", vertexText};
 request.fragment.source = {"palette.frag", fragmentText};
 request.fragment.includeRoots = {"shaders/include"};

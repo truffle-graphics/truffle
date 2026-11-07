@@ -235,7 +235,7 @@ creation, input/platform services and the event loop remain outside Truffle.
 GUI and custom rendering share the same device, Renderer and frame graph.
 See [presentation usage, recovery and lifetime](presentation.md).
 
-GUI's `Viewport` (#271) owns only layout/input, scene-redraw state and image
+GUI's `Viewport` (#271/#277) owns only layout/input, scene-redraw state and image
 composition. Application batches render into existing Renderer sampled targets
 and precede Painter in the same graph with explicit attachment/sample barriers.
 FrameGraph can retain wrappers borrowed by per-frame nodes; RHI retains native
@@ -243,6 +243,12 @@ submitted resources. Painter's stable texture-ID rebinding preserves cached
 GUI shapes. Per-element DPI follows its GUI Surface, including detached views.
 No Engine, scene policy, CPU readback or direct-swapchain scene path is
 required. [Viewport usage and lifetime](gui-viewport.md) defines the contract.
+The ordinary Viewport header is GUI-only; advanced composition uses Renderer
+values in `gui/rendering.hpp`. Exact target/pass/batch/device owners are
+retained; raw extensions are under `gui/specialist/`. One Application owns one
+Context/GUI stream. Shared-context independently paced multi-window ownership
+remains a design boundary in #276, not an assumed reverse dependency or
+stream-sharing policy.
 
 ## Dependency Boundary
 
@@ -325,7 +331,7 @@ becomes a mandatory dependency.
 
 Shader-library work (#178), tool reuse and TSP naming (#180), prepared-TSP
 Renderer execution (#179), and Renderer's direct use of Shader for runtime
-compilation and rebuild adoption (#181) are implemented. `renderer::SourceProgram`
+compilation and rebuild adoption (#181) are implemented. `renderer::specialist::SourceProgram`
 compiles only the requested configuration through `shader::Compiler`, consumes
 the in-memory `Compilation`, validates the vertex/fragment link and pipeline
 vertex inputs, then adopts the result through the same Renderer stage/commit
@@ -391,8 +397,9 @@ See [the shader package contract](rhi1/shader-package.md).
 
 ## GUI Prepared Rendering (#268)
 
-`gui::Painter` supports Metal and Vulkan through the same public Renderer/RHI
-contracts. GUI owns its prepared programs: embedded native MSL keeps the
+`gui::specialist::Painter` supports Metal and Vulkan through Renderer/RHI
+implementation contracts. Normal consumers use GUI-owned Application rendering.
+GUI owns its prepared programs: embedded native MSL keeps the
 existing Metal path, and a checked-in TSP embeds native SPIR-V for Vulkan 1.1 /
 SPIR-V 1.3. Configure embeds the package bytes; it never runs a compiler.
 Painter selects the native target and clip-space Y convention while retaining

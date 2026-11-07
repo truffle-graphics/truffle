@@ -80,7 +80,7 @@ Current evidence is narrower than the old roadmap claimed:
   WARP are now verified with GPU validation (#264), including raw/structured
   buffers and structured descriptor arrays.
   The Shader library (#178/#180) owns compilation; Renderer consumes its
-  in-memory results directly through `renderer::SourceProgram` (#181).
+  in-memory results directly through `renderer::specialist::SourceProgram` (#181).
 - The optional native Slang adapter (#190) uses pinned source Slang 2026.12.1,
   native imports and component linking, fresh transitive content snapshots,
   canonical SPIR-V reflection and independent validation. It emits only the
@@ -109,13 +109,13 @@ Normal Renderer resource/frame/presentation headers expose Renderer-owned
 values and opaque retained resources, not RHI contracts (#273/#275).
 Explicit raw extensions use `renderer::specialist`, specialist headers and
 `renderer/rhi_interop.hpp`. GUI-owned setup and Renderer-level viewport
-integration are tracked under #276/#277; Engine #272 remains design-only.
+integration are implemented under #276/#277; Engine #272 remains design-only.
 
 `gui::Application` owns GUI graphics orchestration and optional image/font
 resources with a host-owned window, using GUI-only public types (#276).
 `gui/rendering.hpp` opts into a borrowed/shared Renderer device and combined
-frame graph. Raw Painter/text/Surface GPU access is specialist-only.
-Normal GUI Context/drawing/text/Surface headers import neither Renderer nor
+frame graph. Raw Painter/text/Surface/Viewport GPU access is specialist-only.
+Normal GUI Context/drawing/text/Surface/Viewport headers import neither Renderer nor
 RHI. Optional native setup is linked privately by GUI when enabled.
 
 RHI 1 uses move-only RAII objects over opaque generation-checked handles and a
@@ -137,8 +137,9 @@ remain backend-independent. GUI/application passes share one device/frame.
 See `docs/presentation.md`; new native execution is owner-run, not a maturity
 promotion.
 
-GUI's `Viewport` (#271) composes application-owned offscreen passes with Painter
-on the same device/frame graph. It reports layout pixels and host DPI scale,
+GUI's `Viewport` (#271/#277) reports GUI-only layout/input, while opt-in
+`gui::Rendering` composes application-owned offscreen passes using Renderer
+values on the same device/frame graph. It reports layout pixels and host DPI scale,
 routes ordinary viewport input, reuses unchanged submitted scenes and manages
 safe-slot target resize/retention. Renderer keeps GPU target/graph ownership;
 there is no Engine dependency, CPU readback or special background widget.

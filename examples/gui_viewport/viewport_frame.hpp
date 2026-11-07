@@ -1,88 +1,67 @@
 #pragma once
 
-#include "truffle/gui/viewport.hpp"
-#include "truffle/renderer/specialist/presentation.hpp"
+#include "truffle/gui/rendering.hpp"
 
 namespace truffle::examples {
 
 struct ViewportRenderData {
-  std::vector<renderer::specialist::RenderBatch> batches;
-  rhi::RenderPassDesc pass; // optional application-owned depth and clear settings
+  std::vector<renderer::RenderBatch> batches;
+  renderer::RenderPassDesc pass; // app-owned depth/clear settings
 };
-
 using RenderViewport = std::function<base::Result<ViewportRenderData>(
     const gui::ViewportFrame &, std::uint32_t slot)>;
 
-// The host creates its window and Presentation/Painter as in gui_presentation.
-// Scene state, shaders and per-slot geometry/uniforms belong to renderViewport.
-inline base::Status draw_viewport(renderer::specialist::Presentation &presentation,
-                                  renderer::specialist::Renderer &renderer, gui::Context &context,
-                                  gui::specialist::Painter &painter, gui::Viewport &viewport,
-                                  const RenderViewport &renderViewport,
+// GUI owns its rendering. The app renders only its scene and supplies normal
+// Renderer batches/programs; owned and borrowed Application paths share this.
+inline base::Status draw_viewport(gui::Application &app, gui::Viewport &viewport,
+                                  const RenderViewport &render_viewport,
                                   gui::Context::Clock::time_point now) {
-  auto frame = presentation.begin_frame();
-  if (!frame.ok()) {
+  auto frame = gui::Rendering::begin_frame(app, now);
+  if (!frame.ok())
     return frame.status();
-  }
-  bool preparedViewport = false;
+  bool prepared = false;
   auto fail = [&](base::Status status) {
-    if (preparedViewport) {
-      (void)viewport.finish_frame(false);
+    if (prepared) {
+      auto finished = gui::Rendering::finish_viewport(viewport, false);
+      if (!finished.ok())
+        status = finished;
     }
-    (void)presentation.cancel_frame();
-    context.request_frame();
-    return status;
+    auto cancelled = gui::Rendering::cancel_frame(app);
+    return cancelled.ok() ? status : cancelled;
   };
-  auto prepared = context.prepare_frame(now);
-  if (!prepared.status.ok()) {
-    return fail(prepared.status);
-  }
-  auto view =
-      viewport.prepare_frame(presentation.device(), frame.value().slot,
-                             {
-                                 .frames_in_flight = presentation.desc().framesInFlight,
-                             });
-  if (!view.ok()) {
+  auto view = gui::Rendering::prepare_viewport(app, viewport, frame.value().slot);
+  if (!view.ok())
     return fail(view.status());
-  }
-  preparedViewport = true;
-  renderer::specialist::FrameGraph graph;
+  prepared = true;
+  renderer::FrameGraph graph;
   if (view.value().redraw) {
-    if (!renderViewport) {
-      return fail(
-          base::Status::failure(base::StatusCode::invalid_argument,
-                                "Viewport example needs an application renderer"));
-    }
-    auto rendered = renderViewport(view.value(), frame.value().slot);
-    if (!rendered.ok()) {
-      return fail(rendered.status());
-    }
-    auto node = viewport.append_render_pass(graph, std::move(rendered.value().batches),
-                                            std::move(rendered.value().pass));
-    if (!node.ok()) {
-      return fail(node.status());
-    }
+    if (!render_viewport)
+      return fail(base::Status::failure(base::StatusCode::invalid_argument,
+                                        "Viewport requires an application renderer"));
+    auto scene = render_viewport(view.value(), frame.value().slot);
+    if (!scene.ok())
+      return fail(scene.status());
+    auto pass = gui::Rendering::append_viewport_pass(
+        viewport, graph, std::move(scene.value().batches), std::move(scene.value().pass));
+    if (!pass.ok())
+      return fail(pass.status());
   }
-  if (auto status = viewport.display(painter); !status.ok()) {
+  if (auto status = gui::Rendering::display_viewport(app, viewport); !status.ok())
     return fail(status);
-  }
-  context.update_shapes(); // image registration only; layout was already prepared
-  auto batches = painter.record(context, frame.value().slot, frame.value().extent);
-  if (!batches.ok()) {
-    return fail(batches.status());
-  }
-  rhi::RenderPassDesc pass;
-  pass.colorAttachments.push_back({.clear = {0, 0, 0, 0}});
-  const auto guiPass = graph.add_node(
-      std::make_unique<renderer::specialist::RenderPassNode>(pass, std::move(batches).value(), true));
-  if (auto status = viewport.composite(graph, guiPass); !status.ok()) {
+  app.context().update_shapes();
+  auto gui_pass =
+      gui::Rendering::append_gui_pass(app, graph, frame.value(),
+                                      {
+                                          .colorAttachments = {{.clear = {0, 0, 0, 0}}},
+                                      });
+  if (!gui_pass.ok())
+    return fail(gui_pass.status());
+  if (auto status = gui::Rendering::composite_viewport(viewport, graph, gui_pass.value());
+      !status.ok())
     return fail(status);
-  }
-  auto status = presentation.render(renderer, graph);
-  const auto finished = viewport.finish_frame(presentation.last_frame_stats().submitted);
-  if (!status.ok() || !finished.ok()) {
-    context.request_frame();
-  }
+  auto status = gui::Rendering::present(app, graph);
+  auto finished =
+      gui::Rendering::finish_viewport(viewport, app.last_frame_stats().submitted);
   return status.ok() ? finished : status;
 }
 

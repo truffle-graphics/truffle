@@ -1,4 +1,4 @@
-#include "truffle/gui/viewport.hpp"
+#include "truffle/gui/specialist/viewport.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -6,7 +6,7 @@
 #include <limits>
 #include <utility>
 
-namespace truffle::gui {
+namespace truffle::gui::specialist {
 namespace {
 
 base::Status invalid(base::StatusCode code, const char *message) {
@@ -27,7 +27,10 @@ struct Viewport::State {
   ElementId element;
   ViewportEventHandler handler;
   rhi::Device *device = nullptr;
-  specialist::Painter *painter = nullptr;
+  std::shared_ptr<void> device_owner;
+  Painter *painter = nullptr;
+  std::weak_ptr<void> painter_owner;
+  bool owner_managed_painter = false;
   TextureId texture;
   ViewportTargetDesc desc;
   std::vector<std::shared_ptr<renderer::specialist::SampledTexture>> slots;
@@ -54,18 +57,24 @@ struct Viewport::State {
   bool live() const noexcept { return context != nullptr && context->alive(element); }
 
   base::Status release() {
-    if (painter != nullptr && texture.valid()) {
+    const auto owner = painter_owner.lock();
+    // An owner-managed Painter's registrations die with it; never dereference
+    // that borrowed pointer after its Application has been destroyed.
+    if (painter != nullptr && texture.valid() && (!owner_managed_painter || owner)) {
       if (auto status = painter->remove_texture(texture); !status.ok()) {
         return status;
       }
     }
     painter = nullptr;
+    painter_owner.reset();
+    owner_managed_painter = false;
     texture = {};
     displayed.reset();
     pending.reset();
     committed.reset();
     slots.clear();
     device = nullptr;
+    device_owner.reset();
     committedRevision = 0;
     return base::Status::success();
   }
@@ -144,6 +153,18 @@ base::Result<Viewport> Viewport::create(Context &context, ElementId parent) {
 
 ElementId Viewport::element() const noexcept {
   return state_ ? state_->element : ElementId{};
+}
+bool Viewport::retain_device(rhi::Device &device, std::shared_ptr<void> owner) {
+  assert(state_);
+  if (state_->device != nullptr && state_->device != &device)
+    return false;
+  state_->device_owner = std::move(owner);
+  return true;
+}
+void Viewport::painter_owner(std::weak_ptr<void> owner) {
+  assert(state_);
+  state_->painter_owner = std::move(owner);
+  state_->owner_managed_painter = true;
 }
 bool Viewport::alive() const noexcept { return state_ && state_->live(); }
 
@@ -272,14 +293,15 @@ base::Result<ViewportFrame> Viewport::prepare_frame(rhi::Device &device,
                          rhi::Extent3D{pixels.width, pixels.height, 1}) {
         auto created = renderer::specialist::SampledTexture::render_target(
             device, {
-                        .extent = pixels,
+                        .extent = {pixels.width, pixels.height},
                         .format = desc.format,
                         .debugName = "GUI viewport",
                     });
         if (!created.ok()) {
           return created.status();
         }
-        target = std::make_shared<renderer::specialist::SampledTexture>(std::move(created).value());
+        target = std::make_shared<renderer::specialist::SampledTexture>(
+            std::move(created).value());
       }
       state_->pending = target;
     } else {
@@ -287,7 +309,8 @@ base::Result<ViewportFrame> Viewport::prepare_frame(rhi::Device &device,
     }
   }
   state_->open = true;
-  return ViewportFrame{state_->pendingMetrics, state_->pending.get(), state_->redraw};
+  return ViewportFrame{state_->pendingMetrics, state_->pending.get(), state_->redraw,
+                       state_->pending};
 }
 
 base::Result<renderer::specialist::FrameGraph::NodeId>
@@ -309,10 +332,11 @@ Viewport::append_render_pass(renderer::specialist::FrameGraph &graph,
   if (pass.colorAttachments.empty()) {
     pass.colorAttachments.emplace_back();
   }
-  pass.extent = state_->pendingMetrics.pixels;
+  pass.extent = {state_->pendingMetrics.pixels.width,
+                 state_->pendingMetrics.pixels.height};
   pass.colorAttachments.front().texture = &state_->pending->texture();
-  auto node =
-      std::make_unique<renderer::specialist::RenderPassNode>(std::move(pass), std::move(batches));
+  auto node = std::make_unique<renderer::specialist::RenderPassNode>(std::move(pass),
+                                                                     std::move(batches));
   node->transition_before(state_->pending->to_attachment());
   state_->appPass = graph.add_node(std::move(node));
   graph.retain(state_);
@@ -321,7 +345,7 @@ Viewport::append_render_pass(renderer::specialist::FrameGraph &graph,
   return *state_->appPass;
 }
 
-base::Status Viewport::display(specialist::Painter &painter) {
+base::Status Viewport::display(Painter &painter) {
   if (!alive() || !state_->open) {
     return invalid(base::StatusCode::invalid_state,
                    "Viewport: prepare a frame before display");
@@ -372,7 +396,8 @@ base::Status Viewport::composite(renderer::specialist::FrameGraph &graph,
   }
   if (state_->linked || guiPass >= graph.nodes().size() ||
       graph.nodes()[guiPass] == nullptr ||
-      graph.nodes()[guiPass]->kind() != renderer::specialist::FrameGraphNodeKind::Render) {
+      graph.nodes()[guiPass]->kind() !=
+          renderer::specialist::FrameGraphNodeKind::Render) {
     return invalid(
         base::StatusCode::invalid_argument,
         "Viewport: composite needs one GUI render pass in the application's graph");
@@ -385,7 +410,8 @@ base::Status Viewport::composite(renderer::specialist::FrameGraph &graph,
     if (auto status = graph.add_dependency(*state_->appPass, guiPass); !status.ok()) {
       return status;
     }
-    auto *node = static_cast<renderer::specialist::RenderPassNode *>(graph.nodes()[guiPass].get());
+    auto *node =
+        static_cast<renderer::specialist::RenderPassNode *>(graph.nodes()[guiPass].get());
     node->transition_before(state_->pending->to_shader_read());
   }
   graph.retain(state_);
@@ -445,4 +471,4 @@ base::Status Viewport::release_gpu() {
   return status;
 }
 
-} // namespace truffle::gui
+} // namespace truffle::gui::specialist

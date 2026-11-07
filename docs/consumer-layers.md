@@ -7,7 +7,8 @@ services remain host-owned. Engine design #272 is excluded.
 
 ## Audit at #271
 
-All 15 Renderer and 23 GUI public headers and their CMake targets were audited.
+All 15 Renderer and 23 GUI public headers and their CMake targets were audited:
+145 RHI references in 17 headers, including private storage.
 The table inventories every RHI-facing family, including private storage; other
 headers have no RHI requirement. **Equivalent** means a normal consumer needs a
 layer-owned replacement. **Specialist** means explicitly low-level use.
@@ -20,6 +21,7 @@ layer-owned replacement. **Specialist** means explicitly low-level use.
 | `renderer/renderer.hpp` | Device constructor/accessor, Swapchain render argument, Fence signal | Equivalent: Renderer device, presentation and pacing; direct external fence/swapchain submission is Specialist (#275) |
 | `renderer/mesh.hpp` | Device upload, IndexFormat, private Buffer storage | Equivalent device/index values; private GPU storage Fine (#275) |
 | `renderer/render_batch.hpp` | Buffer pointers/ranges, BindGroup pointers/dynamic offsets, IndexFormat, ScissorRect | Equivalent: owned Renderer buffer slices/bindings/index/clip values (#275); direct arenas/descriptor mutation Specialist |
+| `renderer/frame_graph.hpp` | RenderPassDesc/attachments/texture pointers, extents, clear colors, load/store/depth/resolve and TextureBarrier recording | Equivalent typed passes, retained targets and semantic transitions (#275); raw nodes/encoder access Specialist |
 | `renderer/frame_stream.hpp` | Device/pacing Fence, BufferUsage, Buffer slots | Equivalent safe-slot/stream contracts (#275); explicit external fences Specialist; private storage Fine |
 | `renderer/texture.hpp` | Device, image extents/formats/Origin3D, Texture/View, attachment/sample TextureBarrier | Equivalent images/targets and semantic transitions (#275); raw subresources/queue barriers Specialist |
 | Same | ShaderStageMask, BindGroupLayout/PipelineLayout, SamplerDesc, BindGroup/Sampler/DescriptorArena | Equivalent normal sampled bindings/samplers (#275); arbitrary descriptor arenas/raw layouts Specialist |
@@ -39,12 +41,13 @@ layer-owned replacement. **Specialist** means explicitly low-level use.
 | Native examples/tests | Instance/adapter/device, native window/swapchain, explicit command/fence, GPU readback | Specialist proofs. Readback is test evidence, not a GUI/Renderer runtime requirement |
 | GUI-only/normal Renderer examples | Repeated native setup and raw types | Replace with layer-owned examples; explicit native proofs opt into specialist headers |
 
-## CMake audit
+## CMake audit and delivered disposition
 
-`Truffle::Renderer` currently publicly links Shader/RHI contracts but no
+At #271, `Truffle::Renderer` publicly linked Shader/RHI contracts but no
 backend. Its optional `Truffle::RendererPresentation` links only enabled
 Metal/Vulkan implementations. `Truffle::GUI` links Renderer and private optional
-pinned text runtimes; it currently has no owned-device entry point.
+pinned text runtimes; its formerly absent owned-device entry point is now
+`gui::Application`, with optional native factory linkage private to GUI.
 `Truffle::GUIDock` remains above GUI. Transitive static implementation linkage
 does not mean consumers must include/name those lower-layer contracts.
 
@@ -121,4 +124,28 @@ exposes its shared cache/Renderer/Presentation and GUI frame composition.
 It contains Renderer values only, not RHI. Raw Painter/text/Surface GPU access
 is under `gui/specialist/`. See [Application usage](gui-application.md).
 Native factories travel privately through GUI only when enabled; core Renderer
-still has no backend implementation link. The #277 viewport cutover is next.
+still has no backend implementation link.
+
+## Viewport boundary (#277)
+
+Ordinary `gui/viewport.hpp` now contains GUI-only `Viewport`, pixel/DPI metrics
+and routed events. `gui/rendering.hpp` contains Renderer-only target/frame
+values and prepare/append/display/composite/finish/release operations.
+It reuses the existing offscreen mechanism under `gui::specialist::Viewport`.
+No ordinary GUI header imports Renderer/RHI; the opt-in Rendering header
+imports Renderer but no RHI/specialist contract. The guard checks both rules.
+
+Application preparation infers matching safe slots. Returned target textures
+pin their exact allocation and device owner through resize/release; inserted
+passes retain normal batches/depth/textures and GUI owners. Existing clipping,
+input, detached DPI, scene revision, submission-vs-presentation, transitions
+and transparent roots remain. See [viewport contracts](gui-viewport.md).
+
+The GUI-only direct-link proof, normal viewport contract and migrated deep
+specialist viewport contract passed on CPU/Null. The native Vulkan viewport
+target compiled after migrating its shared-frame body to normal APIs.
+Native initialization/readback alone remain specialist test harness code;
+native execution/Metal/configuration/multi-window evidence was not run.
+The normal shared-context, independently paced multi-window ownership API is
+not supplied by this single-Application cutover; #276 records that design
+boundary. Existing per-window raw Painter ownership remains specialist.

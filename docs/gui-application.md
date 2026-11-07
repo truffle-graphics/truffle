@@ -82,6 +82,19 @@ Surface belonging to the same Context; independently paced windows require
 independent Painter/Application streamed resources. Do not mix direct
 Presentation frame control with an open Application-managed frame.
 
+`gui::Viewport` remains GUI-only for layout/input. Use the
+[Renderer-level viewport composition](gui-viewport.md) for application scene
+batches: prepare, append scene, display, append GUI, composite and finish from
+actual submission statistics. Viewport targets retain exact allocations
+across resize/release; GUI still owns its program/bindings.
+
+One Application owns one Context and GUI stream. The optional Surface argument
+does not make two records into the same slot safe, nor let another Application
+borrow this Context. Shared-context independently paced windows still need
+specialist per-window Painter owners. Choosing a normal borrowed-Context
+variant versus per-surface rendering owners is an open integration boundary
+tracked in #276, not an implemented multi-window contract.
+
 Per-frame graphs retain the Application's GPU wrapper state. Discard graphs
 and call/check `wait_idle` before tearing down the Application and borrowed
 Host/window. No destructor hides a failed wait. Callbacks, external Context

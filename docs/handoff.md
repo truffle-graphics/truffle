@@ -5,7 +5,51 @@ This is the rolling execution handoff, not an implementation transcript.
 issues/Project own accepted work. Earlier phase details remain in their PRs,
 the support matrix and Git history.
 
-## Latest: GUI-owned and borrowed applications (#276)
+## Latest: GUI-only viewport and Renderer integration (#277)
+
+The consumer-layer implementation children #274-#277 are implemented on the
+existing feat/gui-menus batch. Prerequisites are signed/pushed:
+#274 `21f08b04833610214c78040744a77a3ebf215e92`,
+#275 `55688541987a82f550eabf7c997a38323492f83b`,
+#276 `da68f6252d3597406db15674034d17b1ed7cfefc`.
+This final issue-scoped phase replaces ordinary Viewport's raw graphics
+contract with GUI-only metrics/events/reference and opt-in Renderer-only
+prepare/append/display/composite/finish/release APIs in `gui::Rendering`.
+Existing offscreen viewport logic moves to GUI specialist headers/namespace;
+no compatibility shims, version bump, Engine or Studio changes.
+
+Returned Renderer Texture values retain the exact target allocation and device
+owner across slot resize/release. Graphs retain app pass/batch/depth/texture and
+GUI owners; graph moves preserve identity. Viewport's Context-owned raw state
+does not strongly own its enclosing Application. Stable image IDs, submitted
+scene reuse, detached DPI/input/clipping/overlays and minimized behavior remain.
+Owned and borrowed Applications use the same scene composition example.
+GUI pipeline/cache/bindings remain GUI-owned; use its exposed Renderer/cache
+for combined scene/GUI work and preserve the reserved GUI program ID.
+
+One Application owns one Context and GUI stream. Existing shared-context,
+independently paced detached windows still need explicit specialist Painter
+owners. A normal borrowed-Context/per-surface owner API is an open boundary in
+#276, not provided by the optional Surface recording argument. Do not record
+two GUI views into one reused slot. Studio must retain this limitation during
+migration rather than silently sharing streamed geometry.
+
+Strict incremental compilation covered the changed viewport/GUI-only contracts
+and the migrated Vulkan native test. Only the three focused CPU/Null contracts
+ran and passed; architecture/whitespace guards pass. Native shared-frame test
+bodies use normal borrowed Application/Renderer APIs; only native setup/readback
+remain specialist harness code. No native execution, Metal compilation, full
+suite/build, package/configuration or multi-window matrix, installs or hosted
+work was run. The native paths are not newly verified or promoted.
+
+See `docs/consumer-layers.md`, `docs/gui-application.md`,
+`docs/gui-viewport.md` and the public examples. Rebuild all consumers against
+matching new headers/archives. Finish/discard every prepared frame, use actual
+submitted statistics even on presentation errors, and check the idle wait
+before host/window teardown. Issues remain open for owner review/integration;
+no PR or merge was requested.
+
+## Earlier: GUI-owned and borrowed applications (#276)
 
 Renderer issue #275 is signed/pushed at
 `55688541987a82f550eabf7c997a38323492f83b` after #274

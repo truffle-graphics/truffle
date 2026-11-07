@@ -789,6 +789,11 @@ target_link_libraries(truffle_gui_viewport_tests PRIVATE truffle_gui truffle_bac
 truffle_target_warnings(truffle_gui_viewport_tests)
 add_test(NAME truffle_gui_viewport_tests COMMAND truffle_gui_viewport_tests)
 
+add_executable(truffle_gui_viewport_consumer_tests gui_viewport_consumer_tests.cpp)
+target_link_libraries(truffle_gui_viewport_consumer_tests PRIVATE truffle_gui truffle_backend_null)
+truffle_target_warnings(truffle_gui_viewport_consumer_tests)
+add_test(NAME truffle_gui_viewport_consumer_tests COMMAND truffle_gui_viewport_consumer_tests)
+
 if(TFL_BUILD_BACKEND_METAL AND APPLE)
     add_executable(truffle_gui_viewport_metal_tests gui_viewport_native_tests.cpp)
     target_link_libraries(truffle_gui_viewport_metal_tests PRIVATE truffle_gui truffle_backend_metal)

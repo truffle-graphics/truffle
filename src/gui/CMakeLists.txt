@@ -1,4 +1,4 @@
-add_library(truffle_gui STATIC application.cpp application_resources.cpp builder.cpp collections.cpp context.cpp draw.cpp events.cpp layout.cpp menu_session.cpp menus.cpp painter.cpp placement.cpp region.cpp shapes.cpp surface.cpp text.cpp text_edit.cpp text_layout.cpp text_unicode.cpp theme.cpp themes.cpp updates.cpp viewport.cpp widgets.cpp)
+add_library(truffle_gui STATIC application.cpp application_resources.cpp builder.cpp collections.cpp context.cpp draw.cpp events.cpp layout.cpp menu_session.cpp menus.cpp painter.cpp placement.cpp region.cpp shapes.cpp surface.cpp text.cpp text_edit.cpp text_layout.cpp text_unicode.cpp theme.cpp themes.cpp updates.cpp viewport.cpp viewport_rendering.cpp widgets.cpp)
 target_link_libraries(truffle_gui PUBLIC truffle_renderer)
 truffle_configure_target(truffle_gui GUI)
 add_library(Truffle::GUI ALIAS truffle_gui)

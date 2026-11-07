@@ -149,7 +149,8 @@ base::Result<std::vector<renderer::RenderBatch>> Rendering::record(Application &
 base::Result<renderer::FrameGraph::NodeId>
 Rendering::append_gui_pass(Application &app, renderer::FrameGraph &graph,
                            const RenderingFrame &frame, renderer::RenderPassDesc pass,
-                           bool use_window, Surface *surface) {
+                           bool use_window, Surface *surface,
+                           std::vector<renderer::TextureTransition> transitions) {
   if (pass.extent.width == 0 && pass.extent.height == 0)
     pass.extent = frame.pixels;
   if (pass.extent != frame.pixels)
@@ -160,7 +161,8 @@ Rendering::append_gui_pass(Application &app, renderer::FrameGraph &graph,
     return batches.status();
   auto added = graph.add_render_pass({.pass = std::move(pass),
                                       .batches = std::move(batches).value(),
-                                      .useWindow = use_window});
+                                      .useWindow = use_window,
+                                      .transitions = std::move(transitions)});
   if (added.ok())
     graph.retain(app.state_);
   return added;
