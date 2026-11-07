@@ -116,6 +116,10 @@ for each backend/platform pair:
   results. Shaderc and Renderer use this library directly; RHI never depends
   on it.
 - `truffle_renderer` starts the independently consumable rendering layer above RHI.
+- Optional `Truffle::RendererPresentation` sets up native Metal/Vulkan devices
+  without backend headers. Core Renderer owns presentation/pacing over a
+  host-owned native surface without requiring backend links; see
+  [presentation usage](docs/presentation.md).
 - `truffle_encom_renderer` is the optional EnCom–Renderer integration that
   extracts EnCom state into render batches.
 - `truffle_diagnostics` provides opt-in asset/render/frame/asset-render-plan/

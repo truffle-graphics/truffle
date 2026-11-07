@@ -224,6 +224,18 @@ add_executable(truffle_renderer_gui_primitives_tests renderer_gui_primitives_tes
 target_link_libraries(truffle_renderer_gui_primitives_tests PRIVATE truffle_backend_null truffle_renderer)
 add_test(NAME truffle_renderer_gui_primitives_tests COMMAND truffle_renderer_gui_primitives_tests)
 
+add_executable(truffle_renderer_presentation_tests renderer_presentation_tests.cpp)
+target_link_libraries(truffle_renderer_presentation_tests PRIVATE
+    truffle_backend_null truffle_renderer)
+if(TFL_BUILD_RENDERER_PRESENTATION)
+    target_link_libraries(truffle_renderer_presentation_tests PRIVATE
+        truffle_renderer_presentation truffle_gui)
+    target_compile_definitions(truffle_renderer_presentation_tests PRIVATE
+        TFL_TEST_PRESENTATION_NATIVE=1)
+endif()
+truffle_target_warnings(truffle_renderer_presentation_tests)
+add_test(NAME truffle_renderer_presentation_tests COMMAND truffle_renderer_presentation_tests)
+
 if(APPLE AND TFL_SHADER_ENABLE_METAL_COMPILER AND TFL_BUILD_BACKEND_METAL)
     add_executable(truffle_renderer_scene_metal_tests
         renderer_scene_metal_tests.cpp ../examples/minimum_renderer/scene.cpp)

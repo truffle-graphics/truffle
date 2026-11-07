@@ -21,6 +21,8 @@ option(TFL_SHADER_ENABLE_METALLIB_COMPILER
        "Enable optional offline MSL-to-metallib compilation (Apple Metal Toolchain required)" OFF)
 option(TFL_GUI_ENABLE_TEXT
        "Enable GUI text shaping and rasterization (FreeType and HarfBuzz)" ON)
+option(TFL_BUILD_RENDERER_PRESENTATION
+       "Build optional Renderer native presentation setup (enabled Metal/Vulkan only)" ON)
 option(TFL_BUILD_RHI_DOCTOR "Build the RHI backend/platform doctor tool" ${PROJECT_IS_TOP_LEVEL})
 
 option(TFL_BUILD_BACKEND_NULL    "Build the Truffle null validation backend" ON)

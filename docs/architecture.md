@@ -208,6 +208,15 @@ and future Engine consumers pass window handles or offscreen targets. An
 optional windowing convenience that wraps GLFW, SDL, or native APIs is a
 deferred idea, not a planned RHI 1 module.
 
+Renderer's `Presentation` (#270) composes existing RHI surface/swapchain and
+FramePacer contracts over a host-owned native handle. Core Renderer remains
+backend-independent; the optional `Truffle::RendererPresentation` target alone
+links enabled Metal/Vulkan factories for backend-neutral native setup.
+Explicit-device hosts use the core convenience without that target. Window
+creation, input/platform services and the event loop remain outside Truffle.
+GUI and custom rendering share the same device, Renderer and frame graph.
+See [presentation usage, recovery and lifetime](presentation.md).
+
 ## Dependency Boundary
 
 Backend-neutral runtime code depends only on C++20 and the standard library.

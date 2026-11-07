@@ -134,6 +134,8 @@ base::Status Renderer::render(const FrameGraph& graph, rhi::Swapchain* swapchain
                 if (!acquired.ok()) {
                     return acquired.status;
                 }
+                lastFrameStats_.presentationSuboptimal =
+                    acquired.status.code == base::StatusCode::suboptimal;
                 rhi::BarrierBatch toRender;
                 rhi::TextureBarrier barrier;
                 barrier.texture = acquired.image;
@@ -340,13 +342,18 @@ base::Status Renderer::render(const FrameGraph& graph, rhi::Swapchain* swapchain
              .value = 1,
              .stages = rhi::PipelineStage::bottom},
         }};
-        if (auto status = queue.present({.swapchain = swapchain,
-                                         .imageIndex = acquired.imageIndex,
-                                         .waits = presentWaits});
-            !status.ok()) {
+        auto status = queue.present({.swapchain = swapchain,
+                                      .imageIndex = acquired.imageIndex,
+                                      .waits = presentWaits});
+        if (status.ok() || status.code == base::StatusCode::suboptimal) {
+            lastFrameStats_.presented = true;
+        }
+        if (status.code == base::StatusCode::suboptimal) {
+            lastFrameStats_.presentationSuboptimal = true;
+        }
+        if (!status.ok()) {
             return status;
         }
-        lastFrameStats_.presented = true;
     }
     return base::Status::success();
 }

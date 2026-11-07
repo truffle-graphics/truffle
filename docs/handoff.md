@@ -5,7 +5,36 @@ This is the rolling execution handoff, not an implementation transcript.
 issues/Project own accepted work. Earlier phase details remain in their PRs,
 the support matrix and Git history.
 
-## Latest: Reusable GUI menus (#269)
+## Latest: Renderer presentation (#270)
+
+The existing `feat/gui-menus` batch continues from signed/pushed menu commit
+`985f3050add4802be091b9e4e21f2eca167cfab8`. `renderer::Presentation` now composes
+RHI surfaces/swapchains and FramePacer, supports explicit borrowed devices or
+owned instance/device setup, and preserves shared-device Renderer/frame-graph
+access. Resize/recoverable errors recreate the swapchain on the next frame,
+after submitted work retires; recording failure abandons acquired images safely.
+Zero extent suspends without acquisition/slot reuse. Surface loss requires a
+replacement host handle; device loss requires new GPU consumers.
+
+`Truffle::RendererPresentation` is an explicitly optional Renderer-owned
+native factory target and links only enabled Metal/Vulkan backends. Core
+Renderer gains no mandatory backend or GUI dependency. GUI-only clients need
+no backend headers, RHI setup calls, SDL/GLFW or Engine. The compiled
+`examples/gui_presentation/gui_application.hpp` demonstrates setup, drawing,
+resize, transparent clear and explicit teardown. See `docs/presentation.md`.
+The presentation owner coordinates existing interfaces/lifecycle only; native
+implementation and scene policy remain in their owning modules.
+
+Delivery is the first signed issue-scoped commit with immediate push before
+GUI viewport (#271) begins. Strict MSVC Debug compilation of only
+`truffle_renderer_presentation_tests` and its changed dependency closure passes;
+the GUI-only public example compiles in that target. Its one Null contract test
+passes (0.04 seconds). Architecture and whitespace guards pass. New native
+Metal/Vulkan execution, full suites/matrices and hosted work are deliberately
+not claimed.
+No Studio file or gitlink edit, PR/merge, version bump or dependency install.
+
+## Earlier: Reusable GUI menus (#269)
 
 `feat/gui-menus` builds on the signed/pushed, unmerged Vulkan Painter
 prerequisite `07331517d15b76399d69ecc916ed24ff1243e94e` without altering it.

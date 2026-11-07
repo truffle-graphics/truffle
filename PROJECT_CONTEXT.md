@@ -116,6 +116,14 @@ application lifecycle. Diagnostics remain opt-in and pull-based. Asset
 declarations and asset-to-render planning remain metadata layers until a
 consumer selects concrete loading, upload, and backend behavior.
 
+Renderer owns a reusable `Presentation` lifecycle (#270) over the borrowed
+native surface: pacing, resize/recreation, suspension and typed recovery.
+Only the optional `Truffle::RendererPresentation` native factory links enabled
+Metal/Vulkan implementations; core Renderer and explicit-device consumers
+remain backend-independent. GUI/application passes share one device/frame.
+See `docs/presentation.md`; new native execution is owner-run, not a maturity
+promotion.
+
 ## Constraints And Durable Decisions
 
 - Shared status/result, handle, configuration, and version contracts belong to

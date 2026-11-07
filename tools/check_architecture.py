@@ -20,6 +20,11 @@ DIRECT_DEPENDENCIES = {
     "truffle_rhi": {"truffle_base"},
     "truffle_shader": {"truffle_rhi"},
     "truffle_renderer": {"truffle_shader", "truffle_rhi"},
+    # Explicitly optional Renderer-owned native factory; core Renderer never
+    # links implementations. Only enabled Metal/Vulkan targets are composed.
+    "truffle_renderer_presentation": {
+        "truffle_renderer", "truffle_backend_metal", "truffle_backend_vulkan"
+    },
     "truffle_asset_render": {"truffle_assets", "truffle_renderer"},
     "truffle_encom_renderer": {"truffle_encom", "truffle_renderer"},
     "truffle_gui": {

@@ -19,6 +19,7 @@ struct RendererFrameStats {
     std::uint32_t renderBatchesClipped = 0; // skipped: empty clip intersection
     bool submitted = false; // graphics work reached the queue (signal included)
     bool presented = false;
+    bool presentationSuboptimal = false;
 };
 
 // Optional completion signal for the frame's single graphics submission. The
@@ -46,6 +47,7 @@ public:
     [[nodiscard]] const RendererFrameStats& last_frame_stats() const noexcept {
         return lastFrameStats_;
     }
+    [[nodiscard]] rhi::Device& device() const noexcept { return *device_; }
 
 private:
     rhi::Device*        device_ = nullptr;
