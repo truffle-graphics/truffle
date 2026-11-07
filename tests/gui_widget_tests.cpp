@@ -1,3 +1,4 @@
+#include "truffle/gui/specialist/text.hpp"
 #include "gui_text_fixture.hpp"
 #include "renderer_native_test_utils.hpp"
 #include "rhi_test_utils.hpp"
@@ -144,7 +145,7 @@ int scroll_and_passive_widgets() {
 int text_widgets() {
 #if TFL_TEST_GUI_TEXT
     auto backend = tests::make_null_context();
-    auto engine = tests::require(TextEngine::create(backend.device, {{64, 64}}));
+    auto engine = tests::require(specialist::TextInterop::create(backend.device, {{64, 64}}));
     const auto font = tests::require(engine.load_font(tests::gui_test_font(), 7));
     Context c;
     auto label = tests::require(Widget::create(c, c.root(), {

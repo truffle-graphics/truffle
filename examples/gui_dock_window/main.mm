@@ -2,6 +2,7 @@
 #import <QuartzCore/CAMetalLayer.h>
 
 #include "truffle/gui/dock/dock.hpp"
+#include "truffle/gui/specialist/surface.hpp"
 #include "truffle/gui/widgets.hpp"
 #include "truffle/renderer/specialist/frame_stream.hpp"
 #include "truffle/renderer/specialist/renderer.hpp"
@@ -114,7 +115,7 @@ struct Window {
     renderer::specialist::PipelineCache programs;
     renderer::specialist::Renderer renderer;
     renderer::specialist::FramePacer pacer;
-    gui::Painter painter;
+    gui::specialist::Painter painter;
     rhi::Extent2D extent{};
     std::size_t frames = 0;
     std::size_t drawn_elements = 0;
@@ -122,7 +123,7 @@ struct Window {
     Window(rhi::Device& device, gui::Context& context, bool detached, const gui::Rect& rect)
         : context(context), programs(device), renderer(device, &programs),
           pacer(need(renderer::specialist::FramePacer::create(device, 2))),
-          painter(need(gui::Painter::create(
+          painter(need(gui::specialist::Painter::create(
               device, programs, {.color_format = rhi::TextureFormat::bgra8_unorm}))) {
         native = [[NSWindow alloc]
             initWithContentRect:NSMakeRect(rect.x, rect.y, rect.width, rect.height)
@@ -188,7 +189,7 @@ struct Window {
     }
     void draw(gui::Context& context) {
         const auto slot = need(pacer.begin_frame());
-        auto batches = need(gui_surface ? gui_surface->record(painter, slot, extent)
+        auto batches = need(gui_surface ? gui::specialist::SurfaceInterop::record(*gui_surface, painter, slot, extent)
                                          : painter.record(context, slot, extent));
         drawn_elements = painter.last_stats().elements;
         renderer::specialist::FrameGraph graph;

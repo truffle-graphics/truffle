@@ -27,7 +27,7 @@ struct Viewport::State {
   ElementId element;
   ViewportEventHandler handler;
   rhi::Device *device = nullptr;
-  Painter *painter = nullptr;
+  specialist::Painter *painter = nullptr;
   TextureId texture;
   ViewportTargetDesc desc;
   std::vector<std::shared_ptr<renderer::specialist::SampledTexture>> slots;
@@ -321,7 +321,7 @@ Viewport::append_render_pass(renderer::specialist::FrameGraph &graph,
   return *state_->appPass;
 }
 
-base::Status Viewport::display(Painter &painter) {
+base::Status Viewport::display(specialist::Painter &painter) {
   if (!alive() || !state_->open) {
     return invalid(base::StatusCode::invalid_state,
                    "Viewport: prepare a frame before display");

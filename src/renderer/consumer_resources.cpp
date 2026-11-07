@@ -8,6 +8,9 @@
 #include <cassert>
 
 namespace truffle::renderer {
+rhi::SamplerDesc RhiInterop::native(const SamplerDesc &desc) {
+  return detail::sampler(desc);
+}
 
 struct Device::State {
   rhi::Instance instance;

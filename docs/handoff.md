@@ -5,7 +5,34 @@ This is the rolling execution handoff, not an implementation transcript.
 issues/Project own accepted work. Earlier phase details remain in their PRs,
 the support matrix and Git history.
 
-## Latest: RHI-free Renderer contracts (#275)
+## Latest: GUI-owned and borrowed applications (#276)
+
+Renderer issue #275 is signed/pushed at
+`55688541987a82f550eabf7c997a38323492f83b` after #274
+`21f08b04833610214c78040744a77a3ebf215e92`.
+`gui::Application` now provides owned native setup with GUI-only headers/types
+and the GUI target alone. It owns Presentation/cache/Renderer/Painter and
+optional font/image GPU resources while the host retains window/input/services.
+`gui/rendering.hpp` is the opt-in borrowed Renderer-device/shared-frame path.
+Normal drawing/text/Surface headers no longer import Renderer/RHI; raw GPU
+entry points move to GUI specialist headers. Viewport's equivalent cutover is
+the remaining #277. No compatibility shims/version bump or Studio work.
+
+The root/default clear stays transparent; resize/DPI/input, on-demand
+scheduling, minimized suspension and native recovery/errors stay explicit.
+Graphs retain GUI wrapper owners; cached font/image resources outlive Context.
+Invalid Renderer graphs clear submission statistics and close an open
+Presentation before GUI recovery retries. See `docs/gui-application.md`.
+
+Strict incremental compilation covered Application, changed text contracts
+and the coupled Renderer contract. Only those three focused contracts ran and
+passed. No native GUI/presentation execution, Metal compilation, full suites,
+package/text-disabled matrix, multi-window integration, dependency installs
+or hosted work was run. Owner-run native execution remains a gap, not a
+claimed GPU proof. The GUI-only executable additionally compiles/links GUI alone, with no lower
+layer headers or direct links. The next signed/pushed issue is #277.
+
+## Earlier: RHI-free Renderer contracts (#275)
 
 The second consumer-layer phase replaces normal Renderer resource/frame
 headers with independent values and opaque retained implementations. Existing

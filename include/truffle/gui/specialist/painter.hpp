@@ -11,7 +11,7 @@
 #include <memory>
 #include <vector>
 
-namespace truffle::gui {
+namespace truffle::gui::specialist {
 
 struct PainterDesc {
     // Program slot registered in the host's PipelineCache.
@@ -75,4 +75,4 @@ private:
     std::unique_ptr<State> state_;
 };
 
-} // namespace truffle::gui
+} // namespace truffle::gui::specialist

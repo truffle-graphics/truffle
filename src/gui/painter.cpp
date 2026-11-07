@@ -1,4 +1,4 @@
-#include "truffle/gui/painter.hpp"
+#include "truffle/gui/specialist/painter.hpp"
 
 #include "truffle/renderer/specialist/frame_stream.hpp"
 #include "truffle_gui_shaders.hpp"
@@ -10,7 +10,7 @@
 #include <string>
 #include <unordered_map>
 
-namespace truffle::gui {
+namespace truffle::gui::specialist {
 namespace {
 
 [[nodiscard]] base::Status failure(base::StatusCode code, std::string message) {
@@ -206,7 +206,7 @@ base::Result<std::vector<renderer::specialist::RenderBatch>> Painter::record(
     const Context& context, std::uint32_t slot, rhi::Extent2D target) {
     State& state = *state_;
     state.stats = {};
-    assemble(context, {.target = target, .scale = context.scale(),
+    assemble(context, {.target = {target.width, target.height}, .scale = context.scale(),
                        .clip_y_up = state.device->adapter_info().backend == rhi::BackendKind::metal},
              state.draw);
     const DrawData& draw = state.draw;
@@ -260,7 +260,8 @@ base::Result<std::vector<renderer::specialist::RenderBatch>> Painter::record(
                              indices.value().offset + command.first_index * sizeof(std::uint32_t),
                              command.index_count * sizeof(std::uint32_t)};
         batch.bindGroups = {bindings[i]->batch_group()};
-        batch.scissor = command.clip;
+        batch.scissor = rhi::ScissorRect{command.clip.x, command.clip.y,
+                                       command.clip.width, command.clip.height};
         batches.push_back(std::move(batch));
     }
     state.stats.batches = batches.size();
@@ -271,4 +272,4 @@ const PaintStats& Painter::last_stats() const noexcept {
     return state_->stats;
 }
 
-} // namespace truffle::gui
+} // namespace truffle::gui::specialist

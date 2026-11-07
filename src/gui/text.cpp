@@ -1,4 +1,4 @@
-#include "truffle/gui/text.hpp"
+#include "truffle/gui/specialist/text.hpp"
 #include "text_unicode.hpp"
 
 #include <algorithm>
@@ -240,24 +240,24 @@ bool TextEngine::available() noexcept {
 #endif
 }
 
-base::Result<TextEngine> TextEngine::create(rhi::Device& device, const TextEngineDesc& desc) {
+base::Result<TextEngine> specialist::TextInterop::create(rhi::Device& device, const TextEngineDesc& desc) {
 #if TFL_GUI_HAS_TEXT
     if (desc.atlas_extent.width < 8 || desc.atlas_extent.height < 8 ||
         desc.atlas_extent.width > 4096 || desc.atlas_extent.height > 4096) {
         return failure(base::StatusCode::invalid_argument,
                        "GUI text atlas extent must be between 8 and 4096 pixels");
     }
-    auto state = std::make_unique<State>();
+    auto state = std::make_unique<TextEngine::State>();
     if (FT_Init_FreeType(&state->library) != 0) {
         return failure(base::StatusCode::unavailable, "FreeType initialization failed");
     }
     state->atlas.device = &device;
-    state->atlas.extent = desc.atlas_extent;
+    state->atlas.extent = {desc.atlas_extent.width, desc.atlas_extent.height};
     const std::size_t pixel_count =
         static_cast<std::size_t>(desc.atlas_extent.width) * desc.atlas_extent.height;
     state->atlas.pixels.resize(pixel_count * 4, std::byte{0});
     auto texture = renderer::specialist::SampledTexture::upload(
-        device, {.extent = desc.atlas_extent,
+        device, {.extent = state->atlas.extent,
                  .format = rhi::TextureFormat::rgba8_unorm,
                  .bytes = state->atlas.pixels,
                  .debugName = "Truffle GUI glyph atlas"});
@@ -686,13 +686,14 @@ base::Result<TextLayout> TextEngine::shape(FontId font, std::string_view utf8) {
 }
 
 base::Result<std::reference_wrapper<renderer::specialist::SampledTexture>>
-TextEngine::atlas_texture() noexcept {
+specialist::TextInterop::atlas(TextEngine& engine) {
 #if TFL_GUI_HAS_TEXT
-    if (!state_) {
+    if (!engine.state_) {
         return failure(base::StatusCode::invalid_state, "GUI text engine is not initialized");
     }
-    return std::ref(state_->atlas.texture);
+    return std::ref(engine.state_->atlas.texture);
 #else
+    static_cast<void>(engine);
     return failure(base::StatusCode::unsupported,
                    "Truffle GUI text is unavailable; configure with "
                    "TFL_GUI_ENABLE_TEXT=ON");

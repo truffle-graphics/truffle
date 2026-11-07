@@ -284,7 +284,7 @@ int main() {
   lastGraph = {};
   TFL_CHECK(pacer.wait_idle().ok());
 
-  gui::Painter emptyPainter;
+  gui::specialist::Painter emptyPainter;
   TFL_CHECK(!emptyPainter.valid());
   TFL_CHECK(!emptyPainter.remove_texture({1}).ok());
   renderer::specialist::SampledTexture emptyTexture;

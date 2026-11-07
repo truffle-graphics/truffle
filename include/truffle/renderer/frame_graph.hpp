@@ -20,7 +20,7 @@ struct DepthStencilAttachmentDesc {
   std::uint32_t clearStencil = 0;
 };
 struct RenderPassDesc {
-  PixelSize extent{1, 1};
+  PixelSize extent{0, 0};
   std::vector<ColorAttachmentDesc> colorAttachments;
   DepthStencilAttachmentDesc depthStencilAttachment;
 };

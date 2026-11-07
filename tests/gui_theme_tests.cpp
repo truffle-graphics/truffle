@@ -1,3 +1,4 @@
+#include "truffle/gui/specialist/text.hpp"
 #include "gui_text_fixture.hpp"
 #include "renderer_native_test_utils.hpp"
 #include "rhi_test_utils.hpp"
@@ -76,7 +77,7 @@ int dependencies() {
 int fonts() {
 #if TFL_TEST_GUI_TEXT
     auto device = tests::make_null_context();
-    auto engine = tests::require(TextEngine::create(device.device, {{64, 64}}));
+    auto engine = tests::require(specialist::TextInterop::create(device.device, {{64, 64}}));
     const auto small = tests::require(engine.load_font(tests::gui_test_font(), 7));
     const auto font_bytes = tests::gui_test_font();
     std::string wider(reinterpret_cast<const char*>(font_bytes.data()), font_bytes.size());

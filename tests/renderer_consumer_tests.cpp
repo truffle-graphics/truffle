@@ -54,11 +54,28 @@ int main() {
   pacer.value().end_frame(renderer.last_frame_stats().submitted);
   TFL_CHECK(pacer.value().wait_idle().ok());
   TFL_CHECK(renderer.last_frame_stats().renderBatchesExecuted == 1);
+  TFL_CHECK(graph.add_dependency(after.value(), pass.value()).ok());
+  TFL_CHECK(!renderer.render(graph).ok() && !renderer.last_frame_stats().submitted);
   auto presentation = renderer::Presentation::create(device, {.extent = {0, 0}});
   TFL_CHECK(presentation.ok());
   TFL_CHECK(presentation.value().begin_frame().status().code ==
             base::StatusCode::out_of_date);
   TFL_CHECK(&renderer::RhiInterop::native(presentation.value().device()) == &gpu.device);
+  TFL_CHECK(presentation.value().resize({16, 16}).ok());
+  TFL_CHECK(presentation.value().begin_frame().ok());
+  TFL_CHECK(!presentation.value().render(renderer, graph).ok());
+  TFL_CHECK(presentation.value().begin_frame().ok());
+  TFL_CHECK(presentation.value().cancel_frame().ok());
+  renderer::FrameGraph windowGraph;
+  TFL_CHECK(
+      windowGraph.add_render_pass({.pass = {.colorAttachments = {{}}}, .useWindow = true})
+          .ok());
+  TFL_CHECK(presentation.value().begin_frame().ok());
+  TFL_CHECK(presentation.value().render(renderer, windowGraph).ok());
+  TFL_CHECK(renderer.last_frame_stats().submitted);
+  TFL_CHECK(presentation.value().begin_frame().ok());
+  TFL_CHECK(!presentation.value().render(renderer, renderer::FrameGraph{}).ok());
+  TFL_CHECK(!renderer.last_frame_stats().submitted);
   auto owned = tests::make_null_context();
   auto adopted =
       renderer::RhiInterop::adopt(std::move(owned.instance), std::move(owned.device));

@@ -196,6 +196,15 @@ bundled, and applications supply font data with its associated license.
 
 ## GUI Object API
 
+`gui::Application::create` in `truffle/gui/application.hpp` accepts the
+host's native window, drawable pixel size, DPI scale and platform services.
+Link `Truffle::GUI` alone: GUI owns native graphics setup, presentation,
+pipeline/cache, images and optional text atlas. Its public owned path requires
+no Renderer or RHI headers/types. The opt-in `gui/rendering.hpp` accepts a
+borrowed Renderer device and shares GUI/scene frame composition.
+See [`docs/gui-application.md`](docs/gui-application.md) for both paths,
+optional native configuration, host scheduling and teardown.
+
 GUI input routing (#226) adds clipped topmost hit testing, bubbling callbacks, hover notifications,
 keyboard focus/Tab traversal, and per-pointer capture. Register callbacks with
 `Context::set_event_handler`; `RoutedEvent::stop_propagation()` stops bubbling

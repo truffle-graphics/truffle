@@ -192,6 +192,7 @@ void FrameGraph::retain(std::shared_ptr<void> value) {
 struct Renderer::State {
   Device device;
   std::shared_ptr<void> programOwner;
+  RendererFrameStats stats;
   specialist::Renderer raw;
   State(Device &device, PipelineCache *programs)
       : device(RhiInterop::share(device)),
@@ -216,13 +217,20 @@ Device &Renderer::device() noexcept {
 base::Status Renderer::render(const FrameGraph &graph, RenderSignal signal) {
   if (!state_)
     return detail::invalid("Renderer requires a valid device and a cache on that device");
+  set_frame_stats({});
   if (auto order = graph.resolve_execution_order(); !order.ok())
     return order.status();
-  return state_->raw.render(RhiInterop::native(graph), nullptr,
-                            RhiInterop::native(signal));
+  auto status =
+      state_->raw.render(RhiInterop::native(graph), nullptr, RhiInterop::native(signal));
+  set_frame_stats(detail::stats(state_->raw.last_frame_stats()));
+  return status;
+}
+void Renderer::set_frame_stats(RendererFrameStats stats) {
+  if (state_)
+    state_->stats = stats;
 }
 RendererFrameStats Renderer::last_frame_stats() const noexcept {
-  return state_ ? detail::stats(state_->raw.last_frame_stats()) : RendererFrameStats{};
+  return state_ ? state_->stats : RendererFrameStats{};
 }
 struct RenderSignal::State {
   specialist::RenderSignal raw;

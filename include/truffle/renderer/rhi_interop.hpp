@@ -38,6 +38,7 @@ struct RhiInterop {
                                          std::shared_ptr<void> owner = {});
   [[nodiscard]] static specialist::RenderBatch native(const RenderBatch &);
   [[nodiscard]] static rhi::RenderPassDesc native(const RenderPassDesc &);
+  [[nodiscard]] static rhi::SamplerDesc native(const SamplerDesc &);
 };
 
 } // namespace truffle::renderer

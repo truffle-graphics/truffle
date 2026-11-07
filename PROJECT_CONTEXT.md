@@ -109,7 +109,14 @@ Normal Renderer resource/frame/presentation headers expose Renderer-owned
 values and opaque retained resources, not RHI contracts (#273/#275).
 Explicit raw extensions use `renderer::specialist`, specialist headers and
 `renderer/rhi_interop.hpp`. GUI-owned setup and Renderer-level viewport
-integration follow under #276/#277; Engine #272 remains design-only.
+integration are tracked under #276/#277; Engine #272 remains design-only.
+
+`gui::Application` owns GUI graphics orchestration and optional image/font
+resources with a host-owned window, using GUI-only public types (#276).
+`gui/rendering.hpp` opts into a borrowed/shared Renderer device and combined
+frame graph. Raw Painter/text/Surface GPU access is specialist-only.
+Normal GUI Context/drawing/text/Surface headers import neither Renderer nor
+RHI. Optional native setup is linked privately by GUI when enabled.
 
 RHI 1 uses move-only RAII objects over opaque generation-checked handles and a
 backend dispatch table. It separates portable typed results from optional

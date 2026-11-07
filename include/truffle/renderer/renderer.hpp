@@ -31,6 +31,8 @@ public:
   [[nodiscard]] Device &device() noexcept;
 
 private:
+  void set_frame_stats(RendererFrameStats);
+  friend class Presentation;
   struct State;
   std::unique_ptr<State> state_;
   friend struct RhiInterop;

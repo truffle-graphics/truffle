@@ -89,7 +89,7 @@ int run() {
   auto device = tests::require(adapter.request_device());
   renderer::specialist::PipelineCache programs(device);
   renderer::specialist::Renderer renderer(device, &programs);
-  auto painter = tests::require(gui::Painter::create(device, programs));
+  auto painter = tests::require(gui::specialist::Painter::create(device, programs));
   auto pacer = tests::require(renderer::specialist::FramePacer::create(device));
   auto color = tests::make_color_target(device);
   gui::Context context;

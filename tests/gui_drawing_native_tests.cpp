@@ -1,8 +1,9 @@
+#include "truffle/gui/specialist/text.hpp"
 #include "renderer_native_test_utils.hpp"
 #include "gui_text_fixture.hpp"
 #include "truffle/gui/context.hpp"
 #include "truffle/gui/menus.hpp"
-#include "truffle/gui/painter.hpp"
+#include "truffle/gui/specialist/painter.hpp"
 #include "truffle/gui/widgets.hpp"
 #include "truffle/renderer/specialist/frame_stream.hpp"
 #if TFL_TEST_GUI_VULKAN
@@ -222,7 +223,7 @@ int run() {
     auto device = tests::require(adapter.request_device());
 
 #if TFL_TEST_GUI_TEXT
-    auto text_engine = tests::require(gui::TextEngine::create(device, {{64, 64}}));
+    auto text_engine = tests::require(gui::specialist::TextInterop::create(device, {{64, 64}}));
     const auto font_bytes = tests::gui_test_font();
     const auto font = tests::require(text_engine.load_font(font_bytes, 7.0F));
     const auto text_layout = tests::require(text_engine.shape(font, "A"));
@@ -230,7 +231,7 @@ int run() {
     renderer::specialist::PipelineCache programs(device);
     renderer::specialist::Renderer renderer(device, &programs);
     auto pacer = tests::require(renderer::specialist::FramePacer::create(device, 2));
-    auto painter = tests::require(gui::Painter::create(device, programs));
+    auto painter = tests::require(gui::specialist::Painter::create(device, programs));
     auto target = make_target(device);
 
     // 2x1 image: white | red, sampled nearest.
@@ -242,7 +243,7 @@ int run() {
     const gui::TextureId image_id = tests::require(painter.add_texture(image));
 #if TFL_TEST_GUI_TEXT
     const gui::TextureId atlas_id =
-        tests::require(painter.add_texture(tests::require(text_engine.atlas_texture()).get()));
+        tests::require(painter.add_texture(tests::require(truffle::gui::specialist::TextInterop::atlas(text_engine)).get()));
 #endif
     const auto image_texel = [](float u) {
         return u < 0.5F ? Color{1, 1, 1, 1} : Color{1, 0, 0, 1};

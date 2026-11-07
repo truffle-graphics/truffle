@@ -1,10 +1,11 @@
 #pragma once
 
-#include "truffle/gui/painter.hpp"
+#include "truffle/gui/draw.hpp"
 
 #include <memory>
 
 namespace truffle::gui {
+namespace specialist { struct SurfaceInterop; }
 
 // An independent logical view of the same live Context, not a second tree or
 // a platform window. The host owns its native window, presentation and routing.
@@ -31,11 +32,10 @@ public:
     [[nodiscard]] base::Status handle(const InputEvent& event,
                                      Context::Clock::time_point now = Context::Clock::now());
     void assemble(const DrawOptions& options, DrawData& out);
-    [[nodiscard]] base::Result<std::vector<renderer::specialist::RenderBatch>> record(
-        Painter& painter, std::uint32_t slot, rhi::Extent2D target);
 
 private:
     friend class Context;
+    friend struct specialist::SurfaceInterop;
     explicit Surface(Context& context) : context_(&context) {}
     class Scope;
     base::Status update(const Context::Updater& updater);

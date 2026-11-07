@@ -1,3 +1,4 @@
+#include "truffle/gui/specialist/text.hpp"
 #include "gui_text_fixture.hpp"
 #include "renderer_native_test_utils.hpp"
 #include "rhi_test_utils.hpp"
@@ -32,7 +33,7 @@ struct TestHost final : gui::Host {
 
 struct Fixture {
     decltype(tests::make_null_context()) native = tests::make_null_context();
-    gui::TextEngine engine = tests::require(gui::TextEngine::create(native.device));
+    gui::TextEngine engine = tests::require(gui::specialist::TextInterop::create(native.device));
     gui::FontId font = tests::require(engine.load_font(tests::gui_test_font(), 7));
     TestHost host;
     gui::Context context;

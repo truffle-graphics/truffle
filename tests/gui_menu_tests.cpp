@@ -1,3 +1,4 @@
+#include "truffle/gui/specialist/text.hpp"
 #include "gui_text_fixture.hpp"
 #include "menu_example.hpp"
 #include "renderer_native_test_utils.hpp"
@@ -611,7 +612,7 @@ int surfaces_and_host_mechanisms() {
 int text_and_theme() {
 #if TFL_TEST_GUI_TEXT
   auto backend = tests::make_null_context();
-  auto engine = tests::require(TextEngine::create(backend.device, {{64, 64}}));
+  auto engine = tests::require(specialist::TextInterop::create(backend.device, {{64, 64}}));
   const auto font = tests::require(engine.load_font(tests::gui_test_font(), 7));
   Context context;
   tests::require(context.set_viewport({400, 300}));

@@ -86,11 +86,19 @@ Presentation::begin_frame(std::chrono::nanoseconds timeout) {
 base::Status Presentation::render(Renderer &renderer, const FrameGraph &graph) {
   if (!valid())
     return detail::invalid("Presentation is not created");
-  if (!renderer.valid())
-    return detail::invalid("Renderer is not initialized");
-  if (auto order = graph.resolve_execution_order(); !order.ok())
-    return order.status();
-  return state_->raw.render(RhiInterop::native(renderer), RhiInterop::native(graph));
+  renderer.set_frame_stats({});
+  if (!renderer.valid()) {
+    auto cancelled = cancel_frame();
+    return cancelled.ok() ? detail::invalid("Renderer is not initialized") : cancelled;
+  }
+  if (auto order = graph.resolve_execution_order(); !order.ok()) {
+    auto cancelled = cancel_frame();
+    return cancelled.ok() ? order.status() : cancelled;
+  }
+  auto status =
+      state_->raw.render(RhiInterop::native(renderer), RhiInterop::native(graph));
+  renderer.set_frame_stats(last_frame_stats());
+  return status;
 }
 base::Status Presentation::cancel_frame() {
   return valid() ? state_->raw.cancel_frame()

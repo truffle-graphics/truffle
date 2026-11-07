@@ -1,6 +1,6 @@
 #pragma once
 
-#include "truffle/gui/painter.hpp"
+#include "truffle/gui/specialist/painter.hpp"
 #include "truffle/renderer/specialist/frame_graph.hpp"
 
 #include <functional>
@@ -70,7 +70,7 @@ public:
                      rhi::RenderPassDesc pass = {});
   // Bind the prepared target before Painter::record. Then update_shapes once
   // for all changed viewport decorations; no style/layout rerun is needed.
-  [[nodiscard]] base::Status display(Painter &painter);
+  [[nodiscard]] base::Status display(specialist::Painter &painter);
   // After adding the GUI pass, order it after the app pass and transition the
   // target back to shader-readable. Required before submitting a redraw.
   [[nodiscard]] base::Status composite(renderer::specialist::FrameGraph &graph,

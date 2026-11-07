@@ -17,7 +17,7 @@ using RenderViewport = std::function<base::Result<ViewportRenderData>(
 // Scene state, shaders and per-slot geometry/uniforms belong to renderViewport.
 inline base::Status draw_viewport(renderer::specialist::Presentation &presentation,
                                   renderer::specialist::Renderer &renderer, gui::Context &context,
-                                  gui::Painter &painter, gui::Viewport &viewport,
+                                  gui::specialist::Painter &painter, gui::Viewport &viewport,
                                   const RenderViewport &renderViewport,
                                   gui::Context::Clock::time_point now) {
   auto frame = presentation.begin_frame();

@@ -109,3 +109,16 @@ bindings, program publication, semantic transitions, pacing, offscreen
 rendering, borrowed identity and owned storage. It is not GPU evidence.
 The optional EnCom UploadRing adapter and raw diagnostics remain specialist
 integration paths; they are not prerequisites for normal Renderer consumption.
+
+## GUI entry points (#276)
+
+`gui::Application::create(ApplicationDesc)` is the GUI-only owned path.
+`ApplicationDesc` uses GUI native-window/pixel/DPI/host values; consumers include
+GUI and link GUI alone. Image upload and font/atlas creation belong to this
+owner. Normal draw/text/Surface contracts have no Renderer/RHI import.
+The explicitly optional `gui::Rendering` surface accepts a Renderer Device and
+exposes its shared cache/Renderer/Presentation and GUI frame composition.
+It contains Renderer values only, not RHI. Raw Painter/text/Surface GPU access
+is under `gui/specialist/`. See [Application usage](gui-application.md).
+Native factories travel privately through GUI only when enabled; core Renderer
+still has no backend implementation link. The #277 viewport cutover is next.

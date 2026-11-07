@@ -1,3 +1,4 @@
+#include "truffle/gui/specialist/text.hpp"
 #include "truffle/asset_render/asset_render.hpp"
 #include "truffle/assets/assets.hpp"
 #include "truffle/base/config.hpp"
@@ -85,7 +86,7 @@ int main() {
     const auto graphemes = truffle::gui::text_graphemes("A\xCC\x81");
     if (truffle::gui::TextEngine::available()) {
         if (!graphemes.ok() || graphemes.value() != std::vector<std::size_t>{0, 3}) return 1;
-        auto engine = truffle::gui::TextEngine::create(device);
+        auto engine = truffle::gui::specialist::TextInterop::create(device);
         if (!engine.ok()) return 1;
         auto font = engine.value().load_font(truffle::tests::gui_test_font(), 7);
         if (!font.ok()) return 1;

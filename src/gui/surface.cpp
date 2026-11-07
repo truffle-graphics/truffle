@@ -1,4 +1,4 @@
-#include "truffle/gui/surface.hpp"
+#include "truffle/gui/specialist/surface.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -234,11 +234,11 @@ void Surface::assemble(const DrawOptions& options, DrawData& out) {
     gui::assemble(*context_, options, out);
 }
 
-base::Result<std::vector<renderer::specialist::RenderBatch>> Surface::record(
-    Painter& painter, std::uint32_t slot, rhi::Extent2D target) {
-    if (!alive()) { return invalid_surface(); }
-    Scope scope(*this);
-    return painter.record(*context_, slot, target);
+base::Result<std::vector<renderer::specialist::RenderBatch>> specialist::SurfaceInterop::record(
+    Surface& surface, Painter& painter, std::uint32_t slot, rhi::Extent2D target) {
+    if (!surface.alive()) { return invalid_surface(); }
+    Surface::Scope scope(surface);
+    return painter.record(*surface.context_, slot, target);
 }
 
 } // namespace truffle::gui

@@ -146,22 +146,33 @@ GUI owns GUI graphics orchestration; Renderer owns ordinary GPU resources and
 rendering; RHI remains explicitly available for specialist work. Shared native
 window/pixel values belong to Base (#274); neither upper layer owns windows.
 
-### Level 1 — Graphics API
+### Level 1 — GUI
 
-Link `truffle_base`, `truffle_rhi`, and one enabled backend. The application
-manages GPU resources, synchronization, and presentation directly.
+Link `Truffle::GUI`. The host lends its window, size/DPI, events and platform
+services to `gui::Application`; GUI owns graphics setup and presentation.
+No Renderer/RHI headers or types are required. Native setup is optional and
+uses only enabled implementations. See [GUI Application](gui-application.md).
 
 ### Level 2 — Rendering
 
-Add `truffle_renderer`. Build `RenderBatch` objects from any data source and
-execute a `FrameGraph`. Use upload/readback resources directly, or add
-`truffle_asset_render` for metadata-to-layout planning.
+Link Renderer for independently owned mesh/buffer/texture/program/pass APIs,
+with optional RendererPresentation for native owned setup. Normal headers
+contain no RHI contracts. GUI's opt-in `Rendering` exposes the shared
+device/cache/Renderer and GUI pass composition for application scene work.
 
-### Level 3 — EnCom–Renderer Integration
+### Level 3 — Specialist Graphics API
+
+Link RHI and the chosen backend for explicit device features, queues, encoders,
+subresources, barriers, native fences, compute and readback. Raw Renderer
+extensions live in `renderer::specialist` and `renderer/specialist/`; raw GUI
+GPU extensions live in `gui::specialist` and `gui/specialist/`. None is a
+normal GUI/Renderer consumption prerequisite.
+
+### Optional EnCom–Renderer Integration
 
 Add `truffle_encom` and `truffle_encom_renderer`. `EnComRenderAdapter` extracts
 camera, light, and batch state from an EnCom world. This is one first-party
-ingestion lane, not a requirement for RHI or renderer consumers.
+specialist UploadRing ingestion lane, not a requirement for GUI or Renderer.
 
 ## Render Data Lanes
 
@@ -186,9 +197,10 @@ shaders, allocate resources, or own backend state.
 
 ## Frame Graph And Diagnostics
 
-`FrameGraph` models compute and render nodes, explicit dependencies, and
-resource-usage hazards. It resolves deterministic topological order and rejects
-cycles before recording.
+Normal `FrameGraph` retains render passes/resources, explicit dependencies and
+resource-usage hazards. Specialist graphs additionally expose custom compute
+nodes. Both resolve deterministic topological order and reject cycles before
+recording.
 
 Diagnostics separate three concerns. Each module owns its own error and
 lightweight profiling primitives; instrumentation stays optional and detailed

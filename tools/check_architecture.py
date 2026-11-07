@@ -29,6 +29,7 @@ DIRECT_DEPENDENCIES = {
     "truffle_encom_renderer": {"truffle_encom", "truffle_renderer"},
     "truffle_gui": {
         "truffle_renderer",
+        "truffle_renderer_presentation",
         "truffle_gui_sheenbidi",
         "truffle_gui_utf8proc",
     },
@@ -237,6 +238,14 @@ def check_consumer_headers(errors: list[str]) -> None:
         if re.search(r"\brhi::|truffle/(?:rhi|renderer/specialist)/", text):
             errors.append(
                 f"{path.relative_to(ROOT)}: ordinary Renderer headers must not expose RHI/specialist contracts"
+            )
+    for path in (INCLUDE_ROOT / "gui").rglob("*.hpp"):
+        if "specialist" in path.parts or path.name in {"rendering.hpp", "viewport.hpp"}:
+            continue
+        text = path.read_text(encoding="utf-8")
+        if re.search(r"\brhi::|truffle/(?:rhi|renderer|gui/specialist)/", text):
+            errors.append(
+                f"{path.relative_to(ROOT)}: ordinary GUI headers must not expose Renderer/RHI/specialist contracts"
             )
 
 

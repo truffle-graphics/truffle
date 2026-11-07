@@ -3,7 +3,7 @@
 #include "truffle/base/handle.hpp"
 #include "truffle/base/status.hpp"
 #include "truffle/gui/shapes.hpp"
-#include "truffle/renderer/specialist/texture.hpp"
+#include "truffle/gui/window.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -14,6 +14,7 @@
 #include <vector>
 
 namespace truffle::gui {
+namespace specialist { struct TextInterop; }
 
 struct FontTag {};
 using FontId = base::Handle<FontTag>;
@@ -84,7 +85,7 @@ struct TextBlock {
 };
 
 struct TextEngineDesc {
-    rhi::Extent2D atlas_extent{1024, 1024};
+    PixelSize atlas_extent{1024, 1024};
 };
 
 struct TextStats {
@@ -106,8 +107,6 @@ public:
     TextEngine& operator=(const TextEngine&) = delete;
 
     [[nodiscard]] static bool available() noexcept;
-    [[nodiscard]] static base::Result<TextEngine> create(
-        rhi::Device& device, const TextEngineDesc& desc = {});
 
     // Copies the font bytes. Size is in logical GUI units; the renderer applies
     // the Context scale when the resulting shapes are drawn.
@@ -124,15 +123,12 @@ public:
     // malformed UTF-8 and invalid font handles fail instead of being replaced.
     [[nodiscard]] base::Result<TextLayout> shape(FontId font, std::string_view utf8);
 
-    // The glyph atlas to register with a Painter. Fails with `invalid_state`
-    // for a default-constructed or moved-from engine.
-    [[nodiscard]] base::Result<std::reference_wrapper<renderer::specialist::SampledTexture>>
-    atlas_texture() noexcept;
     [[nodiscard]] const TextStats& last_stats() const noexcept;
 
 private:
     struct State;
     std::unique_ptr<State> state_;
+    friend struct specialist::TextInterop;
 };
 
 } // namespace truffle::gui

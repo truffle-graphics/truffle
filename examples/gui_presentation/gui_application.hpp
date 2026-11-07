@@ -1,102 +1,41 @@
 #pragma once
 
-#include "truffle/gui/painter.hpp"
-#include "truffle/renderer/specialist/presentation.hpp"
-
-#include <memory>
+#include "truffle/gui/application.hpp"
 
 namespace truffle::examples {
 
-// The embedding host supplies its own HWND/CAMetalLayer, input and event loop.
-// This example contains no backend headers, RHI setup calls or host framework.
-class GuiApplication {
-public:
-  [[nodiscard]] static base::Result<std::unique_ptr<GuiApplication>>
-  create(renderer::WindowHandle native, rhi::Extent2D pixels, float scale = 1.0F) {
-    auto presentation = renderer::specialist::create_native_presentation({
-        .native = native,
-        .extent = pixels,
-    });
-    if (!presentation.ok()) {
-      return presentation.status();
-    }
-    auto app = std::unique_ptr<GuiApplication>(
-        new GuiApplication(std::move(presentation).value()));
-    auto painter = gui::Painter::create(
-        app->presentation_.device(), app->programs_,
-        {
-            .color_format = app->presentation_.desc().format,
-            .frames_in_flight = app->presentation_.desc().framesInFlight,
-        });
-    if (!painter.ok()) {
-      return painter.status();
-    }
-    app->painter_ = std::move(painter).value();
-    if (auto status = app->resize(pixels, scale); !status.ok()) {
-      return status;
-    }
-    return app;
-  }
-
-  [[nodiscard]] gui::Context &gui_context() noexcept { return context_; }
-  [[nodiscard]] gui::Painter &gui_painter() noexcept { return painter_; }
-  [[nodiscard]] renderer::specialist::Renderer &gpu_renderer() noexcept { return renderer_; }
-  [[nodiscard]] renderer::specialist::PipelineCache &pipeline_cache() noexcept { return programs_; }
-  [[nodiscard]] renderer::specialist::Presentation &presentation() noexcept { return presentation_; }
-  [[nodiscard]] base::Status resize(rhi::Extent2D pixels, float scale = 1.0F) {
-    // Context validates the scale, including infinity/NaN and zero.
-    auto status = context_.set_viewport({static_cast<float>(pixels.width) / scale,
-                                         static_cast<float>(pixels.height) / scale},
-                                        scale);
-    if (!status.ok()) {
-      return status;
-    }
-    return presentation_.resize(pixels);
-  }
-
-  [[nodiscard]] base::Status draw(gui::Context::Clock::time_point now,
-                                  rhi::ClearColor clear = {0, 0, 0, 0}) {
-    auto frame = presentation_.begin_frame();
-    if (!frame.ok()) {
-      return frame.status();
-    }
-    auto fail = [&](base::Status status) {
-      (void)presentation_.cancel_frame();
-      context_.request_frame();
-      return status;
-    };
-    auto prepared = context_.prepare_frame(now);
-    if (!prepared.status.ok()) {
-      return fail(prepared.status);
-    }
-    auto batches = painter_.record(context_, frame.value().slot, frame.value().extent);
-    if (!batches.ok()) {
-      return fail(batches.status());
-    }
-    renderer::specialist::FrameGraph graph;
-    rhi::RenderPassDesc pass;
-    pass.colorAttachments.push_back({.clear = clear});
-    graph.add_node(std::make_unique<renderer::specialist::RenderPassNode>(
-        pass, std::move(batches).value(), true));
-    auto status = presentation_.render(renderer_, graph);
-    if (!status.ok()) {
-      context_.request_frame();
-    }
+inline base::Result<gui::Application> create_gui(gui::WindowHandle window,
+                                                 gui::PixelSize pixels,
+                                                 float dpi_scale = 1.0F,
+                                                 std::span<const std::byte> font = {}) {
+  auto app = gui::Application::create({
+      .window = window,
+      .pixels = pixels,
+      .dpi_scale = dpi_scale,
+  });
+  if (!app.ok())
+    return app.status();
+  auto &context = app.value().context();
+  auto label = context.create(context.root());
+  if (!label.ok())
+    return label.status();
+  if (auto status = context.set_layout_params(
+          label.value(), {.width = 280.0F, .height = 64.0F, .position = {16, 16}});
+      !status.ok())
     return status;
+  if (!font.empty()) {
+    auto loaded = app.value().load_font(font, 20);
+    if (!loaded.ok())
+      return loaded.status();
+    if (auto status = app.value().set_text(label.value(), loaded.value(), "Truffle GUI");
+        !status.ok())
+      return status;
   }
+  return app;
+}
 
-  [[nodiscard]] base::Status wait_idle() { return presentation_.wait_idle(); }
-
-private:
-  explicit GuiApplication(renderer::specialist::Presentation presentation)
-      : presentation_(std::move(presentation)), programs_(presentation_.device()),
-        renderer_(presentation_.device(), &programs_) {}
-
-  renderer::specialist::Presentation presentation_; // destroyed after its GPU consumers
-  renderer::specialist::PipelineCache programs_;
-  renderer::specialist::Renderer renderer_;
-  gui::Painter painter_; // outlives Context-owned viewport registrations
-  gui::Context context_;
-};
+// The host forwards InputEvent to app.handle(), calls app.resize(pixelSize,
+// dpiScale) on resize/DPI changes, and app.draw() only when app.needs_frame().
+// Sleep until input or app.next_update(); wait_idle() before window teardown.
 
 } // namespace truffle::examples

@@ -1,3 +1,4 @@
+#include "truffle/gui/specialist/text.hpp"
 #import <AppKit/AppKit.h>
 #import <QuartzCore/CAMetalLayer.h>
 #import <CoreText/CoreText.h>
@@ -6,7 +7,7 @@
 #include "input_view.hpp"
 
 #include "truffle/gui/context.hpp"
-#include "truffle/gui/painter.hpp"
+#include "truffle/gui/specialist/painter.hpp"
 #include "truffle/renderer/specialist/frame_stream.hpp"
 #include "truffle/renderer/specialist/renderer.hpp"
 #include "truffle/rhi/metal_backend.hpp"
@@ -378,11 +379,11 @@ int run(bool smoke) {
     renderer::specialist::PipelineCache programs(device);
     renderer::specialist::Renderer renderer(device, &programs);
     auto pacer = require(renderer::specialist::FramePacer::create(device, 2));
-    auto painter = require(gui::Painter::create(
+    auto painter = require(gui::specialist::Painter::create(
         device, programs, {.color_format = rhi::TextureFormat::bgra8_unorm}));
-    auto text = require(gui::TextEngine::create(device));
+    auto text = require(gui::specialist::TextInterop::create(device));
     const auto font = load_host_font(text);
-    const auto atlas = require(painter.add_texture(require(text.atlas_texture()).get()));
+    const auto atlas = require(painter.add_texture(require(truffle::gui::specialist::TextInterop::atlas(text)).get()));
     const std::array<std::byte, 16> texels{
         std::byte{255}, std::byte{130}, std::byte{60}, std::byte{255},
         std::byte{70}, std::byte{180}, std::byte{255}, std::byte{255},
