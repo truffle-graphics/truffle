@@ -27,6 +27,11 @@
 namespace truffle::gui {
 
 class Surface;
+namespace detail {
+struct MenuSession;
+}
+
+enum class PopupSide : std::uint8_t { below, right };
 
 struct FrameStats {
     base::Status status;
@@ -145,6 +150,16 @@ public:
     [[nodiscard]] base::Status set_overlay(ElementId element, bool overlay);
     [[nodiscard]] bool overlay(ElementId element) const noexcept;
 
+    // Collapsed elements and their descendants take no layout space, draw
+    // nothing and cannot receive input. Showing them restores their cached tree.
+    [[nodiscard]] base::Status set_visible(ElementId element, bool visible);
+    [[nodiscard]] bool visible(ElementId element) const noexcept;
+
+    // An overlay anchored to its parent, outside that parent's layout. It is
+    // measured against the viewport, then flips/shifts at its edges. Cannot
+    // coexist with a placement override. Empty restores normal layout/overlay.
+    [[nodiscard]] base::Status set_popup(ElementId element, std::optional<PopupSide> side);
+
     // How the element's background is drawn; transparent by default.
     [[nodiscard]] base::Status set_decoration(ElementId element, const Decoration& decoration);
     [[nodiscard]] base::Result<Decoration> decoration(ElementId element) const;
@@ -198,12 +213,16 @@ public:
 
     // Records host input and routes it through the current laid-out tree.
     // Input only requests a frame when a handler makes a visible change.
-    base::Status handle(const InputEvent& event);
+    base::Status handle(const InputEvent& event, Clock::time_point now = Clock::now());
     [[nodiscard]] const InputState& input() const noexcept;
 
     [[nodiscard]] base::Status set_interaction(ElementId element, Interaction interaction);
     [[nodiscard]] base::Result<Interaction> interaction(ElementId element) const;
     [[nodiscard]] base::Status set_event_handler(ElementId element, EventHandler handler);
+    // Runs before normal routing, even when a target stops bubbling. Filters
+    // are element-owned and surface-local; prevent_default suppresses normal
+    // dispatch, not input/capture bookkeeping. Empty removes the filter.
+    [[nodiscard]] base::Status set_input_filter(ElementId element, EventHandler filter);
     // Routes snapshot the ancestor chain. Callbacks may mutate the tree;
     // removed recipients are skipped. Hover/focus/capture notifications are
     // direct, while host input bubbles. Tab traverses unless prevent_default().
@@ -225,7 +244,8 @@ public:
     [[nodiscard]] Point child_offset(ElementId element) const noexcept;
 
     enum class Role : std::uint8_t { generic, panel, label, image, button, checkbox,
-                                    slider, scroll_area, text_edit };
+                                    slider, scroll_area, text_edit, menu_bar, menu,
+                                    menu_item, menu_separator };
     struct Semantics {
         Role role = Role::generic;
         std::string label;
@@ -247,6 +267,12 @@ public:
     [[nodiscard]] base::Status set_updater(ElementId element, Updater update, bool live = false);
     [[nodiscard]] base::Status request_update(ElementId element);
     [[nodiscard]] base::Status set_update_live(ElementId element, bool live);
+    // Schedules that element's updater once; empty cancels only its timer.
+    // Unlike a live updater, a future timer does not request continuous frames.
+    [[nodiscard]] base::Status request_update_at(ElementId element,
+                                                 std::optional<Clock::time_point> when);
+    // Host-supplied time of the current/last input or prepared frame.
+    [[nodiscard]] Clock::time_point time() const noexcept;
 
     [[nodiscard]] bool needs_frame(Clock::time_point now) const noexcept;
     // Earliest pending timed update, if any.
@@ -265,6 +291,7 @@ public:
 private:
     friend class LayoutPass;
     friend class Surface;
+    friend struct detail::MenuSession;
 
     struct Node {
         struct StyleBinding {
@@ -289,7 +316,9 @@ private:
         std::shared_ptr<const Layout> layout;
         LayoutParams params;
         std::optional<Rect> placement;
-        std::vector<ElementId> flow; // children without placement, when any is placed
+        std::optional<PopupSide> popup;
+        bool visible = true;
+        std::vector<ElementId> flow; // children participating in the parent's layout
         bool placed_children = false;
         bool overlay = false;
         Constraints measured_under;
@@ -302,6 +331,7 @@ private:
         ElementShapes shapes;
         Interaction interaction;
         EventHandler handler;
+        EventHandler filter;
         Point child_offset;
         Semantics semantics;
         std::array<StyleBinding, static_cast<std::size_t>(Property::count)> styles;
@@ -315,6 +345,7 @@ private:
         Updater update;
         bool live = false;
         bool pending = true;
+        std::optional<Clock::time_point> deadline;
     };
 
     [[nodiscard]] Node* find(ElementId element) noexcept;
@@ -326,7 +357,8 @@ private:
     void detach(ElementId element, Node& node);
     [[nodiscard]] bool input_enabled(ElementId element) const noexcept;
     base::Result<bool> dispatch(ElementId target, RoutedPayload payload, bool bubble = true);
-    void route_input(const InputEvent& event);
+    base::Result<bool> filter_input(const InputEvent& event);
+    void route_input(const InputEvent& event, bool filtered = false);
     void update_hover(ElementId next);
     void forget_input(ElementId element) noexcept;
     void forget_styles(ElementId element);
@@ -359,7 +391,11 @@ private:
     float scale_ = 1.0F;
     bool frame_requested_ = false;
     std::vector<Clock::time_point> deadlines_;
+    Clock::time_point time_{};
     std::size_t overlays_ = 0;
+    std::vector<ElementId> popups_;
+    std::vector<ElementId> input_filters_;
+    std::vector<std::shared_ptr<detail::MenuSession>> menu_sessions_;
     std::vector<UpdaterEntry> updaters_;
     bool layout_requested_update_ = false;
     InputState input_;

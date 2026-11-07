@@ -1,6 +1,7 @@
 #include "renderer_native_test_utils.hpp"
 #include "gui_text_fixture.hpp"
 #include "truffle/gui/context.hpp"
+#include "truffle/gui/menus.hpp"
 #include "truffle/gui/painter.hpp"
 #include "truffle/gui/widgets.hpp"
 #include "truffle/renderer/frame_stream.hpp"
@@ -38,9 +39,9 @@ void wait_graphics(rhi::Device& device, rhi::CommandList& list) {
     tests::require(fence.wait(1, std::chrono::seconds(10)));
 }
 
-rhi::Texture make_target(rhi::Device& device) {
+rhi::Texture make_target(rhi::Device& device, rhi::Extent2D extent = {kSize, kSize}) {
     auto color = tests::require(device.create_texture({
-        .extent = {kSize, kSize, 1},
+        .extent = {extent.width, extent.height, 1},
         .format = rhi::TextureFormat::rgba8_unorm,
         .usage = rhi::TextureUsage::color_attachment | rhi::TextureUsage::copy_source,
     }));
@@ -54,10 +55,11 @@ rhi::Texture make_target(rhi::Device& device) {
     return color;
 }
 
-std::vector<std::byte> read_pixels(rhi::Device& device, rhi::Texture& color) {
-    const std::size_t pitch = 256;
+std::vector<std::byte> read_pixels(rhi::Device& device, rhi::Texture& color,
+                                 rhi::Extent2D extent = {kSize, kSize}) {
+    const std::size_t pitch = (static_cast<std::size_t>(extent.width) * 4 + 255) / 256 * 256;
     auto output = tests::require(device.create_buffer({
-        .size = pitch * kSize, .usage = rhi::BufferUsage::copy_destination,
+        .size = pitch * extent.height, .usage = rhi::BufferUsage::copy_destination,
         .memory = rhi::MemoryDomain::readback,
     }));
     auto pool = tests::require(device.create_command_pool(rhi::QueueKind::graphics));
@@ -67,15 +69,15 @@ std::vector<std::byte> read_pixels(rhi::Device& device, rhi::Texture& color) {
                          rhi::TextureLayout::transfer_source);
     auto copy = tests::require(list.begin_copy());
     tests::require(copy.copy_texture_to_buffer(color, output, {
-        .layout = {.bytesPerRow = pitch, .rowsPerImage = kSize},
-        .texture = {.extent = {kSize, kSize, 1}},
+        .layout = {.bytesPerRow = pitch, .rowsPerImage = extent.height},
+        .texture = {.extent = {extent.width, extent.height, 1}},
     }));
     tests::require(copy.end());
     tests::color_barrier(list, color, rhi::TextureLayout::transfer_source,
                          rhi::TextureLayout::color_attachment);
     tests::require(list.end());
     wait_graphics(device, list);
-    std::vector<std::byte> bytes(pitch * kSize);
+    std::vector<std::byte> bytes(pitch * extent.height);
     tests::require(output.read(0, bytes));
     return bytes;
 }
@@ -501,6 +503,181 @@ int run() {
     }
     std::cout << "Core widgets: native panel, label, image, button, checkbox, slider "
                  "and scroll-area pixel evidence\n";
+
+    {
+        constexpr rhi::Extent2D extent{512, 240};
+        auto menu_target = make_target(device, extent);
+        gui::Context tree;
+        widget_theme(tree);
+        tests::require(tree.set_theme_value("gui.disabled", Color{64 / 255.0F,
+                                                                  64 / 255.0F, 64 / 255.0F, 1}));
+        tests::require(tree.set_theme_value("gui.text_disabled", Color{1, 0, 1, 1}));
+        tests::require(tree.set_theme_value("gui.border", Color{1, 1, 0, 1}));
+        tests::require(tree.set_theme_value("gui.padding", gui::Edges{8, 8, 8, 8}));
+        tests::require(tree.set_viewport({512, 240}));
+        gui::MenuTextStyle style;
+        std::string label;
+#if TFL_TEST_GUI_TEXT
+        style = {&text_engine, font, atlas_id};
+        label = "A";
+#endif
+        auto button = tests::require(gui::MenuButton::create(tree, tree.root(), label, style));
+        place_widget(tree, button.element(), {10, 10, 80, 28});
+        auto menu = tests::require(button.menu());
+        auto child = tests::require(menu.add_submenu(label));
+        auto separator = tests::require(menu.add_separator());
+        int actions = 0;
+        auto disabled = tests::require(menu.add_item({.text = label, .enabled = false,
+            .shortcut = label,
+            .activated = [&] { actions += 100; }}));
+        auto checked = tests::require(menu.add_item({.text = label, .checked = true,
+            .shortcut = label, .activated = [&] { ++actions; }}));
+        auto leaf = tests::require(child.add_item({.text = label, .activated = [&] { ++actions; }}));
+        auto grandchild = tests::require(child.add_submenu(label));
+        auto deep = tests::require(grandchild.add_item({.text = label, .checked = true,
+            .activated = [&] { ++actions; }}));
+        const auto draw_menu = [&] {
+            tests::require(tree.prepare_frame(gui::Context::Clock::now()).status);
+            const auto slot = tests::require(pacer.begin_frame());
+            auto batches = tests::require(painter.record(tree, slot, extent));
+            renderer::FrameGraph graph;
+            graph.add_node(std::make_unique<renderer::RenderPassNode>(
+                rhi::RenderPassDesc{
+                    .extent = extent,
+                    .colorAttachments = {{.texture = &menu_target, .clear = {0, 0, 0, 1}}},
+                }, std::move(batches)));
+            const auto status = renderer.render(graph, nullptr, pacer.signal());
+            pacer.end_frame(renderer.last_frame_stats().submitted);
+            tests::require(status);
+            tests::require(pacer.wait_idle());
+            return read_pixels(device, menu_target, extent);
+        };
+        const auto expect = [&](const std::vector<std::byte>& bytes, gui::Point point,
+                                Pixel wanted, const char* what) {
+            if (!std::isfinite(point.x) || !std::isfinite(point.y) || point.x < 0 ||
+                point.y < 0 || point.x >= static_cast<float>(extent.width) ||
+                point.y >= static_cast<float>(extent.height)) {
+                throw std::runtime_error(std::string(what) + ": probe is outside the viewport");
+            }
+            const auto x = static_cast<std::uint32_t>(point.x);
+            const auto y = static_cast<std::uint32_t>(point.y);
+            for (std::size_t channel = 0; channel < 4; ++channel) {
+                const int actual = std::to_integer<int>(
+                    bytes[(static_cast<std::size_t>(y) * extent.width + x) * 4 + channel]);
+                if (actual != wanted[channel]) {
+                    throw std::runtime_error(std::string(what) + ": pixel " +
+                        std::to_string(x) + "," + std::to_string(y) + " channel " +
+                        std::to_string(channel) + " is " + std::to_string(actual) +
+                        ", expected " + std::to_string(wanted[channel]));
+                }
+            }
+        };
+        const auto ink = [&](const std::vector<std::byte>& bytes, ElementId element) {
+            const auto rect = tests::require(tree.absolute_bounds(element));
+            if (rect.x < 0 || rect.y < 0 || rect.x + rect.width > static_cast<float>(extent.width) ||
+                rect.y + rect.height > static_cast<float>(extent.height)) {
+                throw std::runtime_error("native menu indicator is outside the viewport");
+            }
+            std::size_t count = 0;
+            for (auto y = static_cast<std::uint32_t>(rect.y);
+                 y < static_cast<std::uint32_t>(rect.y + rect.height); ++y) {
+                for (auto x = static_cast<std::uint32_t>(rect.x);
+                     x < static_cast<std::uint32_t>(rect.x + rect.width); ++x) {
+                    const auto offset = (static_cast<std::size_t>(y) * extent.width + x) * 4;
+                    if (bytes[offset] == std::byte{0} && bytes[offset + 1] == std::byte{255} &&
+                        bytes[offset + 2] == std::byte{255} && bytes[offset + 3] == std::byte{255}) {
+                        ++count;
+                    }
+                }
+            }
+            return count;
+        };
+        const auto row_probe = [&](ElementId row) {
+            const auto rect = tests::require(tree.absolute_bounds(row));
+            return gui::Point{rect.x + 70, rect.y + rect.height * 0.5F};
+        };
+        auto menu_pixels = draw_menu();
+        expect(menu_pixels, {30, 55}, {0, 0, 0, 255}, "closed menu draws nothing");
+        tests::require(tree.focus(button.element()));
+        tests::require(menu.open());
+        menu_pixels = draw_menu();
+        const auto popup = tests::require(tree.absolute_bounds(menu.element()));
+        expect(menu_pixels, {popup.x + 2, popup.y + 2}, {0, 0, 255, 255}, "menu overlay padding");
+        expect(menu_pixels, row_probe(child.trigger()), {0, 255, 0, 255}, "selected submenu parent");
+        expect(menu_pixels, row_probe(disabled.element()), {64, 64, 64, 255}, "disabled menu row");
+        expect(menu_pixels, row_probe(checked.element()), {0, 0, 255, 255}, "unfocused checked row");
+        const auto sep = tests::require(tree.absolute_bounds(separator.element()));
+        expect(menu_pixels, {sep.x + 30, sep.y + sep.height * 0.5F}, {255, 255, 0, 255},
+               "menu separator");
+        const auto mark = tree.children(checked.element())[2];
+        const auto arrow = tree.children(child.trigger())[3];
+        if (ink(menu_pixels, mark) < 8 || ink(menu_pixels, arrow) < 12) {
+            throw std::runtime_error("native menu checkmark or submenu arrow lacks visible pixels");
+        }
+#if TFL_TEST_GUI_TEXT
+        const auto disabled_label = tests::require(
+            tree.absolute_bounds(tree.children(disabled.element())[0]));
+        expect(menu_pixels, {disabled_label.x + 1, disabled_label.y}, {255, 0, 255, 255},
+               "disabled menu label ink");
+        const auto disabled_shortcut = tests::require(
+            tree.absolute_bounds(tree.children(disabled.element())[1]));
+        expect(menu_pixels, {disabled_shortcut.x + 1, disabled_shortcut.y}, {255, 0, 255, 255},
+               "disabled menu shortcut ink");
+        const auto shortcut = tests::require(
+            tree.absolute_bounds(tree.children(checked.element())[1]));
+        expect(menu_pixels, {shortcut.x + 1, shortcut.y}, {0, 255, 255, 255},
+               "menu shortcut display");
+#endif
+        const auto retained = draw_menu();
+        if (retained != menu_pixels) {
+            throw std::runtime_error("retained menu frame changed native pixels");
+        }
+        tests::require(checked.set_checked(false));
+        menu_pixels = draw_menu();
+        if (ink(menu_pixels, mark) != 0 || actions != 0) {
+            throw std::runtime_error("clearing a checkmark left ink or invoked an action");
+        }
+        tests::require(tree.handle(gui::KeyEvent{.key = gui::Key::right}));
+        menu_pixels = draw_menu();
+        if (!child.is_open()) { throw std::runtime_error("native submenu did not open"); }
+        const auto submenu = tests::require(tree.absolute_bounds(child.element()));
+        expect(menu_pixels, {submenu.x + 2, submenu.y + 2}, {0, 0, 255, 255},
+               "submenu escapes ancestor clip");
+        expect(menu_pixels, row_probe(leaf.element()), {0, 255, 0, 255}, "submenu selected action");
+        tests::require(tree.handle(gui::KeyEvent{.key = gui::Key::down}));
+        tests::require(tree.handle(gui::KeyEvent{.key = gui::Key::right}));
+        menu_pixels = draw_menu();
+        if (!grandchild.is_open()) { throw std::runtime_error("native recursive submenu did not open"); }
+        const auto recursive = tests::require(tree.absolute_bounds(grandchild.element()));
+        expect(menu_pixels, {recursive.x + 2, recursive.y + 2}, {0, 0, 255, 255},
+               "recursive submenu escapes both ancestor clips");
+        expect(menu_pixels, row_probe(deep.element()), {0, 255, 0, 255}, "recursive selected action");
+        if (ink(menu_pixels, tree.children(deep.element())[2]) < 8 || draw_menu() != menu_pixels) {
+            throw std::runtime_error("recursive checkmark ink or retained submenu frame differs");
+        }
+        const auto disabled_point = row_probe(disabled.element());
+        for (const auto action : {gui::PointerAction::down, gui::PointerAction::up}) {
+            tests::require(tree.handle(gui::PointerEvent{.action = action,
+                .position = disabled_point, .button = gui::PointerButton::primary}));
+        }
+        if (actions != 0 || !menu.is_open()) {
+            throw std::runtime_error("disabled native menu action was invoked or dismissed the menu");
+        }
+        tests::require(tree.handle(gui::KeyEvent{.key = gui::Key::enter}));
+        menu_pixels = draw_menu();
+        if (actions != 1 || menu.is_open() || child.is_open() || grandchild.is_open()) {
+            throw std::runtime_error("native submenu action did not dismiss exactly once");
+        }
+        expect(menu_pixels, {30, 55}, {0, 0, 0, 255}, "dismissed menu leaves no stale pixels");
+        expect(menu_pixels, {recursive.x + 2, recursive.y + 2}, {0, 0, 0, 255},
+               "dismissed recursive submenu leaves no stale pixels");
+        std::cout << "Menus: exact 512x240 probes, retained-frame equality, checkmark/arrow ink, "
+                     "disabled rows, recursive overlay and action dismissal";
+#if TFL_TEST_GUI_TEXT
+        std::cout << ", disabled glyph and shortcut colors";
+#endif
+        std::cout << '\n';
+    }
 
     {
         gui::Context tree;

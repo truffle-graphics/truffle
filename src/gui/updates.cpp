@@ -40,7 +40,7 @@ base::Status Context::set_updater(ElementId element, Updater update, bool live) 
         entry->live = live;
         entry->pending = true;
     } else {
-        updaters_.push_back({element, std::move(update), live, true});
+        updaters_.push_back({element, std::move(update), live, true, std::nullopt});
     }
     return base::Status::success();
 }
@@ -63,6 +63,14 @@ base::Status Context::set_update_live(ElementId element, bool live) {
     return base::Status::success();
 }
 
+base::Status Context::request_update_at(ElementId element,
+                                        std::optional<Clock::time_point> when) {
+    UpdaterEntry* entry = find_updater(element);
+    if (entry == nullptr) { return missing_updater(); }
+    entry->deadline = when;
+    return base::Status::success();
+}
+
 base::Status Context::run_updaters(std::size_t& count) {
     if (updaters_.empty()) {
         return base::Status::success();
@@ -71,7 +79,7 @@ base::Status Context::run_updaters(std::size_t& count) {
     // and requests made while running stay pending for the next frame.
     std::vector<ElementId> due;
     for (const auto& entry : updaters_) {
-        if (entry.live || entry.pending) {
+        if (entry.live || entry.pending || (entry.deadline && *entry.deadline <= time_)) {
             due.push_back(entry.element);
         }
     }
@@ -81,6 +89,7 @@ base::Status Context::run_updaters(std::size_t& count) {
             continue;
         }
         entry->pending = false;
+        if (entry->deadline && *entry->deadline <= time_) { entry->deadline.reset(); }
         const Updater update = entry->update; // keeps captured state alive
         auto status = run_element_update(element, update);
         ++count;

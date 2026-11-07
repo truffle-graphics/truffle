@@ -164,11 +164,11 @@ base::Status Surface::release_input() {
     return status;
 }
 
-base::Status Surface::handle(const InputEvent& event) {
+base::Status Surface::handle(const InputEvent& event, Context::Clock::time_point now) {
     if (!alive()) { return invalid_surface(); }
     Scope scope(*this);
     if (auto status = validate_input(); !status.ok()) { return status; }
-    return context_->handle(event);
+    return context_->handle(event, now);
 }
 
 base::Status Surface::focus(ElementId element) {

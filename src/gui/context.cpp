@@ -123,6 +123,8 @@ base::Status Context::destroy(ElementId element) {
         std::erase_if(updaters_, [current](const UpdaterEntry& entry) {
             return entry.element == current;
         });
+        std::erase(popups_, current);
+        std::erase(input_filters_, current);
         Node& doomed = nodes_[index_of(current)];
         pending.insert(pending.end(), doomed.children.begin(), doomed.children.end());
         const std::uint32_t generation = doomed.generation + 1;
@@ -169,7 +171,7 @@ base::Status Context::reparent(ElementId element, ElementId parent,
     siblings.insert(siblings.begin() + static_cast<std::ptrdiff_t>(position),
                     element);
     node->parent = parent;
-    if (find(parent)->placed_children || node->placement) {
+    if (find(parent)->placed_children || node->placement || node->popup || !node->visible) {
         refresh_flow(parent);
     }
     mark(old_parent, Dirty::measure);
@@ -284,7 +286,9 @@ void Context::mark(ElementId element, Dirty flags) {
     }
     // A measured ancestor already implies measured ancestors above it.
     for (ElementId ancestor = node->parent; ancestor.valid();) {
-        Node& above = *find(ancestor);
+        Node* ancestor_node = find(ancestor);
+        if (ancestor_node == nullptr) { break; }
+        Node& above = *ancestor_node;
         if (has(above.dirty, Dirty::measure)) {
             break;
         }
@@ -352,7 +356,7 @@ LayoutStats Context::update_layout(Size viewport) {
         std::any_of(dirty_queue_.begin(), dirty_queue_.end(), [this](ElementId element) {
             return has(dirty(element), Dirty::measure | Dirty::arrange);
         });
-    if (!pending_work) {
+    if (!pending_work && popups_.empty()) {
         return stats_;
     }
 
@@ -362,18 +366,46 @@ LayoutStats Context::update_layout(Size viewport) {
         static_cast<void>(measure_element(root, Constraints::tight(size)));
     }
 
+    const auto tree_root = [this](ElementId element) {
+        while (const Node* node = find(element)) {
+            if (!node->parent.valid()) { return element; }
+            element = node->parent;
+        }
+        return ElementId{};
+    };
+    const auto popup_viewport = [&](ElementId element) {
+        const ElementId root = tree_root(element);
+        for (const auto& entry : surface_roots_) {
+            if (entry.root == root) { return entry.size; }
+        }
+        return root == root_ ? viewport_ : find(primary_root_)->rect.size();
+    };
+    std::vector<std::pair<std::size_t, ElementId>> popups;
+    for (const ElementId element : popups_) {
+        if (!visible(element)) { continue; }
+        std::size_t depth = 0;
+        for (auto up = find(element)->parent; up.valid(); up = find(up)->parent) { ++depth; }
+        popups.emplace_back(depth, element);
+        static_cast<void>(measure_element(element, {{}, popup_viewport(element)}));
+    }
+    std::stable_sort(popups.begin(), popups.end(),
+        [](const auto& left, const auto& right) { return left.first < right.first; });
+
     // Arrange invalidated elements top-down; arranging a parent may already
     // have consumed a descendant's work.
     std::vector<std::pair<std::size_t, ElementId>> pending;
     for (const ElementId element : dirty_queue_) {
         const Node* node = find(element);
-        if (node == nullptr || !has(node->dirty, Dirty::arrange)) {
+        if (node == nullptr || !visible(element) || !has(node->dirty, Dirty::arrange)) {
             continue;
         }
         std::size_t depth = 0;
+        bool in_popup = node->popup.has_value();
         for (ElementId up = node->parent; up.valid(); up = find(up)->parent) {
             ++depth;
+            in_popup = in_popup || find(up)->popup.has_value();
         }
+        if (in_popup) { continue; }
         pending.emplace_back(depth, element);
     }
     std::stable_sort(pending.begin(), pending.end(),
@@ -391,6 +423,29 @@ LayoutStats Context::update_layout(Size viewport) {
             if (element == root) { rect = {0, 0, size.width, size.height}; break; }
         }
         arrange_element(element, rect);
+    }
+    for (const auto& [depth, element] : popups) {
+        static_cast<void>(depth);
+        Node& node = *find(element);
+        const Rect anchor = absolute_bounds(node.parent).value();
+        const Point offset = child_offset(node.parent);
+        const Size size = node.desired;
+        const Size view = popup_viewport(element);
+        float x = anchor.x;
+        float y = anchor.y + anchor.height;
+        if (*node.popup == PopupSide::right) {
+            x = anchor.x + anchor.width;
+            y = anchor.y;
+            if (x + size.width > view.width && anchor.x > view.width - x) {
+                x = anchor.x - size.width;
+            }
+        } else if (y + size.height > view.height && anchor.y > view.height - y) {
+            y = anchor.y - size.height;
+        }
+        x = std::clamp(x, 0.0F, std::max(0.0F, view.width - size.width));
+        y = std::clamp(y, 0.0F, std::max(0.0F, view.height - size.height));
+        arrange_element(element, {x - anchor.x - offset.x, y - anchor.y - offset.y,
+                                  size.width, size.height});
     }
     clear_dirty(Dirty::measure | Dirty::arrange);
     return stats_;
@@ -572,7 +627,8 @@ float Context::scale() const noexcept {
     return scale_;
 }
 
-base::Status Context::handle(const InputEvent& event) {
+base::Status Context::handle(const InputEvent& event, Clock::time_point now) {
+    time_ = now;
     event_status_ = base::Status::success();
     std::visit(
         [this](const auto& value) {
@@ -620,7 +676,12 @@ base::Status Context::handle(const InputEvent& event) {
             }
         },
         event);
-    route_input(event);
+    const auto filtered = filter_input(event);
+    if (!filtered.ok()) {
+        event_status_ = filtered.status();
+        return event_status_;
+    }
+    route_input(event, filtered.value());
     return event_status_;
 }
 
@@ -677,13 +738,18 @@ bool Context::needs_frame(Clock::time_point now) const noexcept {
 }
 
 std::optional<Context::Clock::time_point> Context::next_update() const noexcept {
-    if (deadlines_.empty()) {
-        return std::nullopt;
+    std::optional<Clock::time_point> next;
+    for (const auto deadline : deadlines_) {
+        if (!next || deadline < *next) { next = deadline; }
     }
-    return *std::min_element(deadlines_.begin(), deadlines_.end());
+    for (const auto& entry : updaters_) {
+        if (entry.deadline && (!next || *entry.deadline < *next)) { next = entry.deadline; }
+    }
+    return next;
 }
 
 FrameStats Context::prepare_frame(Clock::time_point now) {
+    time_ = now;
     FrameStats stats;
     stats.status = run_updaters(stats.updates);
     if (!stats.status.ok()) {
@@ -777,7 +843,7 @@ Size Context::measure_element(ElementId element, Constraints constraints) {
     if (node->placed_children) {
         const std::vector<ElementId> children = node->children;
         for (const ElementId child : children) {
-            if (const auto placed = find(child)->placement) {
+            if (const auto placed = find(child)->placement; placed && visible(child)) {
                 static_cast<void>(measure_element(child, Constraints::tight(placed->size())));
             }
         }
@@ -824,7 +890,7 @@ void Context::arrange_element(ElementId element, Rect rect) {
     if (node->placed_children) {
         const std::vector<ElementId> children = node->children;
         for (const ElementId child : children) {
-            if (const auto& placed = find(child)->placement) {
+            if (const auto& placed = find(child)->placement; placed && visible(child)) {
                 arrange_element(child, *placed);
             }
         }
@@ -841,5 +907,7 @@ void Context::detach(ElementId element, Node& node) {
     }
     node.parent = {};
 }
+
+Context::Clock::time_point Context::time() const noexcept { return time_; }
 
 } // namespace truffle::gui

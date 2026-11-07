@@ -781,6 +781,15 @@ target_compile_definitions(truffle_gui_widget_tests PRIVATE
 truffle_target_warnings(truffle_gui_widget_tests)
 add_test(NAME truffle_gui_widget_tests COMMAND truffle_gui_widget_tests)
 
+add_executable(truffle_gui_menu_tests gui_menu_tests.cpp)
+target_link_libraries(truffle_gui_menu_tests PRIVATE truffle_gui truffle_backend_null)
+target_include_directories(truffle_gui_menu_tests PRIVATE
+    "${PROJECT_SOURCE_DIR}/examples/gui_menus")
+target_compile_definitions(truffle_gui_menu_tests PRIVATE
+    TFL_TEST_GUI_TEXT=$<BOOL:${TFL_GUI_ENABLE_TEXT}>)
+truffle_target_warnings(truffle_gui_menu_tests)
+add_test(NAME truffle_gui_menu_tests COMMAND truffle_gui_menu_tests)
+
 add_executable(truffle_gui_builder_tests gui_builder_tests.cpp)
 target_link_libraries(truffle_gui_builder_tests PRIVATE truffle_gui)
 truffle_target_warnings(truffle_gui_builder_tests)

@@ -266,6 +266,14 @@ native Windows x64 Vulkan evidence (#268) on RTX 4080 SUPER with required
 Khronos validation: shapes/text/textures, clips, streamed geometry,
 premultiplied alpha, canvas primitives, overlays and logical scaling.
 GUI embeds checked-in SPIR-V without a runtime compiler; Metal is unchanged.
+Reusable menus (#269) add automatic menu-bar triggers, standalone dropdowns,
+recursive action/submenu rows, theme-bound disabled/check/shortcut presentation,
+and a surface-local open chain with pointer/keyboard navigation and cleanup.
+GUI owns narrowly extended collapsed visibility, parent-anchored viewport popups,
+input filters and one-shot updater deadlines. Native menu pixel evidence is
+Windows x64 Vulkan; no Studio integration or workspace policy belongs here.
+See [`docs/gui-menus.md`](docs/gui-menus.md). Adopting the new Context
+storage/input signatures requires rebuilding GUI consumers with matching libraries.
 This is not software-driver/ARM64/full conformance or broader native-host
 evidence. Contexts have stable, non-movable
 ownership; application text engines/atlases outlive their elements.

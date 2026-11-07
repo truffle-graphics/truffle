@@ -5,7 +5,61 @@ This is the rolling execution handoff, not an implementation transcript.
 issues/Project own accepted work. Earlier phase details remain in their PRs,
 the support matrix and Git history.
 
-## Latest: Vulkan GUI Painter prerequisite (#268)
+## Latest: Reusable GUI menus (#269)
+
+`feat/gui-menus` builds on the signed/pushed, unmerged Vulkan Painter
+prerequisite `07331517d15b76399d69ecc916ed24ff1243e94e` without altering it.
+`MenuBar`, `MenuButton`, `Menu`, `MenuItem` and `MenuSeparator` are implemented
+in Truffle GUI alone. Named menu-bar menus automatically create their triggers;
+standalone buttons and recursive action/submenu rows support disabled entries,
+optional checks, shortcut display and separators. Application actions, selected
+values, shortcut binding and native hosts remain caller-owned.
+
+One chain per surface manages enabled-row keyboard traversal, focus restoration,
+deepest-first Escape, focus-aware Right/Left, outside clicks, action dismissal,
+250 ms hover opening and 300 ms triangular parent-to-child travel grace.
+Opening siblings replaces their descendants. Popup layout flips/shifts within
+the viewport; overflow keyboard selection scrolls into view. Disabling/removing
+a focused row or action chooses another eligible row, or the menu panel.
+Trigger/menu/subtree/Context cleanup cancels timers and clears open state.
+Moved menus and even empty bars survive retirement of their former surface.
+
+GUI narrowly extends its existing Context owners for collapsed visibility,
+parent-anchored overlays, surface-local element-owned input filters and one-shot
+updater deadlines with host time. Context storage and input signatures changed:
+GUI consumers must rebuild against coherent headers/libraries. No architectural
+boundary, backend, shader package, runtime compiler, GUI Dock dependency or
+application policy changes. Object construction/presentation and shared
+interaction/lifetime remain separate, cohesive menu-owned source files.
+See [GUI menu usage](gui-menus.md) and the compiled host-independent
+`examples/gui_menus/menu_example.hpp`.
+
+All 15 affected strict MSVC Debug GUI tests pass: tree, layout, drawing, host,
+events, themes, widgets, menus, builder, regions, collections, docking, text,
+editing and native Vulkan drawing. Deterministic menu checks cover exact hover/
+travel deadlines, two-level recursive navigation, focus/dismissal, layout/
+resize/movement/overflow, callbacks that destroy triggers, Context teardown and
+surface migration/retirement. Native Windows Vulkan checks use the prepared
+Painter on RTX 4080 SUPER with required Khronos validation and no reported
+warnings/errors. They check exact 512x240 probes, at least eight checkmark and
+twelve arrow pixels, disabled glyph/shortcut colors, byte-identical retained
+root/recursive frames, and removal of root and two-level submenu pixels after
+one action. Existing native GUI reference checks remain passing.
+Architecture and whitespace guards pass; clang-format 19.1.5 checks the new
+menu sources/example, while unrelated existing GUI formatting is preserved.
+The object implementation's 1,000-line signal is resolved as cohesive: checked
+construction, public mutation and presentation share one menu-widget model
+lifecycle; the shared interaction/session owner remains separate.
+
+The Studio-only compile/link window was held until its owner released it.
+Its app/host rebuilt and linked against the coherent GUI/dock archives;
+Studio files, build outputs and its gitlink were not edited here.
+Delivery is one signed issue-scoped commit immediately pushed, with the exact
+receipt recorded on #269. No PR or merge is authorized; review/integration
+remain with the coordinating owner. No version bump, hosted work, machine
+installation, macOS rerun, software-driver/ARM64 or conformance claim.
+
+## Earlier: Vulkan GUI Painter prerequisite (#268)
 
 `feature/gui-vulkan-painter` owns the focused reusable GUI prerequisite for
 Windows Studio. Painter now selects prepared Vulkan SPIR-V or the unchanged

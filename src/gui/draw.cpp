@@ -62,6 +62,7 @@ void assemble(const Context& context, const DrawOptions& options, DrawData& out)
         while (!pending.empty()) {
             const Pending item = pending.back();
             pending.pop_back();
+            if (!context.visible(item.element)) { continue; }
             if (item.overlay) {
                 nested.push_back({item.element, item.origin, viewport});
                 continue;

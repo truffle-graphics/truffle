@@ -394,6 +394,35 @@ square-ended lines, overlays, retained frame-slot reuse, 2x logical scaling,
 also passes with all Shader compilers disabled. No macOS rerun, software-driver,
 ARM64, other GUI platform or full-conformance claim is implied.
 
+## GUI Menus And Popup Lifetime (#269)
+
+`truffle_gui` owns reusable menu-bar/dropdown composition and the shared
+recursive menu chain per `Surface`. `menus.cpp` owns checked object construction,
+presentation and public mutation; `menu_session.cpp` owns interaction,
+focus transitions, timed hover, dismissal and cleanup. Their private model
+uses weak back-references and weak surface-local registries so moved menus and
+even empty menu bars survive retirement of their former surface. Context
+cleanup retires element identities and the session's callbacks/deadlines.
+These responsibilities share GUI element/input lifetime; they do not introduce
+application workspace, installer, native-window or GUI Dock policy.
+
+Context's existing flow/overlay owner now supports collapsed visibility and
+parent-anchored popup placement, measured/clamped against the logical viewport
+after normal layout. Existing input/focus/capture routing has element-owned,
+surface-local pre-routing filters; suppression preserves input bookkeeping.
+Existing updaters accept one-shot deadlines and host-supplied input/frame time,
+not a separate timer/event loop. Checks and arrows use normal GUI shapes;
+labels and shortcut display use the existing text/atlas owner and theme tokens.
+
+Public-contract effect: documented object/API extension with changed Context
+storage and input signatures; rebuild consumers with coherent GUI libraries.
+There is no architectural boundary change. GUI still uses Renderer below it,
+not EnCom, GUI Dock, Studio or platform APIs. Prepared Painter programs and
+backend/compiler ownership are unchanged. The shared Metal/Vulkan native
+fixture adds measurable menu pixels; native evidence here is Windows x64
+Vulkan only, not a Metal rerun or backend maturity promotion.
+See [`gui-menus.md`](gui-menus.md) for API usage and focused evidence.
+
 ## GUI Usability And Native Surfaces (#251-#253)
 
 GUI owns Unicode text shaping, font fallback and plain-text editing above

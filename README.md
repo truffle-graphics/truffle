@@ -225,6 +225,18 @@ their elements; destroying a reference does not remove the UI. User actions
 invoke the descriptor callbacks; programmatic setters do not. Use `element()`
 for layout/theme overrides and `content()` to add children to a scroll area.
 Widgets retain semantic roles/labels, not an accessibility implementation.
+Reusable menus (#269) are checked `MenuBar`, `MenuButton`, `Menu`, `MenuItem`
+and `MenuSeparator` references in `truffle/gui/menus.hpp`.
+`MenuBar::add_menu(label)` creates its trigger automatically; a standalone
+`MenuButton` creates its dropdown, and `Menu::add_submenu(label)` creates an
+arrow-bearing row and recursive menu. Entries have actions or submenus, disabled
+state, optional checks and shortcut display. One open chain per surface handles
+pointer/keyboard traversal, delayed hover, safe submenu travel, focus and
+dismissal; popups flip/shift within the viewport. Application values, actions,
+shortcut bindings and native hosts remain outside the widgets. See
+[`docs/gui-menus.md`](docs/gui-menus.md) for composition, lifetime, themes and
+the compiled host-independent example. Adopting the new Context storage/input
+signatures requires rebuilding GUI consumers and libraries together.
 The `text_edit` widget (#252) is also available as `TextEdit`, through
 `ui::text_edit` in a builder, or as a two-way `RegionScope::text_edit`.
 It supports plain single-line/multiline UTF-8, grapheme-safe selection/deletion,

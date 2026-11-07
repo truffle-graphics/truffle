@@ -28,7 +28,8 @@ public:
     [[nodiscard]] base::Status attach(ElementId content);
     [[nodiscard]] base::Status release_input();
     [[nodiscard]] base::Status focus(ElementId element);
-    [[nodiscard]] base::Status handle(const InputEvent& event);
+    [[nodiscard]] base::Status handle(const InputEvent& event,
+                                     Context::Clock::time_point now = Context::Clock::now());
     void assemble(const DrawOptions& options, DrawData& out);
     [[nodiscard]] base::Result<std::vector<renderer::RenderBatch>> record(
         Painter& painter, std::uint32_t slot, rhi::Extent2D target);
