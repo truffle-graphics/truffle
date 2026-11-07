@@ -67,7 +67,8 @@ public:
   // supplied Context has text sources created by set_text().
   [[nodiscard]] base::Result<std::reference_wrapper<TextEngine>> text();
   [[nodiscard]] TextureId text_atlas() const noexcept;
-  [[nodiscard]] base::Result<FontId> load_font(std::span<const std::byte>, float size);
+  [[nodiscard]] base::Result<FontId> load_font(std::span<const std::byte>,
+                                              float size = default_font_size);
   [[nodiscard]] base::Status set_text(Context &, ElementId, FontId, std::string);
 
 private:

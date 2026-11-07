@@ -5,6 +5,22 @@ This is the rolling execution handoff, not an implementation transcript.
 issues/Project own accepted work. Earlier phase details remain in their PRs,
 the support matrix and Git history.
 
+## GUI component style contract (#280)
+
+GUI now resolves typed shared tokens, Truffle component defaults, global
+component patches and per-element/state patches. Dark/Light change colors
+without resetting metrics or component overrides. Layout sizing and spacing
+remain separate; checkbox, slider and menu geometry are component-owned.
+Host-selected fonts use Truffle's default 14-unit size or cached explicit
+size variants with their fallback chains. See `docs/gui-styling.md` and ADR
+0013. GUI Dock remains above GUI; no reverse dependency was added.
+
+The strict Debug GUI targets compiled with warnings-as-errors and 12 focused
+CPU/Null checks passed, covering style precedence, invalidation, layout,
+controls, menus, editors, dock and sized fonts. No native visual verification
+or text-disabled build was performed. Studio adoption (#30), its build and
+the owner's manual verification remain pending for the dependent phase.
+
 ## Separating GUI Context and Graphics (#279)
 
 The public entry point changed from `gui::Application` to `gui::Graphics`.

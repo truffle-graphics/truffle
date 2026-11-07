@@ -16,23 +16,29 @@ base::Status invalid_widget() {
 
 class SliderBuilder final : public ShapeBuilder {
 public:
-    explicit SliderBuilder(float ratio) : ratio_(ratio) {}
+    SliderBuilder(float ratio, float track, float thumb, float inset)
+        : ratio_(ratio), track_(track), thumb_(thumb), inset_(inset) {}
     void build(ShapeWriter& out, Size size, const Decoration& decoration) const override {
         out.rect({0, 0, size.width, size.height}, decoration);
-        const float radius = std::min(6.0F, size.width * 0.5F);
+        const float radius = std::min(thumb_ * 0.5F, size.width * 0.5F);
         const float travel = std::max(0.0F, size.width - 2 * radius);
+        const float thickness = std::min(track_, size.height);
         Decoration track;
         track.fill = decoration.border;
         track.fill.a *= 0.4F;
-        track.corner_radius = 2;
-        out.rect({radius, size.height * 0.5F - 2, travel, 4}, track);
+        track.corner_radius = thickness * 0.5F;
+        out.rect({radius, (size.height - thickness) * 0.5F, travel, thickness}, track);
         Decoration thumb;
         thumb.fill = decoration.border;
         thumb.corner_radius = radius;
-        out.rect({ratio_ * travel, 2, 2 * radius, std::max(0.0F, size.height - 4)}, thumb);
+        out.rect({ratio_ * travel, inset_, 2 * radius,
+                  std::max(0.0F, size.height - 2 * inset_)}, thumb);
     }
 private:
     float ratio_;
+    float track_;
+    float thumb_;
+    float inset_;
 };
 
 class ScrollLayout final : public Layout {
@@ -72,6 +78,20 @@ bool inside(Context& context, ElementId hit, ElementId widget) {
     return false;
 }
 
+Component component(WidgetKind kind) {
+    switch (kind) {
+    case WidgetKind::panel: return Component::panel;
+    case WidgetKind::label: return Component::label;
+    case WidgetKind::image: return Component::image;
+    case WidgetKind::button: return Component::button;
+    case WidgetKind::checkbox: return Component::checkbox;
+    case WidgetKind::slider: return Component::slider;
+    case WidgetKind::scroll_area: return Component::scroll_area;
+    case WidgetKind::text_edit: return Component::text_edit;
+    }
+    return Component::panel;
+}
+
 } // namespace
 
 struct Widget::State {
@@ -86,6 +106,9 @@ struct Widget::State {
     bool key_pressed = false;
     std::optional<std::uint32_t> pointer;
     Point offset;
+    float slider_track = 0;
+    float slider_thumb = 0;
+    float slider_inset = 0;
 
     bool live() const { return context != nullptr && context->alive(element); }
     bool interactive() const {
@@ -96,23 +119,18 @@ struct Widget::State {
         if (!live()) { return invalid_widget(); }
         const auto interaction = context->interaction(element);
         if (!interaction.ok()) { return interaction.status(); }
-        const char* fill = !interaction.value().enabled ? "gui.disabled" :
-                           pointer || key_pressed ? "gui.pressed" :
-                           hover ? "gui.hover" : "gui.control";
-        auto status = context->bind_property(element, Property::fill, fill);
-        if (!status.ok()) { return status; }
-        if (desc.kind != WidgetKind::slider) {
-            status = context->bind_property(element, Property::border_color,
-                                             focused ? "gui.accent" : "gui.border");
-        }
-        return status;
+        return context->set_component_state(element, {
+            .hovered = hover, .pressed = pointer.has_value() || key_pressed,
+            .focused = focused, .disabled = !interaction.value().enabled,
+            .checked = desc.checked});
     }
     base::Status check(bool value) {
         if (!live() || desc.kind != WidgetKind::checkbox) { return invalid_widget(); }
         if (desc.checked == value) { return base::Status::success(); }
-        const auto status = context->bind_property(mark, Property::fill,
-                                                    value ? "gui.accent" : "gui.control");
-        if (status.ok()) { desc.checked = value; }
+        const bool previous = desc.checked;
+        desc.checked = value;
+        const auto status = appearance();
+        if (!status.ok()) { desc.checked = previous; }
         return status;
     }
     base::Status number(float value) {
@@ -121,9 +139,47 @@ struct Widget::State {
         }
         value = std::clamp(value, desc.min, desc.max);
         if (value == desc.value) { return base::Status::success(); }
-        const auto status = context->set_shape_builder(element,
-            std::make_shared<SliderBuilder>((value - desc.min) / (desc.max - desc.min)));
+        const auto status = context->set_shape_builder(element, std::make_shared<SliderBuilder>(
+            (value - desc.min) / (desc.max - desc.min), slider_track, slider_thumb, slider_inset));
         if (status.ok()) { desc.value = value; }
+        return status;
+    }
+    base::Status style_changed() {
+        if (desc.kind == WidgetKind::checkbox) {
+            const auto size = context->property(element, Property::indicator_size);
+            const auto gap = context->property(element, Property::indicator_gap);
+            const auto params = context->layout_params(mark);
+            if (!size.ok()) { return size.status(); }
+            if (!gap.ok()) { return gap.status(); }
+            if (!params.ok()) { return params.status(); }
+            auto next = params.value();
+            const auto dimensions = std::get<Size>(size.value());
+            next.width = dimensions.width;
+            next.height = dimensions.height;
+            next.position.x = -dimensions.width - std::get<float>(gap.value());
+            return context->set_layout_params(mark, next);
+        }
+        const auto track = context->property(element, Property::slider_track_thickness);
+        const auto thumb = context->property(element, Property::slider_thumb_width);
+        const auto inset = context->property(element, Property::slider_thumb_inset);
+        if (!track.ok()) { return track.status(); }
+        if (!thumb.ok()) { return thumb.status(); }
+        if (!inset.ok()) { return inset.status(); }
+        const float next_track = std::get<float>(track.value());
+        const float next_thumb = std::get<float>(thumb.value());
+        const float next_inset = std::get<float>(inset.value());
+        if (next_track == slider_track && next_thumb == slider_thumb &&
+            next_inset == slider_inset) {
+            return base::Status::success();
+        }
+        const auto status = context->set_shape_builder(element, std::make_shared<SliderBuilder>(
+            (desc.value - desc.min) / (desc.max - desc.min),
+            next_track, next_thumb, next_inset));
+        if (status.ok()) {
+            slider_track = next_track;
+            slider_thumb = next_thumb;
+            slider_inset = next_inset;
+        }
         return status;
     }
     base::Status move_scroll(Point requested) {
@@ -159,7 +215,7 @@ struct Widget::State {
     base::Status from_pointer(Point position) {
         const auto bounds = context->absolute_bounds(element);
         if (!bounds.ok()) { return bounds.status(); }
-        const float radius = std::min(6.0F, bounds.value().width * 0.5F);
+        const float radius = std::min(slider_thumb * 0.5F, bounds.value().width * 0.5F);
         const float travel = bounds.value().width - 2 * radius;
         const float ratio = travel > 0
             ? std::clamp((position.x - bounds.value().x - radius) / travel, 0.0F, 1.0F) : 0;
@@ -328,7 +384,9 @@ base::Result<Widget> Widget::create(Context& context, ElementId parent, WidgetDe
     const auto setup = [&]() -> base::Status {
         const auto id = state->element;
         const auto kind = state->desc.kind;
-        auto result = context.set_semantics(id, {
+        auto result = context.set_component(id, component(kind));
+        if (!result.ok()) { return result; }
+        result = context.set_semantics(id, {
             static_cast<Context::Role>(static_cast<unsigned>(kind) + 1), state->desc.text});
         if (!result.ok()) { return result; }
         result = context.set_interaction(id, {
@@ -336,8 +394,6 @@ base::Result<Widget> Widget::create(Context& context, ElementId parent, WidgetDe
             .focusable = state->interactive() || kind == WidgetKind::scroll_area});
         if (!result.ok()) { return result; }
         LayoutParams params;
-        if (state->interactive()) { params.min = {80, 32}; }
-        if (kind == WidgetKind::slider) { params.min = {120, 24}; }
         if (kind == WidgetKind::image) {
             params.width = state->desc.image_size.width;
             params.height = state->desc.image_size.height;
@@ -347,63 +403,58 @@ base::Result<Widget> Widget::create(Context& context, ElementId parent, WidgetDe
         }
         result = context.set_layout_params(id, params);
         if (!result.ok()) { return result; }
-        const auto bind = [&](Property property, const char* name) {
-            return context.bind_property(id, property, name);
+        const auto bind = [&](Property property, StylePart part = StylePart::automatic) {
+            return context.bind_component_property(id, property, id, part);
         };
-        if (kind != WidgetKind::label) {
-            result = bind(Property::fill, kind == WidgetKind::image ? "gui.image" :
-                state->interactive() ? "gui.control" : "gui.surface");
-            if (!result.ok()) { return result; }
-            result = bind(Property::border_color,
-                          kind == WidgetKind::slider ? "gui.accent" : "gui.border");
-            if (!result.ok()) { return result; }
-            result = bind(Property::corner_radius, "gui.radius");
-            if (!result.ok()) { return result; }
-            if (kind != WidgetKind::image) {
-                result = bind(Property::border_width, "gui.border_width");
-                if (!result.ok()) { return result; }
-            }
-        }
-        if (kind == WidgetKind::panel || kind == WidgetKind::scroll_area ||
-            kind == WidgetKind::button) {
-            result = bind(Property::padding, "gui.padding");
+        for (const auto property : {Property::fill, Property::border_color,
+                                    Property::border_width, Property::corner_radius,
+                                    Property::padding, Property::min_size}) {
+            result = bind(property);
             if (!result.ok()) { return result; }
         }
         if (kind == WidgetKind::checkbox) {
-            result = bind(Property::padding, "gui.padding");
+            result = bind(Property::indicator_size);
             if (!result.ok()) { return result; }
-            result = context.set_property_override(id, Property::padding, Edges{32, 8, 8, 8});
+            result = bind(Property::indicator_gap);
             if (!result.ok()) { return result; }
             const auto mark = context.create(id);
             if (!mark.ok()) { return mark.status(); }
             state->mark = mark.value();
             LayoutParams mark_params;
-            mark_params.width = 16.0F;
-            mark_params.height = 16.0F;
-            mark_params.position = {-24, 0};
+            const auto size = context.component_property(id, Property::indicator_size);
+            const auto gap = context.component_property(id, Property::indicator_gap);
+            if (!size.ok()) { return size.status(); }
+            if (!gap.ok()) { return gap.status(); }
+            const auto dimensions = std::get<Size>(size.value());
+            mark_params.width = dimensions.width;
+            mark_params.height = dimensions.height;
+            mark_params.position.x = -dimensions.width - std::get<float>(gap.value());
             result = context.set_layout_params(state->mark, mark_params);
             if (!result.ok()) { return result; }
             result = context.set_interaction(state->mark, {.hit_test = false});
             if (!result.ok()) { return result; }
-            result = context.bind_property(state->mark, Property::fill,
-                       state->desc.checked ? "gui.accent" : "gui.control");
+            result = context.bind_component_property(state->mark, Property::fill, id,
+                                                     StylePart::indicator);
             if (!result.ok()) { return result; }
-            result = context.bind_property(state->mark, Property::border_color, "gui.border");
+            result = context.bind_component_property(state->mark, Property::border_color, id,
+                                                     StylePart::indicator_border);
             if (!result.ok()) { return result; }
-            result = context.bind_property(state->mark, Property::border_width, "gui.border_width");
+            result = context.bind_component_property(state->mark, Property::border_width, id);
             if (!result.ok()) { return result; }
-            result = context.bind_property(state->mark, Property::corner_radius, "gui.radius");
+            result = context.bind_component_property(state->mark, Property::corner_radius, id);
             if (!result.ok()) { return result; }
         }
         if (draws_text) {
-            result = bind(Property::text_color, "gui.text");
+            result = bind(Property::text_color);
+            if (!result.ok()) { return result; }
+            result = bind(Property::font_size);
             if (!result.ok()) { return result; }
             if (state->desc.text_engine != nullptr) {
                 if (!context.theme_value("gui.font").ok()) {
                     result = context.set_theme_value("gui.font", state->desc.font);
                     if (!result.ok()) { return result; }
                 }
-                result = bind(Property::font, "gui.font");
+                result = context.bind_property(id, Property::font, "gui.font");
                 if (!result.ok()) { return result; }
                 result = context.set_text_source(id, *state->desc.text_engine,
                     state->desc.font, state->desc.text, state->desc.atlas);
@@ -412,8 +463,23 @@ base::Result<Widget> Widget::create(Context& context, ElementId parent, WidgetDe
         }
         if (kind == WidgetKind::slider) {
             state->desc.value = std::clamp(state->desc.value, state->desc.min, state->desc.max);
+            for (const auto property : {Property::slider_track_thickness,
+                                        Property::slider_thumb_width, Property::slider_thumb_inset}) {
+                result = bind(property);
+                if (!result.ok()) { return result; }
+            }
+            const auto track = context.component_property(id, Property::slider_track_thickness);
+            const auto thumb = context.component_property(id, Property::slider_thumb_width);
+            const auto inset = context.component_property(id, Property::slider_thumb_inset);
+            if (!track.ok()) { return track.status(); }
+            if (!thumb.ok()) { return thumb.status(); }
+            if (!inset.ok()) { return inset.status(); }
+            state->slider_track = std::get<float>(track.value());
+            state->slider_thumb = std::get<float>(thumb.value());
+            state->slider_inset = std::get<float>(inset.value());
             result = context.set_shape_builder(id, std::make_shared<SliderBuilder>(
-                (state->desc.value - state->desc.min) / (state->desc.max - state->desc.min)));
+                (state->desc.value - state->desc.min) / (state->desc.max - state->desc.min),
+                state->slider_track, state->slider_thumb, state->slider_inset));
             if (!result.ok()) { return result; }
         }
         if (kind == WidgetKind::scroll_area) {
@@ -423,6 +489,14 @@ base::Result<Widget> Widget::create(Context& context, ElementId parent, WidgetDe
             result = context.set_interaction(state->content, {.hit_test = false});
             if (!result.ok()) { return result; }
             result = context.set_layout(id, std::make_shared<ScrollLayout>());
+            if (!result.ok()) { return result; }
+        }
+        result = state->appearance();
+        if (!result.ok()) { return result; }
+        if (kind == WidgetKind::checkbox || kind == WidgetKind::slider) {
+            result = context.set_component_style_handler(id, [state] {
+                return state->style_changed();
+            });
             if (!result.ok()) { return result; }
         }
         return context.set_event_handler(id, [state](Context&, RoutedEvent& event) {
@@ -502,7 +576,8 @@ base::Status Widget::set_enabled(bool enabled) {
     interaction.value().enabled = enabled;
     const auto status = state_->context->set_interaction(element(), interaction.value());
     if (!status.ok()) { return status; }
-    return state_->interactive() ? state_->appearance() : base::Status::success();
+    return state_->desc.kind == WidgetKind::text_edit
+        ? base::Status::success() : state_->appearance();
 }
 
 } // namespace truffle::gui

@@ -14,6 +14,7 @@ int main() {
   TFL_CHECK(!empty.draw(context).ok());
   TFL_CHECK(!empty.resize(context, {10, 10}, 1).ok());
   TFL_CHECK(!empty.load_font({}, 12).ok());
+  TFL_CHECK(!empty.load_font({}).ok());
   TFL_CHECK(!empty.add_image(context, {}).ok());
   TFL_CHECK(!gui::Graphics::create({.dpi_scale = 0}).ok());
   TFL_CHECK(

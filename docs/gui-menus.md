@@ -106,9 +106,10 @@ Root menus prefer below their button; submenus prefer the parent's right edge.
 Insufficient room flips to the opposite side, then shifts/clamps to the logical
 viewport. Placement is refreshed after ordinary layout, including resize,
 anchor movement and scrolling. Oversized menus are viewport-clipped and
-keyboard selection scrolls the selected row into view. A menu has a 160-unit
-minimum width when the viewport permits it; rows are at least 28 units tall and
-separators are 9 units tall.
+keyboard selection scrolls the selected row into view. By default a menu has a
+160-unit minimum width when the viewport permits it; rows are at least 28 units
+tall and separators are 9 units tall. These are component defaults, not fixed
+layout requirements; [component styles](gui-styling.md) can override them.
 
 Panels and controls reuse `gui.surface`, `gui.control`, `gui.hover`,
 `gui.pressed`, `gui.disabled`, `gui.border`, `gui.border_width`, `gui.radius`,
@@ -117,6 +118,9 @@ Panels and controls reuse `gui.surface`, `gui.control`, `gui.hover`,
 GUI shapes, not platform glyphs or icon-font dependencies. Labels/shortcut
 display use the application's `TextEngine`, font and atlas, with the same
 requirements as other text widgets.
+Menu item styles also expose indicator size, column widths and gaps; standalone
+menu buttons expose their indicator size, trailing width and gap. Per-item and
+per-button styles reach their internal labels and indicators.
 
 The shared GUI extensions are:
 

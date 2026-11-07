@@ -9,6 +9,7 @@
 #include "truffle/gui/surface.hpp"
 #include "truffle/gui/widgets.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <memory>
 #include <type_traits>
@@ -643,11 +644,65 @@ int text_and_theme() {
   return 0;
 }
 
+int component_metrics() {
+  Context context;
+  tests::require(context.set_viewport({400, 300}));
+  auto menu = tests::require(Menu::create(context, context.root()));
+  auto button = tests::require(MenuButton::create(context, context.root(), "", menu));
+  auto item = tests::require(menu.add_item({.checked = true, .activated = [] {}}));
+  place(context, button.element(), {0, 0, 100, 30});
+  frame(context);
+  tests::require(button.open());
+  frame(context);
+  const auto item_children = context.children(item.element());
+  const auto mark = item_children[2];
+  const auto arrow = item_children[3];
+  const auto button_children = context.children(button.element());
+  const auto button_arrow = button_children[1];
+
+  ComponentStyle item_style;
+  item_style.menu.indicator_size = Size{24, 18};
+  item_style.menu.leading_width = 30;
+  item_style.menu.trailing_width = 28;
+  item_style.menu.column_gap = 10;
+  item_style.min_size = Size{0, 42};
+  item_style.text.normal = Color{1, 0, 0, 1};
+  item_style.indicator.normal = Color{0, 0, 1, 1};
+  tests::require(context.set_component_style(Component::menu_item, item_style));
+  ComponentStyle button_style;
+  button_style.menu.indicator_size = Size{18, 18};
+  button_style.menu.trailing_width = 20;
+  button_style.menu.column_gap = 3;
+  tests::require(context.set_component_style(button.element(), button_style));
+  frame(context);
+  TFL_CHECK((context.bounds(mark).value().size() == Size{24, 18}));
+  TFL_CHECK((context.bounds(arrow).value().size() == Size{24, 18}));
+  TFL_CHECK((context.bounds(button_arrow).value().size() == Size{18, 18}));
+  TFL_CHECK((std::get<Color>(context.property(item_children[0], Property::text_color).value()) ==
+             Color{1, 0, 0, 1}));
+  TFL_CHECK((context.decoration(mark).value().fill == Color{0, 0, 1, 1}));
+  TFL_CHECK(context.bounds(item_children[0]).value().x == 44);
+  const auto* shapes = context.shapes(mark);
+  TFL_CHECK(shapes != nullptr && !shapes->vertices.empty());
+  float left = shapes->vertices.front().position[0];
+  float right = left;
+  for (const auto& vertex : shapes->vertices) {
+    left = std::min(left, vertex.position[0]);
+    right = std::max(right, vertex.position[0]);
+  }
+  TFL_CHECK(right - left > 16);
+  tests::require(context.set_property_override(item.element(), Property::menu_column_gap, 4.0F));
+  frame(context);
+  TFL_CHECK(context.bounds(item_children[0]).value().x == 38);
+  return 0;
+}
+
 } // namespace
 
 int main() {
   if (keyboard_and_composition() || pointer_and_delays() || placement_and_overflow() ||
-      lifetime_and_contracts() || dynamic_entries() || surfaces_and_host_mechanisms()) {
+      lifetime_and_contracts() || dynamic_entries() || surfaces_and_host_mechanisms() ||
+      component_metrics()) {
     return 1;
   }
   return text_and_theme();

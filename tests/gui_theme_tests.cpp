@@ -74,6 +74,184 @@ int dependencies() {
     return 0;
 }
 
+int component_styles() {
+    Context c;
+    TFL_CHECK(c.set_viewport({400, 200}).ok());
+    const auto first = tests::require(Widget::create(c, c.root(), {.kind = WidgetKind::button}));
+    const auto second = tests::require(Widget::create(c, c.root(), {.kind = WidgetKind::button}));
+    const auto other = tests::require(Widget::create(c, c.root()));
+    TFL_CHECK(c.prepare_frame(Context::Clock::now()).status.ok());
+
+    const Color red{1, 0, 0, 1};
+    const Color blue{0, 0, 1, 1};
+    const Color green{0, 1, 0, 1};
+    ComponentStyle global;
+    global.fill.normal = red;
+    global.border_width = 3.0F;
+    global.min_size = Size{110, 40};
+    global.padding = Edges{3, 4, 3, 4};
+    TFL_CHECK(c.set_component_style(Component::button, global).ok());
+    TFL_CHECK(c.dirty(other.element()) == Dirty::none);
+    TFL_CHECK(c.prepare_frame(Context::Clock::now()).status.ok());
+    TFL_CHECK(c.decoration(first.element()).value().fill == red);
+    TFL_CHECK(c.decoration(second.element()).value().fill == red);
+    TFL_CHECK(std::get<float>(c.property(first.element(), Property::border_width).value()) == 3);
+    TFL_CHECK((std::get<Size>(c.property(first.element(), Property::min_size).value()) ==
+               Size{110, 40}));
+
+    ComponentStyle local;
+    local.fill.normal = blue;
+    local.fill.pressed = green;
+    local.corner_radius = 9.0F;
+    TFL_CHECK(c.set_component_style(first.element(), local).ok());
+    TFL_CHECK(c.dirty(second.element()) == Dirty::none);
+    TFL_CHECK(c.prepare_frame(Context::Clock::now()).status.ok());
+    TFL_CHECK(c.decoration(first.element()).value().fill == blue);
+    TFL_CHECK(c.decoration(second.element()).value().fill == red);
+    TFL_CHECK(c.set_component_state(first.element(), {.hovered = true}).ok());
+    TFL_CHECK(c.prepare_frame(Context::Clock::now()).status.ok());
+    TFL_CHECK(c.decoration(first.element()).value().fill == c.theme_value(ColorToken::hover).value());
+    TFL_CHECK(c.set_component_state(first.element(), {.hovered = true, .pressed = true}).ok());
+    TFL_CHECK(c.prepare_frame(Context::Clock::now()).status.ok());
+    TFL_CHECK(c.decoration(first.element()).value().fill == green);
+    TFL_CHECK(c.set_component_state(first.element(),
+                                    {.hovered = true, .pressed = true, .disabled = true}).ok());
+    TFL_CHECK(c.prepare_frame(Context::Clock::now()).status.ok());
+    TFL_CHECK(c.decoration(first.element()).value().fill ==
+              c.theme_value(ColorToken::disabled).value());
+    TFL_CHECK(c.set_component_state(first.element(), {}).ok());
+
+    TFL_CHECK(c.set_theme_value(MetricToken::radius, 7.0F).ok());
+    TFL_CHECK(c.set_theme_value(PaddingToken::standard, Edges{11, 12, 11, 12}).ok());
+    TFL_CHECK(c.set_theme_value(FontSizeToken::standard, FontSize{18.0F}).ok());
+    const auto dark_surface = c.theme_value(ColorToken::surface).value();
+    TFL_CHECK(apply_theme(c, BuiltinTheme::truffle_light).ok());
+    TFL_CHECK(c.prepare_frame(Context::Clock::now()).status.ok());
+    TFL_CHECK(c.theme_value(ColorToken::surface).value() != dark_surface);
+    TFL_CHECK(c.theme_value(MetricToken::radius).value() == 7);
+    TFL_CHECK((c.theme_value(PaddingToken::standard).value() == Edges{11, 12, 11, 12}));
+    TFL_CHECK((c.theme_value(FontSizeToken::standard).value() == FontSize{18.0F}));
+    TFL_CHECK(c.component_style(Component::button).value() == global);
+    TFL_CHECK(c.component_style(first.element()).value() == local);
+    TFL_CHECK(c.decoration(first.element()).value().fill == blue);
+    TFL_CHECK(c.decoration(second.element()).value().fill == red);
+
+    ComponentStyle invalid = global;
+    invalid.slider.thumb_width = 4;
+    TFL_CHECK(!c.set_component_style(Component::button, invalid).ok());
+    TFL_CHECK(c.component_style(Component::button).value() == global);
+    invalid = {};
+    invalid.menu.leading_width = 4;
+    TFL_CHECK(!c.set_component_style(Component::menu_button, invalid).ok());
+    invalid = {};
+    invalid.font_size = FontSize{0};
+    TFL_CHECK(!c.set_component_style(first.element(), invalid).ok());
+    TFL_CHECK(c.component_style(first.element()).value() == local);
+    TFL_CHECK(!c.set_theme_value(ColorToken::count, red).ok());
+    TFL_CHECK(!c.set_theme_value(MetricToken::radius, -1.0F).ok());
+    TFL_CHECK(!c.set_theme_value(FontSizeToken::standard,
+                                 FontSize{std::numeric_limits<float>::quiet_NaN()}).ok());
+
+    TFL_CHECK(c.set_component_style(first.element(), {}).ok());
+    TFL_CHECK(c.prepare_frame(Context::Clock::now()).status.ok());
+    TFL_CHECK(c.decoration(first.element()).value().fill == red);
+    TFL_CHECK(c.set_component_style(Component::button, {}).ok());
+    TFL_CHECK(c.prepare_frame(Context::Clock::now()).status.ok());
+    TFL_CHECK(c.decoration(first.element()).value().fill ==
+              c.theme_value(ColorToken::control).value());
+    TFL_CHECK((c.component_defaults(Component::button).value().min_size == Size{80, 32}));
+    TFL_CHECK(c.destroy(first.element()).ok());
+    TFL_CHECK(c.set_component_style(Component::button, global).ok());
+    TFL_CHECK(c.prepare_frame(Context::Clock::now()).status.ok());
+    TFL_CHECK(!c.component_style(first.element()).ok());
+    return 0;
+}
+
+int style_layout_precedence() {
+    Context c;
+    TFL_CHECK(c.set_viewport({300, 200}).ok());
+    const auto button = tests::require(Widget::create(c, c.root(), {.kind = WidgetKind::button}));
+    const auto id = button.element();
+    TFL_CHECK(c.prepare_frame(Context::Clock::now()).status.ok());
+    TFL_CHECK((c.layout_params(id).value().padding == Edges{8, 8, 8, 8}));
+
+    LayoutParams params;
+    params.width = 30;
+    params.height = 15;
+    TFL_CHECK(c.set_layout_params(id, params).ok());
+    TFL_CHECK(c.prepare_frame(Context::Clock::now()).status.ok());
+    TFL_CHECK((c.bounds(id).value().size() == Size{30, 15}));
+    TFL_CHECK((c.layout_params(id).value().padding == Edges{8, 8, 8, 8}));
+
+    params.padding = {2, 3, 4, 5};
+    TFL_CHECK(c.set_layout_params(id, params).ok());
+    ComponentStyle global;
+    global.padding = Edges{12, 12, 12, 12};
+    TFL_CHECK(c.set_component_style(Component::button, global).ok());
+    TFL_CHECK(c.prepare_frame(Context::Clock::now()).status.ok());
+    TFL_CHECK((c.layout_params(id).value().padding == Edges{2, 3, 4, 5}));
+    TFL_CHECK(c.set_property_override(id, Property::padding, Edges{12, 12, 12, 12}).ok());
+    TFL_CHECK(c.prepare_frame(Context::Clock::now()).status.ok());
+    TFL_CHECK((c.layout_params(id).value().padding == Edges{12, 12, 12, 12}));
+    TFL_CHECK(c.clear_property_override(id, Property::padding).ok());
+    TFL_CHECK(c.prepare_frame(Context::Clock::now()).status.ok());
+    TFL_CHECK((c.layout_params(id).value().padding == Edges{2, 3, 4, 5}));
+
+    params.padding = {};
+    TFL_CHECK(c.set_layout_params(id, params).ok());
+    ComponentStyle local;
+    local.padding = Edges{};
+    local.min_size = Size{100, 50};
+    TFL_CHECK(c.set_component_style(id, local).ok());
+    params.width.reset();
+    params.height.reset();
+    TFL_CHECK(c.set_layout_params(id, params).ok());
+    TFL_CHECK(c.prepare_frame(Context::Clock::now()).status.ok());
+    TFL_CHECK((c.bounds(id).value().size() == Size{100, 50}));
+    params.min = {40, 20};
+    TFL_CHECK(c.set_layout_params(id, params).ok());
+    TFL_CHECK(c.prepare_frame(Context::Clock::now()).status.ok());
+    TFL_CHECK((c.bounds(id).value().size() == Size{40, 20}));
+    params.min = {};
+    params.max = {70, 30};
+    TFL_CHECK(c.set_layout_params(id, params).ok());
+    TFL_CHECK(c.prepare_frame(Context::Clock::now()).status.ok());
+    TFL_CHECK((c.bounds(id).value().size() == Size{70, 30}));
+    local.min_size = Size{};
+    TFL_CHECK(c.set_component_style(id, local).ok());
+    TFL_CHECK(c.prepare_frame(Context::Clock::now()).status.ok());
+    TFL_CHECK((c.bounds(id).value().size() == Size{}));
+    return 0;
+}
+
+int style_handler_retry() {
+    Context c;
+    TFL_CHECK(c.set_viewport({100, 100}).ok());
+    const auto later = tests::require(c.create(c.root()));
+    const auto trigger = tests::require(c.create(c.root()));
+    for (const auto element : {later, trigger}) {
+        TFL_CHECK(c.set_component(element, Component::button).ok());
+        TFL_CHECK(c.bind_component_property(element, Property::fill, element).ok());
+    }
+    TFL_CHECK(c.prepare_frame(Context::Clock::now()).status.ok());
+    bool fail = true;
+    TFL_CHECK(c.set_component_style_handler(trigger, [&] {
+        if (fail) {
+            fail = false;
+            return base::Status::failure(base::StatusCode::invalid_state, "retry style");
+        }
+        return c.set_property_override(later, Property::fill, Color{0, 1, 0, 1});
+    }).ok());
+    TFL_CHECK(c.set_property_override(trigger, Property::fill, Color{1, 0, 0, 1}).ok());
+    TFL_CHECK(!c.prepare_frame(Context::Clock::now()).status.ok());
+    TFL_CHECK(c.needs_frame(Context::Clock::now()));
+    TFL_CHECK(c.prepare_frame(Context::Clock::now()).status.ok());
+    TFL_CHECK(c.needs_frame(Context::Clock::now()));
+    TFL_CHECK(c.prepare_frame(Context::Clock::now()).status.ok());
+    TFL_CHECK((c.decoration(later).value().fill == Color{0, 1, 0, 1}));
+    return 0;
+}
+
 int fonts() {
 #if TFL_TEST_GUI_TEXT
     auto device = tests::make_null_context();
@@ -167,6 +345,7 @@ int builtin_themes() {
 }
 
 int main() {
-    if (dependencies() != 0 || builtin_themes() != 0) { return 1; }
+    if (dependencies() != 0 || builtin_themes() != 0 || component_styles() != 0 ||
+        style_layout_precedence() != 0 || style_handler_retry() != 0) { return 1; }
     return fonts();
 }

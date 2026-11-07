@@ -22,6 +22,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace truffle::gui {
@@ -127,6 +128,7 @@ public:
                                           std::shared_ptr<const Layout> layout);
     [[nodiscard]] base::Status set_layout_params(ElementId element,
                                                  const LayoutParams& params);
+    // Returns the effective padding, including a resolved component style.
     [[nodiscard]] base::Result<LayoutParams> layout_params(ElementId element) const;
 
     // Lays out invalidated parts of the tree; the root fills `viewport`.
@@ -188,8 +190,41 @@ public:
 
     [[nodiscard]] base::Status set_theme_value(std::string name, ThemeValue value);
     [[nodiscard]] base::Result<ThemeValue> theme_value(std::string_view name) const;
+    [[nodiscard]] base::Status set_theme_value(ColorToken token, Color value);
+    [[nodiscard]] base::Status set_theme_value(MetricToken token, float value);
+    [[nodiscard]] base::Status set_theme_value(PaddingToken token, Edges value);
+    [[nodiscard]] base::Status set_theme_value(FontSizeToken token, FontSize value);
+    [[nodiscard]] base::Result<Color> theme_value(ColorToken token) const;
+    [[nodiscard]] base::Result<float> theme_value(MetricToken token) const;
+    [[nodiscard]] base::Result<Edges> theme_value(PaddingToken token) const;
+    [[nodiscard]] base::Result<FontSize> theme_value(FontSizeToken token) const;
+
+    // Component styles are sparse overrides of Truffle's defaults. Replacing
+    // one with an empty style restores the defaults at that level. They also
+    // style the internal parts owned by a composite widget.
+    [[nodiscard]] base::Status set_component_style(Component component,
+                                                    const ComponentStyle& style);
+    [[nodiscard]] base::Status set_component_style(ElementId element,
+                                                    const ComponentStyle& style);
+    [[nodiscard]] base::Result<ComponentStyle> component_style(Component component) const;
+    [[nodiscard]] base::Result<ComponentStyle> component_style(ElementId element) const;
+    [[nodiscard]] base::Result<ComponentStyle> component_defaults(Component component) const;
+    // Resolves the component layers, without direct per-property overrides.
+    [[nodiscard]] base::Result<ThemeValue> component_property(
+        ElementId element, Property property, StylePart part = StylePart::automatic) const;
+
+    // Custom components can opt into the same style/state resolution.
+    [[nodiscard]] base::Status set_component(ElementId element, Component component);
+    [[nodiscard]] base::Status set_component_state(ElementId element, ComponentState state);
+    [[nodiscard]] base::Result<ComponentState> component_state(ElementId element) const;
+    [[nodiscard]] base::Status bind_component_property(
+        ElementId element, Property property, ElementId owner,
+        StylePart part = StylePart::automatic);
+    [[nodiscard]] base::Status set_component_style_handler(
+        ElementId element, std::function<base::Status()> handler);
     [[nodiscard]] base::Status bind_property(ElementId element, Property property,
                                               std::string name);
+    // Direct overrides affect this element, not internal child elements.
     [[nodiscard]] base::Status set_property_override(ElementId element, Property property,
                                                       ThemeValue value);
     // Resumes the bound theme value. An unbound property has no override to clear.
@@ -297,14 +332,26 @@ private:
 
     struct Node {
         struct StyleBinding {
+            struct ComponentBinding {
+                ElementId owner;
+                StylePart part = StylePart::automatic;
+            };
             std::string name;
+            std::optional<ComponentBinding> component;
             std::optional<ThemeValue> override_value;
             std::optional<ThemeValue> resolved;
+        };
+        struct ComponentData {
+            Component kind = Component::panel;
+            ComponentState state;
+            ComponentStyle style;
+            std::function<base::Status()> handler;
         };
         struct TextSource {
             TextEngine* engine = nullptr;
             std::string text;
             TextureId atlas;
+            FontId rendered_font;
         };
         std::uint32_t generation = 1;
         bool alive = false;
@@ -317,6 +364,9 @@ private:
         std::vector<ElementId> children;
         std::shared_ptr<const Layout> layout;
         LayoutParams params;
+        LayoutParams effective_params;
+        Size style_min;
+        std::optional<Edges> style_padding;
         std::optional<Rect> placement;
         std::optional<PopupSide> popup;
         bool visible = true;
@@ -337,8 +387,21 @@ private:
         Point child_offset;
         Semantics semantics;
         std::array<StyleBinding, static_cast<std::size_t>(Property::count)> styles;
+        std::unique_ptr<ComponentData> component;
         FontId font;
+        FontSize font_size;
         Color text_color{1, 1, 1, 1};
+        Color selection_color;
+        Color caret_color;
+        Color composition_color;
+        Size indicator_size;
+        float indicator_gap = 0;
+        float slider_track_thickness = 0;
+        float slider_thumb_width = 0;
+        float slider_thumb_inset = 0;
+        float menu_leading_width = 0;
+        float menu_trailing_width = 0;
+        float menu_column_gap = 0;
         std::optional<TextSource> text_source;
     };
 
@@ -364,7 +427,12 @@ private:
     void update_hover(ElementId next);
     void forget_input(ElementId element) noexcept;
     void forget_styles(ElementId element);
+    void forget_component_binding(ElementId element, Property property, ElementId owner);
     void mark_style(ElementId element, Property property);
+    [[nodiscard]] base::Status refresh_component_styles();
+    [[nodiscard]] base::Status refresh_component_styles(ElementId owner);
+    [[nodiscard]] base::Status refresh_component_styles(Component component);
+    void refresh_effective_params(Node& node);
     [[nodiscard]] UpdaterEntry* find_updater(ElementId element) noexcept;
     [[nodiscard]] bool updates_due() const noexcept;
     base::Status run_updaters(std::size_t& count);
@@ -409,8 +477,13 @@ private:
     EventTrace trace_;
     base::Status event_status_;
     struct ThemeDependent { ElementId element; Property property; };
+    struct ComponentDependent { ElementId element; Property property; ElementId owner; };
     std::unordered_map<std::string, ThemeValue> theme_;
     std::unordered_map<std::string, std::vector<ThemeDependent>> theme_dependents_;
+    std::array<ComponentStyle, static_cast<std::size_t>(Component::count)> component_styles_;
+    std::unordered_map<std::uint64_t, std::vector<ComponentDependent>> component_dependents_;
+    std::array<std::unordered_set<std::uint64_t>, static_cast<std::size_t>(Component::count)>
+        component_owners_;
 };
 
 } // namespace truffle::gui

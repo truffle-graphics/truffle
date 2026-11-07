@@ -118,6 +118,13 @@ resources with a host-owned window, using GUI-only public types (#279).
 frame graph. Raw Painter/text/Surface/Viewport GPU access is specialist-only.
 Normal GUI Context/drawing/text/Surface/Viewport headers import neither Renderer nor
 RHI. Optional native setup is linked privately by GUI when enabled.
+GUI styling (#280) layers typed shared tokens, Truffle component defaults,
+global component overrides and per-element/state overrides; layout placement
+and spacing stay separate. Dark/Light switch colors without resetting metrics
+or component overrides. Hosts choose font bytes and fallback chains, while
+Truffle supplies the default size and owns cached sized variants. Details and
+precedence are in `docs/gui-styling.md`; Studio's default-first policy remains
+application-owned.
 
 RHI 1 uses move-only RAII objects over opaque generation-checked handles and a
 backend dispatch table. It separates portable typed results from optional

@@ -315,19 +315,40 @@ base::Status Context::set_layout(ElementId element, std::shared_ptr<const Layout
     return base::Status::success();
 }
 
+void Context::refresh_effective_params(Node& node) {
+    node.effective_params = node.params;
+    const auto& padding = node.styles[static_cast<std::size_t>(Property::padding)];
+    if (node.style_padding && (padding.override_value || node.params.padding == Edges{})) {
+        node.effective_params.padding = *node.style_padding;
+    }
+    if (!node.params.width && node.params.min.width == 0) {
+        node.effective_params.min.width =
+            std::min(node.style_min.width, std::max(0.0F, node.params.max.width));
+    }
+    if (!node.params.height && node.params.min.height == 0) {
+        node.effective_params.min.height =
+            std::min(node.style_min.height, std::max(0.0F, node.params.max.height));
+    }
+}
+
 base::Status Context::set_layout_params(ElementId element, const LayoutParams& params) {
     Node* node = find(element);
     if (node == nullptr) {
         return invalid_element();
     }
-    if (node->params == params) {
+    LayoutParams authored = params;
+    if (params.padding == node->effective_params.padding) {
+        authored.padding = node->params.padding;
+    }
+    if (node->params == authored) {
         return base::Status::success();
     }
     LayoutParams placement_only = node->params;
-    placement_only.position = params.position;
-    placement_only.weight = params.weight;
-    node->params = params;
-    if (placement_only == params) {
+    placement_only.position = authored.position;
+    placement_only.weight = authored.weight;
+    node->params = authored;
+    refresh_effective_params(*node);
+    if (placement_only == authored) {
         // Only the parent's placement changes; no size is measured again.
         if (Node* parent = find(node->parent)) {
             raise(node->parent, *parent, Dirty::arrange);
@@ -343,7 +364,9 @@ base::Result<LayoutParams> Context::layout_params(ElementId element) const {
     if (node == nullptr) {
         return invalid_element();
     }
-    return node->params;
+    LayoutParams params = node->params;
+    params.padding = node->effective_params.padding;
+    return params;
 }
 
 LayoutStats Context::update_layout(Size viewport) {
@@ -580,7 +603,7 @@ ShapeStats Context::update_shapes() {
         if (node->text) {
             const TextBlock& text = *node->text;
             const Decoration glyph_decoration{.fill = text.color, .texture = text.atlas};
-            const Edges padding = node->params.padding;
+            const Edges padding = node->effective_params.padding;
             for (const TextGlyph& glyph : text.layout.glyphs) {
                 if (glyph.size.width <= 0.0F || glyph.size.height <= 0.0F) {
                     continue;
@@ -779,7 +802,8 @@ FrameStats Context::prepare_frame(Clock::time_point now) {
         stats.layout.arranged += again.arranged;
     }
     stats.shapes = update_shapes();
-    clear_dirty();
+    // Style handlers can enqueue new style work after the current snapshot.
+    clear_dirty(Dirty::measure | Dirty::arrange | Dirty::shape);
     frame_requested_ = false;
     std::erase_if(deadlines_, [now](Clock::time_point when) { return when <= now; });
     return stats;
@@ -797,7 +821,7 @@ Host& Context::host() const noexcept {
 const LayoutParams& Context::params_of(ElementId element) const noexcept {
     static const LayoutParams defaults;
     const Node* node = find(element);
-    return node == nullptr ? defaults : node->params;
+    return node == nullptr ? defaults : node->effective_params;
 }
 
 Size Context::desired_of(ElementId element) const noexcept {
@@ -816,7 +840,7 @@ Size Context::measure_element(ElementId element, Constraints constraints) {
     }
     ++stats_.measured;
 
-    const LayoutParams params = node->params;
+    const LayoutParams params = node->effective_params;
     const auto range = [](float low, float high, float own_min, float own_max,
                           const std::optional<float>& fixed) {
         const float lo = std::max(low, std::min(own_min, high));
@@ -877,7 +901,7 @@ void Context::arrange_element(ElementId element, Rect rect) {
     node->arranged = true;
     node->dirty = node->dirty & without(Dirty::arrange);
 
-    const Edges padding = node->params.padding;
+    const Edges padding = node->effective_params.padding;
     const Rect content{padding.left, padding.top,
                        std::max(0.0F, rect.width - padding.horizontal()),
                        std::max(0.0F, rect.height - padding.vertical())};

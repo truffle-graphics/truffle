@@ -38,6 +38,12 @@ base::Status Context::set_interaction(ElementId element, Interaction interaction
         return invalid_target();
     }
     node->interaction = interaction;
+    if (node->component && node->component->state.disabled == interaction.enabled) {
+        auto state = node->component->state;
+        state.disabled = !interaction.enabled;
+        const auto status = set_component_state(element, state);
+        if (!status.ok()) { return status; }
+    }
     if (focused_.valid() &&
         (!input_enabled(focused_) || !find(focused_)->interaction.focusable)) {
         const auto status = focus({});

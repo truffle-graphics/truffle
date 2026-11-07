@@ -131,7 +131,8 @@ int grid_and_defaults() {
     // Widget defaults survive unless a field is set.
     Widget plain;
     need(build(c, c.root(), ui::slider(0, 1, 0).bind(plain)));
-    TFL_CHECK(need(c.layout_params(plain.element())).min == (Size{120, 24}));
+    TFL_CHECK(std::get<Size>(need(c.component_property(plain.element(), Property::min_size))) ==
+              (Size{120, 24}));
     return 0;
 }
 

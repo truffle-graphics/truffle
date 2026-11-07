@@ -68,11 +68,14 @@ opening a frame and after discarding any unsubmitted recorded batches. Do not
 reuse a stale graph after image removal or streamed-slot reuse. GPU-native
 resources from submitted commands remain retained by RHI.
 
-`load_font(bytes, logicalSize)` lazily initializes the optional text engine
-and atlas. `set_text(context, element, font, utf8)` uses that engine/atlas
+`load_font(bytes)` uses Truffle's default 14 logical-unit size, or accepts an
+explicit logical size. It lazily initializes the optional text engine and
+atlas. `set_text(context, element, font, utf8)` uses that engine/atlas
 automatically. `text()` and `text_atlas()` expose GUI-level
 shaping/fallback/text-edit composition without exposing Renderer or RHI types.
 Supply licensed font bytes; no font discovery or bundled font is imposed.
+The [styling guide](gui-styling.md#fonts) describes shared and component font
+sizes and the lifetime of engine-owned sized variants.
 Text-disabled configurations explicitly report unsupported for text creation.
 Initialize text/images before frame preparation; ordinary layout/text updates
 use the existing engine.

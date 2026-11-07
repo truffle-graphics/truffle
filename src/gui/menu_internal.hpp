@@ -12,6 +12,15 @@ base::Status invalid_menu();
 bool menu_input_enabled(const Context &context, ElementId element);
 bool menu_descendant(const Context &context, ElementId element, ElementId ancestor);
 
+struct MenuGeometry {
+  Size indicator;
+  float leading = 0;
+  float trailing = 0;
+  float gap = 0;
+  bool single_column = false;
+  friend bool operator==(const MenuGeometry &, const MenuGeometry &) = default;
+};
+
 struct MenuState {
   std::shared_ptr<MenuSession> session;
   ElementId element;
@@ -39,10 +48,12 @@ struct MenuItemState {
   bool retired = false;
   bool painted_check = false;
   bool painted_arrow = false;
+  std::optional<MenuGeometry> geometry;
 
   bool live() const;
   bool eligible() const;
   base::Status appearance();
+  base::Status style_changed();
   base::Status interaction();
   base::Status event(RoutedEvent &event);
 };
@@ -58,9 +69,11 @@ struct MenuButtonState : std::enable_shared_from_this<MenuButtonState> {
   bool hover = false;
   bool space_pressed = false;
   std::optional<std::uint32_t> pointer;
+  std::optional<MenuGeometry> geometry;
 
   bool live() const;
   base::Status appearance();
+  base::Status style_changed();
   base::Status event(RoutedEvent &event);
 };
 

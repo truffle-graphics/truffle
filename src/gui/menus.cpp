@@ -18,14 +18,19 @@ public:
   void build(ShapeWriter &out, Size size, const Decoration &look) const override {
     const float x = size.width * 0.5F;
     const float y = size.height * 0.5F;
+    const float sx = size.width / 12;
+    const float sy = size.height / 12;
     if (kind_ == Indicator::check) {
-      out.line({x - 4, y}, {x - 1, y + 3}, 1.5F, look.fill);
-      out.line({x - 1, y + 3}, {x + 4, y - 4}, 1.5F, look.fill);
+      const float stroke = 1.5F * std::min(sx, sy);
+      out.line({x - 4 * sx, y}, {x - sx, y + 3 * sy}, stroke, look.fill);
+      out.line({x - sx, y + 3 * sy}, {x + 4 * sx, y - 4 * sy}, stroke, look.fill);
     } else if (kind_ == Indicator::right || kind_ == Indicator::down) {
       const std::array<Point, 3> points =
           kind_ == Indicator::right
-              ? std::array<Point, 3>{{{x - 3, y - 4}, {x + 3, y}, {x - 3, y + 4}}}
-              : std::array<Point, 3>{{{x - 4, y - 2}, {x + 4, y - 2}, {x, y + 3}}};
+              ? std::array<Point, 3>{{{x - 3 * sx, y - 4 * sy},
+                                      {x + 3 * sx, y}, {x - 3 * sx, y + 4 * sy}}}
+              : std::array<Point, 3>{{{x - 4 * sx, y - 2 * sy},
+                                      {x + 4 * sx, y - 2 * sy}, {x, y + 3 * sy}}};
       constexpr std::array<std::uint32_t, 3> indices{0, 1, 2};
       out.triangles(points, indices, look.fill);
     } else if (kind_ == Indicator::separator) {
@@ -69,7 +74,14 @@ base::Status label(Context &context, ElementId parent, MenuTextStyle style,
   LayoutParams params;
   params.cell.column = column;
   params.cell.vertical = Align::center;
-  return context.set_layout_params(out.element(), params);
+  auto status = context.set_layout_params(out.element(), params);
+  if (status.ok()) {
+    status = context.bind_component_property(out.element(), Property::text_color, parent);
+  }
+  if (status.ok()) {
+    status = context.bind_component_property(out.element(), Property::font_size, parent);
+  }
+  return status;
 }
 
 base::Status indicator(Context &context, ElementId parent, std::uint16_t column,
@@ -79,9 +91,14 @@ base::Status indicator(Context &context, ElementId parent, std::uint16_t column,
     return made.status();
   }
   out = made.value();
+  const auto size = context.component_property(parent, Property::indicator_size);
+  if (!size.ok()) {
+    return size.status();
+  }
+  const auto dimensions = std::get<Size>(size.value());
   LayoutParams params;
-  params.width = 12.0F;
-  params.height = 12.0F;
+  params.width = dimensions.width;
+  params.height = dimensions.height;
   params.cell.column = column;
   params.cell.horizontal = Align::center;
   params.cell.vertical = Align::center;
@@ -90,10 +107,59 @@ base::Status indicator(Context &context, ElementId parent, std::uint16_t column,
     status = context.set_interaction(out, {.hit_test = false});
   }
   if (status.ok()) {
-    status = context.bind_property(out, Property::fill, "gui.text");
+    status = context.bind_component_property(out, Property::fill, parent, StylePart::indicator);
   }
   if (status.ok()) {
     status = context.set_shape_builder(out, std::make_shared<IndicatorBuilder>(kind));
+  }
+  return status;
+}
+
+base::Result<detail::MenuGeometry> menu_geometry(Context &context, ElementId element,
+                                                bool item, bool resolved, bool single_column) {
+  const auto value = [&](Property property) {
+    return resolved ? context.property(element, property)
+                    : context.component_property(element, property);
+  };
+  const auto indicator_size = value(Property::indicator_size);
+  const auto trailing = value(Property::menu_trailing_width);
+  const auto gap = value(Property::menu_column_gap);
+  if (!indicator_size.ok()) { return indicator_size.status(); }
+  if (!trailing.ok()) { return trailing.status(); }
+  if (!gap.ok()) { return gap.status(); }
+  float leading = 0;
+  if (item) {
+    const auto width = value(Property::menu_leading_width);
+    if (!width.ok()) { return width.status(); }
+    leading = std::get<float>(width.value());
+  }
+  return detail::MenuGeometry{std::get<Size>(indicator_size.value()), leading,
+                              std::get<float>(trailing.value()), std::get<float>(gap.value()),
+                              single_column};
+}
+
+base::Status apply_menu_geometry(Context &context, ElementId element, ElementId mark,
+                                 ElementId arrow, bool item, detail::MenuGeometry geometry) {
+  GridOptions options;
+  if (geometry.single_column) {
+    options.columns = {Track::content()};
+  } else if (item) {
+    options.columns = {Track::fixed(geometry.leading), Track::weighted(), Track::content(),
+                       Track::fixed(geometry.trailing)};
+    options.column_spacing = geometry.gap;
+  } else {
+    options.columns = {Track::weighted(), Track::fixed(geometry.trailing)};
+    options.column_spacing = geometry.gap;
+  }
+  auto status = context.set_layout(element, std::make_shared<GridLayout>(std::move(options)));
+  for (const auto indicator_id : {mark, arrow}) {
+    if (!status.ok() || !indicator_id.valid()) { continue; }
+    const auto current = context.layout_params(indicator_id);
+    if (!current.ok()) { return current.status(); }
+    auto params = current.value();
+    params.width = geometry.indicator.width;
+    params.height = geometry.indicator.height;
+    status = context.set_layout_params(indicator_id, params);
   }
   return status;
 }
@@ -183,22 +249,11 @@ base::Status MenuItemState::appearance() {
     return base::Status::success();
   }
   const bool active = context.focused() == element || (submenu && submenu->open);
-  auto status = context.bind_property(element, Property::fill,
-                                      !desc.enabled ? "gui.disabled"
-                                      : active      ? "gui.hover"
-                                                    : "gui.surface");
-  const char *ink = desc.enabled ? "gui.text" : "gui.text_disabled";
-  for (const auto id : {label.element(), shortcut.element()}) {
-    if (status.ok()) {
-      status = context.bind_property(id, Property::text_color, ink);
-    }
-  }
-  for (const auto id : {mark, arrow}) {
-    if (status.ok()) {
-      status = context.bind_property(id, Property::fill, ink);
-    }
-  }
   const bool checked = desc.checked.value_or(false);
+  auto status = context.set_component_state(element, {
+      .hovered = menu_descendant(context, context.hovered(), element),
+      .pressed = session->pressed.lock().get() == this,
+      .focused = active, .disabled = !desc.enabled, .checked = checked});
   if (status.ok() && painted_check != checked) {
     status = context.set_shape_builder(
         mark,
@@ -219,9 +274,22 @@ base::Status MenuItemState::appearance() {
   return status;
 }
 
+base::Status MenuItemState::style_changed() {
+  auto &context = *session->context;
+  const auto next = menu_geometry(context, element, true, true, false);
+  if (!next.ok()) { return next.status(); }
+  if (geometry == next.value()) { return base::Status::success(); }
+  const auto status = apply_menu_geometry(context, element, mark, arrow, true, next.value());
+  if (status.ok()) { geometry = next.value(); }
+  return status;
+}
+
 base::Status MenuItemState::event(RoutedEvent &event) {
   if (!live()) {
     return base::Status::success();
+  }
+  if (std::get_if<HoverEvent>(&event.payload)) {
+    return appearance();
   }
   if (std::get_if<ElementFocusEvent>(&event.payload)) {
     auto status = appearance();
@@ -242,26 +310,18 @@ base::Status MenuButtonState::appearance() {
   if (!interaction.ok()) {
     return interaction.status();
   }
-  auto status = context.bind_property(element, Property::fill,
-                                      !interaction.value().enabled ? "gui.disabled"
-                                      : pointer || space_pressed   ? "gui.pressed"
-                                      : hover || menu->open        ? "gui.hover"
-                                                                   : "gui.control");
-  if (status.ok()) {
-    status =
-        context.bind_property(element, Property::border_color,
-                              context.focused() == element ? "gui.accent" : "gui.border");
-  }
-  if (status.ok()) {
-    status = context.bind_property(label.element(), Property::text_color,
-                                   interaction.value().enabled ? "gui.text"
-                                                               : "gui.text_disabled");
-  }
-  if (status.ok()) {
-    status = context.bind_property(arrow, Property::fill,
-                                   interaction.value().enabled ? "gui.text"
-                                                               : "gui.text_disabled");
-  }
+  return context.set_component_state(element, {
+      .hovered = hover || menu->open, .pressed = pointer.has_value() || space_pressed,
+      .focused = context.focused() == element, .disabled = !interaction.value().enabled});
+}
+
+base::Status MenuButtonState::style_changed() {
+  auto &context = *session->context;
+  const auto next = menu_geometry(context, element, false, true, !bar.expired());
+  if (!next.ok()) { return next.status(); }
+  if (geometry == next.value()) { return base::Status::success(); }
+  const auto status = apply_menu_geometry(context, element, {}, arrow, false, next.value());
+  if (status.ok()) { geometry = next.value(); }
   return status;
 }
 
@@ -381,7 +441,10 @@ base::Result<Menu> Menu::create(Context &context, ElementId parent, MenuTextStyl
   state->element = made.value();
   state->text = text;
   const auto setup = [&]() {
-    auto result = context.set_visible(state->element, false);
+    auto result = context.set_component(state->element, Component::menu);
+    if (result.ok()) {
+      result = context.set_visible(state->element, false);
+    }
     if (result.ok()) {
       result = context.set_interaction(state->element, {.focusable = true});
     }
@@ -391,19 +454,11 @@ base::Result<Menu> Menu::create(Context &context, ElementId parent, MenuTextStyl
     if (result.ok()) {
       result = context.set_layout(state->element, std::make_shared<MenuLayout>(state));
     }
-    LayoutParams params;
-    params.min.width = 160;
-    if (result.ok()) {
-      result = context.set_layout_params(state->element, params);
-    }
-    for (const auto &[property, token] :
-         {std::pair{Property::fill, "gui.surface"},
-          std::pair{Property::border_color, "gui.border"},
-          std::pair{Property::border_width, "gui.border_width"},
-          std::pair{Property::corner_radius, "gui.radius"},
-          std::pair{Property::padding, "gui.padding"}}) {
+    for (const auto property : {Property::fill, Property::border_color,
+                                Property::border_width, Property::corner_radius,
+                                Property::padding, Property::min_size}) {
       if (result.ok()) {
-        result = context.bind_property(state->element, property, token);
+        result = context.bind_component_property(state->element, property, state->element);
       }
     }
     if (result.ok()) {
@@ -447,20 +502,18 @@ base::Result<MenuItem> Menu::add_item(MenuItemDesc desc) {
   item->element = made.value();
   item->desc = std::move(desc);
   const auto setup = [&]() {
-    auto status =
-        context.set_semantics(item->element, {Context::Role::menu_item, item->desc.text});
-    LayoutParams params;
-    params.min.height = 28;
-    params.padding = {4, 6, 4, 6};
+    auto status = context.set_component(item->element, Component::menu_item);
     if (status.ok()) {
-      status = context.set_layout_params(item->element, params);
+      status = context.set_semantics(item->element, {Context::Role::menu_item, item->desc.text});
     }
-    if (status.ok()) {
-      status = context.set_layout(
-          item->element, std::make_shared<GridLayout>(
-                             GridOptions{.columns = {Track::fixed(16), Track::weighted(),
-                                                     Track::content(), Track::fixed(12)},
-                                         .column_spacing = 6}));
+    for (const auto property : {Property::fill, Property::border_color,
+                                Property::border_width, Property::corner_radius,
+                                Property::padding, Property::min_size, Property::indicator_size,
+                                Property::menu_leading_width, Property::menu_trailing_width,
+                                Property::menu_column_gap}) {
+      if (status.ok()) {
+        status = context.bind_component_property(item->element, property, item->element);
+      }
     }
     if (status.ok()) {
       status =
@@ -477,10 +530,24 @@ base::Result<MenuItem> Menu::add_item(MenuItemDesc desc) {
       status = indicator(context, item->element, 3, Indicator::none, item->arrow);
     }
     if (status.ok()) {
+      const auto geometry = menu_geometry(context, item->element, true, false, false);
+      if (!geometry.ok()) {
+        status = geometry.status();
+      } else {
+        status = apply_menu_geometry(context, item->element, item->mark, item->arrow,
+                                     true, geometry.value());
+        if (status.ok()) { item->geometry = geometry.value(); }
+      }
+    }
+    if (status.ok()) {
       status = item->interaction();
     }
     if (status.ok()) {
       status = item->appearance();
+    }
+    if (status.ok()) {
+      status = context.set_component_style_handler(
+          item->element, [item] { return item->style_changed(); });
     }
     if (status.ok()) {
       status =
@@ -534,9 +601,7 @@ base::Result<MenuSeparator> Menu::add_separator() {
   item->parent = state_;
   item->element = made.value();
   item->separator = true;
-  LayoutParams params;
-  params.height = 9.0F;
-  auto status = context.set_layout_params(item->element, params);
+  auto status = context.set_component(item->element, Component::menu_separator);
   if (status.ok()) {
     status = context.set_interaction(item->element, {.hit_test = false});
   }
@@ -544,7 +609,10 @@ base::Result<MenuSeparator> Menu::add_separator() {
     status = context.set_semantics(item->element, {Context::Role::menu_separator, {}});
   }
   if (status.ok()) {
-    status = context.bind_property(item->element, Property::fill, "gui.border");
+    status = context.bind_component_property(item->element, Property::fill, item->element);
+  }
+  if (status.ok()) {
+    status = context.bind_component_property(item->element, Property::min_size, item->element);
   }
   if (status.ok()) {
     status = context.set_shape_builder(
@@ -825,20 +893,20 @@ base::Result<MenuButton> MenuButton::create(Context &context, ElementId parent,
   state->element = made.value();
   state->menu = menu.state_;
   const auto setup = [&]() {
-    auto status = context.set_semantics(state->element, {Context::Role::button, text});
+    auto status = context.set_component(state->element, Component::menu_button);
+    if (status.ok()) {
+      status = context.set_semantics(state->element, {Context::Role::button, text});
+    }
     if (status.ok()) {
       status = context.set_interaction(state->element, {.focusable = true});
     }
-    LayoutParams params;
-    params.min = {32, 28};
-    if (status.ok()) {
-      status = context.set_layout_params(state->element, params);
-    }
-    if (status.ok()) {
-      status = context.set_layout(
-          state->element,
-          std::make_shared<GridLayout>(GridOptions{
-              .columns = {Track::weighted(), Track::fixed(12)}, .column_spacing = 6}));
+    for (const auto property : {Property::fill, Property::border_color,
+                                Property::border_width, Property::corner_radius,
+                                Property::padding, Property::min_size, Property::indicator_size,
+                                Property::menu_trailing_width, Property::menu_column_gap}) {
+      if (status.ok()) {
+        status = context.bind_component_property(state->element, property, state->element);
+      }
     }
     if (status.ok()) {
       status = label(context, state->element, menu.state_->text, text, 0, state->label);
@@ -846,16 +914,22 @@ base::Result<MenuButton> MenuButton::create(Context &context, ElementId parent,
     if (status.ok()) {
       status = indicator(context, state->element, 1, Indicator::down, state->arrow);
     }
-    for (const auto &[property, token] :
-         {std::pair{Property::border_width, "gui.border_width"},
-          std::pair{Property::corner_radius, "gui.radius"},
-          std::pair{Property::padding, "gui.padding"}}) {
-      if (status.ok()) {
-        status = context.bind_property(state->element, property, token);
+    if (status.ok()) {
+      const auto geometry = menu_geometry(context, state->element, false, false, false);
+      if (!geometry.ok()) {
+        status = geometry.status();
+      } else {
+        status = apply_menu_geometry(context, state->element, {}, state->arrow,
+                                     false, geometry.value());
+        if (status.ok()) { state->geometry = geometry.value(); }
       }
     }
     if (status.ok()) {
       status = state->appearance();
+    }
+    if (status.ok()) {
+      status = context.set_component_style_handler(
+          state->element, [state] { return state->style_changed(); });
     }
     if (status.ok()) {
       status = context.set_event_handler(
@@ -954,7 +1028,10 @@ base::Result<MenuBar> MenuBar::create(Context &context, ElementId parent,
   state->session = session.value();
   state->element = made.value();
   state->text = text;
-  status = context.set_semantics(state->element, {Context::Role::menu_bar, {}});
+  status = context.set_component(state->element, Component::menu_bar);
+  if (status.ok()) {
+    status = context.set_semantics(state->element, {Context::Role::menu_bar, {}});
+  }
   if (status.ok()) {
     status = context.set_interaction(state->element, {.hit_test = false});
   }
@@ -963,8 +1040,12 @@ base::Result<MenuBar> MenuBar::create(Context &context, ElementId parent,
                                 std::make_shared<StackLayout>(StackOptions{
                                     .axis = Axis::horizontal, .cross = Align::center}));
   }
-  if (status.ok()) {
-    status = context.bind_property(state->element, Property::fill, "gui.surface");
+  for (const auto property : {Property::fill, Property::border_color,
+                              Property::border_width, Property::corner_radius,
+                              Property::padding, Property::min_size}) {
+    if (status.ok()) {
+      status = context.bind_component_property(state->element, property, state->element);
+    }
   }
   if (status.ok()) {
     status =

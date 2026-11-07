@@ -218,11 +218,13 @@ Named themes (#227) use `set_theme_value`, `bind_property`,
 radii repaint only their dependents; padding, stack spacing and fonts also
 invalidate dependent layout. Overrides shield an element from theme updates.
 Two neutral built-in themes, Truffle Dark and Truffle Light (#260), live in
-`truffle/gui/themes.hpp`. `apply_theme` switches all tokens; widgets,
-`TextEdit` and `DockSpace` call `install_default_theme`, which fills only
-missing tokens with Truffle Dark, so application values always win. Dock colours
-use `dock.*` tokens; `DockMetrics` holds only geometry, including an optional
-`gap` between areas (default 0) that exposes `dock.background`.
+`truffle/gui/themes.hpp`. `apply_theme` switches the color palette and fills
+missing defaults without replacing existing metrics or component overrides.
+Widgets, `TextEdit` and `DockSpace` call `install_default_theme`, which fills
+only missing tokens with Truffle Dark. Typed shared tokens, component defaults
+and per-element/state overrides are described in [GUI styling](docs/gui-styling.md).
+Dock colors use `dock.*` tokens; `DockMetrics` holds geometry such as the
+optional `gap` between areas (default 0) that exposes `dock.background`.
 `prepare_frame` resolves pending styles before layout and shapes; check its
 `status` before drawing (for example, a font unloaded by the application fails
 explicitly and keeps work pending). Manual stages call `update_styles` first.
@@ -235,8 +237,8 @@ UTF-8 cluster. `TextLayout` exposes visual carets, `hit_test`, `caret_position`
 and selection rectangles, while `text_graphemes` validates UTF-8 and returns
 extended-grapheme boundaries. Newlines create separate lines; wrapping remains
 an application policy.
-Theme bindings govern the named style properties; raw layout/decoration setters
-remain the low-level API, not implicit overrides of bindings.
+Theme bindings govern named style properties; explicit layout sizing and
+padding follow the precedence described in the styling guide.
 Core widgets (#228) are checked `Widget` references created with `WidgetDesc`:
 panel, label, image, button, checkbox, slider and scroll area. The Context owns
 their elements; destroying a reference does not remove the UI. User actions

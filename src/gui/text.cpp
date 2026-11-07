@@ -65,6 +65,7 @@ struct FontData {
     hb_font_t* harfbuzz = nullptr;
     float size = 0.0F;
     std::vector<FontId> fallbacks;
+    FontId source;
 
     ~FontData() {
         if (harfbuzz != nullptr) {
@@ -203,6 +204,7 @@ struct TextEngine::State {
     FT_Library library = nullptr;
     std::vector<FontSlot> fonts;
     std::vector<std::uint32_t> free_fonts;
+    std::map<std::pair<std::uint64_t, float>, FontId> sized_fonts;
     Atlas atlas;
     TextStats stats;
 
@@ -323,6 +325,90 @@ base::Result<FontId> TextEngine::load_font(std::span<const std::byte> bytes, flo
 #endif
 }
 
+base::Result<FontId> TextEngine::sized_font_face(FontId source, float size, bool force_variant) {
+#if TFL_GUI_HAS_TEXT
+    if (!state_) {
+        return failure(base::StatusCode::invalid_state, "GUI text engine is not initialized");
+    }
+    if (!std::isfinite(size) || size <= 0 || size > 512) {
+        return failure(base::StatusCode::invalid_argument,
+                       "GUI font size must be finite and in (0, 512]");
+    }
+    auto* entry = state_->find(source);
+    if (entry == nullptr) {
+        return failure(base::StatusCode::invalid_argument, "GUI font handle is not alive");
+    }
+    if (entry->source.valid()) {
+        source = entry->source;
+        entry = state_->find(source);
+        if (entry == nullptr) {
+            return failure(base::StatusCode::invalid_state, "GUI source font is no longer alive");
+        }
+    }
+    if (entry->size == size && !force_variant) { return source; }
+    const auto key = std::pair{source.value(), size};
+    if (const auto found = state_->sized_fonts.find(key); found != state_->sized_fonts.end()) {
+        return found->second;
+    }
+    const auto loaded = load_font(entry->bytes, size);
+    if (!loaded.ok()) { return loaded.status(); }
+    state_->find(loaded.value())->source = source;
+    state_->sized_fonts.emplace(key, loaded.value());
+    return loaded.value();
+#else
+    static_cast<void>(source);
+    static_cast<void>(size);
+    static_cast<void>(force_variant);
+    return failure(base::StatusCode::unsupported, "GUI Unicode text is disabled");
+#endif
+}
+
+base::Result<FontId> TextEngine::sized_font(FontId source, float size) {
+#if TFL_GUI_HAS_TEXT
+    if (!state_) {
+        return failure(base::StatusCode::invalid_state, "GUI text engine is not initialized");
+    }
+    if (!std::isfinite(size) || size <= 0 || size > 512) {
+        return failure(base::StatusCode::invalid_argument,
+                       "GUI font size must be finite and in (0, 512]");
+    }
+    const auto* original = state_->find(source);
+    if (original == nullptr) {
+        return failure(base::StatusCode::invalid_argument, "GUI font handle is not alive");
+    }
+    if (original->source.valid()) {
+        source = original->source;
+        original = state_->find(source);
+    }
+    if (original == nullptr) {
+        return failure(base::StatusCode::invalid_state, "GUI source font is no longer alive");
+    }
+    bool needs_variant = original->size != size;
+    for (const auto fallback : original->fallbacks) {
+        const auto* face = state_->find(fallback);
+        if (face == nullptr) {
+            return failure(base::StatusCode::invalid_state, "GUI fallback font is no longer alive");
+        }
+        needs_variant = needs_variant || face->size != size;
+    }
+    if (!needs_variant) { return source; }
+    std::vector<FontId> fallbacks;
+    for (const auto fallback : original->fallbacks) {
+        const auto resized = sized_font_face(fallback, size);
+        if (!resized.ok()) { return resized.status(); }
+        fallbacks.push_back(resized.value());
+    }
+    const auto sized = sized_font_face(source, size, original->size == size);
+    if (!sized.ok()) { return sized.status(); }
+    state_->find(sized.value())->fallbacks = std::move(fallbacks);
+    return sized.value();
+#else
+    static_cast<void>(source);
+    static_cast<void>(size);
+    return failure(base::StatusCode::unsupported, "GUI Unicode text is disabled");
+#endif
+}
+
 base::Status TextEngine::unload_font(FontId font) {
 #if TFL_GUI_HAS_TEXT
     if (!state_) {
@@ -332,6 +418,10 @@ base::Status TextEngine::unload_font(FontId font) {
     if (entry == nullptr) {
         return failure(base::StatusCode::invalid_argument, "GUI font handle is not alive");
     }
+    if (entry->source.valid()) {
+        return failure(base::StatusCode::invalid_state,
+                       "GUI sized fonts are owned by their source font");
+    }
     for (const auto& slot : state_->fonts) {
         if (slot.font && std::find(slot.font->fallbacks.begin(), slot.font->fallbacks.end(), font) !=
                              slot.font->fallbacks.end()) {
@@ -339,12 +429,23 @@ base::Status TextEngine::unload_font(FontId font) {
                            "GUI font is referenced by a fallback chain");
         }
     }
-    const std::uint32_t index = font_index(font);
-    state_->fonts[index].font.reset();
-    if (state_->fonts[index].generation != std::numeric_limits<std::uint32_t>::max()) {
-        ++state_->fonts[index].generation;
-        state_->free_fonts.push_back(index);
+    const auto release = [&](FontId id) {
+        const std::uint32_t index = font_index(id);
+        state_->fonts[index].font.reset();
+        if (state_->fonts[index].generation != std::numeric_limits<std::uint32_t>::max()) {
+            ++state_->fonts[index].generation;
+            state_->free_fonts.push_back(index);
+        }
+    };
+    for (auto it = state_->sized_fonts.begin(); it != state_->sized_fonts.end();) {
+        if (it->first.first == font.value()) {
+            release(it->second);
+            it = state_->sized_fonts.erase(it);
+        } else {
+            ++it;
+        }
     }
+    release(font);
     return base::Status::success();
 #else
     static_cast<void>(font);
@@ -363,16 +464,38 @@ base::Status TextEngine::set_fallbacks(FontId primary, std::span<const FontId> o
     if (entry == nullptr) {
         return failure(base::StatusCode::invalid_argument, "GUI primary font handle is not alive");
     }
+    if (entry->source.valid()) {
+        return failure(base::StatusCode::invalid_state,
+                       "GUI sized fonts inherit their source font's fallbacks");
+    }
     std::vector<FontId> chain;
     for (const auto font : ordered) {
-        if (state_->find(font) == nullptr || font == primary ||
+        const auto* candidate = state_->find(font);
+        if (candidate == nullptr || candidate->source.valid() || font == primary ||
             std::find(chain.begin(), chain.end(), font) != chain.end()) {
             return failure(base::StatusCode::invalid_argument,
                            "GUI fallback fonts must be live, distinct and not the primary");
         }
         chain.push_back(font);
     }
+    std::vector<std::pair<FontId, float>> variants;
+    for (const auto& [key, id] : state_->sized_fonts) {
+        if (key.first == primary.value()) { variants.emplace_back(id, key.second); }
+    }
+    std::vector<std::pair<FontId, std::vector<FontId>>> updated;
+    for (const auto& [id, size] : variants) {
+        std::vector<FontId> sized_chain;
+        for (const auto fallback : chain) {
+            const auto sized = sized_font_face(fallback, size);
+            if (!sized.ok()) { return sized.status(); }
+            sized_chain.push_back(sized.value());
+        }
+        updated.emplace_back(id, std::move(sized_chain));
+    }
     entry->fallbacks = std::move(chain);
+    for (auto& [id, sized_chain] : updated) {
+        state_->find(id)->fallbacks = std::move(sized_chain);
+    }
     return base::Status::success();
 #else
     static_cast<void>(primary);

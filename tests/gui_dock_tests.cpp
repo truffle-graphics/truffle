@@ -477,6 +477,22 @@ int theme_and_gap() {
     TFL_CHECK(need(c.decoration(dock.element())).fill == grey(0.84F));
     TFL_CHECK(need(c.decoration(dock.tab("a"))).fill == grey(1.0F));
     TFL_CHECK(need(c.decoration(dock.dividers()[0])).fill == grey(0.80F));
+
+    need(dock.restore(R"((tabs 0 "a" "b"))"));
+    ComponentStyle tabs;
+    tabs.fill.normal = Color{1, 0, 0, 1};
+    tabs.fill.checked = Color{0, 0, 1, 1};
+    need(c.set_component_style(Component::dock_tab, tabs));
+    ComponentStyle selected;
+    selected.fill.checked = Color{0, 1, 0, 1};
+    need(c.set_component_style(dock.tab("b"), selected));
+    TFL_CHECK(frame(c).status.ok());
+    TFL_CHECK((need(c.decoration(dock.tab("a"))).fill == Color{0, 0, 1, 1}));
+    TFL_CHECK((need(c.decoration(dock.tab("b"))).fill == Color{1, 0, 0, 1}));
+    need(dock.activate("b"));
+    TFL_CHECK(frame(c).status.ok());
+    TFL_CHECK((need(c.decoration(dock.tab("a"))).fill == Color{1, 0, 0, 1}));
+    TFL_CHECK((need(c.decoration(dock.tab("b"))).fill == Color{0, 1, 0, 1}));
     return 0;
 }
 

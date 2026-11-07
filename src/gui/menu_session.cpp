@@ -230,11 +230,18 @@ base::Status MenuSession::close_from(std::size_t start, bool restore) {
   for (const auto &menu : closed) {
     menu->open = false;
   }
+  const auto pressed_item = pressed.lock();
   pressed.reset();
   pointer.reset();
   auto status = cancel_pending();
   if (!status.ok()) {
     return status;
+  }
+  if (pressed_item && pressed_item->live()) {
+    status = pressed_item->appearance();
+    if (!status.ok()) {
+      return status;
+    }
   }
   for (auto menu = closed.rbegin(); menu != closed.rend(); ++menu) {
     if ((*menu)->live() && context->visible((*menu)->element)) {
@@ -664,8 +671,12 @@ base::Status MenuSession::filter(RoutedEvent &event) {
       return close_from(0, false); // the same outside click still reaches its target
     }
     if (input->action == PointerAction::up && pointer == input->pointer) {
+      const auto down = pressed.lock();
       pressed.reset();
       pointer.reset();
+      if (down && down->live()) {
+        return down->appearance();
+      }
     }
     return base::Status::success();
   }
@@ -690,6 +701,12 @@ base::Status MenuSession::filter(RoutedEvent &event) {
     const auto down = pressed.lock();
     pressed.reset();
     pointer.reset();
+    if (down && down->live()) {
+      const auto status = down->appearance();
+      if (!status.ok()) {
+        return status;
+      }
+    }
     if (down && down == item && down->eligible()) {
       return activate(down);
     }
