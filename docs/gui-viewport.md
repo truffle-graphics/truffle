@@ -1,7 +1,7 @@
 # GUI Rendering Viewport (#271/#277)
 
 `gui::Viewport` is a checked reference to a Context-owned image/input element.
-Its ordinary header imports GUI only. Application-owned scene rendering is an
+its ordinary header imports GUI only. Graphics-owned scene rendering is an
 explicit `gui/rendering.hpp` opt-in using Renderer types, never raw Painter or
 RHI setup. The existing offscreen machinery remains underneath; there is no
 Engine, scene schema, CPU readback or default direct-swapchain scene rendering.
@@ -26,27 +26,30 @@ remove their own element safely.
 `request_redraw()` increments the application-scene revision and requests a
 GUI frame. It does not assume an Engine, camera or animation model.
 
-## Owned and borrowed application integration
+## Owned and borrowed graphics integration
 
-Both [Application paths](gui-application.md) use the same composition:
+Both [Graphics paths](gui-graphics.md) use the same composition:
 
 ```cpp
 #include <truffle/gui/rendering.hpp>
 
-auto frame = gui::Rendering::begin_frame(app);
-auto view = gui::Rendering::prepare_viewport(app, viewport, frame.value().slot);
+auto frame = gui::Rendering::begin_frame(graphics, context);
+auto view = gui::Rendering::prepare_viewport(
+    graphics, context, viewport, frame.value().slot);
 renderer::FrameGraph graph;
 if (view.value().redraw) {
     // App supplies Renderer batches, optional depth and clear/load/store.
     auto scene = gui::Rendering::append_viewport_pass(
         viewport, graph, sceneBatches, scenePass);
 }
-gui::Rendering::display_viewport(app, viewport);
-app.context().update_shapes();
-auto guiPass = gui::Rendering::append_gui_pass(app, graph, frame.value());
+gui::Rendering::display_viewport(graphics, context, viewport);
+context.update_shapes();
+auto guiPass =
+    gui::Rendering::append_gui_pass(graphics, context, graph, frame.value());
 gui::Rendering::composite_viewport(viewport, graph, guiPass.value());
-auto status = gui::Rendering::present(app, graph);
-gui::Rendering::finish_viewport(viewport, app.last_frame_stats().submitted);
+auto status = gui::Rendering::present(graphics, context, graph);
+gui::Rendering::finish_viewport(
+    viewport, graphics.last_frame_stats().submitted);
 ```
 
 These abbreviated signatures are not error-handling examples. The compiled
@@ -54,14 +57,14 @@ These abbreviated signatures are not error-handling examples. The compiled
 every operation, finishes prepared viewports and cancels an abandoned frame.
 Its callback receives `ViewportFrame` and the safe slot and returns application
 batches/pass settings. GUI owns all GUI geometry, bindings and programs.
-Use `Rendering::programs(app)` and `renderer(app)` for the combined frame;
+Use `Rendering::programs(graphics)` and `renderer(graphics)` for the combined frame;
 an unrelated cache does not automatically contain the reserved GUI program.
 
 `ViewportFrame::target` is a retained Renderer `Texture`, with size/format/
 identity and a sampled view for normal program bindings. It pins the exact
 target and device storage, not merely the viewport's mutable slot array.
 `ViewportTargetDesc` uses Renderer format values; the default is BGRA8.
-`frames_in_flight == 0` infers the Application's slot count; an explicit
+`frames_in_flight == 0` infers the Graphics slot count; an explicit
 different count fails. Release GPU state before changing device, format or
 slot configuration.
 
@@ -79,18 +82,17 @@ For explicit offscreen scheduling, `prepare_viewport(renderer::Device&, ...)`
 uses a caller-protected slot; zero slot count defaults to two. The external
 FramePacer, application streams and GUI stream must use matching safe slots.
 `Rendering::record`/`append_gui_pass` accept a Surface belonging to the
-Application's Context. An offscreen GUI pass can supply Renderer texture
+explicitly supplied Context. An offscreen GUI pass can supply Renderer texture
 transitions as the final `append_gui_pass` argument. A zero-pixel borrowed
-Application can be explicitly recorded using a nonzero external target; this
-does not create a window or make minimized `Application::draw` succeed.
+Graphics object can be explicitly recorded using a nonzero external target;
+this does not create a window or make minimized `Graphics::draw` succeed.
 
-One Application owns one Context and GUI stream. Surface DPI/input/recording
-does not imply a complete shared-context, independently paced multi-window
-Application API. Do not record two GUI views into one reused streamed slot:
-each independently paced window needs an independent Painter/stream owner.
-The normal borrowed-Context/per-surface ownership choice remains an explicit
-follow-up boundary in #276; use specialist owners for that existing advanced
-host arrangement rather than inventing a lifetime/pacing policy.
+Graphics owns a GUI stream, not a Context. Context is explicitly supplied to
+each operation, and the same Context must remain associated with an open
+frame. Surface DPI/input/recording does not imply a complete independently
+paced multi-window API. Do not record two GUI views into one reused streamed
+slot: each independently paced window needs an independent Painter/stream
+owner.
 
 ## Revision, synchronization and lifetime
 
@@ -110,7 +112,7 @@ transition is an explicit error.
 Graph insertion retains the normal pass/batch/texture owners and GUI owner
 needed by the underlying nodes. Graph moves preserve underlying identity.
 Context owns only the element/raw viewport state; it does not strongly own
-its enclosing Application through the normal wrapper. Native resources of
+its Graphics owner through the normal wrapper. Native resources of
 submitted commands follow RHI retention. Host windows/services and imported
 raw devices remain externally owned and must stay alive/unmoved.
 
@@ -137,7 +139,7 @@ retention proofs through the specialist path.
 
 All three focused CPU/Null contracts passed in the existing strict MSVC Debug
 configuration. The migrated Vulkan native target compiled; it was not run.
-Owner-run Metal/Vulkan native tests use the normal borrowed Application and
+Owner-run Metal/Vulkan native tests use the normal borrowed Graphics and
 shared-frame APIs for four exact clip/overlay/scene-reuse GPU frames. Only
 native initialization/readback remain specialist test harness code; BGRA
 readback is normalized there, not in the public runtime.

@@ -1,4 +1,4 @@
-#include "application_state.hpp"
+#include "graphics_state.hpp"
 #include "truffle/gui/specialist/viewport.hpp"
 
 namespace truffle::gui {
@@ -83,24 +83,25 @@ base::Result<ViewportFrame> Rendering::prepare_viewport(renderer::Device &device
   }
   return result;
 }
-base::Result<ViewportFrame> Rendering::prepare_viewport(Application &app,
+base::Result<ViewportFrame> Rendering::prepare_viewport(Graphics &graphics,
+                                                        Context &context,
                                                         Viewport &viewport,
                                                         std::uint32_t slot,
                                                         const ViewportTargetDesc &desc) {
-  if (!app.valid() || !viewport.alive())
-    return invalid("GUI Application/Viewport is not live");
-  if (viewport.state_->context != &app.context())
+  if (!graphics.valid() || !viewport.alive())
+    return invalid("GUI Graphics/Viewport is not live");
+  if (viewport.state_->context != &context)
     return base::Status::failure(base::StatusCode::invalid_argument,
-                                 "Viewport must belong to this Application's Context");
-  const auto frames = app.state_->presentation.desc().framesInFlight;
+                                 "Viewport must belong to the supplied Context");
+  const auto frames = graphics.state_->presentation.desc().framesInFlight;
   if (desc.frames_in_flight != 0 && desc.frames_in_flight != frames)
     return base::Status::failure(base::StatusCode::invalid_argument,
                                  "Viewport and GUI must share safe frame slots");
   auto requested = desc;
   requested.frames_in_flight = frames;
-  auto frame = prepare_viewport(device(app), viewport, slot, requested);
+  auto frame = prepare_viewport(device(graphics), viewport, slot, requested);
   if (frame.ok()) {
-    viewport.state_->gui_owner = app.state_;
+    viewport.state_->gui_owner = graphics.state_;
   }
   return frame;
 }
@@ -127,16 +128,17 @@ Rendering::append_viewport_pass(Viewport &viewport, renderer::FrameGraph &graph,
   }
   return node;
 }
-base::Status Rendering::display_viewport(Application &app, Viewport &viewport) {
-  if (!app.valid() || !viewport.alive())
-    return invalid("GUI Application/Viewport is not live");
-  if (viewport.state_->context != &app.context())
+base::Status Rendering::display_viewport(Graphics &graphics, Context &context,
+                                         Viewport &viewport) {
+  if (!graphics.valid() || !viewport.alive())
+    return invalid("GUI Graphics/Viewport is not live");
+  if (viewport.state_->context != &context)
     return base::Status::failure(base::StatusCode::invalid_argument,
-                                 "Viewport must belong to this Application's Context");
-  auto status = viewport.state_->raw.display(app.state_->painter);
+                                 "Viewport must belong to the supplied Context");
+  auto status = viewport.state_->raw.display(graphics.state_->painter);
   if (status.ok()) {
-    viewport.state_->gui_owner = app.state_;
-    viewport.state_->raw.painter_owner(app.state_);
+    viewport.state_->gui_owner = graphics.state_;
+    viewport.state_->raw.painter_owner(graphics.state_);
   }
   return status;
 }

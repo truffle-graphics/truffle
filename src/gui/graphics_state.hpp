@@ -9,8 +9,8 @@
 
 namespace truffle::gui {
 
-struct Application::State {
-  ApplicationDesc desc;
+struct Graphics::State {
+  GraphicsDesc desc;
   renderer::Presentation presentation;
   std::unique_ptr<renderer::PipelineCache> programs;
   std::unique_ptr<renderer::Renderer> renderer;
@@ -19,8 +19,8 @@ struct Application::State {
   TextureId atlas;
   std::map<std::uint64_t, renderer::SampledTexture> images;
   bool frame_open = false;
-  ApplicationFrameStats stats;
-  Context context; // dies before its font/image/painter owners
+  Context *frame_context = nullptr;
+  GraphicsFrameStats stats;
 };
 
 } // namespace truffle::gui

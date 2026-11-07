@@ -4,10 +4,10 @@
 
 namespace truffle::examples {
 
-inline base::Result<gui::Application> create_shared_gui(renderer::Device &device,
-                                                        gui::WindowHandle window,
-                                                        gui::PixelSize pixels,
-                                                        float dpi_scale = 1.0F) {
+inline base::Result<gui::Graphics> create_shared_gui(renderer::Device &device,
+                                                     gui::WindowHandle window,
+                                                     gui::PixelSize pixels,
+                                                     float dpi_scale = 1.0F) {
   return gui::Rendering::create(device, {
                                             .window = window,
                                             .pixels = pixels,

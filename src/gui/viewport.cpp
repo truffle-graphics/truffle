@@ -59,7 +59,7 @@ struct Viewport::State {
   base::Status release() {
     const auto owner = painter_owner.lock();
     // An owner-managed Painter's registrations die with it; never dereference
-    // that borrowed pointer after its Application has been destroyed.
+    // that borrowed pointer after its Graphics owner has been destroyed.
     if (painter != nullptr && texture.valid() && (!owner_managed_painter || owner)) {
       if (auto status = painter->remove_texture(texture); !status.ok()) {
         return status;

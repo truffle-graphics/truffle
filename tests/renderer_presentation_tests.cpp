@@ -3,7 +3,7 @@
 #include "truffle/renderer/specialist/presentation.hpp"
 
 #if defined(TFL_TEST_PRESENTATION_NATIVE)
-#include "../examples/gui_presentation/gui_application.hpp"
+#include "../examples/gui_presentation/gui_graphics.hpp"
 #endif
 
 namespace {

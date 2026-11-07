@@ -5,6 +5,23 @@ This is the rolling execution handoff, not an implementation transcript.
 issues/Project own accepted work. Earlier phase details remain in their PRs,
 the support matrix and Git history.
 
+## Separating GUI Context and Graphics (#279)
+
+The public entry point changed from `gui::Application` to `gui::Graphics`.
+`gui::Context` is independently constructed and owns logical tree/input/host
+state. Graphics and Renderer operations receive Context explicitly and do not
+own it or retain it outside an open frame. `GraphicsDesc` configures
+graphics/window presentation only.
+Graphics-owned text sources still borrow their `TextEngine`, so Graphics must
+outlive Context while those sources remain.
+
+The Truffle changes built successfully with warnings-as-errors and the focused
+GUI Graphics, GUI-only consumer, Renderer presentation, GUI viewport and
+viewport consumer tests passed. The native Metal viewport target compiled but
+was not run. The dependent Studio (#27) migration remains to be built and
+tested. Keep the unrelated pending #278 macOS test-source fixes separate from
+the #279 issue commit.
+
 ## Latest: GUI-only viewport and Renderer integration (#277)
 
 The consumer-layer implementation children #274-#277 are implemented on the
@@ -42,7 +59,7 @@ remain specialist harness code. No native execution, Metal compilation, full
 suite/build, package/configuration or multi-window matrix, installs or hosted
 work was run. The native paths are not newly verified or promoted.
 
-See `docs/consumer-layers.md`, `docs/gui-application.md`,
+See `docs/consumer-layers.md`, `docs/gui-graphics.md`,
 `docs/gui-viewport.md` and the public examples. Rebuild all consumers against
 matching new headers/archives. Finish/discard every prepared frame, use actual
 submitted statistics even on presentation errors, and check the idle wait
@@ -66,7 +83,7 @@ The root/default clear stays transparent; resize/DPI/input, on-demand
 scheduling, minimized suspension and native recovery/errors stay explicit.
 Graphs retain GUI wrapper owners; cached font/image resources outlive Context.
 Invalid Renderer graphs clear submission statistics and close an open
-Presentation before GUI recovery retries. See `docs/gui-application.md`.
+Presentation before GUI recovery retries. See `docs/gui-graphics.md`.
 
 Strict incremental compilation covered Application, changed text contracts
 and the coupled Renderer contract. Only those three focused contracts ran and
@@ -166,7 +183,7 @@ replacement host handle; device loss requires new GPU consumers.
 native factory target and links only enabled Metal/Vulkan backends. Core
 Renderer gains no mandatory backend or GUI dependency. GUI-only clients need
 no backend headers, RHI setup calls, SDL/GLFW or Engine. The compiled
-`examples/gui_presentation/gui_application.hpp` demonstrates setup, drawing,
+`examples/gui_presentation/gui_graphics.hpp` demonstrates setup, drawing,
 resize, transparent clear and explicit teardown. See `docs/presentation.md`.
 The presentation owner coordinates existing interfaces/lifecycle only; native
 implementation and scene policy remain in their owning modules.

@@ -149,9 +149,10 @@ window/pixel values belong to Base (#274); neither upper layer owns windows.
 ### Level 1 — GUI
 
 Link `Truffle::GUI`. The host lends its window, size/DPI, events and platform
-services to `gui::Application`; GUI owns graphics setup and presentation.
+services to `gui::Context`; optional `gui::Graphics` owns graphics setup and
+presentation without owning Context or the host's application lifecycle.
 No Renderer/RHI headers or types are required. Native setup is optional and
-uses only enabled implementations. See [GUI Application](gui-application.md).
+uses only enabled implementations. See [GUI Graphics](gui-graphics.md).
 
 ### Level 2 — Rendering
 
@@ -236,7 +237,7 @@ GUI and custom rendering share the same device, Renderer and frame graph.
 See [presentation usage, recovery and lifetime](presentation.md).
 
 GUI's `Viewport` (#271/#277) owns only layout/input, scene-redraw state and image
-composition. Application batches render into existing Renderer sampled targets
+composition. Graphics batches render into existing Renderer sampled targets
 and precede Painter in the same graph with explicit attachment/sample barriers.
 FrameGraph can retain wrappers borrowed by per-frame nodes; RHI retains native
 submitted resources. Painter's stable texture-ID rebinding preserves cached
@@ -245,7 +246,7 @@ No Engine, scene policy, CPU readback or direct-swapchain scene path is
 required. [Viewport usage and lifetime](gui-viewport.md) defines the contract.
 The ordinary Viewport header is GUI-only; advanced composition uses Renderer
 values in `gui/rendering.hpp`. Exact target/pass/batch/device owners are
-retained; raw extensions are under `gui/specialist/`. One Application owns one
+retained; raw extensions are under `gui/specialist/`. One Graphics owns one
 Context/GUI stream. Shared-context independently paced multi-window ownership
 remains a design boundary in #276, not an assumed reverse dependency or
 stream-sharing policy.
@@ -398,7 +399,8 @@ See [the shader package contract](rhi1/shader-package.md).
 ## GUI Prepared Rendering (#268)
 
 `gui::specialist::Painter` supports Metal and Vulkan through Renderer/RHI
-implementation contracts. Normal consumers use GUI-owned Application rendering.
+implementation contracts. Normal consumers use optional GUI-owned Graphics
+rendering with a separately owned Context.
 GUI owns its prepared programs: embedded native MSL keeps the
 existing Metal path, and a checked-in TSP embeds native SPIR-V for Vulkan 1.1 /
 SPIR-V 1.3. Configure embeds the package bytes; it never runs a compiler.

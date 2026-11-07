@@ -1,4 +1,4 @@
-#include "application_state.hpp"
+#include "graphics_state.hpp"
 
 #include <cassert>
 #include <cmath>
@@ -7,7 +7,7 @@ namespace truffle::gui {
 namespace {
 base::Status invalid() {
   return base::Status::failure(base::StatusCode::invalid_state,
-                               "GUI Application is not initialized");
+                               "GUI Graphics is not initialized");
 }
 base::Status scale_status(PixelSize pixels, float scale) {
   return std::isfinite(scale) && scale > 0 &&
@@ -29,17 +29,17 @@ base::Status scale_status(PixelSize pixels, float scale) {
   }
   return static_cast<renderer::Backend>(-1);
 }
-renderer::PresentationDesc presentation_desc(const ApplicationDesc &desc) {
+renderer::PresentationDesc presentation_desc(const GraphicsDesc &desc) {
   return {.native = desc.window,
           .extent = desc.pixels,
           .framesInFlight = desc.frames_in_flight};
 }
 } // namespace
 
-Application::~Application() = default;
-Application::Application(Application &&) noexcept = default;
-Application &Application::operator=(Application &&) noexcept = default;
-base::Result<Application> Application::create(const ApplicationDesc &desc) {
+Graphics::~Graphics() = default;
+Graphics::Graphics(Graphics &&) noexcept = default;
+Graphics &Graphics::operator=(Graphics &&) noexcept = default;
+base::Result<Graphics> Graphics::create(const GraphicsDesc &desc) {
   if (auto status = scale_status(desc.pixels, desc.dpi_scale); !status.ok())
     return status;
   if (desc.window.kind == WindowKind::headless)
@@ -65,8 +65,8 @@ base::Result<Application> Application::create(const ApplicationDesc &desc) {
                                "and an enabled native backend");
 #endif
 }
-base::Result<Application> Rendering::create(renderer::Device &device,
-                                            const ApplicationDesc &desc) {
+base::Result<Graphics> Rendering::create(renderer::Device &device,
+                                         const GraphicsDesc &desc) {
   if (auto status = scale_status(desc.pixels, desc.dpi_scale); !status.ok())
     return status;
   auto presentation = renderer::Presentation::create(device, presentation_desc(desc));
@@ -74,10 +74,10 @@ base::Result<Application> Rendering::create(renderer::Device &device,
     return presentation.status();
   return initialize(std::move(presentation).value(), desc);
 }
-base::Result<Application> Rendering::initialize(renderer::Presentation presentation,
-                                                const ApplicationDesc &desc) {
-  Application result;
-  result.state_ = std::make_shared<Application::State>();
+base::Result<Graphics> Rendering::initialize(renderer::Presentation presentation,
+                                              const GraphicsDesc &desc) {
+  Graphics result;
+  result.state_ = std::make_shared<Graphics::State>();
   auto &state = *result.state_;
   state.desc = desc;
   state.presentation = std::move(presentation);
@@ -96,29 +96,10 @@ base::Result<Application> Rendering::initialize(renderer::Presentation presentat
   if (!painter.ok())
     return painter.status();
   state.painter = std::move(painter).value();
-  state.context.set_host(desc.host);
-  if (auto status = state.context.set_viewport(
-          {static_cast<float>(desc.pixels.width) / desc.dpi_scale,
-           static_cast<float>(desc.pixels.height) / desc.dpi_scale},
-          desc.dpi_scale);
-      !status.ok())
-    return status;
   return result;
 }
-bool Application::valid() const noexcept { return state_ != nullptr; }
-Context &Application::context() noexcept {
-  assert(valid());
-  return state_->context;
-}
-const Context &Application::context() const noexcept {
-  assert(valid());
-  return state_->context;
-}
-base::Status Application::handle(const InputEvent &event,
-                                 Context::Clock::time_point now) {
-  return valid() ? state_->context.handle(event, now) : invalid();
-}
-base::Status Application::resize(PixelSize pixels, float scale) {
+bool Graphics::valid() const noexcept { return state_ != nullptr; }
+base::Status Graphics::resize(Context &context, PixelSize pixels, float scale) {
   if (!valid())
     return invalid();
   if (auto status = scale_status(pixels, scale); !status.ok())
@@ -127,12 +108,12 @@ base::Status Application::resize(PixelSize pixels, float scale) {
     return status;
   state_->desc.pixels = pixels;
   state_->desc.dpi_scale = scale;
-  return state_->context.set_viewport({static_cast<float>(pixels.width) / scale,
-                                       static_cast<float>(pixels.height) / scale},
-                                      scale);
+  return context.set_viewport({static_cast<float>(pixels.width) / scale,
+                               static_cast<float>(pixels.height) / scale},
+                              scale);
 }
-base::Status Application::replace_window(WindowHandle window, PixelSize pixels,
-                                         float scale) {
+base::Status Graphics::replace_window(Context &context, WindowHandle window,
+                                      PixelSize pixels, float scale) {
   if (!valid())
     return invalid();
   if (auto status = scale_status(pixels, scale); !status.ok())
@@ -140,104 +121,114 @@ base::Status Application::replace_window(WindowHandle window, PixelSize pixels,
   if (auto status = state_->presentation.replace_surface(window, pixels); !status.ok())
     return status;
   state_->desc.window = window;
-  return resize(pixels, scale);
+  return resize(context, pixels, scale);
 }
-bool Application::needs_frame(Context::Clock::time_point now) const noexcept {
+bool Graphics::needs_frame(const Context &context,
+                           Context::Clock::time_point now) const noexcept {
   return valid() && state_->desc.pixels.width != 0 && state_->desc.pixels.height != 0 &&
-         state_->context.needs_frame(now);
+         context.needs_frame(now);
 }
-std::optional<Context::Clock::time_point> Application::next_update() const noexcept {
-  return valid() ? state_->context.next_update() : std::nullopt;
-}
-base::Status Application::draw(Context::Clock::time_point now) {
+base::Status Graphics::draw(Context &context, Context::Clock::time_point now) {
   if (!valid())
     return invalid();
   if (state_->desc.pixels.width == 0 || state_->desc.pixels.height == 0) {
     return base::Status::failure(base::StatusCode::out_of_date,
                                  "GUI window is minimized");
   }
-  if (!needs_frame(now))
+  if (!needs_frame(context, now))
     return base::Status::success();
-  auto frame = Rendering::begin_frame(*this, now);
+  auto frame = Rendering::begin_frame(*this, context, now);
   if (!frame.ok())
     return frame.status();
   renderer::FrameGraph graph;
   auto pass = Rendering::append_gui_pass(
-      *this, graph, frame.value(),
+      *this, context, graph, frame.value(),
       {
           .colorAttachments = {{.clear = {state_->desc.clear.r, state_->desc.clear.g,
                                           state_->desc.clear.b, state_->desc.clear.a}}},
       });
   if (!pass.ok()) {
-    auto cancelled = Rendering::cancel_frame(*this);
+    auto cancelled = Rendering::cancel_frame(*this, context);
     return cancelled.ok() ? pass.status() : cancelled;
   }
-  return Rendering::present(*this, graph);
+  return Rendering::present(*this, context, graph);
 }
-ApplicationFrameStats Application::last_frame_stats() const {
-  return valid() ? state_->stats : ApplicationFrameStats{};
+GraphicsFrameStats Graphics::last_frame_stats() const {
+  return valid() ? state_->stats : GraphicsFrameStats{};
 }
-base::Status Application::wait_idle(std::chrono::nanoseconds timeout) {
+base::Status Graphics::wait_idle(std::chrono::nanoseconds timeout) {
   return valid() ? state_->presentation.wait_idle(timeout) : invalid();
 }
-renderer::Device &Rendering::device(Application &app) {
-  assert(app.valid());
-  return app.state_->presentation.device();
+renderer::Device &Rendering::device(Graphics &graphics) {
+  assert(graphics.valid());
+  return graphics.state_->presentation.device();
 }
-renderer::PipelineCache &Rendering::programs(Application &app) {
-  assert(app.valid());
-  return *app.state_->programs;
+renderer::PipelineCache &Rendering::programs(Graphics &graphics) {
+  assert(graphics.valid());
+  return *graphics.state_->programs;
 }
-renderer::Renderer &Rendering::renderer(Application &app) {
-  assert(app.valid());
-  return *app.state_->renderer;
+renderer::Renderer &Rendering::renderer(Graphics &graphics) {
+  assert(graphics.valid());
+  return *graphics.state_->renderer;
 }
-renderer::Presentation &Rendering::presentation(Application &app) {
-  assert(app.valid());
-  return app.state_->presentation;
+renderer::Presentation &Rendering::presentation(Graphics &graphics) {
+  assert(graphics.valid());
+  return graphics.state_->presentation;
 }
-base::Result<RenderingFrame> Rendering::begin_frame(Application &app,
+base::Result<RenderingFrame> Rendering::begin_frame(Graphics &graphics,
+                                                    Context &context,
                                                     Context::Clock::time_point now) {
-  if (!app.valid())
+  if (!graphics.valid())
     return invalid();
-  auto &state = *app.state_;
+  auto &state = *graphics.state_;
+  if (state.frame_open)
+    return base::Status::failure(base::StatusCode::invalid_state,
+                                 "GUI frame is already open");
   state.stats = {};
   auto frame = state.presentation.begin_frame();
   if (!frame.ok())
     return frame.status();
   state.frame_open = true;
-  state.stats.gui = state.context.prepare_frame(now);
+  state.frame_context = &context;
+  state.stats.gui = context.prepare_frame(now);
   if (!state.stats.gui.status.ok()) {
-    auto cancelled = cancel_frame(app);
+    auto cancelled = cancel_frame(graphics, context);
     return cancelled.ok() ? state.stats.gui.status : cancelled;
   }
   return RenderingFrame{frame.value().slot, frame.value().extent};
 }
-base::Status Rendering::cancel_frame(Application &app) {
-  if (!app.valid())
+base::Status Rendering::cancel_frame(Graphics &graphics, Context &context) {
+  if (!graphics.valid())
     return invalid();
-  auto status = app.state_->presentation.cancel_frame();
+  auto &state = *graphics.state_;
+  if (!state.frame_open || state.frame_context != &context)
+    return base::Status::failure(base::StatusCode::invalid_state,
+                                 "GUI frame does not belong to the supplied Context");
+  auto status = state.presentation.cancel_frame();
   if (status.ok()) {
-    app.state_->frame_open = false;
-    app.state_->context.request_frame();
+    state.frame_open = false;
+    state.frame_context = nullptr;
+    context.request_frame();
   }
   return status;
 }
-base::Status Rendering::present(Application &app, const renderer::FrameGraph &graph) {
-  if (!app.valid())
+base::Status Rendering::present(Graphics &graphics, Context &context,
+                                const renderer::FrameGraph &graph) {
+  if (!graphics.valid())
     return invalid();
-  auto &state = *app.state_;
-  if (!state.frame_open)
+  auto &state = *graphics.state_;
+  if (!state.frame_open || state.frame_context != &context)
     return base::Status::failure(base::StatusCode::invalid_state,
-                                 "GUI frame is not open");
+                                 "GUI frame does not belong to the supplied Context");
   auto status = state.presentation.render(*state.renderer, graph);
   state.frame_open = false;
+  state.frame_context = nullptr;
   const auto stats = state.presentation.last_frame_stats();
   state.stats.submitted = stats.submitted;
   state.stats.presented = stats.presented;
   state.stats.suboptimal = stats.presentationSuboptimal;
   if (!status.ok())
-    state.context.request_frame();
+    context.request_frame();
   return status;
 }
 

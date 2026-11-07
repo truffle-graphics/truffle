@@ -97,11 +97,12 @@ int run() {
   auto adapter = tests::require(instance.adapter(0));
   auto native_device = tests::require(adapter.request_device());
   auto device = tests::require(renderer::RhiInterop::borrow(native_device));
-  auto app = tests::require(gui::Rendering::create(device, {.pixels = {0, 0}}));
+  auto graphics =
+      tests::require(gui::Rendering::create(device, {.pixels = {0, 0}}));
+  gui::Context context;
   auto pacer = tests::require(renderer::FramePacer::create(device));
   auto color = tests::require(
       renderer::SampledTexture::render_target(device, {.extent = {16, 16}}));
-  auto &context = app.context();
   tests::require(context.set_viewport({16, 16}));
   const auto clip = tests::require(context.create(context.root()));
   place(context, clip, {4, 4, 8, 8});
@@ -119,7 +120,7 @@ int run() {
     tests::require(context.prepare_frame(gui::Context::Clock::now()).status);
     const auto slot = tests::require(pacer.begin_frame());
     const auto frame =
-        tests::require(gui::Rendering::prepare_viewport(app, viewport, slot));
+        tests::require(gui::Rendering::prepare_viewport(graphics, context, viewport, slot));
     if (frame.redraw != (index != 1)) {
       throw std::runtime_error("viewport scene redraw/reuse contract changed");
     }
@@ -130,7 +131,7 @@ int run() {
       (void)tests::require(
           gui::Rendering::append_viewport_pass(viewport, graph, {}, std::move(pass)));
     }
-    tests::require(gui::Rendering::display_viewport(app, viewport));
+    tests::require(gui::Rendering::display_viewport(graphics, context, viewport));
     const auto id = tests::require(context.decoration(viewport.element())).texture;
     if (index == 0) {
       stableId = id;
@@ -145,13 +146,13 @@ int run() {
     if (index == 0)
       transitions.push_back(color.to_attachment());
     const auto guiPass = tests::require(gui::Rendering::append_gui_pass(
-        app, graph, {slot, {16, 16}},
+        graphics, context, graph, {slot, {16, 16}},
         {
             .colorAttachments = {{.texture = color.texture(), .clear = {0, 0, 1, 1}}},
         },
         false, nullptr, std::move(transitions)));
     tests::require(gui::Rendering::composite_viewport(viewport, graph, guiPass));
-    auto &renderer = gui::Rendering::renderer(app);
+    auto &renderer = gui::Rendering::renderer(graphics);
     tests::require(renderer.render(graph, pacer.signal()));
     pacer.end_frame(renderer.last_frame_stats().submitted);
     tests::require(

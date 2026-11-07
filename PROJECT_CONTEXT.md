@@ -111,8 +111,9 @@ Explicit raw extensions use `renderer::specialist`, specialist headers and
 `renderer/rhi_interop.hpp`. GUI-owned setup and Renderer-level viewport
 integration are implemented under #276/#277; Engine #272 remains design-only.
 
-`gui::Application` owns GUI graphics orchestration and optional image/font
-resources with a host-owned window, using GUI-only public types (#276).
+`gui::Context` owns logical GUI state and remains usable without graphics.
+Optional `gui::Graphics` owns graphics orchestration and GPU image/font
+resources with a host-owned window, using GUI-only public types (#279).
 `gui/rendering.hpp` opts into a borrowed/shared Renderer device and combined
 frame graph. Raw Painter/text/Surface/Viewport GPU access is specialist-only.
 Normal GUI Context/drawing/text/Surface/Viewport headers import neither Renderer nor
@@ -133,7 +134,7 @@ Renderer owns a reusable `Presentation` lifecycle (#270) over the borrowed
 native surface: pacing, resize/recreation, suspension and typed recovery.
 Only the optional `Truffle::RendererPresentation` native factory links enabled
 Metal/Vulkan implementations; core Renderer and explicit-device consumers
-remain backend-independent. GUI/application passes share one device/frame.
+remain backend-independent. GUI/Graphics passes share one device/frame.
 See `docs/presentation.md`; new native execution is owner-run, not a maturity
 promotion.
 
@@ -306,7 +307,7 @@ See [`docs/gui-menus.md`](docs/gui-menus.md). Adopting the new Context
 storage/input signatures requires rebuilding GUI consumers with matching libraries.
 This is not software-driver/ARM64/full conformance or broader native-host
 evidence. Contexts have stable, non-movable
-ownership; application text engines/atlases outlive their elements.
+ownership; Graphics-owned text engines/atlases outlive their elements.
 Assets, a general material system and later application work are not started; the owner reviews the
 Renderer architecture later at their discretion, without committing to phases.
 Use signed issue-scoped phases, immediate pushes and reviewed merge-commit PRs.

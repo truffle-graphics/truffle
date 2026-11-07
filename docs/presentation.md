@@ -47,7 +47,8 @@ when needed). Truffle does not include SDL or own its window.
 See the compiled, host-independent
 [`Renderer frame` example](../examples/renderer_consumer/frame.hpp)
 for normal mesh/window composition without backend headers or RHI types.
-GUI-owned setup is tracked by #276; its Application hides these Renderer details.
+Optional GUI-owned setup is provided by `gui::Graphics` (#279); it hides these
+Renderer details while leaving logical GUI state in the host-owned Context.
 
 ## One shared frame
 

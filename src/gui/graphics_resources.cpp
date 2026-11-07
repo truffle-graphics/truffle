@@ -1,4 +1,4 @@
-#include "application_state.hpp"
+#include "graphics_state.hpp"
 #include "truffle/gui/specialist/surface.hpp"
 
 namespace truffle::gui {
@@ -7,23 +7,23 @@ base::Status invalid(const char *message) {
   return base::Status::failure(base::StatusCode::invalid_state, message);
 }
 } // namespace
-base::Result<TextureId> Rendering::add_texture(Application &app,
+base::Result<TextureId> Rendering::add_texture(Graphics &graphics, Context &context,
                                                renderer::SampledTexture texture,
                                                const renderer::SamplerDesc &desc) {
-  if (!app.valid() || app.state_->frame_open)
+  if (!graphics.valid() || graphics.state_->frame_open)
     return invalid("Texture registration requires an initialized, closed GUI frame");
   if (!texture.texture().valid())
     return base::Status::failure(base::StatusCode::invalid_argument,
                                  "GUI image is invalid");
-  auto registered = app.state_->painter.add_texture(renderer::RhiInterop::native(texture),
-                                                    renderer::RhiInterop::native(desc));
+  auto registered = graphics.state_->painter.add_texture(renderer::RhiInterop::native(texture),
+                                                        renderer::RhiInterop::native(desc));
   if (!registered.ok())
     return registered.status();
-  app.state_->images.emplace(registered.value().value, std::move(texture));
-  app.state_->context.request_frame();
+  graphics.state_->images.emplace(registered.value().value, std::move(texture));
+  context.request_frame();
   return registered.value();
 }
-base::Result<TextureId> Application::add_image(const ImageUpload &desc) {
+base::Result<TextureId> Graphics::add_image(Context &context, const ImageUpload &desc) {
   if (!valid() || state_->frame_open)
     return invalid("Image upload requires an initialized, closed GUI frame");
   if ((desc.format != ImageFormat::rgba8_unorm &&
@@ -46,10 +46,10 @@ base::Result<TextureId> Application::add_image(const ImageUpload &desc) {
     return image.status();
   const auto filter = desc.sampling == ImageSampling::linear ? renderer::Filter::linear
                                                              : renderer::Filter::nearest;
-  return Rendering::add_texture(*this, std::move(image).value(),
+  return Rendering::add_texture(*this, context, std::move(image).value(),
                                 {.minFilter = filter, .magFilter = filter});
 }
-base::Status Application::update_image(TextureId id, PixelRect rect,
+base::Status Graphics::update_image(Context &context, TextureId id, PixelRect rect,
                                        std::span<const std::byte> bytes,
                                        std::size_t row) {
   if (!valid() || state_->frame_open)
@@ -63,10 +63,10 @@ base::Status Application::update_image(TextureId id, PixelRect rect,
       {static_cast<std::uint32_t>(rect.x), static_cast<std::uint32_t>(rect.y)},
       {rect.width, rect.height}, bytes, row);
   if (status.ok())
-    state_->context.request_frame();
+    context.request_frame();
   return status;
 }
-base::Status Application::remove_image(TextureId id) {
+base::Status Graphics::remove_image(Context &context, TextureId id) {
   if (!valid() || state_->frame_open)
     return invalid("Image removal requires an initialized, closed GUI frame");
   if (!state_->images.contains(id.value))
@@ -75,13 +75,13 @@ base::Status Application::remove_image(TextureId id) {
   auto status = state_->painter.remove_texture(id);
   if (status.ok()) {
     state_->images.erase(id.value);
-    state_->context.request_frame();
+    context.request_frame();
   }
   return status;
 }
-base::Result<std::reference_wrapper<TextEngine>> Application::text() {
+base::Result<std::reference_wrapper<TextEngine>> Graphics::text() {
   if (!valid())
-    return invalid("GUI Application is not initialized");
+    return invalid("GUI Graphics is not initialized");
   if (!state_->text) {
     if (state_->frame_open)
       return invalid("Create GUI text resources before opening a frame");
@@ -104,59 +104,65 @@ base::Result<std::reference_wrapper<TextEngine>> Application::text() {
   }
   return std::ref(*state_->text);
 }
-TextureId Application::text_atlas() const noexcept {
+TextureId Graphics::text_atlas() const noexcept {
   return valid() ? state_->atlas : TextureId{};
 }
-base::Result<FontId> Application::load_font(std::span<const std::byte> bytes,
+base::Result<FontId> Graphics::load_font(std::span<const std::byte> bytes,
                                             float size) {
   auto engine = text();
   if (!engine.ok())
     return engine.status();
   return engine.value().get().load_font(bytes, size);
 }
-base::Status Application::set_text(ElementId element, FontId font, std::string value) {
+base::Status Graphics::set_text(Context &context, ElementId element, FontId font,
+                                std::string value) {
   auto engine = text();
   if (!engine.ok())
     return engine.status();
-  return state_->context.set_text_source(element, engine.value().get(), font,
-                                         std::move(value), state_->atlas);
+  return context.set_text_source(element, engine.value().get(), font, std::move(value),
+                                 state_->atlas);
 }
-base::Result<std::vector<renderer::RenderBatch>> Rendering::record(Application &app,
+base::Result<std::vector<renderer::RenderBatch>> Rendering::record(Graphics &graphics,
+                                                                   Context &context,
                                                                    std::uint32_t slot,
                                                                    PixelSize pixels,
                                                                    Surface *surface) {
-  if (!app.valid())
-    return invalid("GUI Application is not initialized");
+  if (!graphics.valid())
+    return invalid("GUI Graphics is not initialized");
+  if (graphics.state_->frame_open && graphics.state_->frame_context != &context)
+    return base::Status::failure(base::StatusCode::invalid_state,
+                                 "GUI frame belongs to a different Context");
   if (pixels.width == 0 || pixels.height == 0)
     return base::Status::failure(base::StatusCode::out_of_date,
                                  "GUI recording target is minimized");
-  if (surface && &surface->context() != &app.context())
+  if (surface && &surface->context() != &context)
     return base::Status::failure(base::StatusCode::invalid_argument,
-                                 "GUI Surface must belong to this Application's Context");
-  auto &state = *app.state_;
+                                 "GUI Surface must belong to the supplied Context");
+  auto &state = *graphics.state_;
   auto raw =
       surface ? specialist::SurfaceInterop::record(*surface, state.painter, slot,
                                                    {pixels.width, pixels.height})
-              : state.painter.record(state.context, slot, {pixels.width, pixels.height});
+              : state.painter.record(context, slot, {pixels.width, pixels.height});
   if (!raw.ok())
     return raw.status();
   std::vector<renderer::RenderBatch> result;
   for (const auto &batch : raw.value())
-    result.push_back(renderer::RhiInterop::batch(batch, app.state_));
+    result.push_back(renderer::RhiInterop::batch(batch, graphics.state_));
   state.stats.batches = result.size();
   return result;
 }
 base::Result<renderer::FrameGraph::NodeId>
-Rendering::append_gui_pass(Application &app, renderer::FrameGraph &graph,
-                           const RenderingFrame &frame, renderer::RenderPassDesc pass,
-                           bool use_window, Surface *surface,
+Rendering::append_gui_pass(Graphics &graphics, Context &context,
+                           renderer::FrameGraph &graph, const RenderingFrame &frame,
+                           renderer::RenderPassDesc pass, bool use_window,
+                           Surface *surface,
                            std::vector<renderer::TextureTransition> transitions) {
   if (pass.extent.width == 0 && pass.extent.height == 0)
     pass.extent = frame.pixels;
   if (pass.extent != frame.pixels)
     return base::Status::failure(base::StatusCode::invalid_argument,
                                  "GUI pass extent must match the recording target");
-  auto batches = record(app, frame.slot, frame.pixels, surface);
+  auto batches = record(graphics, context, frame.slot, frame.pixels, surface);
   if (!batches.ok())
     return batches.status();
   auto added = graph.add_render_pass({.pass = std::move(pass),
@@ -164,7 +170,7 @@ Rendering::append_gui_pass(Application &app, renderer::FrameGraph &graph,
                                       .useWindow = use_window,
                                       .transitions = std::move(transitions)});
   if (added.ok())
-    graph.retain(app.state_);
+    graph.retain(graphics.state_);
   return added;
 }
 

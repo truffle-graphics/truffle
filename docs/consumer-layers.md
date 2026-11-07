@@ -33,8 +33,8 @@ layer-owned replacement. **Specialist** means explicitly low-level use.
 | `renderer/transform_compute_pass.hpp` | Device/Shader/CommandList/ComputePipeline/Buffer pointers | Specialist explicit raw transform compute and command recording; no new general compute/scene framework |
 | `renderer/view.hpp`, `components.hpp`, `shaders.hpp` | Camera math/components/source text | Fine; no RHI setup or type required |
 | `gui/draw.hpp` | target Extent2D, clip ScissorRect | Equivalent GUI pixel geometry (#276); CPU assembly needs no Renderer/RHI |
-| `gui/painter.hpp` | Device/TextureFormat/SamplerDesc/Extent2D plus Renderer cache/texture/batches | Equivalent for ordinary GUI via Application/image APIs (#276); explicit raw Painter becomes Specialist |
-| `gui/text.hpp` | Device creation, atlas Extent2D and Renderer texture exposure | Equivalent font/text creation owned by GUI Application (#276); explicit atlas GPU access Specialist |
+| `gui/painter.hpp` | Device/TextureFormat/SamplerDesc/Extent2D plus Renderer cache/texture/batches | Equivalent for ordinary GUI via Graphics/image APIs (#279); explicit raw Painter becomes Specialist |
+| `gui/text.hpp` | Device creation, atlas Extent2D and Renderer texture exposure | Equivalent font/text creation owned by GUI Graphics (#279); explicit atlas GPU access Specialist |
 | `gui/surface.hpp` | Painter record with RHI extent | Equivalent advanced GUI rendering integration; raw record Specialist (#276/#277) |
 | `gui/viewport.hpp` | RHI pixels/format/device/pass plus Renderer batches/graph | Equivalent GUI metrics and opt-in Renderer-level viewport composition (#277) |
 | Other GUI headers (Context, geometry, elements, layout, shapes, events/input/host, widgets/themes, builder/regions/collections, menus, text edit, docking) | CPU/layout/input/state | Fine; preserve transparent roots and host services |
@@ -46,8 +46,8 @@ layer-owned replacement. **Specialist** means explicitly low-level use.
 At #271, `Truffle::Renderer` publicly linked Shader/RHI contracts but no
 backend. Its optional `Truffle::RendererPresentation` links only enabled
 Metal/Vulkan implementations. `Truffle::GUI` links Renderer and private optional
-pinned text runtimes; its formerly absent owned-device entry point is now
-`gui::Application`, with optional native factory linkage private to GUI.
+pinned text runtimes; its optional graphics-device entry point is now
+`gui::Graphics`, with optional native factory linkage private to GUI.
 `Truffle::GUIDock` remains above GUI. Transitive static implementation linkage
 does not mean consumers must include/name those lower-layer contracts.
 
@@ -115,14 +115,16 @@ integration paths; they are not prerequisites for normal Renderer consumption.
 
 ## GUI entry points (#276)
 
-`gui::Application::create(ApplicationDesc)` is the GUI-only owned path.
-`ApplicationDesc` uses GUI native-window/pixel/DPI/host values; consumers include
-GUI and link GUI alone. Image upload and font/atlas creation belong to this
-owner. Normal draw/text/Surface contracts have no Renderer/RHI import.
+`gui::Graphics::create(GraphicsDesc)` is the GUI-only owned graphics path.
+`GraphicsDesc` uses GUI native-window/pixel/DPI values; consumers include GUI
+and link GUI alone. Logical state lives in an independently owned
+`gui::Context`, which is passed explicitly to graphics operations. Image
+upload and font/atlas creation belong to Graphics. Normal Context/draw/text/
+Surface contracts have no Renderer/RHI import.
 The explicitly optional `gui::Rendering` surface accepts a Renderer Device and
 exposes its shared cache/Renderer/Presentation and GUI frame composition.
 It contains Renderer values only, not RHI. Raw Painter/text/Surface GPU access
-is under `gui/specialist/`. See [Application usage](gui-application.md).
+is under `gui/specialist/`. See [Graphics usage](gui-graphics.md).
 Native factories travel privately through GUI only when enabled; core Renderer
 still has no backend implementation link.
 
@@ -135,7 +137,7 @@ It reuses the existing offscreen mechanism under `gui::specialist::Viewport`.
 No ordinary GUI header imports Renderer/RHI; the opt-in Rendering header
 imports Renderer but no RHI/specialist contract. The guard checks both rules.
 
-Application preparation infers matching safe slots. Returned target textures
+Graphics preparation infers matching safe slots. Returned target textures
 pin their exact allocation and device owner through resize/release; inserted
 passes retain normal batches/depth/textures and GUI owners. Existing clipping,
 input, detached DPI, scene revision, submission-vs-presentation, transitions
@@ -147,5 +149,5 @@ target compiled after migrating its shared-frame body to normal APIs.
 Native initialization/readback alone remain specialist test harness code;
 native execution/Metal/configuration/multi-window evidence was not run.
 The normal shared-context, independently paced multi-window ownership API is
-not supplied by this single-Application cutover; #276 records that design
+not supplied by this single-Graphics cutover; #279 records that design
 boundary. Existing per-window raw Painter ownership remains specialist.

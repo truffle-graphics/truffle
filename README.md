@@ -197,13 +197,13 @@ bundled, and applications supply font data with its associated license.
 
 ## GUI Object API
 
-`gui::Application::create` in `truffle/gui/application.hpp` accepts the
+`gui::Graphics::create` in `truffle/gui/graphics.hpp` accepts the
 host's native window, drawable pixel size, DPI scale and platform services.
 Link `Truffle::GUI` alone: GUI owns native graphics setup, presentation,
 pipeline/cache, images and optional text atlas. Its public owned path requires
 no Renderer or RHI headers/types. The opt-in `gui/rendering.hpp` accepts a
 borrowed Renderer device and shares GUI/scene frame composition.
-See [`docs/gui-application.md`](docs/gui-application.md) for both paths,
+See [`docs/gui-graphics.md`](docs/gui-graphics.md) for both paths,
 optional native configuration, host scheduling and teardown.
 
 GUI input routing (#226) adds clipped topmost hit testing, bubbling callbacks, hover notifications,
@@ -276,8 +276,8 @@ UTF-16 conversion, marked text and candidate-window placement.
 Scrolling translates children consistently in drawing, hit testing and
 absolute bounds without regenerating layout or shapes.
 Contexts are non-copyable and non-movable so callbacks and Widget references
-keep a stable owner. Application text engines/registered textures must outlive
-the elements using them.
+keep a stable owner. Graphics-owned text engines and registered textures must
+outlive the elements using them.
 
 ```cpp
 truffle::gui::Context ui;

@@ -1,4 +1,4 @@
-#include "../examples/gui_presentation/gui_application.hpp"
+#include "../examples/gui_presentation/gui_graphics.hpp"
 #include "test_support.hpp"
 #include "truffle/gui/builder.hpp"
 #include "truffle/gui/collections.hpp"
@@ -9,7 +9,7 @@
 
 int main() {
   using namespace truffle;
-  auto result = gui::Application::create({});
+  auto result = gui::Graphics::create({});
   TFL_CHECK(!result.ok() && result.status().code == base::StatusCode::unsupported);
   gui::Context context;
   TFL_CHECK(context.decoration(context.root()).value().fill.a == 0);
