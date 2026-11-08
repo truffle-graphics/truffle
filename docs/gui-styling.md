@@ -96,7 +96,9 @@ been assigned a style.
 | Menu separator | Minimum height 9 |
 
 Use `style.checkbox`, `style.slider` or `style.menu` to change those specific
-metrics. Menu leading width applies to items, not buttons. Checkbox padding
+metrics. Menu leading width applies to items, not buttons.
+`style.menu.shortcut_font_size` (literal or font-size token) sizes menu-item
+shortcut text; unset, it follows the item's main font size. Checkbox padding
 normally includes its indicator width and gap; an explicit component padding
 replaces that derived padding, so include any desired indicator inset.
 Optional Dock components use the same style layers; `DockMetrics` separately

@@ -7,7 +7,7 @@ simulations, CAD-style applications, games, and other graphics-heavy software.
 
 - Stage: Draft
 - RHI: Breaking RHI 1 replacement in progress under milestone `Truffle RHI 1`
-- Owner: TinMan
+- Owner: LooseWired
 - License: Apache-2.0
 - Visibility: Public
 - Reason: Truffle is public engineering work and this repository contains the
@@ -472,7 +472,7 @@ AI sessions should start with [`AGENTS.md`](AGENTS.md) and
 ## Attribution
 
 If you use Truffle in your project, please mention Truffle and credit
-TinMan / George Gil in your project documentation.
+LooseWired / George Gil in your project documentation.
 
 ## Use
 

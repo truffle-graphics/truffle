@@ -60,7 +60,8 @@ private:
 };
 
 base::Status label(Context &context, ElementId parent, MenuTextStyle style,
-                   const std::string &text, std::uint16_t column, Widget &out) {
+                   const std::string &text, std::uint16_t column, Widget &out,
+                   StylePart font_part = StylePart::automatic) {
   auto made = Widget::create(context, parent,
                              {.kind = WidgetKind::label,
                               .text = text,
@@ -79,7 +80,8 @@ base::Status label(Context &context, ElementId parent, MenuTextStyle style,
     status = context.bind_component_property(out.element(), Property::text_color, parent);
   }
   if (status.ok()) {
-    status = context.bind_component_property(out.element(), Property::font_size, parent);
+    status = context.bind_component_property(out.element(), Property::font_size, parent,
+                                            font_part);
   }
   return status;
 }
@@ -519,7 +521,7 @@ base::Result<MenuItem> Menu::add_item(MenuItemDesc desc) {
     }
     if (status.ok()) {
       status = label(context, item->element, state_->text, item->desc.shortcut, 2,
-                     item->shortcut);
+                     item->shortcut, StylePart::shortcut_text);
     }
     if (status.ok()) {
       status = indicator(context, item->element, 0, Indicator::none, item->mark);

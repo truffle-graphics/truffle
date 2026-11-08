@@ -692,6 +692,31 @@ int component_metrics() {
   tests::require(context.set_property_override(item.element(), Property::menu_column_gap, 4.0F));
   frame(context);
   TFL_CHECK(context.bounds(item_children[0]).value().x == 38);
+
+  const auto size_of = [&](ElementId element) {
+    return std::get<FontSize>(context.property(element, Property::font_size).value());
+  };
+  TFL_CHECK(size_of(item_children[1]) == size_of(item_children[0]));
+  ComponentStyle global;
+  global.menu.shortcut_font_size = FontSize{9.0F};
+  tests::require(context.set_component_style(Component::menu_item, global));
+  frame(context);
+  TFL_CHECK(size_of(item_children[1]).units == 9.0F);
+  TFL_CHECK(size_of(item_children[0]) != size_of(item_children[1]));
+  ComponentStyle local;
+  local.font_size = FontSize{20.0F};
+  local.menu.shortcut_font_size = FontSize{11.0F};
+  tests::require(context.set_component_style(item.element(), local));
+  frame(context);
+  TFL_CHECK(size_of(item_children[0]).units == 20.0F);
+  TFL_CHECK(size_of(item_children[1]).units == 11.0F);
+  tests::require(context.set_component_style(item.element(), ComponentStyle{}));
+  tests::require(context.set_component_style(Component::menu_item, ComponentStyle{}));
+  frame(context);
+  TFL_CHECK(size_of(item_children[1]) == size_of(item_children[0]));
+  ComponentStyle invalid;
+  invalid.menu.shortcut_font_size = FontSize{0.0F};
+  TFL_CHECK(!context.set_component_style(item.element(), invalid).ok());
   return 0;
 }
 

@@ -1,5 +1,5 @@
 set(CPACK_PACKAGE_NAME "Truffle")
-set(CPACK_PACKAGE_VENDOR "TinMan")
+set(CPACK_PACKAGE_VENDOR "LooseWired")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Modular graphics framework, composed of independently usable libraries")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_RESOURCE_FILE_LICENSE "${PROJECT_SOURCE_DIR}/LICENSE")

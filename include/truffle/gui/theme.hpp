@@ -73,6 +73,8 @@ struct MenuMetrics {
     std::optional<float> leading_width;
     std::optional<float> trailing_width;
     std::optional<float> column_gap;
+    // Unset inherits the main font size of the same menu item or button.
+    std::optional<FontSizeStyle> shortcut_font_size;
     friend bool operator==(const MenuMetrics&, const MenuMetrics&) = default;
 };
 
@@ -118,7 +120,8 @@ struct ComponentState {
 };
 
 enum class StylePart : std::uint8_t {
-    automatic, fill, border, text, indicator, indicator_border, selection, caret, composition
+    automatic, fill, border, text, indicator, indicator_border, selection, caret, composition,
+    shortcut_text
 };
 
 struct StyleStats {

@@ -32,6 +32,16 @@ Metal/Vulkan drawing selection-pixel failures also occur at the previous
 commit, and the Vulkan package check covers unchanged shaders. Studio (#31)
 was ported in the same slice, built strictly and passed its tests.
 
+## Menu shortcut text size (#281)
+
+`ComponentStyle::menu.shortcut_font_size` optionally sizes menu-item shortcut
+text through the existing local, global and default layers (fluent `style()`
+included). Unset, shortcut text follows the item's main font size, so default
+appearance and Studio are unchanged. Validated: strict Debug
+`truffle_gui_menu_tests` passed (inherit, global, per-item, reset, invalid
+values). No native visual or text-enabled check was run. Owner naming in
+README, NOTICE and CPack metadata now reads LooseWired.
+
 ## GUI component style contract (#280)
 
 GUI now resolves typed shared tokens, Truffle component defaults, global

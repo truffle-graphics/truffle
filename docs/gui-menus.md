@@ -106,6 +106,12 @@ Menu item styles also expose indicator size, column widths and gaps; standalone
 menu buttons expose their indicator size, trailing width and gap. Per-item and
 per-button styles reach their internal labels and indicators.
 
+`ComponentStyle::menu.shortcut_font_size` optionally sizes shortcut text
+independently, globally per component or per item (including through the fluent
+`style()` API). Unset, shortcut text follows the item's main font size, which
+is the default; clearing the override restores that inheritance. Changes update
+live text and layout.
+
 The shared GUI extensions are:
 
 - `Context::set_visible`: collapse a subtree out of layout, drawing and input.

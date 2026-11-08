@@ -198,6 +198,7 @@ const StateValues<ColorStyle>& colors(const ComponentStyle& style, StylePart par
     case StylePart::selection: return style.selection;
     case StylePart::caret: return style.caret;
     case StylePart::composition: return style.composition;
+    case StylePart::shortcut_text: break;
     }
     return style.fill;
 }
@@ -282,6 +283,21 @@ base::Status validate(const Context& context, Component component, const Compone
             return invalid("GUI component font size is invalid");
         }
     }
+    if (style.menu.shortcut_font_size) {
+        FontSize size;
+        if (const auto* literal = std::get_if<FontSize>(&*style.menu.shortcut_font_size)) {
+            size = *literal;
+        } else {
+            const auto token =
+                context.theme_value(std::get<FontSizeToken>(*style.menu.shortcut_font_size));
+            if (!token.ok()) { return invalid("GUI menu shortcut font size token is invalid"); }
+            size = token.value();
+        }
+        if (size.units && (!std::isfinite(*size.units) || *size.units <= 0 ||
+                           *size.units > 512)) {
+            return invalid("GUI menu shortcut font size is invalid");
+        }
+    }
     if (style.padding) {
         if (const auto* literal = std::get_if<Edges>(&*style.padding)) {
             if (!valid_edges(*literal)) { return invalid("GUI component padding is invalid"); }
@@ -296,7 +312,8 @@ base::Status validate(const Context& context, Component component, const Compone
     const bool slider = style.slider.track_thickness || style.slider.thumb_width ||
                         style.slider.thumb_inset;
     const bool menu = style.menu.indicator_size || style.menu.leading_width ||
-                      style.menu.trailing_width || style.menu.column_gap;
+                      style.menu.trailing_width || style.menu.column_gap ||
+                      style.menu.shortcut_font_size;
     if ((checkbox && component != Component::checkbox) ||
         (slider && component != Component::slider) ||
         (menu && component != Component::menu_button && component != Component::menu_item) ||
@@ -456,7 +473,7 @@ base::Status Context::set_component_style_handler(ElementId element,
 base::Result<ThemeValue> Context::component_property(ElementId element, Property property,
                                                       StylePart part) const {
     const Node* node = find(element);
-    if (node == nullptr || !node->component || part > StylePart::composition) {
+    if (node == nullptr || !node->component || part > StylePart::shortcut_text) {
         return invalid("GUI component is not alive or style part is invalid");
     }
     const auto& data = *node->component;
@@ -494,6 +511,15 @@ base::Result<ThemeValue> Context::component_property(ElementId element, Property
     }
     if (property == Property::font_size) {
         const auto* value = select(base.font_size, global.font_size, local.font_size);
+        if (part == StylePart::shortcut_text) {
+            if (data.kind != Component::menu_item && data.kind != Component::menu_button) {
+                return invalid("GUI shortcut text is a menu item or menu button part");
+            }
+            const auto* shortcut = select(base.menu.shortcut_font_size,
+                                          global.menu.shortcut_font_size,
+                                          local.menu.shortcut_font_size);
+            if (shortcut != nullptr) { value = shortcut; }
+        }
         if (value == nullptr) { return invalid("GUI component font size is not defined"); }
         if (const auto* literal = std::get_if<FontSize>(value)) { return ThemeValue{*literal}; }
         const auto resolved = theme_value(std::get<FontSizeToken>(*value));
