@@ -1,10 +1,9 @@
 #include "../examples/gui_presentation/gui_graphics.hpp"
 #include "test_support.hpp"
-#include "truffle/gui/builder.hpp"
 #include "truffle/gui/collections.hpp"
-#include "truffle/gui/menus.hpp"
 #include "truffle/gui/region.hpp"
 #include "truffle/gui/text_edit.hpp"
+#include "truffle/gui/ui.hpp"
 #include "truffle/gui/viewport.hpp"
 
 int main() {
@@ -13,8 +12,9 @@ int main() {
   TFL_CHECK(!result.ok() && result.status().code == base::StatusCode::unsupported);
   gui::Context context;
   TFL_CHECK(context.decoration(context.root()).value().fill.a == 0);
-  auto menu = gui::MenuBar::create(context, context.root());
-  TFL_CHECK(menu.ok());
+  gui::Context menus; // Ui gives its root a stack; keep it off the placed viewport below
+  gui::Ui ui{menus};
+  TFL_CHECK(ui.root().menu_bar().valid());
   auto viewport = gui::Viewport::create(context, context.root());
   TFL_CHECK(viewport.ok());
   TFL_CHECK(context.set_viewport({32, 24}, 2).ok());

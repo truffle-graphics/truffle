@@ -82,6 +82,14 @@ base::Status Context::set_event_handler(ElementId element, EventHandler handler)
     return base::Status::success();
 }
 
+base::Result<EventHandler> Context::event_handler(ElementId element) const {
+    const Node* node = find(element);
+    if (node == nullptr) {
+        return invalid_target();
+    }
+    return node->handler;
+}
+
 bool Context::input_enabled(ElementId element) const noexcept {
     for (ElementId up = element; up.valid();) {
         const Node* node = find(up);

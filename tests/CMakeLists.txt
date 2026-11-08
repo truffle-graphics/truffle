@@ -832,6 +832,7 @@ add_executable(truffle_gui_theme_tests gui_theme_tests.cpp)
 target_link_libraries(truffle_gui_theme_tests PRIVATE truffle_gui truffle_backend_null)
 target_compile_definitions(truffle_gui_theme_tests PRIVATE
     TFL_TEST_GUI_TEXT=$<BOOL:${TFL_GUI_ENABLE_TEXT}>)
+target_include_directories(truffle_gui_theme_tests PRIVATE "${PROJECT_SOURCE_DIR}/src/gui")
 truffle_target_warnings(truffle_gui_theme_tests)
 add_test(NAME truffle_gui_theme_tests COMMAND truffle_gui_theme_tests)
 
@@ -839,22 +840,25 @@ add_executable(truffle_gui_widget_tests gui_widget_tests.cpp)
 target_link_libraries(truffle_gui_widget_tests PRIVATE truffle_gui truffle_backend_null)
 target_compile_definitions(truffle_gui_widget_tests PRIVATE
     TFL_TEST_GUI_TEXT=$<BOOL:${TFL_GUI_ENABLE_TEXT}>)
+target_include_directories(truffle_gui_widget_tests PRIVATE "${PROJECT_SOURCE_DIR}/src/gui")
 truffle_target_warnings(truffle_gui_widget_tests)
 add_test(NAME truffle_gui_widget_tests COMMAND truffle_gui_widget_tests)
 
 add_executable(truffle_gui_menu_tests gui_menu_tests.cpp)
 target_link_libraries(truffle_gui_menu_tests PRIVATE truffle_gui truffle_backend_null)
-target_include_directories(truffle_gui_menu_tests PRIVATE
-    "${PROJECT_SOURCE_DIR}/examples/gui_menus")
+target_include_directories(truffle_gui_menu_tests PRIVATE "${PROJECT_SOURCE_DIR}/src/gui")
 target_compile_definitions(truffle_gui_menu_tests PRIVATE
     TFL_TEST_GUI_TEXT=$<BOOL:${TFL_GUI_ENABLE_TEXT}>)
 truffle_target_warnings(truffle_gui_menu_tests)
 add_test(NAME truffle_gui_menu_tests COMMAND truffle_gui_menu_tests)
 
-add_executable(truffle_gui_builder_tests gui_builder_tests.cpp)
-target_link_libraries(truffle_gui_builder_tests PRIVATE truffle_gui)
-truffle_target_warnings(truffle_gui_builder_tests)
-add_test(NAME truffle_gui_builder_tests COMMAND truffle_gui_builder_tests)
+add_executable(truffle_gui_ui_tests gui_ui_tests.cpp)
+target_link_libraries(truffle_gui_ui_tests PRIVATE truffle_gui_dock truffle_backend_null)
+target_compile_definitions(truffle_gui_ui_tests PRIVATE
+    TFL_TEST_GUI_TEXT=$<BOOL:${TFL_GUI_ENABLE_TEXT}>)
+target_include_directories(truffle_gui_ui_tests PRIVATE "${PROJECT_SOURCE_DIR}/examples/gui_menus")
+truffle_target_warnings(truffle_gui_ui_tests)
+add_test(NAME truffle_gui_ui_tests COMMAND truffle_gui_ui_tests)
 
 add_executable(truffle_gui_region_tests gui_region_tests.cpp)
 target_link_libraries(truffle_gui_region_tests PRIVATE truffle_gui)
@@ -892,6 +896,7 @@ if(APPLE AND TFL_BUILD_BACKEND_METAL)
         truffle_gui truffle_backend_metal)
     target_compile_definitions(truffle_gui_drawing_metal_tests PRIVATE
         TFL_TEST_GUI_TEXT=$<BOOL:${TFL_GUI_ENABLE_TEXT}> TFL_TEST_GUI_VULKAN=0)
+    target_include_directories(truffle_gui_drawing_metal_tests PRIVATE "${PROJECT_SOURCE_DIR}/src/gui")
     truffle_target_warnings(truffle_gui_drawing_metal_tests)
     add_test(NAME truffle_gui_drawing_metal_tests COMMAND truffle_gui_drawing_metal_tests)
     set_tests_properties(truffle_gui_drawing_metal_tests PROPERTIES
@@ -906,6 +911,7 @@ if(TFL_BUILD_BACKEND_VULKAN)
         "${PROJECT_SOURCE_DIR}/src/backends/vulkan")
     target_compile_definitions(truffle_gui_drawing_vulkan_tests PRIVATE
         TFL_TEST_GUI_TEXT=$<BOOL:${TFL_GUI_ENABLE_TEXT}> TFL_TEST_GUI_VULKAN=1)
+    target_include_directories(truffle_gui_drawing_vulkan_tests PRIVATE "${PROJECT_SOURCE_DIR}/src/gui")
     truffle_target_warnings(truffle_gui_drawing_vulkan_tests)
     add_test(NAME truffle_gui_drawing_vulkan_tests COMMAND truffle_gui_drawing_vulkan_tests)
     set_tests_properties(truffle_gui_drawing_vulkan_tests PROPERTIES

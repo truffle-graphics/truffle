@@ -1,4 +1,4 @@
-#include "truffle/gui/widgets.hpp"
+#include "widget_object.hpp"
 
 #include "truffle/gui/themes.hpp"
 
@@ -6,7 +6,7 @@
 #include <cmath>
 #include <utility>
 
-namespace truffle::gui {
+namespace truffle::gui::detail {
 namespace {
 
 base::Status invalid_widget() {
@@ -561,6 +561,14 @@ base::Result<float> Widget::value() const {
     if (!alive() || state_->desc.kind != WidgetKind::slider) { return invalid_widget(); }
     return state_->desc.value;
 }
+base::Status Widget::set_step(float step) {
+    if (!alive() || state_->desc.kind != WidgetKind::slider || !std::isfinite(step) ||
+        step <= 0) {
+        return invalid_widget();
+    }
+    state_->desc.step = step;
+    return base::Status::success();
+}
 base::Status Widget::set_scroll(Point offset) {
     return state_ ? state_->move_scroll(offset) : invalid_widget();
 }
@@ -580,4 +588,4 @@ base::Status Widget::set_enabled(bool enabled) {
         ? base::Status::success() : state_->appearance();
 }
 
-} // namespace truffle::gui
+} // namespace truffle::gui::detail

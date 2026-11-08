@@ -4,13 +4,14 @@
 #include "renderer_native_test_utils.hpp"
 #include "rhi_test_utils.hpp"
 #include "test_support.hpp"
-#include "truffle/gui/widgets.hpp"
+#include "widget_object.hpp"
 
 #include <limits>
 
 namespace {
 using namespace truffle;
 using namespace truffle::gui;
+using namespace truffle::gui::detail;
 
 void place(Context& c, ElementId id, Point position, Size size) {
     LayoutParams params;

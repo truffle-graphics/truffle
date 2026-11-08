@@ -7,7 +7,8 @@
 #include <memory>
 #include <string>
 
-namespace truffle::gui {
+// Internal retained widget objects behind the public fluent API (ui.hpp).
+namespace truffle::gui::detail {
 
 enum class WidgetKind : std::uint8_t { panel, label, image, button, checkbox, slider,
                                        scroll_area, text_edit };
@@ -52,6 +53,7 @@ public:
     [[nodiscard]] base::Result<bool> checked() const;
     [[nodiscard]] base::Status set_value(float value);
     [[nodiscard]] base::Result<float> value() const;
+    [[nodiscard]] base::Status set_step(float step);
     [[nodiscard]] base::Status set_scroll(Point offset);
     [[nodiscard]] base::Result<Point> scroll() const;
     [[nodiscard]] base::Status set_enabled(bool enabled);
@@ -62,4 +64,4 @@ private:
     std::shared_ptr<State> state_;
 };
 
-} // namespace truffle::gui
+} // namespace truffle::gui::detail

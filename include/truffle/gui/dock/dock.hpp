@@ -3,6 +3,7 @@
 #include "truffle/gui/context.hpp"
 #include "truffle/gui/dock/layout.hpp"
 #include "truffle/gui/surface.hpp"
+#include "truffle/gui/ui.hpp"
 
 #include <memory>
 #include <optional>
@@ -86,6 +87,9 @@ public:
     // Registers a panel and takes `content` (reparented into the dock). The
     // panel is hidden until a layout or `dock` places it.
     [[nodiscard]] base::Status add_panel(std::string id, std::string title, ElementId content);
+    // Creates a vertical Container and registers it as a panel's content.
+    // Failures go to the Ui error handler and return an invalid Container.
+    gui::Container panel(Ui& ui, std::string id, std::string title);
     // Undocks and unregisters a panel; its content is reparented to `new_parent`.
     [[nodiscard]] base::Status remove_panel(std::string_view id, ElementId new_parent);
 

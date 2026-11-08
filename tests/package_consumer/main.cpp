@@ -10,7 +10,7 @@
 #include "truffle/encom_renderer/encom_render_adapter.hpp"
 #include "truffle/gui/context.hpp"
 #include "truffle/gui/dock/dock.hpp"
-#include "truffle/gui/widgets.hpp"
+#include "truffle/gui/ui.hpp"
 #include "../gui_text_fixture.hpp"
 #include "truffle/renderer/specialist/data_layout.hpp"
 #include "truffle/renderer/specialist/depth_target.hpp"
@@ -35,14 +35,18 @@ int main() {
 
     truffle::gui::Context gui;
     if (!gui.create(gui.root()).ok()) return 1;
-    auto button = truffle::gui::Widget::create(gui, gui.root(), {
-        .kind = truffle::gui::WidgetKind::button});
-    if (!button.ok() || !gui.set_viewport({100, 100}).ok()) return 1;
+    truffle::gui::Ui ui{gui};
+    bool clicked = false;
+    auto button = ui.root().button("").on_click([&] { clicked = true; });
+    if (!button.valid() || !gui.set_viewport({100, 100}).ok()) return 1;
     if (!gui.prepare_frame(truffle::gui::Context::Clock::now()).status.ok()) return 1;
-    if (!gui.focus(button.value().element()).ok() ||
-        !gui.handle(truffle::gui::KeyEvent{.key = truffle::gui::Key::space}).ok()) return 1;
+    if (!gui.focus(button.element()).ok() ||
+        !gui.handle(truffle::gui::KeyEvent{.key = truffle::gui::Key::space}).ok() ||
+        !gui.handle(truffle::gui::KeyEvent{.key = truffle::gui::Key::space, .down = false}).ok() ||
+        !clicked)
+        return 1;
     auto dock = truffle::gui::dock::DockSpace::create(gui, gui.root());
-    if (!dock.ok() || !dock.value().add_panel("view", "", gui.create(gui.root()).value()).ok() ||
+    if (!dock.ok() || !dock.value().panel(ui, "view", "").valid() ||
         !dock.value().restore("(tabs 0 \"view\")").ok()) return 1;
 
     truffle::assets::GeometryStreamDesc stream;

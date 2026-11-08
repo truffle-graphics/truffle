@@ -30,6 +30,12 @@ bool valid_value(const ThemeValue& value) {
     return !size.units || (std::isfinite(*size.units) && *size.units > 0 && *size.units <= 512);
 }
 
+// Layouts whose child gap follows Property::spacing.
+bool spaced(const Layout* layout) {
+    return dynamic_cast<const StackLayout*>(layout) != nullptr ||
+           dynamic_cast<const GridLayout*>(layout) != nullptr;
+}
+
 bool matches(Property property, const ThemeValue& value) {
     switch (property) {
     case Property::fill: case Property::border_color: case Property::text_color:
@@ -106,9 +112,8 @@ base::Status Context::bind_property(ElementId element, Property property, std::s
     if (node == nullptr || found == theme_.end() || !matches(property, found->second)) {
         return invalid_style("GUI property needs a live element and matching theme value");
     }
-    if (property == Property::spacing &&
-        dynamic_cast<const StackLayout*>(node->layout.get()) == nullptr) {
-        return invalid_style("GUI spacing is a StackLayout property");
+    if (property == Property::spacing && !spaced(node->layout.get())) {
+        return invalid_style("GUI spacing is a StackLayout or GridLayout property");
     }
     auto& binding = node->styles[static_cast<std::size_t>(property)];
     if (binding.name == name && !binding.component) { return base::Status::success(); }
@@ -136,9 +141,8 @@ base::Status Context::set_property_override(ElementId element, Property property
     if (node == nullptr || !matches(property, value) || !valid_value(value)) {
         return invalid_style("GUI override requires a live element and matching valid value");
     }
-    if (property == Property::spacing &&
-        dynamic_cast<const StackLayout*>(node->layout.get()) == nullptr) {
-        return invalid_style("GUI spacing is a StackLayout property");
+    if (property == Property::spacing && !spaced(node->layout.get())) {
+        return invalid_style("GUI spacing is a StackLayout or GridLayout property");
     }
     auto& binding = node->styles[static_cast<std::size_t>(property)];
     if (binding.override_value == value) { return base::Status::success(); }
@@ -211,7 +215,10 @@ base::Result<ThemeValue> Context::property(ElementId element, Property property)
         if (const auto* stack = dynamic_cast<const StackLayout*>(node->layout.get())) {
             return ThemeValue{stack->options().spacing};
         }
-        return invalid_style("GUI spacing is a StackLayout property");
+        if (const auto* grid = dynamic_cast<const GridLayout*>(node->layout.get())) {
+            return ThemeValue{grid->options().column_spacing};
+        }
+        return invalid_style("GUI spacing is a StackLayout or GridLayout property");
     case Property::count: return invalid_style("GUI property is out of range");
     }
     return invalid_style("GUI property is out of range");
@@ -330,14 +337,23 @@ base::Result<StyleStats> Context::update_styles() {
             }
         }
         if (spacing) {
-            const auto* stack = dynamic_cast<const StackLayout*>(node->layout.get());
-            if (stack == nullptr) {
-                return invalid_style("GUI spacing binding requires a StackLayout");
+            std::shared_ptr<Layout> spaced_layout;
+            if (const auto* stack = dynamic_cast<const StackLayout*>(node->layout.get())) {
+                if (auto options = stack->options(); options.spacing != *spacing) {
+                    options.spacing = *spacing;
+                    spaced_layout = std::make_shared<StackLayout>(options);
+                }
+            } else if (const auto* grid = dynamic_cast<const GridLayout*>(node->layout.get())) {
+                auto options = grid->options();
+                if (options.column_spacing != *spacing || options.row_spacing != *spacing) {
+                    options.column_spacing = options.row_spacing = *spacing;
+                    spaced_layout = std::make_shared<GridLayout>(std::move(options));
+                }
+            } else {
+                return invalid_style("GUI spacing binding requires a StackLayout or GridLayout");
             }
-            auto options = stack->options();
-            if (options.spacing != *spacing) {
-                options.spacing = *spacing;
-                const auto status = set_layout(element, std::make_shared<StackLayout>(options));
+            if (spaced_layout) {
+                const auto status = set_layout(element, std::move(spaced_layout));
                 if (!status.ok()) { return status; }
             }
         }

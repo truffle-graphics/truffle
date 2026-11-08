@@ -586,6 +586,26 @@ base::Status Context::clear_text(ElementId element) {
     return base::Status::success();
 }
 
+base::Status Context::set_paint(ElementId element, PaintLayer layer, PaintFunction paint) {
+    Node* node = find(element);
+    const auto index = static_cast<std::size_t>(layer);
+    if (node == nullptr || index >= node->paint.size()) {
+        return invalid_element();
+    }
+    node->paint[index] = std::move(paint);
+    raise(element, *node, Dirty::shape);
+    return base::Status::success();
+}
+
+base::Status Context::invalidate_shapes(ElementId element) {
+    Node* node = find(element);
+    if (node == nullptr) {
+        return invalid_element();
+    }
+    raise(element, *node, Dirty::shape);
+    return base::Status::success();
+}
+
 ShapeStats Context::update_shapes() {
     static const DecorationBuilder fallback;
     ShapeStats stats;
@@ -598,8 +618,18 @@ ShapeStats Context::update_shapes() {
         node->shapes.indices.clear();
         node->shapes.segments.clear();
         ShapeWriter writer(node->shapes);
-        const ShapeBuilder& builder = node->builder ? *node->builder : fallback;
-        builder.build(writer, node->rect.size(), node->decoration);
+        const auto paint = [&](PaintLayer layer) {
+            const PaintFunction& function = node->paint[static_cast<std::size_t>(layer)];
+            if (!function) { return false; }
+            Painter painter(*this, element, writer, node->rect.size(), node->decoration);
+            function(painter);
+            return true;
+        };
+        paint(PaintLayer::background);
+        if (!paint(PaintLayer::replace)) {
+            const ShapeBuilder& builder = node->builder ? *node->builder : fallback;
+            builder.build(writer, node->rect.size(), node->decoration);
+        }
         if (node->text) {
             const TextBlock& text = *node->text;
             const Decoration glyph_decoration{.fill = text.color, .texture = text.atlas};
@@ -616,6 +646,7 @@ ShapeStats Context::update_shapes() {
                             decoration);
             }
         }
+        paint(PaintLayer::foreground);
         ++stats.regenerated;
     }
     clear_dirty(Dirty::shape);
@@ -829,6 +860,19 @@ Size Context::desired_of(ElementId element) const noexcept {
     return node == nullptr ? Size{} : node->desired;
 }
 
+namespace {
+
+// An unbounded placement extent fills the rest of the parent on that axis.
+Rect fill_placement(Rect placed, Size parent) {
+    if (!std::isfinite(placed.width)) { placed.width = std::max(0.0F, parent.width - placed.x); }
+    if (!std::isfinite(placed.height)) {
+        placed.height = std::max(0.0F, parent.height - placed.y);
+    }
+    return placed;
+}
+
+} // namespace
+
 Size Context::measure_element(ElementId element, Constraints constraints) {
     Node* node = find(element);
     if (node == nullptr) {
@@ -868,7 +912,10 @@ Size Context::measure_element(ElementId element, Constraints constraints) {
         const std::vector<ElementId> children = node->children;
         for (const ElementId child : children) {
             if (const auto placed = find(child)->placement; placed && visible(child)) {
-                static_cast<void>(measure_element(child, Constraints::tight(placed->size())));
+                const Size parent{std::isfinite(max_w) ? max_w : 0.0F,
+                                  std::isfinite(max_h) ? max_h : 0.0F};
+                static_cast<void>(measure_element(
+                    child, Constraints::tight(fill_placement(*placed, parent).size())));
             }
         }
         node = find(element);
@@ -915,7 +962,7 @@ void Context::arrange_element(ElementId element, Rect rect) {
         const std::vector<ElementId> children = node->children;
         for (const ElementId child : children) {
             if (const auto& placed = find(child)->placement; placed && visible(child)) {
-                arrange_element(child, *placed);
+                arrange_element(child, fill_placement(*placed, rect.size()));
             }
         }
     }

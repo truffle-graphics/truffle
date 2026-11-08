@@ -32,7 +32,7 @@ enum class ColorToken : std::uint8_t {
 };
 
 enum class MetricToken : std::uint8_t {
-    radius, border_width, dock_marker_border_width, dock_radius, dock_tab_radius, count
+    radius, border_width, dock_marker_border_width, dock_radius, dock_tab_radius, spacing, count
 };
 
 enum class PaddingToken : std::uint8_t { standard, count };

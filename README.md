@@ -239,29 +239,33 @@ extended-grapheme boundaries. Newlines create separate lines; wrapping remains
 an application policy.
 Theme bindings govern named style properties; explicit layout sizing and
 padding follow the precedence described in the styling guide.
-Core widgets (#228) are checked `Widget` references created with `WidgetDesc`:
-panel, label, image, button, checkbox, slider and scroll area. The Context owns
-their elements; destroying a reference does not remove the UI. User actions
-invoke the descriptor callbacks; programmatic setters do not. Use `element()`
-for layout/theme overrides and `content()` to add children to a scroll area.
-Widgets retain semantic roles/labels, not an accessibility implementation.
-Reusable menus (#269) are checked `MenuBar`, `MenuButton`, `Menu`, `MenuItem`
-and `MenuSeparator` references in `truffle/gui/menus.hpp`.
-`MenuBar::add_menu(label)` creates its trigger automatically; a standalone
-`MenuButton` creates its dropdown, and `Menu::add_submenu(label)` creates an
-arrow-bearing row and recursive menu. Entries have actions or submenus, disabled
-state, optional checks and shortcut display. One open chain per surface handles
-pointer/keyboard traversal, delayed hover, safe submenu travel, focus and
-dismissal; popups flip/shift within the viewport. Application values, actions,
+The consumer API (#282) is `truffle/gui/ui.hpp`: a `gui::Ui` wraps a
+`Context` and returns lightweight typed handles. Containers (`root`, `panel`,
+`row`, `column`, `grid`, `scroll`) create children directly — `label`, `button`,
+`checkbox`, `slider`, `text_field`, `text_area`, `image`, `canvas`,
+`menu_bar` and `menu_button` — and every handle configures itself fluently
+(`width`, `padding`, `weight`, `enabled`, `style`, `on_click`, `on_change`,
+`on_hover`, ...). There are no begin/end pairs and no exposed signals. The
+Context owns all elements; dropping a handle does not remove the UI. User
+actions invoke callbacks; programmatic setters do not. Failures are reported to
+the `Ui` error handler (stderr and a debug assertion by default), and
+`last_error` keeps the latest one. Stacked containers space children with the
+`gui.spacing` theme token unless `gap` overrides it.
+Custom drawing is retained: `on_paint(fn, PaintLayer)` records shapes through a
+`Painter` (background, replace or foreground layers) and `invalidate()`
+re-records them; `Ui::overlay()` is a viewport-sized canvas above everything.
+Menus (#269) are `MenuBar`, `Menu` and `MenuItem` handles: `menu_bar().menu`
+creates a trigger, `menu.menu` creates a submenu, and items have shortcut
+display, disabled state and optional self-toggling checks. One open chain per
+surface handles pointer/keyboard traversal, delayed hover, safe submenu travel,
+focus and dismissal; popups flip/shift within the viewport. Application values,
 shortcut bindings and native hosts remain outside the widgets. See
-[`docs/gui-menus.md`](docs/gui-menus.md) for composition, lifetime, themes and
-the compiled host-independent example. Adopting the new Context storage/input
-signatures requires rebuilding GUI consumers and libraries together.
-The `text_edit` widget (#252) is also available as `TextEdit`, through
-`ui::text_edit` in a builder, or as a two-way `RegionScope::text_edit`.
-It supports plain single-line/multiline UTF-8, grapheme-safe selection/deletion,
-visual arrow navigation, Home/End, clipboard, 128 undo/redo steps and IME
-preedit/commit. `Widget::editor()` exposes its checked editing reference.
+[`docs/gui-menus.md`](docs/gui-menus.md). `DockSpace::panel(ui, id, title)`
+returns a docked panel as a container.
+Text fields (#252) support plain single-line/multiline UTF-8, grapheme-safe
+selection/deletion, visual arrow navigation, Home/End, clipboard, 128 undo/redo
+steps and IME preedit/commit; `RegionScope::text_edit` remains for two-way
+region bindings.
 Programmatic `set_text` resets undo history without calling `text_changed`;
 user edits and undo/redo call it. Read-only controls still allow selection/copy.
 Line endings normalize to LF; single-line insertion converts line breaks to
@@ -282,13 +286,12 @@ keep a stable owner. Graphics-owned text engines and registered textures must
 outlive the elements using them.
 
 ```cpp
-truffle::gui::Context ui;
-auto result = truffle::gui::Widget::create(ui, ui.root(), {
-    .kind = truffle::gui::WidgetKind::button,
-    .activated = [] { /* update application state */ },
-});
-if (!result.ok()) { /* report result.status() */ }
-// A caption additionally supplies text, text_engine, font and atlas in WidgetDesc.
+truffle::gui::Context context;
+truffle::gui::Ui ui{context, {&text_engine, font, atlas}};
+auto row = ui.root().row();
+row.button("Run").on_click([] { /* update application state */ });
+row.slider(0, 1, 0.5F).weight(1).on_change([](float v) { /* ... */ });
+// Text widgets need the TextStyle engine, font and atlas.
 ```
 
 ## Build

@@ -5,13 +5,14 @@
 #include "test_support.hpp"
 #include "truffle/gui/context.hpp"
 #include "truffle/gui/themes.hpp"
-#include "truffle/gui/widgets.hpp"
+#include "widget_object.hpp"
 
 #include <limits>
 
 namespace {
 using namespace truffle;
 using namespace truffle::gui;
+using namespace truffle::gui::detail;
 
 int dependencies() {
     Context c;

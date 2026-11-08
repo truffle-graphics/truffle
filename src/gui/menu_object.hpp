@@ -8,13 +8,12 @@
 #include <string>
 #include <utility>
 
-namespace truffle::gui {
-namespace detail {
+// Internal retained menu objects behind the public fluent API (ui.hpp).
+namespace truffle::gui::detail {
 struct MenuState;
 struct MenuItemState;
 struct MenuButtonState;
 struct MenuBarState;
-} // namespace detail
 
 struct MenuTextStyle {
   TextEngine *text_engine = nullptr;
@@ -28,6 +27,9 @@ struct MenuItemDesc {
   std::optional<bool> checked; // empty has no checkmark; setters never invoke actions
   std::string shortcut;        // display only; the application owns shortcut bindings
   std::function<void()> activated;
+  // Activation flips `checked` first, then reports the new value.
+  bool toggles = false;
+  std::function<void(bool)> toggled;
 };
 
 class MenuItem;
@@ -57,8 +59,8 @@ private:
   friend class MenuItem;
   friend class MenuButton;
   friend class MenuBar;
-  explicit Menu(std::shared_ptr<detail::MenuState> state) : state_(std::move(state)) {}
-  std::shared_ptr<detail::MenuState> state_;
+  explicit Menu(std::shared_ptr<MenuState> state) : state_(std::move(state)) {}
+  std::shared_ptr<MenuState> state_;
 };
 
 class MenuItem {
@@ -72,6 +74,7 @@ public:
   [[nodiscard]] base::Status set_checked(std::optional<bool> checked);
   [[nodiscard]] base::Result<std::optional<bool>> checked() const;
   [[nodiscard]] base::Status set_shortcut(std::string shortcut);
+  [[nodiscard]] base::Status set_toggles(bool toggles, std::function<void(bool)> toggled);
   [[nodiscard]] base::Status set_action(std::function<void()> action);
   // An item has an action OR a submenu, never both. The submenu must be
   // unattached and belong to the same Context/surface. Cycles are rejected.
@@ -80,9 +83,9 @@ public:
 
 private:
   friend class Menu;
-  explicit MenuItem(std::shared_ptr<detail::MenuItemState> state)
+  explicit MenuItem(std::shared_ptr<MenuItemState> state)
       : state_(std::move(state)) {}
-  std::shared_ptr<detail::MenuItemState> state_;
+  std::shared_ptr<MenuItemState> state_;
 };
 
 class MenuSeparator {
@@ -93,9 +96,9 @@ public:
 
 private:
   friend class Menu;
-  explicit MenuSeparator(std::shared_ptr<detail::MenuItemState> state)
+  explicit MenuSeparator(std::shared_ptr<MenuItemState> state)
       : state_(std::move(state)) {}
-  std::shared_ptr<detail::MenuItemState> state_;
+  std::shared_ptr<MenuItemState> state_;
 };
 
 class MenuButton {
@@ -116,9 +119,9 @@ public:
 
 private:
   friend class MenuBar;
-  explicit MenuButton(std::shared_ptr<detail::MenuButtonState> state)
+  explicit MenuButton(std::shared_ptr<MenuButtonState> state)
       : state_(std::move(state)) {}
-  std::shared_ptr<detail::MenuButtonState> state_;
+  std::shared_ptr<MenuButtonState> state_;
 };
 
 class MenuBar {
@@ -133,9 +136,9 @@ public:
   [[nodiscard]] base::Result<MenuButton> add_menu(std::string label, Menu menu);
 
 private:
-  explicit MenuBar(std::shared_ptr<detail::MenuBarState> state)
+  explicit MenuBar(std::shared_ptr<MenuBarState> state)
       : state_(std::move(state)) {}
-  std::shared_ptr<detail::MenuBarState> state_;
+  std::shared_ptr<MenuBarState> state_;
 };
 
-} // namespace truffle::gui
+} // namespace truffle::gui::detail

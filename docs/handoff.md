@@ -5,6 +5,24 @@ This is the rolling execution handoff, not an implementation transcript.
 issues/Project own accepted work. Earlier phase details remain in their PRs,
 the support matrix and Git history.
 
+## Fluent GUI API (#282)
+
+The public consumer API is now `gui::Ui` in `truffle/gui/ui.hpp`: typed,
+copyable handles created from containers (`root().row().button(...)`) with
+chainable setters and `on_click`/`on_change`/`on_submit` callbacks, no
+begin/end calls and no exposed signals. `Painter` and `on_paint` give retained
+custom drawing per element; `Ui::overlay()` draws above every element.
+`DockSpace::panel(ui, id, title)` creates dock panels. The former
+`gui::Widget`, `gui::MenuBar` objects and the builder were removed from the
+public headers (the object classes are now private `detail` code). Stack and
+grid gaps follow the `gui.spacing` token (default 8) unless `gap()` or explicit
+`GridOptions` spacing overrides them.
+
+The strict Debug build passed. 28 of 31 GUI/package/consumer tests passed; the
+Metal/Vulkan drawing selection-pixel failures also occur at the previous
+commit, and the Vulkan package check covers unchanged shaders. Studio (#31)
+was ported in the same slice, built strictly and passed its tests.
+
 ## GUI component style contract (#280)
 
 GUI now resolves typed shared tokens, Truffle component defaults, global

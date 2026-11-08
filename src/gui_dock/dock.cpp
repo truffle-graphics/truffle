@@ -607,6 +607,22 @@ base::Result<DockSpace> DockSpace::create(Context& context, ElementId parent,
 ElementId DockSpace::element() const noexcept { return state_ ? state_->root : ElementId{}; }
 bool DockSpace::alive() const noexcept { return state_ && state_->live(); }
 
+gui::Container DockSpace::panel(Ui& ui, std::string id, std::string title) {
+    if (!alive()) {
+        ui.report(dead_dock());
+        return {};
+    }
+    auto content = ui.adopt(element()).column();
+    if (!content.valid()) { return {}; }
+    if (auto status = add_panel(std::move(id), std::move(title), content.element());
+        !status.ok()) {
+        content.remove();
+        ui.report(status);
+        return {};
+    }
+    return content;
+}
+
 base::Status DockSpace::add_panel(std::string id, std::string title, ElementId content) {
     if (!alive()) { return dead_dock(); }
     if (state_->transferring) { return invalid("GUI dock transfer is already in progress"); }

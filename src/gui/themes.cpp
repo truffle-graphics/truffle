@@ -11,8 +11,8 @@ using Token = std::pair<std::string_view, ThemeValue>;
 constexpr Color grey(float v, float a = 1.0F) { return {v, v, v, a}; }
 
 // Interaction states step lightness; accent is the strongest neutral contrast.
-const std::array<Token, 27>& tokens(BuiltinTheme theme) {
-    static const std::array<Token, 27> dark{{
+const std::array<Token, 28>& tokens(BuiltinTheme theme) {
+    static const std::array<Token, 28> dark{{
         {"gui.surface", grey(0.12F)},
         {"gui.control", grey(0.19F)},
         {"gui.hover", grey(0.25F)},
@@ -29,6 +29,7 @@ const std::array<Token, 27>& tokens(BuiltinTheme theme) {
         {"gui.radius", 4.0F},
         {"gui.border_width", 1.0F},
         {"gui.padding", Edges{8, 8, 8, 8}},
+        {"gui.spacing", 8.0F},
         {"gui.font_size", FontSize{}},
         {"dock.background", grey(0.07F)},
         {"dock.area", grey(0.12F)},
@@ -41,7 +42,7 @@ const std::array<Token, 27>& tokens(BuiltinTheme theme) {
         {"dock.radius", 0.0F},
         {"dock.tab_radius", 0.0F},
     }};
-    static const std::array<Token, 27> light{{
+    static const std::array<Token, 28> light{{
         {"gui.surface", grey(0.96F)},
         {"gui.control", grey(0.90F)},
         {"gui.hover", grey(0.85F)},
@@ -58,6 +59,7 @@ const std::array<Token, 27>& tokens(BuiltinTheme theme) {
         {"gui.radius", 4.0F},
         {"gui.border_width", 1.0F},
         {"gui.padding", Edges{8, 8, 8, 8}},
+        {"gui.spacing", 8.0F},
         {"gui.font_size", FontSize{}},
         {"dock.background", grey(0.84F)},
         {"dock.area", grey(0.96F)},

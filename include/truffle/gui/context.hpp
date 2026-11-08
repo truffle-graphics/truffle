@@ -7,6 +7,7 @@
 #include "truffle/gui/host.hpp"
 #include "truffle/gui/input.hpp"
 #include "truffle/gui/layout.hpp"
+#include "truffle/gui/painter.hpp"
 #include "truffle/gui/shapes.hpp"
 #include "truffle/gui/text.hpp"
 #include "truffle/gui/theme.hpp"
@@ -142,7 +143,8 @@ public:
     // Places `element` at `rect`, in its parent's coordinates, whatever the
     // parent's layout. The parent's layout no longer sees it, so siblings close
     // the gap; it is still measured (at `rect`'s size) and arranged. Empty
-    // returns it to the parent's layout. The root cannot be placed.
+    // returns it to the parent's layout. The root cannot be placed. An
+    // `unbounded` width or height fills the parent from the rect's origin.
     [[nodiscard]] base::Status set_placement(ElementId element, std::optional<Rect> rect);
     [[nodiscard]] std::optional<Rect> placement(ElementId element) const noexcept;
 
@@ -174,6 +176,14 @@ public:
     // DecorationBuilder.
     [[nodiscard]] base::Status set_shape_builder(ElementId element,
                                                  std::shared_ptr<const ShapeBuilder> builder);
+
+    // Custom retained painting for one layer; an empty function removes it.
+    // Paint functions run during `update_shapes` for shape-marked elements and
+    // must not mutate the tree. `replace` skips the element's shape builder.
+    [[nodiscard]] base::Status set_paint(ElementId element, PaintLayer layer,
+                                         PaintFunction paint);
+    // Marks the element's shapes for regeneration, re-running its painters.
+    [[nodiscard]] base::Status invalidate_shapes(ElementId element);
 
     // Replaces the element's shaped text. Its measured size contributes to the
     // element's intrinsic size; glyphs are drawn over its other shapes.
@@ -256,6 +266,7 @@ public:
     [[nodiscard]] base::Status set_interaction(ElementId element, Interaction interaction);
     [[nodiscard]] base::Result<Interaction> interaction(ElementId element) const;
     [[nodiscard]] base::Status set_event_handler(ElementId element, EventHandler handler);
+    [[nodiscard]] base::Result<EventHandler> event_handler(ElementId element) const;
     // Runs before normal routing, even when a target stops bubbling. Filters
     // are element-owned and surface-local; prevent_default suppresses normal
     // dispatch, not input/capture bookkeeping. Empty removes the filter.
@@ -379,6 +390,7 @@ private:
         bool clips = true;
         Decoration decoration;
         std::shared_ptr<const ShapeBuilder> builder;
+        std::array<PaintFunction, 3> paint;
         std::optional<TextBlock> text;
         ElementShapes shapes;
         Interaction interaction;

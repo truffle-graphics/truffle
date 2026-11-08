@@ -21,7 +21,7 @@ constexpr std::array color_names{
     "dock.tab", "dock.tab_active", "dock.divider", "dock.marker", "dock.marker_border"};
 constexpr std::array metric_names{
     "gui.radius", "gui.border_width", "dock.marker_border_width", "dock.radius",
-    "dock.tab_radius"};
+    "dock.tab_radius", "gui.spacing"};
 constexpr std::array padding_names{"gui.padding"};
 constexpr std::array font_size_names{"gui.font_size"};
 

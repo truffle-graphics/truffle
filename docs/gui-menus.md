@@ -1,60 +1,44 @@
 # Reusable GUI Menus (#269)
 
-`truffle/gui/menus.hpp` supplies `MenuBar`, `MenuButton`, `Menu`, `MenuItem`
-and `MenuSeparator` in `Truffle::GUI`. There is no application, workspace,
-windowing or GUI Dock dependency. The application still owns actions, selected
-values, shortcut bindings, fonts/atlases, the host loop and native rendering.
+Menus are part of the fluent consumer API in `truffle/gui/ui.hpp`
+(`Truffle::GUI`): `MenuBar`, `Menu` and `MenuItem` handles. There is no
+application, workspace, windowing or GUI Dock dependency. The application still
+owns actions, selected values, shortcut bindings, fonts/atlases, the host loop
+and native rendering.
 
 ## Composition
 
-The object API returns checked, non-owning references, like `Widget`. Dropping
-a reference leaves the Context-owned elements intact. Check each `base::Result`
-or `base::Status`; the example below uses a caller-provided `take` helper that
-propagates a failed result.
+Handles are cheap, non-owning values; dropping one leaves the Context-owned
+elements intact. Failures go to the `Ui` error handler instead of being returned
+from every call (see the GUI API guide in the `Ui` header).
 
 ```cpp
-const gui::MenuTextStyle text{&text_engine, font, atlas_id};
-auto bar = take(gui::MenuBar::create(context, parent, text));
-auto actions = take(bar.add_menu("Actions")); // creates and wires its trigger
-take(actions.add_item({
-    .text = "Run",
-    .shortcut = "Ctrl+R",                    // display, not a key binding
-    .activated = run_action,
-}));
-auto more = take(actions.add_submenu("More")); // creates its arrow-bearing item
-take(more.add_item({.text = "Run again", .activated = run_action}));
+gui::Ui ui{context, {&text_engine, font, atlas_id}};
+auto bar = ui.root().menu_bar();
+auto actions = bar.menu("Actions");          // creates and wires its trigger
+actions.item("Run")
+    .shortcut("Ctrl+R")                       // display, not a key binding
+    .on_click(run_action);
+actions.menu("More").item("Run again").on_click(run_action);
+actions.separator();
+actions.item("Add mode...").enabled(false);
 
-auto dropdown = take(gui::MenuButton::create(context, parent, "Mode", text));
-auto modes = take(dropdown.menu());
-auto selected = take(modes.add_item({
-    .text = "Design", .checked = true, .activated = select_design,
-}));
-take(modes.add_separator());
-take(modes.add_item({.text = "Add mode...", .enabled = false}));
+auto modes = ui.root().menu_button("Mode");  // standalone dropdown button
+modes.item("Wireframe").checkable(true).on_change([](bool on) { /* ... */ });
 ```
 
 A menu-bar trigger is always present, even with only one menu. A standalone
-button includes a downward indicator; menu-bar triggers do not. Put the bar
-and standalone button in the application's layout as separate elements.
-`Menu::trigger()` exposes the automatically created trigger for layout/styling.
-`Menu::element()` exposes the popup panel.
+menu button includes a downward indicator; menu-bar triggers do not.
+`Menu::open()` and `Menu::close()` drive the popup programmatically.
 
-For explicit composition, create an unattached `Menu`, then pass it to
-`MenuButton::create(context, parent, label, menu)` or
-`MenuBar::add_menu(label, menu)`. `MenuItem::set_submenu(menu)` attaches a
-previously created menu to an action-free item. The attachment must be local to
-the same Context/surface; an already attached menu and tree cycles are rejected.
-An item cannot have both an action and a submenu. An enabled item without
-either is non-actionable and skipped during keyboard traversal.
-
-`set_text`, `set_shortcut`, `set_enabled` and `set_checked` update persistent
-entries. `set_checked(std::nullopt)` removes the optional checkmark;
-`set_checked(false)` leaves the check slot unchecked. Setters never invoke
-application callbacks, and activation does not automatically toggle checks or
-choose radio groups. Applications publish their own selected values explicitly.
+`text`, `shortcut`, `enabled` and `checked` update persistent entries and never
+invoke application callbacks. A `checkable` item toggles its own check when
+activated and reports the new value through `on_change` before `on_click`.
+Radio-style exclusive choices remain an application policy: update sibling
+items with `checked(...)` from the callback.
 
 [`examples/gui_menus/menu_example.hpp`](../examples/gui_menus/menu_example.hpp)
-is a host-independent composition example compiled by the menu tests. It is not
+is a host-independent composition example compiled by the UI tests. It is not
 a second native host or a Studio integration.
 
 ## Interaction And Lifetime
@@ -141,7 +125,8 @@ new headers.
 
 ## Focused Evidence
 
-`truffle_gui_menu_tests` covers composition, pointer/keyboard behavior,
+`truffle_gui_ui_tests` covers fluent composition and self-toggling items;
+`truffle_gui_menu_tests` covers the internal menu objects, pointer/keyboard behavior,
 exact timer boundaries, safe submenu travel, focus/dismissal, disabled and
 checked rows, viewport flips/resize/movement, overflow selection, cleanup,
 Context teardown, and independent/moved surfaces.

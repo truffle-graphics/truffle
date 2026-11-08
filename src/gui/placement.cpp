@@ -1,6 +1,7 @@
 #include "truffle/gui/context.hpp"
 
 #include <algorithm>
+#include <cmath>
 
 namespace truffle::gui {
 namespace {
@@ -47,7 +48,9 @@ base::Status Context::set_placement(ElementId element, std::optional<Rect> rect)
         return base::Status::failure(base::StatusCode::invalid_argument,
                                      "the GUI root element cannot be placed");
     }
-    if (rect && (node->popup || rect->width < 0.0F || rect->height < 0.0F)) {
+    if (rect && (node->popup || !std::isfinite(rect->x) || !std::isfinite(rect->y) ||
+                 std::isnan(rect->width) || std::isnan(rect->height) || rect->width < 0.0F ||
+                 rect->height < 0.0F)) {
         return base::Status::failure(base::StatusCode::invalid_argument,
                                      "a GUI placement needs a non-negative size and no popup");
     }

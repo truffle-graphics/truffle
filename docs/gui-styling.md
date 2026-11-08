@@ -46,7 +46,14 @@ check(context.set_component_style(button.element(), {})); // inherit buttons
 `check` represents the application's normal error handling for `base::Status`.
 Token references stay live when their shared values change. Existing named
 theme bindings and direct `set_property_override`/`clear_property_override`
-remain available for individual elements.
+remain available for individual elements. With the fluent API, `ui.hpp`
+handles expose the same per-element levels as `button.style(special)` and
+`button.property(gui::Property::fill, color)`.
+
+`spacing` (`gui.spacing`, default 8) is the gap between children of the stack
+and grid containers created by `gui::Ui` (`root`, `panel`, `row`, `column`,
+`scroll`, `grid`); `Container::gap` overrides it for one container. A grid
+whose `GridOptions` set a spacing keeps that value.
 
 ## Shared tokens and palettes
 
@@ -55,7 +62,7 @@ Use the typed `Context::set_theme_value` and `theme_value` overloads:
 | Type | Tokens |
 | --- | --- |
 | `ColorToken` | `surface`, `control`, `hover`, `pressed`, `disabled`, `accent`, `border`, `text`, `text_disabled`, `image`, `selection`, `caret`, `composition`; `dock_background`, `dock_area`, `dock_tab`, `dock_tab_active`, `dock_divider`, `dock_marker`, `dock_marker_border` |
-| `MetricToken` | `radius`, `border_width`, `dock_marker_border_width`, `dock_radius`, `dock_tab_radius` |
+| `MetricToken` | `radius`, `border_width`, `dock_marker_border_width`, `dock_radius`, `dock_tab_radius`, `spacing` |
 | `PaddingToken` | `standard` |
 | `FontSizeToken` | `standard` |
 
@@ -97,8 +104,9 @@ owns docking layout and interaction geometry.
 
 ## Layout
 
-Width, height, position, row/column spacing and grid placement belong to
-`LayoutParams` and layouts, not the theme. A fixed axis or nonzero authored
+Width, height, position and grid placement belong to `LayoutParams` and
+layouts, not the theme. Stack and grid spacing come from the layout options
+unless the `spacing` property is bound or overridden. A fixed axis or nonzero authored
 minimum overrides that axis's styled minimum; the authored maximum clamps a
 styled minimum. Set a component's `min_size` to zero to remove its default
 minimum. Nonzero padding authored through `LayoutParams` takes precedence over

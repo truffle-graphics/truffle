@@ -379,9 +379,21 @@ base::Status MenuSession::activate(const std::shared_ptr<MenuItemState> &item) {
     return open_submenu(item);
   }
   const auto action = item->desc.activated;
+  const auto toggled = item->desc.toggled;
+  std::optional<bool> checked;
+  if (item->desc.toggles) {
+    checked = !item->desc.checked.value_or(false);
+    item->desc.checked = checked;
+    if (auto status = item->appearance(); !status.ok()) {
+      return status;
+    }
+  }
   const auto status = close_from(0);
   if (!status.ok()) {
     return status;
+  }
+  if (checked && toggled) {
+    toggled(*checked);
   }
   action();
   return base::Status::success();

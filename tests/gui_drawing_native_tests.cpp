@@ -2,9 +2,9 @@
 #include "renderer_native_test_utils.hpp"
 #include "gui_text_fixture.hpp"
 #include "truffle/gui/context.hpp"
-#include "truffle/gui/menus.hpp"
+#include "menu_object.hpp"
 #include "truffle/gui/specialist/painter.hpp"
-#include "truffle/gui/widgets.hpp"
+#include "widget_object.hpp"
 #include "truffle/renderer/specialist/frame_stream.hpp"
 #if TFL_TEST_GUI_VULKAN
 #include "truffle/rhi/vulkan_backend.hpp"
@@ -374,7 +374,7 @@ int run() {
     {
         gui::Context tree;
         widget_theme(tree);
-        auto panel = tests::require(gui::Widget::create(tree, tree.root()));
+        auto panel = tests::require(gui::detail::Widget::create(tree, tree.root()));
         place_widget(tree, panel.element(), {2, 2, 20, 20});
         pixels = render_context(tree, tree.element_count());
         expect_pixel(pixels, 5, 5, {0, 0, 255, 255}, "panel widget");
@@ -384,8 +384,8 @@ int run() {
     {
         gui::Context tree;
         widget_theme(tree);
-        auto label = tests::require(gui::Widget::create(tree, tree.root(), {
-            .kind = gui::WidgetKind::label, .text = "A", .text_engine = &text_engine,
+        auto label = tests::require(gui::detail::Widget::create(tree, tree.root(), {
+            .kind = gui::detail::WidgetKind::label, .text = "A", .text_engine = &text_engine,
             .font = font, .atlas = atlas_id}));
         place_widget(tree, label.element(), {2, 2, 10, 10});
         pixels = render_context(tree, tree.element_count());
@@ -428,8 +428,8 @@ int run() {
     {
         gui::Context tree;
         widget_theme(tree);
-        auto image_widget = tests::require(gui::Widget::create(tree, tree.root(), {
-            .kind = gui::WidgetKind::image, .image = image_id, .image_size = {8, 8}}));
+        auto image_widget = tests::require(gui::detail::Widget::create(tree, tree.root(), {
+            .kind = gui::detail::WidgetKind::image, .image = image_id, .image_size = {8, 8}}));
         place_widget(tree, image_widget.element(), {2, 2, 8, 8});
         pixels = render_context(tree, tree.element_count());
         expect_pixel(pixels, 3, 4, {255, 255, 255, 255}, "image widget white texel");
@@ -439,8 +439,8 @@ int run() {
         gui::Context tree;
         widget_theme(tree);
         int clicks = 0;
-        auto button = tests::require(gui::Widget::create(tree, tree.root(), {
-            .kind = gui::WidgetKind::button, .activated = [&] { ++clicks; }}));
+        auto button = tests::require(gui::detail::Widget::create(tree, tree.root(), {
+            .kind = gui::detail::WidgetKind::button, .activated = [&] { ++clicks; }}));
         place_widget(tree, button.element(), {2, 2, 24, 24});
         pixels = render_context(tree, tree.element_count());
         expect_pixel(pixels, 15, 15, {255, 0, 0, 255}, "button normal");
@@ -460,8 +460,8 @@ int run() {
     {
         gui::Context tree;
         widget_theme(tree);
-        auto check = tests::require(gui::Widget::create(tree, tree.root(),
-                                                       {.kind = gui::WidgetKind::checkbox}));
+        auto check = tests::require(gui::detail::Widget::create(tree, tree.root(),
+                                                       {.kind = gui::detail::WidgetKind::checkbox}));
         place_widget(tree, check.element(), {0, 0, 32, 24});
         tests::require(tree.set_property_override(check.element(), gui::Property::padding,
                                                   gui::Edges{24, 0, 0, 0}));
@@ -474,8 +474,8 @@ int run() {
     {
         gui::Context tree;
         widget_theme(tree);
-        auto slider = tests::require(gui::Widget::create(tree, tree.root(),
-                                                         {.kind = gui::WidgetKind::slider}));
+        auto slider = tests::require(gui::detail::Widget::create(tree, tree.root(),
+                                                         {.kind = gui::detail::WidgetKind::slider}));
         place_widget(tree, slider.element(), {2, 2, 24, 16});
         pixels = render_context(tree, tree.element_count());
         expect_pixel(pixels, 8, 10, {255, 255, 0, 255}, "slider at minimum");
@@ -486,8 +486,8 @@ int run() {
     {
         gui::Context tree;
         widget_theme(tree);
-        auto scroll = tests::require(gui::Widget::create(tree, tree.root(),
-                                             {.kind = gui::WidgetKind::scroll_area}));
+        auto scroll = tests::require(gui::detail::Widget::create(tree, tree.root(),
+                                             {.kind = gui::detail::WidgetKind::scroll_area}));
         place_widget(tree, scroll.element(), {2, 2, 16, 16});
         static_cast<void>(make(tree, scroll.content(), {0, 0, 16, 16}, fill({1, 0, 0, 1})));
         static_cast<void>(make(tree, scroll.content(), {0, 16, 16, 16}, fill({0, 1, 0, 1})));
@@ -516,13 +516,13 @@ int run() {
         tests::require(tree.set_theme_value("gui.border", Color{1, 1, 0, 1}));
         tests::require(tree.set_theme_value("gui.padding", gui::Edges{8, 8, 8, 8}));
         tests::require(tree.set_viewport({512, 240}));
-        gui::MenuTextStyle style;
+        gui::detail::MenuTextStyle style;
         std::string label;
 #if TFL_TEST_GUI_TEXT
         style = {&text_engine, font, atlas_id};
         label = "A";
 #endif
-        auto button = tests::require(gui::MenuButton::create(tree, tree.root(), label, style));
+        auto button = tests::require(gui::detail::MenuButton::create(tree, tree.root(), label, style));
         place_widget(tree, button.element(), {10, 10, 80, 28});
         auto menu = tests::require(button.menu());
         auto child = tests::require(menu.add_submenu(label));

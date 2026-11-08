@@ -1,6 +1,6 @@
 #pragma once
 
-#include "truffle/gui/builder.hpp"
+#include "truffle/gui/context.hpp"
 
 #include <functional>
 #include <string>
@@ -13,7 +13,7 @@ class RegionScope;
 struct RegionOptions {
     bool live = false;    // rerun every frame instead of only when invalidated
     float spacing = 0.0F; // between the region's top-level items (a column)
-    BuildOptions text;    // text engine/font/atlas for labels, buttons, checkboxes
+    TextStyle text;       // text engine/font/atlas for labels, buttons, checkboxes
 };
 
 // A subtree whose contents are described in immediate style. The body reruns in

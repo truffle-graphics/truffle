@@ -1,7 +1,7 @@
 #pragma once
 
-#include "truffle/gui/menus.hpp"
-#include "truffle/gui/widgets.hpp"
+#include "menu_object.hpp"
+#include "widget_object.hpp"
 
 #include <chrono>
 #include <vector>

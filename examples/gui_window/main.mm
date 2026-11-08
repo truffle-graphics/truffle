@@ -399,7 +399,7 @@ int run(bool smoke) {
     };
     host_window.view->queryArea = [&]() -> std::optional<gui::Rect> {
         if (app.context.focused() != app.editor.element()) { return std::nullopt; }
-        return require(require(app.editor.editor()).caret_rect());
+        return require(app.editor.editor().caret_rect());
     };
 
     std::uint32_t frames = 0;
@@ -519,7 +519,7 @@ int run(bool smoke) {
         throw std::runtime_error("accent change did not affect exactly its two paint dependents");
     }
 
-    require(app.scroll.set_scroll({0, 44}));
+    app.scroll.scroll_offset({0, 44});
     settle(4);
     expect(3, "scroll stored elements");
     if (last_work.styles.resolved != 0 || last_work.layout.measured != 0 ||
@@ -527,7 +527,7 @@ int run(bool smoke) {
         throw std::runtime_error("scrolling rebuilt stored elements");
     }
 
-    require(app.status.set_text("Button presses: 100"));
+    app.status.text("Button presses: 100");
     settle(4);
     expect(4, "one label changed");
     if (last_work.styles.resolved != 0 || last_work.layout.measured != 4 ||
@@ -550,12 +550,12 @@ int run(bool smoke) {
     }
     click(app.checkbox.element());
     expect(6, "checkbox callback");
-    if (require(app.checkbox.checked())) { throw std::runtime_error("checkbox did not toggle"); }
+    if (app.checkbox.checked()) { throw std::runtime_error("checkbox did not toggle"); }
     require(app.context.focus(app.slider.element()));
     app.handle(gui::KeyEvent{.key = gui::Key::left});
     settle(4);
     expect(7, "slider keyboard callback");
-    if (require(app.slider.value()) >= 1) { throw std::runtime_error("slider did not change"); }
+    if (app.slider.value() >= 1) { throw std::runtime_error("slider did not change"); }
 
     [host_window.window setContentSize:NSMakeSize(740, 560)];
     settle(4);
@@ -565,14 +565,14 @@ int run(bool smoke) {
 
     // Exercise the actual NSTextInputClient bridge, not just GUI TextEvents.
     host_window.view->forward = [&](const gui::InputEvent& event) { app.handle(event); };
-    auto editor = require(app.editor.editor());
+    auto editor = app.editor.editor();
     require(app.context.handle(gui::FocusEvent{true}));
     require(app.context.focus(editor.element()));
-    require(app.editor.set_text("AB"));
+    app.editor.text("AB");
     require(editor.select({1, 2}));
     [host_window.view setMarkedText:@"A" selectedRange:NSMakeRange(1, 0)
                   replacementRange:NSMakeRange(NSNotFound, 0)];
-    if (![host_window.view hasMarkedText] || require(app.editor.text()) != "AB") {
+    if (![host_window.view hasMarkedText] || app.editor.text() != "AB") {
         throw std::runtime_error("native preedit changed the committed document");
     }
     NSRange actual;
@@ -582,11 +582,11 @@ int run(bool smoke) {
         throw std::runtime_error("native input-method candidate area was not published");
     }
     [host_window.view insertText:@"BA" replacementRange:NSMakeRange(NSNotFound, 0)];
-    if ([host_window.view hasMarkedText] || require(app.editor.text()) != "ABA") {
+    if ([host_window.view hasMarkedText] || app.editor.text() != "ABA") {
         throw std::runtime_error("native input-method commit failed");
     }
     require(editor.undo());
-    if (require(app.editor.text()) != "AB") {
+    if (app.editor.text() != "AB") {
         throw std::runtime_error("native input-method commit was not one undo step");
     }
     require(app.context.focus({}));

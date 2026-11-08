@@ -1,13 +1,12 @@
 #include "truffle/gui/specialist/text.hpp"
 #include "gui_text_fixture.hpp"
-#include "menu_example.hpp"
 #include "renderer_native_test_utils.hpp"
 #include "rhi_test_utils.hpp"
 #include "test_support.hpp"
 #include "truffle/gui/draw.hpp"
-#include "truffle/gui/menus.hpp"
+#include "menu_object.hpp"
 #include "truffle/gui/surface.hpp"
-#include "truffle/gui/widgets.hpp"
+#include "widget_object.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -18,11 +17,10 @@
 namespace {
 using namespace truffle;
 using namespace truffle::gui;
+using namespace truffle::gui::detail;
 using namespace std::chrono_literals;
 using Clock = Context::Clock;
 const auto t0 = Clock::time_point{1000ms};
-static_assert(std::is_constructible_v<examples::MenuExample, Context &, ElementId,
-                                      MenuTextStyle, std::function<void()>>);
 
 void place(Context &context, ElementId element, Rect rect) {
   LayoutParams params;

@@ -1,8 +1,8 @@
 #pragma once
 
-#include "truffle/gui/menus.hpp"
+#include "truffle/gui/ui.hpp"
 
-#include <stdexcept>
+#include <functional>
 #include <utility>
 
 namespace truffle::examples {
@@ -10,30 +10,18 @@ namespace truffle::examples {
 // Host-independent composition; the application supplies fonts, actions and layout.
 struct MenuExample {
   gui::MenuBar bar;
-  gui::MenuButton dropdown;
-  gui::MenuItem checked;
+  gui::Menu modes;
+  gui::MenuItem design;
 
-  MenuExample(gui::Context &context, gui::ElementId parent, gui::MenuTextStyle text,
-              std::function<void()> run) {
-    bar = take(gui::MenuBar::create(context, parent, text));
-    auto actions = take(bar.add_menu("Actions"));
-    take(actions.add_item({.text = "Run", .shortcut = "Ctrl+R", .activated = run}));
-    auto more = take(actions.add_submenu("More"));
-    take(more.add_item({.text = "Run again", .activated = std::move(run)}));
-    dropdown = take(gui::MenuButton::create(context, parent, "Mode", text));
-    auto modes = take(dropdown.menu());
-    checked =
-        take(modes.add_item({.text = "Design", .checked = true, .activated = [] {}}));
-    take(modes.add_separator());
-    take(modes.add_item({.text = "Add mode...", .enabled = false}));
-  }
-
-private:
-  template <typename T> static T take(base::Result<T> result) {
-    if (!result.ok()) {
-      throw std::runtime_error(result.status().message);
-    }
-    return std::move(result).value();
+  MenuExample(gui::Container parent, std::function<void()> run) {
+    bar = parent.menu_bar();
+    auto actions = bar.menu("Actions");
+    actions.item("Run").shortcut("Ctrl+R").on_click(run);
+    actions.menu("More").item("Run again").on_click(std::move(run));
+    modes = parent.menu_button("Mode");
+    design = modes.item("Design").checkable(true);
+    modes.separator();
+    modes.item("Add mode...").enabled(false);
   }
 };
 

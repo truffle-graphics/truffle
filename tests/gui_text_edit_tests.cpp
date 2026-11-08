@@ -4,7 +4,7 @@
 #include "renderer_native_test_utils.hpp"
 #include "rhi_test_utils.hpp"
 #include "test_support.hpp"
-#include "truffle/gui/builder.hpp"
+#include "truffle/gui/ui.hpp"
 #include "truffle/gui/region.hpp"
 #include "truffle/gui/text_edit.hpp"
 #include "truffle/gui/themes.hpp"
@@ -231,11 +231,9 @@ int pointer_read_only_multiline() {
 
 int authoring_and_callback_lifetime() {
     Fixture f;
-    gui::Widget built;
-    const auto tree = gui::ui::text_edit("AB").bind(built);
-    TFL_CHECK(gui::build(f.context, f.context.root(), tree,
-        {&f.engine, f.font, gui::TextureId{1}}).ok());
-    TFL_CHECK(built.editor().ok() && built.text().value() == "AB");
+    gui::Ui ui{f.context, {&f.engine, f.font, gui::TextureId{1}}};
+    auto built = ui.root().text_field("AB");
+    TFL_CHECK(built.editor().alive() && built.text() == "AB");
     std::string model = "A";
     bool changed = false;
     auto region = tests::require(gui::Region::create(f.context, f.context.root(),

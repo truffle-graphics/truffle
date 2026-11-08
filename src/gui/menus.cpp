@@ -7,7 +7,7 @@
 #include <cmath>
 #include <utility>
 
-namespace truffle::gui {
+namespace truffle::gui::detail {
 namespace {
 
 enum class Indicator { none, check, right, down, separator };
@@ -44,7 +44,7 @@ private:
 
 class MenuLayout final : public Layout {
 public:
-  explicit MenuLayout(std::weak_ptr<detail::MenuState> menu) : menu_(std::move(menu)) {}
+  explicit MenuLayout(std::weak_ptr<MenuState> menu) : menu_(std::move(menu)) {}
   Size measure(LayoutPass &pass, ElementId element, Constraints content) const override {
     return StackLayout{}.measure(pass, element, content);
   }
@@ -56,7 +56,7 @@ public:
   }
 
 private:
-  std::weak_ptr<detail::MenuState> menu_;
+  std::weak_ptr<MenuState> menu_;
 };
 
 base::Status label(Context &context, ElementId parent, MenuTextStyle style,
@@ -115,7 +115,7 @@ base::Status indicator(Context &context, ElementId parent, std::uint16_t column,
   return status;
 }
 
-base::Result<detail::MenuGeometry> menu_geometry(Context &context, ElementId element,
+base::Result<MenuGeometry> menu_geometry(Context &context, ElementId element,
                                                 bool item, bool resolved, bool single_column) {
   const auto value = [&](Property property) {
     return resolved ? context.property(element, property)
@@ -133,13 +133,13 @@ base::Result<detail::MenuGeometry> menu_geometry(Context &context, ElementId ele
     if (!width.ok()) { return width.status(); }
     leading = std::get<float>(width.value());
   }
-  return detail::MenuGeometry{std::get<Size>(indicator_size.value()), leading,
+  return MenuGeometry{std::get<Size>(indicator_size.value()), leading,
                               std::get<float>(trailing.value()), std::get<float>(gap.value()),
                               single_column};
 }
 
 base::Status apply_menu_geometry(Context &context, ElementId element, ElementId mark,
-                                 ElementId arrow, bool item, detail::MenuGeometry geometry) {
+                                 ElementId arrow, bool item, MenuGeometry geometry) {
   GridOptions options;
   if (geometry.single_column) {
     options.columns = {Track::content()};
@@ -172,7 +172,6 @@ base::Status remove_after_failure(Context &context, ElementId element,
 
 } // namespace
 
-namespace detail {
 
 base::Status invalid_menu() {
   return base::Status::failure(base::StatusCode::invalid_argument,
@@ -421,10 +420,9 @@ base::Status MenuButtonState::event(RoutedEvent &event) {
   return base::Status::success();
 }
 
-} // namespace detail
 
 base::Result<Menu> Menu::create(Context &context, ElementId parent, MenuTextStyle text) {
-  const auto session = detail::MenuSession::get(context, parent);
+  const auto session = MenuSession::get(context, parent);
   if (!session.ok()) {
     return session.status();
   }
@@ -436,7 +434,7 @@ base::Result<Menu> Menu::create(Context &context, ElementId parent, MenuTextStyl
   if (!made.ok()) {
     return made.status();
   }
-  auto state = std::make_shared<detail::MenuState>();
+  auto state = std::make_shared<MenuState>();
   state->session = session.value();
   state->element = made.value();
   state->text = text;
@@ -485,9 +483,9 @@ base::Result<Menu> Menu::create(Context &context, ElementId parent, MenuTextStyl
 
 base::Result<MenuItem> Menu::add_item(MenuItemDesc desc) {
   if (!alive()) {
-    return detail::invalid_menu();
+    return invalid_menu();
   }
-  const auto synced = detail::MenuSession::sync(state_);
+  const auto synced = MenuSession::sync(state_);
   if (!synced.ok()) {
     return synced;
   }
@@ -496,7 +494,7 @@ base::Result<MenuItem> Menu::add_item(MenuItemDesc desc) {
   if (!made.ok()) {
     return made.status();
   }
-  auto item = std::make_shared<detail::MenuItemState>();
+  auto item = std::make_shared<MenuItemState>();
   item->session = state_->session;
   item->parent = state_;
   item->element = made.value();
@@ -585,9 +583,9 @@ base::Result<Menu> Menu::add_submenu(std::string text, bool enabled) {
 
 base::Result<MenuSeparator> Menu::add_separator() {
   if (!alive()) {
-    return detail::invalid_menu();
+    return invalid_menu();
   }
-  const auto synced = detail::MenuSession::sync(state_);
+  const auto synced = MenuSession::sync(state_);
   if (!synced.ok()) {
     return synced;
   }
@@ -596,7 +594,7 @@ base::Result<MenuSeparator> Menu::add_separator() {
   if (!made.ok()) {
     return made.status();
   }
-  auto item = std::make_shared<detail::MenuItemState>();
+  auto item = std::make_shared<MenuItemState>();
   item->session = state_->session;
   item->parent = state_;
   item->element = made.value();
@@ -652,12 +650,12 @@ bool Menu::alive() const noexcept { return state_ && state_->live(); }
 bool Menu::is_open() const noexcept { return alive() && state_->open; }
 base::Status Menu::open() {
   if (!alive()) {
-    return detail::invalid_menu();
+    return invalid_menu();
   }
   const auto state = state_;
   return state->session->run(element(), [state] {
     if (auto button = state->button.lock()) {
-      auto status = detail::MenuSession::sync(button);
+      auto status = MenuSession::sync(button);
       return status.ok() ? button->session->open_root(button) : status;
     }
     if (auto item = state->parent_item.lock()) {
@@ -669,7 +667,7 @@ base::Status Menu::open() {
 }
 base::Status Menu::close() {
   if (!alive()) {
-    return detail::invalid_menu();
+    return invalid_menu();
   }
   const auto state = state_;
   return state->session->run(element(), [state] {
@@ -686,7 +684,7 @@ bool MenuItem::alive() const noexcept {
 }
 base::Status MenuItem::set_text(std::string text) {
   if (!alive()) {
-    return detail::invalid_menu();
+    return invalid_menu();
   }
   auto status = state_->label.set_text(text);
   if (!status.ok()) {
@@ -698,13 +696,13 @@ base::Status MenuItem::set_text(std::string text) {
 }
 base::Result<std::string> MenuItem::text() const {
   if (!alive()) {
-    return detail::invalid_menu();
+    return invalid_menu();
   }
   return state_->desc.text;
 }
 base::Status MenuItem::set_enabled(bool enabled) {
   if (!alive()) {
-    return detail::invalid_menu();
+    return invalid_menu();
   }
   const auto state = state_;
   return state->session->run(element(), [state, enabled] {
@@ -716,7 +714,7 @@ base::Status MenuItem::set_enabled(bool enabled) {
       }
     }
     if (!enabled &&
-        detail::menu_descendant(*state->session->context,
+        menu_descendant(*state->session->context,
                                 state->session->context->focused(), state->element)) {
       if (auto parent = state->parent.lock()) {
         auto status = state->session->context->focus(state->element);
@@ -745,7 +743,7 @@ base::Status MenuItem::set_enabled(bool enabled) {
 }
 base::Status MenuItem::set_checked(std::optional<bool> value) {
   if (!alive()) {
-    return detail::invalid_menu();
+    return invalid_menu();
   }
   if (state_->desc.checked == value) {
     return base::Status::success();
@@ -755,13 +753,25 @@ base::Status MenuItem::set_checked(std::optional<bool> value) {
 }
 base::Result<std::optional<bool>> MenuItem::checked() const {
   if (!alive()) {
-    return detail::invalid_menu();
+    return invalid_menu();
   }
   return state_->desc.checked;
 }
+base::Status MenuItem::set_toggles(bool toggles, std::function<void(bool)> toggled) {
+  if (!alive()) {
+    return invalid_menu();
+  }
+  state_->desc.toggles = toggles;
+  state_->desc.toggled = std::move(toggled);
+  if (toggles && !state_->desc.checked) {
+    state_->desc.checked = false;
+    return state_->appearance();
+  }
+  return base::Status::success();
+}
 base::Status MenuItem::set_shortcut(std::string text) {
   if (!alive()) {
-    return detail::invalid_menu();
+    return invalid_menu();
   }
   const auto status = state_->shortcut.set_text(text);
   if (status.ok()) {
@@ -771,7 +781,7 @@ base::Status MenuItem::set_shortcut(std::string text) {
 }
 base::Status MenuItem::set_action(std::function<void()> action) {
   if (!alive()) {
-    return detail::invalid_menu();
+    return invalid_menu();
   }
   if (action && state_->submenu && state_->submenu->live()) {
     return base::Status::failure(
@@ -800,7 +810,7 @@ base::Status MenuItem::set_action(std::function<void()> action) {
 }
 base::Status MenuItem::set_submenu(Menu menu) {
   if (!alive() || !menu.alive()) {
-    return detail::invalid_menu();
+    return invalid_menu();
   }
   if (state_->submenu == menu.state_) {
     return base::Status::success();
@@ -811,12 +821,12 @@ base::Status MenuItem::set_submenu(Menu menu) {
                                  "GUI submenu must be unattached, local and action-free");
   }
   if (state_->session->context != menu.state_->session->context) {
-    return detail::invalid_menu();
+    return invalid_menu();
   }
   const auto parent = state_->parent.lock();
-  auto synced = detail::MenuSession::sync(parent);
+  auto synced = MenuSession::sync(parent);
   if (synced.ok()) {
-    synced = detail::MenuSession::sync(menu.state_);
+    synced = MenuSession::sync(menu.state_);
   }
   if (!synced.ok()) {
     return synced;
@@ -841,7 +851,7 @@ base::Status MenuItem::set_submenu(Menu menu) {
 }
 base::Result<Menu> MenuItem::submenu() const {
   if (!alive() || !state_->submenu || !state_->submenu->live()) {
-    return detail::invalid_menu();
+    return invalid_menu();
   }
   return Menu{state_->submenu};
 }
@@ -868,13 +878,13 @@ base::Result<MenuButton> MenuButton::create(Context &context, ElementId parent,
 base::Result<MenuButton> MenuButton::create(Context &context, ElementId parent,
                                             std::string text, Menu menu) {
   if (!menu.alive() || menu.state_->session->context != &context) {
-    return detail::invalid_menu();
+    return invalid_menu();
   }
-  const auto synced = detail::MenuSession::sync(menu.state_);
+  const auto synced = MenuSession::sync(menu.state_);
   if (!synced.ok()) {
     return synced;
   }
-  const auto session = detail::MenuSession::get(context, parent);
+  const auto session = MenuSession::get(context, parent);
   if (!session.ok()) {
     return session.status();
   }
@@ -888,7 +898,7 @@ base::Result<MenuButton> MenuButton::create(Context &context, ElementId parent,
   if (!made.ok()) {
     return made.status();
   }
-  auto state = std::make_shared<detail::MenuButtonState>();
+  auto state = std::make_shared<MenuButtonState>();
   state->session = session.value();
   state->element = made.value();
   state->menu = menu.state_;
@@ -967,13 +977,13 @@ ElementId MenuButton::element() const noexcept {
 bool MenuButton::alive() const noexcept { return state_ && state_->live(); }
 base::Result<Menu> MenuButton::menu() const {
   if (!alive() || !state_->menu->live()) {
-    return detail::invalid_menu();
+    return invalid_menu();
   }
   return Menu{state_->menu};
 }
 base::Status MenuButton::set_text(std::string text) {
   if (!alive()) {
-    return detail::invalid_menu();
+    return invalid_menu();
   }
   auto status = state_->label.set_text(text);
   if (!status.ok()) {
@@ -984,7 +994,7 @@ base::Status MenuButton::set_text(std::string text) {
 }
 base::Status MenuButton::set_enabled(bool enabled) {
   if (!alive() || !state_->menu->live()) {
-    return detail::invalid_menu();
+    return invalid_menu();
   }
   auto &context = *state_->session->context;
   auto interaction = context.interaction(element());
@@ -1012,7 +1022,7 @@ base::Status MenuButton::close() {
 
 base::Result<MenuBar> MenuBar::create(Context &context, ElementId parent,
                                       MenuTextStyle text) {
-  const auto session = detail::MenuSession::get(context, parent);
+  const auto session = MenuSession::get(context, parent);
   if (!session.ok()) {
     return session.status();
   }
@@ -1024,7 +1034,7 @@ base::Result<MenuBar> MenuBar::create(Context &context, ElementId parent,
   if (!made.ok()) {
     return made.status();
   }
-  auto state = std::make_shared<detail::MenuBarState>();
+  auto state = std::make_shared<MenuBarState>();
   state->session = session.value();
   state->element = made.value();
   state->text = text;
@@ -1063,7 +1073,7 @@ ElementId MenuBar::element() const noexcept {
 bool MenuBar::alive() const noexcept { return state_ && state_->live(); }
 base::Result<Menu> MenuBar::add_menu(std::string text) {
   if (!alive()) {
-    return detail::invalid_menu();
+    return invalid_menu();
   }
   auto menu = Menu::create(*state_->session->context, element(), state_->text);
   if (!menu.ok()) {
@@ -1078,7 +1088,7 @@ base::Result<Menu> MenuBar::add_menu(std::string text) {
 }
 base::Result<MenuButton> MenuBar::add_menu(std::string text, Menu menu) {
   if (!alive()) {
-    return detail::invalid_menu();
+    return invalid_menu();
   }
   auto button =
       MenuButton::create(*state_->session->context, element(), std::move(text), menu);
@@ -1100,4 +1110,4 @@ base::Result<MenuButton> MenuBar::add_menu(std::string text, Menu menu) {
   return button;
 }
 
-} // namespace truffle::gui
+} // namespace truffle::gui::detail

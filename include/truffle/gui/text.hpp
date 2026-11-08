@@ -139,4 +139,12 @@ private:
     friend struct specialist::TextInterop;
 };
 
+// Text defaults for widgets that show text: engine, font and glyph atlas. The
+// engine is borrowed and must outlive the elements that use it.
+struct TextStyle {
+    TextEngine* engine = nullptr;
+    FontId font;
+    TextureId atlas;
+};
+
 } // namespace truffle::gui

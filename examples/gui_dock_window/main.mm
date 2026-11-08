@@ -3,7 +3,7 @@
 
 #include "truffle/gui/dock/dock.hpp"
 #include "truffle/gui/specialist/surface.hpp"
-#include "truffle/gui/widgets.hpp"
+#include "truffle/gui/ui.hpp"
 #include "truffle/renderer/specialist/frame_stream.hpp"
 #include "truffle/renderer/specialist/renderer.hpp"
 #include "truffle/rhi/metal_backend.hpp"
@@ -291,15 +291,15 @@ int run(bool smoke) {
     host.primary = &main;
     context.set_host(&main.services);
     int clicks = 0;
-    const auto panel = need(gui::Widget::create(context, context.root(), {
-        .kind = gui::WidgetKind::button,
-        .activated = [&] { ++clicks; }}));
+    gui::Ui ui{context};
+    auto live = dock.panel(ui, "live", "Live panel");
+    const auto panel = live.button("").weight(1).on_click([&] { ++clicks; });
     need(context.set_semantics(panel.element(), {
         .role = gui::Context::Role::button, .label = "Live panel — click to change color"}));
-    const auto other = need(context.create(context.root()));
-    need(context.set_decoration(other, {.fill = {0.08F, 0.15F, 0.23F, 1}}));
-    need(dock.add_panel("live", "Live panel", panel.element()));
-    need(dock.add_panel("other", "Other panel", other));
+    dock.panel(ui, "other", "Other panel").on_paint([](gui::Painter& paint) {
+        paint.rect({0, 0, paint.size().width, paint.size().height},
+                   gui::Color{0.08F, 0.15F, 0.23F, 1});
+    }, gui::PaintLayer::background);
     need(dock.set_layout(gui::dock::DockNode::split(gui::dock::Axis::horizontal,
         {gui::dock::DockNode::tabs({"live"}), gui::dock::DockNode::tabs({"other"})})));
     bool running = true;
@@ -377,7 +377,8 @@ int run(bool smoke) {
         settle();
         expect(host.windows.empty() && host.closed == 1 && !dock.detached("live"),
                "Native close did not redock/clean up");
-        expect(need(context.parent(same_content)) == dock.element() && dock.save() == saved,
+        expect(need(context.parent(live.element())) == dock.element() &&
+               need(context.parent(same_content)) == live.element() && dock.save() == saved,
                "Redock lost original panel location/state");
         [main.native makeKeyAndOrderFront:nil];
         settle();
