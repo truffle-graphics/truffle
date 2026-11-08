@@ -5,6 +5,15 @@ This is the rolling execution handoff, not an implementation transcript.
 issues/Project own accepted work. Earlier phase details remain in their PRs,
 the support matrix and Git history.
 
+## GUI batch integration
+
+The owner approved merging `feat/gui-menus` into `develop` through a normal
+merge-commit PR, followed by Studio's batch. Studio will pin the resulting
+Truffle `develop` merge commit before its own PR merges. Remove only merged
+feature/docs branches after integration; preserve `develop`, `master` and
+unmerged work. Existing validation below remains the evidence boundary;
+Windows validation of the latest consumer migrations is still pending.
+
 ## Fluent GUI API (#282)
 
 The public consumer API is now `gui::Ui` in `truffle/gui/ui.hpp`: typed,
@@ -60,7 +69,7 @@ the #279 issue commit.
 
 macOS build-only follow-up (#278): the normal Debug build with
 warnings-as-errors now compiles and links on Apple Silicon. Two test-source
-fixes remain uncommitted: Renderer shader-stage fixtures use designated
+fixes were committed and pushed in `f9d32bc`: Renderer shader-stage fixtures use designated
 package initializers, and the GUI drawing clip helper uses GUI's `PixelRect`
 instead of the removed RHI type. Studio's pinned GUI-owned application also
 compiles and links on macOS without source changes. No tests, apps or native
