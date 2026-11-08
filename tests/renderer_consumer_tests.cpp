@@ -105,8 +105,8 @@ int main() {
     TFL_CHECK(programs
                   .register_program(9,
                                     {
-                                        .vertex = {&package.value()},
-                                        .fragment = {&package.value()},
+                                        .vertex = {.package = &package.value()},
+                                        .fragment = {.package = &package.value()},
                                         .pipeline = {.layout = &layout.value()},
                                     })
                   .ok());

@@ -58,6 +58,15 @@ the #279 issue commit.
 
 ## Latest: GUI-only viewport and Renderer integration (#277)
 
+macOS build-only follow-up (#278): the normal Debug build with
+warnings-as-errors now compiles and links on Apple Silicon. Two test-source
+fixes remain uncommitted: Renderer shader-stage fixtures use designated
+package initializers, and the GUI drawing clip helper uses GUI's `PixelRect`
+instead of the removed RHI type. Studio's pinned GUI-owned application also
+compiles and links on macOS without source changes. No tests, apps or native
+graphics checks were run; this is build evidence only. Apple's linker reports
+non-fatal duplicate-library warnings on several Truffle test targets.
+
 The consumer-layer implementation children #274-#277 are implemented on the
 existing feat/gui-menus batch. Prerequisites are signed/pushed:
 #274 `21f08b04833610214c78040744a77a3ebf215e92`,
