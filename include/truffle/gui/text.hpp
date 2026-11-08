@@ -3,7 +3,7 @@
 #include "truffle/base/handle.hpp"
 #include "truffle/base/status.hpp"
 #include "truffle/gui/shapes.hpp"
-#include "truffle/renderer/texture.hpp"
+#include "truffle/gui/window.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -14,6 +14,7 @@
 #include <vector>
 
 namespace truffle::gui {
+namespace specialist { struct TextInterop; }
 
 struct FontTag {};
 using FontId = base::Handle<FontTag>;
@@ -84,7 +85,7 @@ struct TextBlock {
 };
 
 struct TextEngineDesc {
-    rhi::Extent2D atlas_extent{1024, 1024};
+    PixelSize atlas_extent{1024, 1024};
 };
 
 struct TextStats {
@@ -92,6 +93,8 @@ struct TextStats {
     std::size_t rasterized_glyphs = 0;
     std::size_t atlas_updates = 0;
 };
+
+inline constexpr float default_font_size = 14.0F;
 
 // Shapes UTF-8 text with HarfBuzz and rasterizes its glyphs with FreeType.
 // The engine owns an RGBA glyph atlas and updates only newly allocated glyph
@@ -106,13 +109,15 @@ public:
     TextEngine& operator=(const TextEngine&) = delete;
 
     [[nodiscard]] static bool available() noexcept;
-    [[nodiscard]] static base::Result<TextEngine> create(
-        rhi::Device& device, const TextEngineDesc& desc = {});
 
     // Copies the font bytes. Size is in logical GUI units; the renderer applies
     // the Context scale when the resulting shapes are drawn.
     [[nodiscard]] base::Result<FontId> load_font(std::span<const std::byte> bytes,
-                                                 float size);
+                                                 float size = default_font_size);
+    // Returns a cached, engine-owned size of a host-supplied font and its
+    // fallback chain. Derived handles cannot be unloaded or edited directly;
+    // unloading their source invalidates them.
+    [[nodiscard]] base::Result<FontId> sized_font(FontId source, float size);
     [[nodiscard]] base::Status unload_font(FontId font);
     // Replaces the primary's flat ordered fallback chain atomically. All handles
     // must be live, distinct and different from primary. Unload of a referenced
@@ -124,15 +129,22 @@ public:
     // malformed UTF-8 and invalid font handles fail instead of being replaced.
     [[nodiscard]] base::Result<TextLayout> shape(FontId font, std::string_view utf8);
 
-    // The glyph atlas to register with a Painter. Fails with `invalid_state`
-    // for a default-constructed or moved-from engine.
-    [[nodiscard]] base::Result<std::reference_wrapper<renderer::SampledTexture>>
-    atlas_texture() noexcept;
     [[nodiscard]] const TextStats& last_stats() const noexcept;
 
 private:
+    [[nodiscard]] base::Result<FontId> sized_font_face(FontId source, float size,
+                                                      bool force_variant = false);
     struct State;
     std::unique_ptr<State> state_;
+    friend struct specialist::TextInterop;
+};
+
+// Text defaults for widgets that show text: engine, font and glyph atlas. The
+// engine is borrowed and must outlive the elements that use it.
+struct TextStyle {
+    TextEngine* engine = nullptr;
+    FontId font;
+    TextureId atlas;
 };
 
 } // namespace truffle::gui

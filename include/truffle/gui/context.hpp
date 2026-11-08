@@ -7,6 +7,7 @@
 #include "truffle/gui/host.hpp"
 #include "truffle/gui/input.hpp"
 #include "truffle/gui/layout.hpp"
+#include "truffle/gui/painter.hpp"
 #include "truffle/gui/shapes.hpp"
 #include "truffle/gui/text.hpp"
 #include "truffle/gui/theme.hpp"
@@ -22,11 +23,17 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace truffle::gui {
 
 class Surface;
+namespace detail {
+struct MenuSession;
+}
+
+enum class PopupSide : std::uint8_t { below, right };
 
 struct FrameStats {
     base::Status status;
@@ -122,6 +129,7 @@ public:
                                           std::shared_ptr<const Layout> layout);
     [[nodiscard]] base::Status set_layout_params(ElementId element,
                                                  const LayoutParams& params);
+    // Returns the effective padding, including a resolved component style.
     [[nodiscard]] base::Result<LayoutParams> layout_params(ElementId element) const;
 
     // Lays out invalidated parts of the tree; the root fills `viewport`.
@@ -135,7 +143,8 @@ public:
     // Places `element` at `rect`, in its parent's coordinates, whatever the
     // parent's layout. The parent's layout no longer sees it, so siblings close
     // the gap; it is still measured (at `rect`'s size) and arranged. Empty
-    // returns it to the parent's layout. The root cannot be placed.
+    // returns it to the parent's layout. The root cannot be placed. An
+    // `unbounded` width or height fills the parent from the rect's origin.
     [[nodiscard]] base::Status set_placement(ElementId element, std::optional<Rect> rect);
     [[nodiscard]] std::optional<Rect> placement(ElementId element) const noexcept;
 
@@ -144,6 +153,16 @@ public:
     // them. Nested overlays follow tree order.
     [[nodiscard]] base::Status set_overlay(ElementId element, bool overlay);
     [[nodiscard]] bool overlay(ElementId element) const noexcept;
+
+    // Collapsed elements and their descendants take no layout space, draw
+    // nothing and cannot receive input. Showing them restores their cached tree.
+    [[nodiscard]] base::Status set_visible(ElementId element, bool visible);
+    [[nodiscard]] bool visible(ElementId element) const noexcept;
+
+    // An overlay anchored to its parent, outside that parent's layout. It is
+    // measured against the viewport, then flips/shifts at its edges. Cannot
+    // coexist with a placement override. Empty restores normal layout/overlay.
+    [[nodiscard]] base::Status set_popup(ElementId element, std::optional<PopupSide> side);
 
     // How the element's background is drawn; transparent by default.
     [[nodiscard]] base::Status set_decoration(ElementId element, const Decoration& decoration);
@@ -157,6 +176,14 @@ public:
     // DecorationBuilder.
     [[nodiscard]] base::Status set_shape_builder(ElementId element,
                                                  std::shared_ptr<const ShapeBuilder> builder);
+
+    // Custom retained painting for one layer; an empty function removes it.
+    // Paint functions run during `update_shapes` for shape-marked elements and
+    // must not mutate the tree. `replace` skips the element's shape builder.
+    [[nodiscard]] base::Status set_paint(ElementId element, PaintLayer layer,
+                                         PaintFunction paint);
+    // Marks the element's shapes for regeneration, re-running its painters.
+    [[nodiscard]] base::Status invalidate_shapes(ElementId element);
 
     // Replaces the element's shaped text. Its measured size contributes to the
     // element's intrinsic size; glyphs are drawn over its other shapes.
@@ -173,8 +200,41 @@ public:
 
     [[nodiscard]] base::Status set_theme_value(std::string name, ThemeValue value);
     [[nodiscard]] base::Result<ThemeValue> theme_value(std::string_view name) const;
+    [[nodiscard]] base::Status set_theme_value(ColorToken token, Color value);
+    [[nodiscard]] base::Status set_theme_value(MetricToken token, float value);
+    [[nodiscard]] base::Status set_theme_value(PaddingToken token, Edges value);
+    [[nodiscard]] base::Status set_theme_value(FontSizeToken token, FontSize value);
+    [[nodiscard]] base::Result<Color> theme_value(ColorToken token) const;
+    [[nodiscard]] base::Result<float> theme_value(MetricToken token) const;
+    [[nodiscard]] base::Result<Edges> theme_value(PaddingToken token) const;
+    [[nodiscard]] base::Result<FontSize> theme_value(FontSizeToken token) const;
+
+    // Component styles are sparse overrides of Truffle's defaults. Replacing
+    // one with an empty style restores the defaults at that level. They also
+    // style the internal parts owned by a composite widget.
+    [[nodiscard]] base::Status set_component_style(Component component,
+                                                    const ComponentStyle& style);
+    [[nodiscard]] base::Status set_component_style(ElementId element,
+                                                    const ComponentStyle& style);
+    [[nodiscard]] base::Result<ComponentStyle> component_style(Component component) const;
+    [[nodiscard]] base::Result<ComponentStyle> component_style(ElementId element) const;
+    [[nodiscard]] base::Result<ComponentStyle> component_defaults(Component component) const;
+    // Resolves the component layers, without direct per-property overrides.
+    [[nodiscard]] base::Result<ThemeValue> component_property(
+        ElementId element, Property property, StylePart part = StylePart::automatic) const;
+
+    // Custom components can opt into the same style/state resolution.
+    [[nodiscard]] base::Status set_component(ElementId element, Component component);
+    [[nodiscard]] base::Status set_component_state(ElementId element, ComponentState state);
+    [[nodiscard]] base::Result<ComponentState> component_state(ElementId element) const;
+    [[nodiscard]] base::Status bind_component_property(
+        ElementId element, Property property, ElementId owner,
+        StylePart part = StylePart::automatic);
+    [[nodiscard]] base::Status set_component_style_handler(
+        ElementId element, std::function<base::Status()> handler);
     [[nodiscard]] base::Status bind_property(ElementId element, Property property,
                                               std::string name);
+    // Direct overrides affect this element, not internal child elements.
     [[nodiscard]] base::Status set_property_override(ElementId element, Property property,
                                                       ThemeValue value);
     // Resumes the bound theme value. An unbound property has no override to clear.
@@ -195,15 +255,22 @@ public:
     [[nodiscard]] base::Status set_viewport(Size size, float scale = 1.0F);
     [[nodiscard]] Size viewport() const noexcept;
     [[nodiscard]] float scale() const noexcept;
+    // DPI scale for this element's actual surface, even outside its dispatch.
+    [[nodiscard]] base::Result<float> scale(ElementId element) const;
 
     // Records host input and routes it through the current laid-out tree.
     // Input only requests a frame when a handler makes a visible change.
-    base::Status handle(const InputEvent& event);
+    base::Status handle(const InputEvent& event, Clock::time_point now = Clock::now());
     [[nodiscard]] const InputState& input() const noexcept;
 
     [[nodiscard]] base::Status set_interaction(ElementId element, Interaction interaction);
     [[nodiscard]] base::Result<Interaction> interaction(ElementId element) const;
     [[nodiscard]] base::Status set_event_handler(ElementId element, EventHandler handler);
+    [[nodiscard]] base::Result<EventHandler> event_handler(ElementId element) const;
+    // Runs before normal routing, even when a target stops bubbling. Filters
+    // are element-owned and surface-local; prevent_default suppresses normal
+    // dispatch, not input/capture bookkeeping. Empty removes the filter.
+    [[nodiscard]] base::Status set_input_filter(ElementId element, EventHandler filter);
     // Routes snapshot the ancestor chain. Callbacks may mutate the tree;
     // removed recipients are skipped. Hover/focus/capture notifications are
     // direct, while host input bubbles. Tab traverses unless prevent_default().
@@ -225,7 +292,8 @@ public:
     [[nodiscard]] Point child_offset(ElementId element) const noexcept;
 
     enum class Role : std::uint8_t { generic, panel, label, image, button, checkbox,
-                                    slider, scroll_area, text_edit };
+                                    slider, scroll_area, text_edit, menu_bar, menu,
+                                    menu_item, menu_separator };
     struct Semantics {
         Role role = Role::generic;
         std::string label;
@@ -247,6 +315,12 @@ public:
     [[nodiscard]] base::Status set_updater(ElementId element, Updater update, bool live = false);
     [[nodiscard]] base::Status request_update(ElementId element);
     [[nodiscard]] base::Status set_update_live(ElementId element, bool live);
+    // Schedules that element's updater once; empty cancels only its timer.
+    // Unlike a live updater, a future timer does not request continuous frames.
+    [[nodiscard]] base::Status request_update_at(ElementId element,
+                                                 std::optional<Clock::time_point> when);
+    // Host-supplied time of the current/last input or prepared frame.
+    [[nodiscard]] Clock::time_point time() const noexcept;
 
     [[nodiscard]] bool needs_frame(Clock::time_point now) const noexcept;
     // Earliest pending timed update, if any.
@@ -265,17 +339,30 @@ public:
 private:
     friend class LayoutPass;
     friend class Surface;
+    friend struct detail::MenuSession;
 
     struct Node {
         struct StyleBinding {
+            struct ComponentBinding {
+                ElementId owner;
+                StylePart part = StylePart::automatic;
+            };
             std::string name;
+            std::optional<ComponentBinding> component;
             std::optional<ThemeValue> override_value;
             std::optional<ThemeValue> resolved;
+        };
+        struct ComponentData {
+            Component kind = Component::panel;
+            ComponentState state;
+            ComponentStyle style;
+            std::function<base::Status()> handler;
         };
         struct TextSource {
             TextEngine* engine = nullptr;
             std::string text;
             TextureId atlas;
+            FontId rendered_font;
         };
         std::uint32_t generation = 1;
         bool alive = false;
@@ -288,8 +375,13 @@ private:
         std::vector<ElementId> children;
         std::shared_ptr<const Layout> layout;
         LayoutParams params;
+        LayoutParams effective_params;
+        Size style_min;
+        std::optional<Edges> style_padding;
         std::optional<Rect> placement;
-        std::vector<ElementId> flow; // children without placement, when any is placed
+        std::optional<PopupSide> popup;
+        bool visible = true;
+        std::vector<ElementId> flow; // children participating in the parent's layout
         bool placed_children = false;
         bool overlay = false;
         Constraints measured_under;
@@ -298,15 +390,30 @@ private:
         bool clips = true;
         Decoration decoration;
         std::shared_ptr<const ShapeBuilder> builder;
+        std::array<PaintFunction, 3> paint;
         std::optional<TextBlock> text;
         ElementShapes shapes;
         Interaction interaction;
         EventHandler handler;
+        EventHandler filter;
         Point child_offset;
         Semantics semantics;
         std::array<StyleBinding, static_cast<std::size_t>(Property::count)> styles;
+        std::unique_ptr<ComponentData> component;
         FontId font;
+        FontSize font_size;
         Color text_color{1, 1, 1, 1};
+        Color selection_color;
+        Color caret_color;
+        Color composition_color;
+        Size indicator_size;
+        float indicator_gap = 0;
+        float slider_track_thickness = 0;
+        float slider_thumb_width = 0;
+        float slider_thumb_inset = 0;
+        float menu_leading_width = 0;
+        float menu_trailing_width = 0;
+        float menu_column_gap = 0;
         std::optional<TextSource> text_source;
     };
 
@@ -315,6 +422,7 @@ private:
         Updater update;
         bool live = false;
         bool pending = true;
+        std::optional<Clock::time_point> deadline;
     };
 
     [[nodiscard]] Node* find(ElementId element) noexcept;
@@ -326,11 +434,17 @@ private:
     void detach(ElementId element, Node& node);
     [[nodiscard]] bool input_enabled(ElementId element) const noexcept;
     base::Result<bool> dispatch(ElementId target, RoutedPayload payload, bool bubble = true);
-    void route_input(const InputEvent& event);
+    base::Result<bool> filter_input(const InputEvent& event);
+    void route_input(const InputEvent& event, bool filtered = false);
     void update_hover(ElementId next);
     void forget_input(ElementId element) noexcept;
     void forget_styles(ElementId element);
+    void forget_component_binding(ElementId element, Property property, ElementId owner);
     void mark_style(ElementId element, Property property);
+    [[nodiscard]] base::Status refresh_component_styles();
+    [[nodiscard]] base::Status refresh_component_styles(ElementId owner);
+    [[nodiscard]] base::Status refresh_component_styles(Component component);
+    void refresh_effective_params(Node& node);
     [[nodiscard]] UpdaterEntry* find_updater(ElementId element) noexcept;
     [[nodiscard]] bool updates_due() const noexcept;
     base::Status run_updaters(std::size_t& count);
@@ -359,7 +473,11 @@ private:
     float scale_ = 1.0F;
     bool frame_requested_ = false;
     std::vector<Clock::time_point> deadlines_;
+    Clock::time_point time_{};
     std::size_t overlays_ = 0;
+    std::vector<ElementId> popups_;
+    std::vector<ElementId> input_filters_;
+    std::vector<std::shared_ptr<detail::MenuSession>> menu_sessions_;
     std::vector<UpdaterEntry> updaters_;
     bool layout_requested_update_ = false;
     InputState input_;
@@ -371,8 +489,13 @@ private:
     EventTrace trace_;
     base::Status event_status_;
     struct ThemeDependent { ElementId element; Property property; };
+    struct ComponentDependent { ElementId element; Property property; ElementId owner; };
     std::unordered_map<std::string, ThemeValue> theme_;
     std::unordered_map<std::string, std::vector<ThemeDependent>> theme_dependents_;
+    std::array<ComponentStyle, static_cast<std::size_t>(Component::count)> component_styles_;
+    std::unordered_map<std::uint64_t, std::vector<ComponentDependent>> component_dependents_;
+    std::array<std::unordered_set<std::uint64_t>, static_cast<std::size_t>(Component::count)>
+        component_owners_;
 };
 
 } // namespace truffle::gui

@@ -140,22 +140,40 @@ are separate dimensions.
 
 ## Consumption Levels
 
-### Level 1 — Graphics API
+The approved independently usable GUI/Renderer/RHI model and full public
+contract audit are recorded in [consumer layers](consumer-layers.md), #273.
+GUI owns GUI graphics orchestration; Renderer owns ordinary GPU resources and
+rendering; RHI remains explicitly available for specialist work. Shared native
+window/pixel values belong to Base (#274); neither upper layer owns windows.
 
-Link `truffle_base`, `truffle_rhi`, and one enabled backend. The application
-manages GPU resources, synchronization, and presentation directly.
+### Level 1 — GUI
+
+Link `Truffle::GUI`. The host lends its window, size/DPI, events and platform
+services to `gui::Context`; optional `gui::Graphics` owns graphics setup and
+presentation without owning Context or the host's application lifecycle.
+No Renderer/RHI headers or types are required. Native setup is optional and
+uses only enabled implementations. See [GUI Graphics](gui-graphics.md).
 
 ### Level 2 — Rendering
 
-Add `truffle_renderer`. Build `RenderBatch` objects from any data source and
-execute a `FrameGraph`. Use upload/readback resources directly, or add
-`truffle_asset_render` for metadata-to-layout planning.
+Link Renderer for independently owned mesh/buffer/texture/program/pass APIs,
+with optional RendererPresentation for native owned setup. Normal headers
+contain no RHI contracts. GUI's opt-in `Rendering` exposes the shared
+device/cache/Renderer and GUI pass composition for application scene work.
 
-### Level 3 — EnCom–Renderer Integration
+### Level 3 — Specialist Graphics API
+
+Link RHI and the chosen backend for explicit device features, queues, encoders,
+subresources, barriers, native fences, compute and readback. Raw Renderer
+extensions live in `renderer::specialist` and `renderer/specialist/`; raw GUI
+GPU extensions live in `gui::specialist` and `gui/specialist/`. None is a
+normal GUI/Renderer consumption prerequisite.
+
+### Optional EnCom–Renderer Integration
 
 Add `truffle_encom` and `truffle_encom_renderer`. `EnComRenderAdapter` extracts
 camera, light, and batch state from an EnCom world. This is one first-party
-ingestion lane, not a requirement for RHI or renderer consumers.
+specialist UploadRing ingestion lane, not a requirement for GUI or Renderer.
 
 ## Render Data Lanes
 
@@ -180,9 +198,10 @@ shaders, allocate resources, or own backend state.
 
 ## Frame Graph And Diagnostics
 
-`FrameGraph` models compute and render nodes, explicit dependencies, and
-resource-usage hazards. It resolves deterministic topological order and rejects
-cycles before recording.
+Normal `FrameGraph` retains render passes/resources, explicit dependencies and
+resource-usage hazards. Specialist graphs additionally expose custom compute
+nodes. Both resolve deterministic topological order and reject cycles before
+recording.
 
 Diagnostics separate three concerns. Each module owns its own error and
 lightweight profiling primitives; instrumentation stays optional and detailed
@@ -207,6 +226,30 @@ queue presentation. Truffle does not implement a windowing framework. Renderer
 and future Engine consumers pass window handles or offscreen targets. An
 optional windowing convenience that wraps GLFW, SDL, or native APIs is a
 deferred idea, not a planned RHI 1 module.
+
+Renderer's `Presentation` (#270) composes existing RHI surface/swapchain and
+FramePacer contracts over a host-owned native handle. Core Renderer remains
+backend-independent; the optional `Truffle::RendererPresentation` target alone
+links enabled Metal/Vulkan factories for backend-neutral native setup.
+Explicit-device hosts use the core convenience without that target. Window
+creation, input/platform services and the event loop remain outside Truffle.
+GUI and custom rendering share the same device, Renderer and frame graph.
+See [presentation usage, recovery and lifetime](presentation.md).
+
+GUI's `Viewport` (#271/#277) owns only layout/input, scene-redraw state and image
+composition. Graphics batches render into existing Renderer sampled targets
+and precede Painter in the same graph with explicit attachment/sample barriers.
+FrameGraph can retain wrappers borrowed by per-frame nodes; RHI retains native
+submitted resources. Painter's stable texture-ID rebinding preserves cached
+GUI shapes. Per-element DPI follows its GUI Surface, including detached views.
+No Engine, scene policy, CPU readback or direct-swapchain scene path is
+required. [Viewport usage and lifetime](gui-viewport.md) defines the contract.
+The ordinary Viewport header is GUI-only; advanced composition uses Renderer
+values in `gui/rendering.hpp`. Exact target/pass/batch/device owners are
+retained; raw extensions are under `gui/specialist/`. One Graphics owns one
+Context/GUI stream. Shared-context independently paced multi-window ownership
+remains a design boundary in #276, not an assumed reverse dependency or
+stream-sharing policy.
 
 ## Dependency Boundary
 
@@ -289,7 +332,7 @@ becomes a mandatory dependency.
 
 Shader-library work (#178), tool reuse and TSP naming (#180), prepared-TSP
 Renderer execution (#179), and Renderer's direct use of Shader for runtime
-compilation and rebuild adoption (#181) are implemented. `renderer::SourceProgram`
+compilation and rebuild adoption (#181) are implemented. `renderer::specialist::SourceProgram`
 compiles only the requested configuration through `shader::Compiler`, consumes
 the in-memory `Compilation`, validates the vertex/fragment link and pipeline
 vertex inputs, then adopts the result through the same Renderer stage/commit
@@ -352,6 +395,78 @@ consumption remains compiler-free and Shader still depends only on RHI/Base
 plus explicitly enabled private Apple APIs.
 
 See [the shader package contract](rhi1/shader-package.md).
+
+## GUI Prepared Rendering (#268)
+
+`gui::specialist::Painter` supports Metal and Vulkan through Renderer/RHI
+implementation contracts. Normal consumers use optional GUI-owned Graphics
+rendering with a separately owned Context.
+GUI owns its prepared programs: embedded native MSL keeps the
+existing Metal path, and a checked-in TSP embeds native SPIR-V for Vulkan 1.1 /
+SPIR-V 1.3. Configure embeds the package bytes; it never runs a compiler.
+Painter selects the native target and clip-space Y convention while retaining
+the shared vertex layout, sampled texture/sampler slots, signed-distance
+coverage, premultiplied blending, streamed geometry and scissor batches.
+Unsupported backends fail explicitly. No public signature or architectural
+boundary changes; Shader remains an optional compiler beneath Renderer,
+not a new GUI-owned runtime requirement.
+
+`src/gui/shaders/gui.vert` and `gui.frag` match `gui.metal`. The test-only
+`truffle_gui_shader_package` target uses the existing pinned Shader/glslang
+adapter to produce the checked-in `src/gui/shaders/gui-vulkan.tsp`, including
+canonical reflection, compiler identity and machine-independent authoring paths.
+With tests and `TFL_SHADER_ENABLE_GLSLANG=ON`, regenerate from the repository root:
+
+```powershell
+cmake --build --preset debug --target truffle_gui_shader_package
+.\out\debug\bin\truffle_gui_shader_package.exe src\gui\shaders src\gui\shaders\gui-vulkan.tsp
+ctest --preset debug -R '^truffle_gui_vulkan_package_check$' --output-on-failure
+```
+
+The generator's output argument also works with native executable paths on
+other hosts. Normal builds, installed GUI consumers and native GUI tests need
+neither this tool nor a compiler-enabled Shader library. The package check
+recompiles both sources and requires byte-identical output.
+
+`truffle_gui_drawing_metal_tests` and `truffle_gui_drawing_vulkan_tests` share
+one native drawing suite. The Vulkan test requires active Khronos validation
+and fails on validation warnings/errors, rather than reporting a skip.
+Windows x64 RTX 4080 SUPER evidence covers four 32x32 signed-distance CPU
+references (two-code-point tolerance for rounded edges/blending), glyph atlas
+and core widget/editor probes, plus byte-exact full images for canvas triangles,
+square-ended lines, overlays, retained frame-slot reuse, 2x logical scaling,
+2D texture orientation, tint/alpha and texture updates. The same Vulkan suite
+also passes with all Shader compilers disabled. No macOS rerun, software-driver,
+ARM64, other GUI platform or full-conformance claim is implied.
+
+## GUI Menus And Popup Lifetime (#269)
+
+`truffle_gui` owns reusable menu-bar/dropdown composition and the shared
+recursive menu chain per `Surface`. `menus.cpp` owns checked object construction,
+presentation and public mutation; `menu_session.cpp` owns interaction,
+focus transitions, timed hover, dismissal and cleanup. Their private model
+uses weak back-references and weak surface-local registries so moved menus and
+even empty menu bars survive retirement of their former surface. Context
+cleanup retires element identities and the session's callbacks/deadlines.
+These responsibilities share GUI element/input lifetime; they do not introduce
+application workspace, installer, native-window or GUI Dock policy.
+
+Context's existing flow/overlay owner now supports collapsed visibility and
+parent-anchored popup placement, measured/clamped against the logical viewport
+after normal layout. Existing input/focus/capture routing has element-owned,
+surface-local pre-routing filters; suppression preserves input bookkeeping.
+Existing updaters accept one-shot deadlines and host-supplied input/frame time,
+not a separate timer/event loop. Checks and arrows use normal GUI shapes;
+labels and shortcut display use the existing text/atlas owner and theme tokens.
+
+Public-contract effect: documented object/API extension with changed Context
+storage and input signatures; rebuild consumers with coherent GUI libraries.
+There is no architectural boundary change. GUI still uses Renderer below it,
+not EnCom, GUI Dock, Studio or platform APIs. Prepared Painter programs and
+backend/compiler ownership are unchanged. The shared Metal/Vulkan native
+fixture adds measurable menu pixels; native evidence here is Windows x64
+Vulkan only, not a Metal rerun or backend maturity promotion.
+See [`gui-menus.md`](gui-menus.md) for API usage and focused evidence.
 
 ## GUI Usability And Native Surfaces (#251-#253)
 

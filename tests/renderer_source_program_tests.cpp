@@ -1,7 +1,7 @@
 #include "rhi_test_utils.hpp"
 #include "test_support.hpp"
 #include "shader_test_utils.hpp"
-#include "truffle/renderer/source_program.hpp"
+#include "truffle/renderer/specialist/source_program.hpp"
 
 #include <cstdlib>
 #include <map>
@@ -45,12 +45,12 @@ rhi::ShaderPackage prepared_package() {
 
 int main() {
     auto context = tests::make_null_context();
-    renderer::PipelineCache cache(context.device);
-    constexpr renderer::MaterialId prepared = 7;
-    constexpr renderer::MaterialId compiled = 8;
+    renderer::specialist::PipelineCache cache(context.device);
+    constexpr renderer::specialist::MaterialId prepared = 7;
+    constexpr renderer::specialist::MaterialId compiled = 8;
     {
         auto package = prepared_package();
-        renderer::ProgramDesc desc;
+        renderer::specialist::ProgramDesc desc;
         desc.vertex = {&package, rhi::ShaderTarget::metal_source, "main",
                        rhi::ShaderStage::vertex, "configured"};
         desc.fragment = {&package, rhi::ShaderTarget::metal_source, "main",
@@ -63,7 +63,7 @@ int main() {
 
     std::map<std::string, std::string> files{
         {"color.glsl", "vec4 shade() { return vec4(COLOR, 1.0); }\n"}};
-    renderer::SourceProgramRequest request;
+    renderer::specialist::SourceProgramRequest request;
     request.vertex.source = {"program.vert", R"(#version 450
 layout(location=0) flat out vec4 tint;
 void main() { gl_Position = vec4(0); tint = vec4(1); }
@@ -89,7 +89,7 @@ void main() { color = shade() * tint; }
     request.fragment.defines = {{"COLOR", "vec3(1, 0, 0)"}};
 
     shader::Compiler compiler;
-    renderer::SourceProgram program(cache, compiled, {});
+    renderer::specialist::SourceProgram program(cache, compiled, {});
     if (!tests::shader_route_enabled()) {
         // Prepared programs remain usable without this source-language adapter.
         auto attempt = program.rebuild(compiler, request);
@@ -97,7 +97,7 @@ void main() { color = shade() * tint; }
         TFL_CHECK(attempt.status().code == base::StatusCode::unsupported);
         TFL_CHECK(program.published_vertex() == nullptr);
         TFL_CHECK(cache.published(compiled) == nullptr);
-        renderer::SourceProgram over(cache, prepared, {});
+        renderer::specialist::SourceProgram over(cache, prepared, {});
         TFL_CHECK(over.rebuild(compiler, request).status().code ==
                       base::StatusCode::unsupported);
         TFL_CHECK(cache.published(prepared)->id() == preparedId);
@@ -133,7 +133,7 @@ void main() { color = shade() * tint; }
     const auto changedId = cache.published(compiled)->id();
     const auto changedKey = program.published_fragment()->cacheKey;
 
-    const auto rejected = [&](const renderer::SourceProgramRequest& bad,
+    const auto rejected = [&](const renderer::specialist::SourceProgramRequest& bad,
                               base::StatusCode code) {
         auto attempt = program.rebuild(compiler, bad);
         expect(!attempt.ok() && attempt.status().code == code, "rejected status code");
@@ -177,7 +177,7 @@ void main() { gl_Position = position; tint = vec4(1); }
     TFL_CHECK(cache.published(prepared)->id() == preparedId);
 
     // Matrix/block spelling and plain arrays have the same location footprint.
-    renderer::SourceProgramRequest normalized;
+    renderer::specialist::SourceProgramRequest normalized;
     normalized.vertex.source = {"normalized.vert", R"(#version 450
 layout(location=0) out Block { mat2x3 matrix; vec2 tail[2]; } outputData;
 void main() { gl_Position=vec4(0); outputData.matrix=mat2x3(1);
@@ -189,7 +189,7 @@ layout(location=2) in mat2 tail;
 layout(location=0) out vec4 color;
 void main() { color=vec4(renamed[0]+vec3(tail[1],0),1); }
 )"};
-    renderer::SourceProgram linked(cache, 9, {});
+    renderer::specialist::SourceProgram linked(cache, 9, {});
     TFL_CHECK(linked.rebuild(compiler, normalized).ok());
     const auto normalizedId = cache.published(9)->id();
     auto vertexPackage = rhi::ShaderPackage::load(linked.published_vertex()->package.bytes());
@@ -201,7 +201,7 @@ void main() { color=vec4(renamed[0]+vec3(tail[1],0),1); }
     TFL_CHECK(fragmentVariant.reflection.interfaces[4].direction == rhi::ShaderInterfaceDirection::output);
     TFL_CHECK(fragmentVariant.reflection.interfaces[0].location == 0 &&
                   fragmentVariant.reflection.interfaces[4].location == 0);
-    renderer::ProgramDesc serialized;
+    renderer::specialist::ProgramDesc serialized;
     serialized.vertex = {&vertexPackage.value(), rhi::ShaderTarget::spirv, "main", rhi::ShaderStage::vertex,
                          vertexPackage.value().desc().variants[0].permutation};
     serialized.fragment = {&fragmentPackage.value(), rhi::ShaderTarget::spirv, "main", rhi::ShaderStage::fragment,

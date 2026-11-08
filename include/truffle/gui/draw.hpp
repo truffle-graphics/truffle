@@ -2,7 +2,7 @@
 
 #include "truffle/gui/context.hpp"
 #include "truffle/gui/shapes.hpp"
-#include "truffle/rhi/types.hpp"
+#include "truffle/gui/window.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -11,7 +11,7 @@
 namespace truffle::gui {
 
 struct DrawOptions {
-    rhi::Extent2D target; // render target size in pixels
+    PixelSize target; // render target size in pixels
     float scale = 1.0F;   // pixels per layout unit
     bool clip_y_up = true; // clip-space y grows upwards (Metal); false flips it
 };
@@ -19,7 +19,7 @@ struct DrawOptions {
 // Indices drawn with one texture and one clip rectangle, in target pixels.
 struct DrawCommand {
     TextureId texture;
-    rhi::ScissorRect clip;
+    PixelRect clip;
     std::uint32_t first_index = 0;
     std::uint32_t index_count = 0;
 };

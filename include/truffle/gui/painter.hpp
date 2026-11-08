@@ -1,70 +1,72 @@
 #pragma once
 
 #include "truffle/base/status.hpp"
-#include "truffle/gui/context.hpp"
-#include "truffle/gui/draw.hpp"
-#include "truffle/renderer/pipeline_cache.hpp"
-#include "truffle/renderer/render_batch.hpp"
-#include "truffle/renderer/texture.hpp"
+#include "truffle/gui/element.hpp"
+#include "truffle/gui/shapes.hpp"
+#include "truffle/gui/text.hpp"
+#include "truffle/gui/theme.hpp"
 
 #include <cstdint>
-#include <memory>
-#include <vector>
+#include <functional>
+#include <span>
 
 namespace truffle::gui {
 
-struct PainterDesc {
-    // Program slot registered in the host's PipelineCache.
-    renderer::MaterialId material = 0x7467'7569'0000'0001ULL;
-    std::size_t variant_hash = 0;
-    rhi::TextureFormat color_format = rhi::TextureFormat::rgba8_unorm;
-    std::uint32_t frames_in_flight = 2;
+class Context;
+
+// Where custom painting goes relative to an element's own look.
+enum class PaintLayer : std::uint8_t {
+    background, // under the element's decoration and text
+    foreground, // over the element's decoration and text
+    replace,    // instead of the element's decoration; text is still drawn
 };
 
-struct PaintStats {
-    std::size_t elements = 0; // elements whose shapes were drawn
-    std::size_t batches = 0;
-    std::size_t clipped = 0;  // subtrees skipped as fully clipped
-};
-
-// Turns a Context into Renderer batches for a host-supplied color target.
-// Programs come from a prepared shader package, so no shader compiler runs.
-// The host owns the device, pacing and render pass: it calls `record` with
-// the FramePacer slot and adds the batches to its own RenderPassNode, whose
-// color attachment must use `color_format` and match `target`.
-// Currently Metal only. Single-thread-owned; the device and cache outlive it.
+// Writes custom shapes for one element, in element-local layout units.
+// Painting is retained: a paint function runs only when the element's shapes
+// are regenerated (new, resized, restyled or invalidated) and its output is
+// reused for every frame until then. Painters are created by the Context and
+// are valid only during the paint function.
 class Painter {
 public:
-    Painter();
-    ~Painter();
-    Painter(Painter&&) noexcept;
-    Painter& operator=(Painter&&) noexcept;
-    Painter(const Painter&) = delete;
-    Painter& operator=(const Painter&) = delete;
+    Painter(const Context& context, ElementId element, ShapeWriter& writer, Size size,
+            const Decoration& decoration) noexcept
+        : context_(&context), element_(element), writer_(&writer), size_(size),
+          decoration_(decoration) {}
 
-    // Registers the GUI program in `programs` under `desc.material`.
-    [[nodiscard]] static base::Result<Painter> create(rhi::Device& device,
-                                                      renderer::PipelineCache& programs,
-                                                      const PainterDesc& desc = {});
+    [[nodiscard]] Size size() const noexcept { return size_; }
+    [[nodiscard]] Rect bounds() const noexcept { return {0, 0, size_.width, size_.height}; }
+    // The element's resolved look (fill, border, radius), from its style.
+    [[nodiscard]] const Decoration& decoration() const noexcept { return decoration_; }
+    // The element's resolved style property, including overrides.
+    [[nodiscard]] base::Result<ThemeValue> property(Property property) const;
+    [[nodiscard]] ElementId element() const noexcept { return element_; }
 
-    // Makes `texture` available to decorations. The texture is borrowed: keep
-    // it alive and unmoved until it is removed or the painter is destroyed.
-    [[nodiscard]] base::Result<TextureId> add_texture(renderer::SampledTexture& texture,
-                                                      const rhi::SamplerDesc& sampler = {});
-    [[nodiscard]] base::Status remove_texture(TextureId texture);
+    void rect(const Rect& rect, const Decoration& decoration);
+    void rect(const Rect& rect, Color fill, float corner_radius = 0.0F);
+    // A rectangle outline drawn inside `rect`.
+    void frame(const Rect& rect, float width, Color color, float corner_radius = 0.0F);
+    void circle(Point center, float radius, Color fill);
+    void ring(Point center, float radius, float width, Color color);
+    void line(Point from, Point to, float width, Color color);
+    void polyline(std::span<const Point> points, float width, Color color, bool closed = false);
+    void triangles(std::span<const Point> points, std::span<const std::uint32_t> indices,
+                   Color color);
+    void image(const Rect& rect, TextureId texture, Rect uv = {0, 0, 1, 1},
+               Color tint = {1, 1, 1, 1});
+    // Shaped text with its glyph atlas, with `origin` at the layout's top-left.
+    void text(Point origin, const TextLayout& layout, TextureId atlas, Color color);
 
-    // Assembles the stored shapes of `context` and streams them into frame
-    // `slot` (from FramePacer::begin_frame). Batches stay valid until the slot
-    // begins again. Logical units map to `target` pixels through the
-    // context's scale. Fails if a shape uses an unregistered texture.
-    [[nodiscard]] base::Result<std::vector<renderer::RenderBatch>> record(
-        const Context& context, std::uint32_t slot, rhi::Extent2D target);
-
-    [[nodiscard]] const PaintStats& last_stats() const noexcept;
+    // Lower-level access to the element's shape stream.
+    [[nodiscard]] ShapeWriter& writer() noexcept { return *writer_; }
 
 private:
-    struct State;
-    std::unique_ptr<State> state_;
+    const Context* context_;
+    ElementId element_;
+    ShapeWriter* writer_;
+    Size size_;
+    Decoration decoration_;
 };
+
+using PaintFunction = std::function<void(Painter&)>;
 
 } // namespace truffle::gui

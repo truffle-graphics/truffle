@@ -1,3 +1,4 @@
+#include "truffle/gui/specialist/text.hpp"
 #include "gui_text_fixture.hpp"
 #include "gui_unicode_fixture.hpp"
 #include "renderer_native_test_utils.hpp"
@@ -22,9 +23,9 @@ using namespace truffle;
 
 int test_optional_support() {
     auto context = tests::make_null_context();
-    const auto engine = gui::TextEngine::create(context.device);
+    const auto engine = gui::specialist::TextInterop::create(context.device);
     gui::TextEngine empty;
-    const auto empty_atlas = empty.atlas_texture();
+    const auto empty_atlas = truffle::gui::specialist::TextInterop::atlas(empty);
     TFL_CHECK(!empty_atlas.ok());
 #if TFL_TEST_GUI_TEXT
     TFL_CHECK(gui::TextEngine::available());
@@ -43,9 +44,56 @@ int test_optional_support() {
 }
 
 #if TFL_TEST_GUI_TEXT
+int test_sized_fonts() {
+    auto context = tests::make_null_context();
+    auto engine = tests::require(gui::specialist::TextInterop::create(context.device, {{256, 256}}));
+    const auto source = tests::require(engine.load_font(tests::gui_ligature_font(), 20));
+    const auto fallback = tests::require(engine.load_font(tests::gui_ligature_font(), 20));
+    TFL_CHECK(engine.set_fallbacks(source, std::array{fallback}).ok());
+    const auto small = tests::require(engine.sized_font(source, 12));
+    const auto large = tests::require(engine.sized_font(source, 32));
+    TFL_CHECK(tests::require(engine.sized_font(source, 12)) == small);
+    TFL_CHECK(tests::require(engine.sized_font(large, 20)) == source);
+    TFL_CHECK(tests::require(engine.shape(large, "A")).size.width >
+              tests::require(engine.shape(small, "A")).size.width);
+    const auto fallback_large = tests::require(engine.sized_font(fallback, 32));
+    TFL_CHECK(engine.unload_font(large).code == base::StatusCode::invalid_state);
+    TFL_CHECK(engine.set_fallbacks(large, {}).code == base::StatusCode::invalid_state);
+    TFL_CHECK(engine.unload_font(fallback).code == base::StatusCode::invalid_state);
+    TFL_CHECK(engine.set_fallbacks(source, {}).ok());
+    TFL_CHECK(engine.unload_font(fallback).ok());
+    TFL_CHECK(!engine.shape(fallback_large, "A").ok());
+    TFL_CHECK(engine.unload_font(source).ok());
+    TFL_CHECK(!engine.shape(small, "A").ok() && !engine.shape(large, "A").ok());
+
+    const auto primary = tests::require(engine.load_font(tests::gui_ligature_font(), 20));
+    const auto first = tests::require(engine.load_font(tests::gui_unicode_font({0x5d0}), 7));
+    const auto second = tests::require(engine.load_font(tests::gui_unicode_font({0x5d0}), 7));
+    TFL_CHECK(engine.set_fallbacks(primary, std::array{first, second}).ok());
+    const auto seven = tests::require(engine.sized_font(primary, 7));
+    TFL_CHECK(tests::require(engine.shape(seven, "\xd7\x90")).glyphs[0].font == first);
+    TFL_CHECK(engine.set_fallbacks(primary, std::array{second, first}).ok());
+    TFL_CHECK(tests::require(engine.shape(seven, "\xd7\x90")).glyphs[0].font == second);
+    TFL_CHECK(!engine.sized_font(primary, 28).ok());
+    TFL_CHECK(engine.set_fallbacks(primary, std::array{first}).ok());
+    TFL_CHECK(tests::require(engine.shape(seven, "\xd7\x90")).glyphs[0].font == first);
+    TFL_CHECK(!engine.sized_font(primary, 0).ok());
+    TFL_CHECK(!engine.sized_font(first, 8).ok());
+
+    const auto bitmap = tests::require(engine.load_font(tests::gui_test_font(), 7));
+    const auto scalable = tests::require(engine.load_font(tests::gui_ligature_font(), 20));
+    TFL_CHECK(engine.set_fallbacks(bitmap, std::array{scalable}).ok());
+    const auto matched = tests::require(engine.sized_font(bitmap, 7));
+    const auto matched_fallback = tests::require(engine.sized_font(scalable, 7));
+    TFL_CHECK(matched != bitmap);
+    TFL_CHECK(tests::require(engine.sized_font(bitmap, 7)) == matched);
+    TFL_CHECK(tests::require(engine.shape(matched, "fi")).glyphs[0].font == matched_fallback);
+    return 0;
+}
+
 int test_generated_ligature_and_script_shaping() {
     auto context = tests::make_null_context();
-    auto engine = tests::require(gui::TextEngine::create(context.device, {{256, 256}}));
+    auto engine = tests::require(gui::specialist::TextInterop::create(context.device, {{256, 256}}));
     const auto font = tests::require(engine.load_font(tests::gui_ligature_font(), 20));
     const auto ligature = tests::require(engine.shape(font, "fi"));
     TFL_CHECK(ligature.glyphs.size() == 1 && ligature.glyphs[0].id == 6);
@@ -110,7 +158,7 @@ int test_unicode_boundaries() {
 
 int test_fallback_lifetimes_and_geometry() {
     auto context = tests::make_null_context();
-    auto engine = tests::require(gui::TextEngine::create(context.device, {{256, 256}}));
+    auto engine = tests::require(gui::specialist::TextInterop::create(context.device, {{256, 256}}));
     const auto primary = tests::require(engine.load_font(tests::gui_test_font(), 7));
     const auto fallback = tests::require(engine.load_font(tests::gui_unicode_font(), 7));
     const auto missing = tests::require(engine.shape(primary, "\xd7\x90"));
@@ -167,7 +215,7 @@ int test_fallback_lifetimes_and_geometry() {
 
 int test_multiline_combining_and_bidi_controls() {
     auto context = tests::make_null_context();
-    auto engine = tests::require(gui::TextEngine::create(context.device, {{256, 256}}));
+    auto engine = tests::require(gui::specialist::TextInterop::create(context.device, {{256, 256}}));
     const auto font = tests::require(engine.load_font(tests::gui_unicode_font(), 7));
     const auto lines = tests::require(engine.shape(font, "A\r\n\xd7\x90\xd7\x91\n\nB\n"));
     TFL_CHECK(lines.size.height == lines.line_height * 5);
@@ -228,12 +276,12 @@ int test_multiline_combining_and_bidi_controls() {
 
 int test_moved_from_engine() {
     auto context = tests::make_null_context();
-    auto engine = tests::require(gui::TextEngine::create(context.device, {{64, 64}}));
-    TFL_CHECK(engine.atlas_texture().ok());
+    auto engine = tests::require(gui::specialist::TextInterop::create(context.device, {{64, 64}}));
+    TFL_CHECK(truffle::gui::specialist::TextInterop::atlas(engine).ok());
     gui::TextEngine moved = std::move(engine);
-    TFL_CHECK(moved.atlas_texture().ok());
+    TFL_CHECK(truffle::gui::specialist::TextInterop::atlas(moved).ok());
     // NOLINTNEXTLINE(bugprone-use-after-move): the moved-from contract is under test.
-    const auto stale = engine.atlas_texture();
+    const auto stale = truffle::gui::specialist::TextInterop::atlas(engine);
     TFL_CHECK(!stale.ok());
     TFL_CHECK(stale.status().code == base::StatusCode::invalid_state);
     TFL_CHECK(!engine.load_font(tests::gui_test_font(), 7.0F).ok());
@@ -241,7 +289,7 @@ int test_moved_from_engine() {
 }
 int test_shape_atlas_and_invalidation() {
     auto context = tests::make_null_context();
-    auto engine = tests::require(gui::TextEngine::create(context.device, {{64, 64}}));
+    auto engine = tests::require(gui::specialist::TextInterop::create(context.device, {{64, 64}}));
     const auto bytes = tests::gui_test_font();
     const gui::FontId font =
         tests::require(engine.load_font(bytes, 7.0F));
@@ -306,6 +354,9 @@ int main() {
         return result;
     }
 #if TFL_TEST_GUI_TEXT
+    if (const int result = test_sized_fonts(); result != 0) {
+        return result;
+    }
     if (const int result = test_generated_ligature_and_script_shaping(); result != 0) {
         return result;
     }

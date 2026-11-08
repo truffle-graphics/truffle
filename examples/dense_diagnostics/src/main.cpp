@@ -111,14 +111,14 @@ int run_example(bool smoke) {
     if (!catalog.add_group(radarGroup).ok()) return 7;
 
     asset_render::RenderBatchPlanOptions renderPlanOptions;
-    renderPlanOptions.bindingModel = renderer::BindingModel::Interleaved;
+    renderPlanOptions.bindingModel = renderer::specialist::BindingModel::Interleaved;
     renderPlanOptions.channelMappings = {
         {assets::AttributeSemantic::Position,
-         renderer::ChannelKind::CustomFloat4},
+         renderer::specialist::ChannelKind::CustomFloat4},
         {assets::AttributeSemantic::Confidence,
-         renderer::ChannelKind::CustomFloat4},
+         renderer::specialist::ChannelKind::CustomFloat4},
         {assets::AttributeSemantic::Classification,
-         renderer::ChannelKind::CustomFloat4},
+         renderer::specialist::ChannelKind::CustomFloat4},
     };
     auto lidarPlanResult = asset_render::plan_catalog_render_batch(
         catalog, lidarMesh.id, renderPlanOptions);

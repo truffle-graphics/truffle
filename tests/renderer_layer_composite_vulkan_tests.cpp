@@ -1,7 +1,7 @@
 #include "renderer_layer_composite.hpp"
 #include "renderer_native_test_utils.hpp"
 #include "test_support.hpp"
-#include "truffle/renderer/source_program.hpp"
+#include "truffle/renderer/specialist/source_program.hpp"
 #include "truffle/rhi/vulkan_backend.hpp"
 #include "vulkan_backend_test.hpp"
 
@@ -30,8 +30,8 @@ layout(location=0) out vec4 color;
 void main() { color = texture(sampler2D(layer, layerSampler), gl_FragCoord.xy / 16.0); }
 )";
 
-renderer::SourceProgramRequest request(const char* fragment) {
-    renderer::SourceProgramRequest result;
+renderer::specialist::SourceProgramRequest request(const char* fragment) {
+    renderer::specialist::SourceProgramRequest result;
     result.vertex = {.name = "fullscreen", .source = {"fullscreen.vert", kFullscreen},
                      .stage = rhi::ShaderStage::vertex};
     result.fragment = {.name = "layer", .source = {"layer.frag", fragment},
@@ -55,18 +55,18 @@ int run() {
     auto device = tests::require(adapter.request_device());
 
     auto bindings = tests::make_layer_bindings(device);
-    renderer::PipelineCache programs(device);
-    renderer::Renderer renderer(device, &programs);
+    renderer::specialist::PipelineCache programs(device);
+    renderer::specialist::Renderer renderer(device, &programs);
     shader::Compiler compiler;
     rhi::PipelineDesc writerState;
     writerState.colorTargets = {{.format = rhi::TextureFormat::rgba8_unorm}};
     writerState.dynamicState = rhi::DynamicState::scissor;
-    renderer::SourceProgram writer(programs, 1, writerState);
+    renderer::specialist::SourceProgram writer(programs, 1, writerState);
     tests::require(writer.rebuild(compiler, request(kWriter)));
     rhi::PipelineDesc compositorState;
     compositorState.layout = &bindings.pipelineLayout;
     compositorState.colorTargets = {{.format = rhi::TextureFormat::rgba8_unorm}};
-    renderer::SourceProgram compositor(programs, 2, compositorState);
+    renderer::specialist::SourceProgram compositor(programs, 2, compositorState);
     tests::require(compositor.rebuild(compiler, request(kCompositor)));
     tests::LayerComposite layer(device, renderer, bindings, 1, 2);
     layer.run_proof();

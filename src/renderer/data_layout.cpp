@@ -1,10 +1,10 @@
-#include "truffle/renderer/data_layout.hpp"
+#include "truffle/renderer/specialist/data_layout.hpp"
 
 #include <algorithm>
 #include <string_view>
 #include <vector>
 
-namespace truffle::renderer {
+namespace truffle::renderer::specialist {
 namespace {
 
 base::Status invalid(const char* message) {
@@ -141,4 +141,4 @@ base::Status validate_batch_data(
     return base::Status::success();
 }
 
-} // namespace truffle::renderer
+} // namespace truffle::renderer::specialist

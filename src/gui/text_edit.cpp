@@ -31,31 +31,25 @@ std::string normalize(std::string_view text, bool multiline) {
     return result;
 }
 
-Color token(const Context& context, std::string_view name) {
-    const auto value = context.theme_value(name);
-    const Color* color = value.ok() ? std::get_if<Color>(&value.value()) : nullptr;
-    return color != nullptr ? *color : Color{1, 1, 1, 1};
-}
-
-// Colours are read while building, so a theme change that repaints the label
-// (it binds gui.text) also refreshes selection, caret and composition marks.
 class EditShapes final : public ShapeBuilder {
 public:
-    const Context* context = nullptr;
+    Color selection_color;
+    Color composition_color;
+    Color caret_color;
     std::vector<Rect> selection;
     std::vector<Rect> marked;
     std::optional<Rect> caret;
 
     void build(ShapeWriter& out, Size, const Decoration&) const override {
         for (const auto rect : selection) {
-            out.rect(rect, {.fill = token(*context, "gui.selection")});
+            out.rect(rect, {.fill = selection_color});
         }
         for (auto rect : marked) {
             rect.y += std::max(0.0F, rect.height - 1);
             rect.height = 1;
-            out.rect(rect, {.fill = token(*context, "gui.composition")});
+            out.rect(rect, {.fill = composition_color});
         }
-        if (caret) { out.rect(*caret, {.fill = token(*context, "gui.caret")}); }
+        if (caret) { out.rect(*caret, {.fill = caret_color}); }
     }
 };
 
@@ -83,7 +77,11 @@ struct TextEdit::State {
     std::size_t visual = 0;
     std::optional<std::uint32_t> pointer;
     bool focused = false;
+    bool hovered = false;
     bool scrolling_to_caret = true;
+    Color painted_selection;
+    Color painted_caret;
+    Color painted_composition;
 
     bool live() const noexcept { return context != nullptr && context->alive(root); }
     bool boundary(std::size_t byte) const {
@@ -140,13 +138,45 @@ struct TextEdit::State {
                 Rect{bounds.value().x + p.x, bounds.value().y + p.y, 1, caret_height()});
         }
     }
+    base::Result<FontId> effective_font() const {
+        const auto size = context->property(root, Property::font_size);
+        if (!size.ok()) { return size.status(); }
+        const auto& units = std::get<FontSize>(size.value()).units;
+        return units ? desc.text_engine->sized_font(desc.font, *units)
+                     : base::Result<FontId>{desc.font};
+    }
+    base::Status style_changed() {
+        const auto font = effective_font();
+        if (!font.ok()) { return font.status(); }
+        const auto selection_color = context->property(root, Property::selection_color);
+        const auto caret_color = context->property(root, Property::caret_color);
+        const auto composition_color = context->property(root, Property::composition_color);
+        if (!selection_color.ok()) { return selection_color.status(); }
+        if (!caret_color.ok()) { return caret_color.status(); }
+        if (!composition_color.ok()) { return composition_color.status(); }
+        if (font.value() == shaped_font &&
+            std::get<Color>(selection_color.value()) == painted_selection &&
+            std::get<Color>(caret_color.value()) == painted_caret &&
+            std::get<Color>(composition_color.value()) == painted_composition) {
+            return base::Status::success();
+        }
+        return render();
+    }
+    base::Status appearance() {
+        const auto interaction = context->interaction(root);
+        if (!interaction.ok()) { return interaction.status(); }
+        return context->set_component_state(root, {
+            .hovered = hovered, .focused = focused, .disabled = !interaction.value().enabled});
+    }
     base::Status render() {
         std::string text = desc.text;
         if (composition) {
             text.replace(replaced.begin, replaced.end - replaced.begin, composition->preedit);
         }
-        if (text != displayed || shaped_font != desc.font) {
-            auto shaped = desc.text_engine->shape(desc.font, text);
+        const auto font = effective_font();
+        if (!font.ok()) { return font.status(); }
+        if (text != displayed || shaped_font != font.value()) {
+            auto shaped = desc.text_engine->shape(font.value(), text);
             if (!shaped.ok()) { return shaped.status(); }
             const auto color = context->property(label, Property::text_color);
             if (!color.ok()) { return color.status(); }
@@ -155,10 +185,18 @@ struct TextEdit::State {
             if (!status.ok()) { return status; }
             layout = std::move(shaped).value();
             displayed = std::move(text);
-            shaped_font = desc.font;
+            shaped_font = font.value();
         }
+        const auto selection_color = context->property(root, Property::selection_color);
+        const auto caret_color = context->property(root, Property::caret_color);
+        const auto composition_color = context->property(root, Property::composition_color);
+        if (!selection_color.ok()) { return selection_color.status(); }
+        if (!caret_color.ok()) { return caret_color.status(); }
+        if (!composition_color.ok()) { return composition_color.status(); }
         auto shapes = std::make_shared<EditShapes>();
-        shapes->context = context;
+        shapes->selection_color = painted_selection = std::get<Color>(selection_color.value());
+        shapes->caret_color = painted_caret = std::get<Color>(caret_color.value());
+        shapes->composition_color = painted_composition = std::get<Color>(composition_color.value());
         const auto range = composition
             ? TextRange{replaced.begin + composition->selection_begin,
                         replaced.begin + composition->selection_end}
@@ -436,7 +474,9 @@ struct TextEdit::State {
     base::Status on_event(RoutedEvent& event) {
         if (!live()) { return base::Status::success(); }
         if (const auto* hover = std::get_if<HoverEvent>(&event.payload)) {
+            hovered = hover->entered;
             context->host().set_cursor(hover->entered ? Cursor::text : Cursor::arrow);
+            return appearance();
         } else if (const auto* focus = std::get_if<ElementFocusEvent>(&event.payload)) {
             focused = focus->focused;
             if (!focused) {
@@ -445,8 +485,7 @@ struct TextEdit::State {
                 context->host().set_text_input_area(std::nullopt);
                 context->host().set_text_input_state(std::nullopt);
             }
-            auto status = context->bind_property(root, Property::border_color,
-                                                 focused ? "gui.accent" : "gui.border");
+            auto status = appearance();
             return status.ok() ? render() : status;
         } else if (std::holds_alternative<CaptureLostEvent>(event.payload)) {
             pointer.reset();
@@ -562,36 +601,38 @@ base::Result<TextEdit> TextEdit::create(Context& context, ElementId parent, Text
     state->boundaries = std::move(boundaries).value();
     const auto setup = [&]() -> base::Status {
         if (auto status = install_default_theme(context); !status.ok()) { return status; }
+        auto status = context.set_component(state->root, state->desc.multiline
+            ? Component::multiline_text_edit : Component::text_edit);
+        if (!status.ok()) { return status; }
         auto label = context.create(state->root);
         if (!label.ok()) { return label.status(); }
         state->label = label.value();
-        auto status = context.set_interaction(state->label, {.hit_test = false});
+        status = context.set_interaction(state->label, {.hit_test = false});
         if (status.ok()) {
             status = context.set_interaction(state->root, {.focusable = true});
         }
-        if (status.ok()) {
-            LayoutParams params;
-            params.min = {120, state->desc.multiline ? 80.0F : 30.0F};
-            params.padding = {8, 6, 8, 6};
-            status = context.set_layout_params(state->root, params);
-        }
-        if (status.ok()) {
-            const std::pair<Property, const char*> bindings[] = {
-                {Property::fill, "gui.surface"}, {Property::border_color, "gui.border"},
-                {Property::border_width, "gui.border_width"},
-                {Property::corner_radius, "gui.radius"}};
-            for (const auto& [property, name] : bindings) {
-                if (status.ok()) { status = context.bind_property(state->root, property, name); }
+        for (const auto property : {Property::fill, Property::border_color,
+                                    Property::border_width, Property::corner_radius,
+                                    Property::padding, Property::min_size, Property::font_size,
+                                    Property::selection_color, Property::caret_color,
+                                    Property::composition_color}) {
+            if (status.ok()) {
+                status = context.bind_component_property(state->root, property, state->root);
             }
         }
         if (status.ok()) {
-            status = context.bind_property(state->label, Property::text_color, "gui.text");
+            status = context.bind_component_property(state->label, Property::text_color,
+                                                     state->root);
         }
         if (status.ok()) {
             status = context.set_semantics(state->root, {Context::Role::text_edit, "Text editor"});
         }
         if (status.ok()) {
             status = context.set_layout(state->root, std::make_shared<EditLayout>(state));
+        }
+        if (status.ok()) {
+            status = context.set_component_style_handler(
+                state->root, [state] { return state->style_changed(); });
         }
         if (status.ok()) { status = state->render(); }
         if (status.ok()) {

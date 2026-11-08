@@ -1,4 +1,4 @@
-#include "truffle/gui/surface.hpp"
+#include "truffle/gui/specialist/surface.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -164,11 +164,11 @@ base::Status Surface::release_input() {
     return status;
 }
 
-base::Status Surface::handle(const InputEvent& event) {
+base::Status Surface::handle(const InputEvent& event, Context::Clock::time_point now) {
     if (!alive()) { return invalid_surface(); }
     Scope scope(*this);
     if (auto status = validate_input(); !status.ok()) { return status; }
-    return context_->handle(event);
+    return context_->handle(event, now);
 }
 
 base::Status Surface::focus(ElementId element) {
@@ -206,6 +206,21 @@ Surface* Context::surface_of(ElementId element) const noexcept {
     return nullptr;
 }
 
+base::Result<float> Context::scale(ElementId element) const {
+    if (!alive(element)) {
+        return base::Status::failure(base::StatusCode::invalid_argument,
+                                     "DPI scale requires a live GUI element");
+    }
+    if (auto* surface = surface_of(element); surface != nullptr) {
+        return root_ == surface->root_ ? scale_ : surface->scale_;
+    }
+    // Surface dispatch temporarily parks the primary scale in the active view.
+    if (auto* active = surface_of(root_); active != nullptr) {
+        return active->scale_;
+    }
+    return scale_;
+}
+
 base::Status Context::run_element_update(ElementId element, const Updater& update) {
     if (auto* surface = surface_of(element); surface != nullptr && root_ != surface->root()) {
         return surface->update(update);
@@ -219,11 +234,11 @@ void Surface::assemble(const DrawOptions& options, DrawData& out) {
     gui::assemble(*context_, options, out);
 }
 
-base::Result<std::vector<renderer::RenderBatch>> Surface::record(
-    Painter& painter, std::uint32_t slot, rhi::Extent2D target) {
-    if (!alive()) { return invalid_surface(); }
-    Scope scope(*this);
-    return painter.record(*context_, slot, target);
+base::Result<std::vector<renderer::specialist::RenderBatch>> specialist::SurfaceInterop::record(
+    Surface& surface, Painter& painter, std::uint32_t slot, rhi::Extent2D target) {
+    if (!surface.alive()) { return invalid_surface(); }
+    Surface::Scope scope(surface);
+    return painter.record(*surface.context_, slot, target);
 }
 
 } // namespace truffle::gui

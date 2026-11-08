@@ -114,12 +114,21 @@ interface. Layout reruns only for invalidated parts of the tree.
 
 ### Styling
 
-- A **theme** is a set of named values: colors, spacing, corner radii, borders,
-  fonts. Elements refer to these names rather than copying the values.
-- Any element may **override** any property directly.
-- Changing a theme value updates only the elements that use it.
+- Shared typed tokens describe colors, padding, radii, border widths and font
+  size. Named low-level values remain available for other bindings.
+- Truffle supplies component defaults; an application can replace sparse
+  overrides globally per component and locally per element. A state-specific
+  value inherits independently, so a normal override need not erase hover or
+  pressed feedback. Composite controls apply their owner's component style to
+  relevant internal parts.
+- Dark and Light select color palettes. Palette changes retain non-color
+  metrics and component overrides. Position, sizing constraints and layout
+  spacing remain layout concerns; no margin or selector cascade is introduced.
+- Direct element properties and layout inputs remain available. Style changes
+  invalidate dependent work, and unrelated elements stay untouched.
 - Named reusable **presets** (for example a "primary button" style) come later.
 - There is no CSS-style selector engine.
+- See [GUI styling](../gui-styling.md) for precedence, tokens and defaults (#280).
 
 ### Events
 
@@ -139,6 +148,9 @@ interface. Layout reruns only for invalidated parts of the tree.
 - The first implementation uses FreeType for rasterization and HarfBuzz for
   shaping, as private optional pinned dependencies. Their licenses and any
   bundled fonts are reviewed before adoption.
+- The host selects and supplies font bytes and fallbacks. Truffle defaults a
+  loaded font to 14 logical units and caches engine-owned size variants for
+  explicit shared or component sizes; it does not discover or bundle fonts.
 - Capability grows in steps: basic shaping and an atlas first, then fallback
   fonts, then bidirectional text, editing, selection and input-method
   composition. The interface must not rule out those later steps; characters,

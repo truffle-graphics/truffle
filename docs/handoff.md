@@ -5,7 +5,342 @@ This is the rolling execution handoff, not an implementation transcript.
 issues/Project own accepted work. Earlier phase details remain in their PRs,
 the support matrix and Git history.
 
-## Latest: Windows batch completion and issue reconciliation
+## GUI batch integration
+
+The owner approved merging `feat/gui-menus` into `develop` through a normal
+merge-commit PR, followed by Studio's batch. Studio will pin the resulting
+Truffle `develop` merge commit before its own PR merges. Remove only merged
+feature/docs branches after integration; preserve `develop`, `master` and
+unmerged work. Existing validation below remains the evidence boundary;
+Windows validation of the latest consumer migrations is still pending.
+
+## Fluent GUI API (#282)
+
+The public consumer API is now `gui::Ui` in `truffle/gui/ui.hpp`: typed,
+copyable handles created from containers (`root().row().button(...)`) with
+chainable setters and `on_click`/`on_change`/`on_submit` callbacks, no
+begin/end calls and no exposed signals. `Painter` and `on_paint` give retained
+custom drawing per element; `Ui::overlay()` draws above every element.
+`DockSpace::panel(ui, id, title)` creates dock panels. The former
+`gui::Widget`, `gui::MenuBar` objects and the builder were removed from the
+public headers (the object classes are now private `detail` code). Stack and
+grid gaps follow the `gui.spacing` token (default 8) unless `gap()` or explicit
+`GridOptions` spacing overrides them.
+
+The strict Debug build passed. 28 of 31 GUI/package/consumer tests passed; the
+Metal/Vulkan drawing selection-pixel failures also occur at the previous
+commit, and the Vulkan package check covers unchanged shaders. Studio (#31)
+was ported in the same slice, built strictly and passed its tests.
+
+## GUI component style contract (#280)
+
+GUI now resolves typed shared tokens, Truffle component defaults, global
+component patches and per-element/state patches. Dark/Light change colors
+without resetting metrics or component overrides. Layout sizing and spacing
+remain separate; checkbox, slider and menu geometry are component-owned.
+Host-selected fonts use Truffle's default 14-unit size or cached explicit
+size variants with their fallback chains. See `docs/gui-styling.md` and ADR
+0013. GUI Dock remains above GUI; no reverse dependency was added.
+
+The strict Debug GUI targets compiled with warnings-as-errors and 12 focused
+CPU/Null checks passed, covering style precedence, invalidation, layout,
+controls, menus, editors, dock and sized fonts. No native visual verification
+or text-disabled build was performed. Studio adoption (#30), its build and
+the owner's manual verification remain pending for the dependent phase.
+
+## Separating GUI Context and Graphics (#279)
+
+The public entry point changed from `gui::Application` to `gui::Graphics`.
+`gui::Context` is independently constructed and owns logical tree/input/host
+state. Graphics and Renderer operations receive Context explicitly and do not
+own it or retain it outside an open frame. `GraphicsDesc` configures
+graphics/window presentation only.
+Graphics-owned text sources still borrow their `TextEngine`, so Graphics must
+outlive Context while those sources remain.
+
+The Truffle changes built successfully with warnings-as-errors and the focused
+GUI Graphics, GUI-only consumer, Renderer presentation, GUI viewport and
+viewport consumer tests passed. The native Metal viewport target compiled but
+was not run. The dependent Studio (#27) migration remains to be built and
+tested. Keep the unrelated pending #278 macOS test-source fixes separate from
+the #279 issue commit.
+
+## Latest: GUI-only viewport and Renderer integration (#277)
+
+macOS build-only follow-up (#278): the normal Debug build with
+warnings-as-errors now compiles and links on Apple Silicon. Two test-source
+fixes were committed and pushed in `f9d32bc`: Renderer shader-stage fixtures use designated
+package initializers, and the GUI drawing clip helper uses GUI's `PixelRect`
+instead of the removed RHI type. Studio's pinned GUI-owned application also
+compiles and links on macOS without source changes. No tests, apps or native
+graphics checks were run; this is build evidence only. Apple's linker reports
+non-fatal duplicate-library warnings on several Truffle test targets.
+
+The consumer-layer implementation children #274-#277 are implemented on the
+existing feat/gui-menus batch. Prerequisites are signed/pushed:
+#274 `21f08b04833610214c78040744a77a3ebf215e92`,
+#275 `55688541987a82f550eabf7c997a38323492f83b`,
+#276 `da68f6252d3597406db15674034d17b1ed7cfefc`.
+This final issue-scoped phase replaces ordinary Viewport's raw graphics
+contract with GUI-only metrics/events/reference and opt-in Renderer-only
+prepare/append/display/composite/finish/release APIs in `gui::Rendering`.
+Existing offscreen viewport logic moves to GUI specialist headers/namespace;
+no compatibility shims, version bump, Engine or Studio changes.
+
+Returned Renderer Texture values retain the exact target allocation and device
+owner across slot resize/release. Graphs retain app pass/batch/depth/texture and
+GUI owners; graph moves preserve identity. Viewport's Context-owned raw state
+does not strongly own its enclosing Application. Stable image IDs, submitted
+scene reuse, detached DPI/input/clipping/overlays and minimized behavior remain.
+Owned and borrowed Applications use the same scene composition example.
+GUI pipeline/cache/bindings remain GUI-owned; use its exposed Renderer/cache
+for combined scene/GUI work and preserve the reserved GUI program ID.
+
+One Application owns one Context and GUI stream. Existing shared-context,
+independently paced detached windows still need explicit specialist Painter
+owners. A normal borrowed-Context/per-surface owner API is an open boundary in
+#276, not provided by the optional Surface recording argument. Do not record
+two GUI views into one reused slot. Studio must retain this limitation during
+migration rather than silently sharing streamed geometry.
+
+Strict incremental compilation covered the changed viewport/GUI-only contracts
+and the migrated Vulkan native test. Only the three focused CPU/Null contracts
+ran and passed; architecture/whitespace guards pass. Native shared-frame test
+bodies use normal borrowed Application/Renderer APIs; only native setup/readback
+remain specialist harness code. No native execution, Metal compilation, full
+suite/build, package/configuration or multi-window matrix, installs or hosted
+work was run. The native paths are not newly verified or promoted.
+
+See `docs/consumer-layers.md`, `docs/gui-graphics.md`,
+`docs/gui-viewport.md` and the public examples. Rebuild all consumers against
+matching new headers/archives. Finish/discard every prepared frame, use actual
+submitted statistics even on presentation errors, and check the idle wait
+before host/window teardown. Issues remain open for owner review/integration;
+no PR or merge was requested.
+
+## Earlier: GUI-owned and borrowed applications (#276)
+
+Renderer issue #275 is signed/pushed at
+`55688541987a82f550eabf7c997a38323492f83b` after #274
+`21f08b04833610214c78040744a77a3ebf215e92`.
+`gui::Application` now provides owned native setup with GUI-only headers/types
+and the GUI target alone. It owns Presentation/cache/Renderer/Painter and
+optional font/image GPU resources while the host retains window/input/services.
+`gui/rendering.hpp` is the opt-in borrowed Renderer-device/shared-frame path.
+Normal drawing/text/Surface headers no longer import Renderer/RHI; raw GPU
+entry points move to GUI specialist headers. Viewport's equivalent cutover is
+the remaining #277. No compatibility shims/version bump or Studio work.
+
+The root/default clear stays transparent; resize/DPI/input, on-demand
+scheduling, minimized suspension and native recovery/errors stay explicit.
+Graphs retain GUI wrapper owners; cached font/image resources outlive Context.
+Invalid Renderer graphs clear submission statistics and close an open
+Presentation before GUI recovery retries. See `docs/gui-graphics.md`.
+
+Strict incremental compilation covered Application, changed text contracts
+and the coupled Renderer contract. Only those three focused contracts ran and
+passed. No native GUI/presentation execution, Metal compilation, full suites,
+package/text-disabled matrix, multi-window integration, dependency installs
+or hosted work was run. Owner-run native execution remains a gap, not a
+claimed GPU proof. The GUI-only executable additionally compiles/links GUI alone, with no lower
+layer headers or direct links. The next signed/pushed issue is #277.
+
+## Earlier: RHI-free Renderer contracts (#275)
+
+The second consumer-layer phase replaces normal Renderer resource/frame
+headers with independent values and opaque retained implementations. Existing
+raw contracts move to `renderer::specialist`/`renderer/specialist/`; RHI import,
+native access and externally owned resources require `renderer/rhi_interop.hpp`.
+The cutover updates every in-repo C++ caller, including native proofs and optional
+integrations. Normal mesh/buffer/texture/bindings, prepared program/pipeline,
+graph/Renderer/pacing and Presentation APIs require no RHI names or includes.
+Native creation remains in optional RendererPresentation, not core Renderer.
+See `docs/consumer-layers.md` and `examples/renderer_consumer/frame.hpp`.
+
+Resource/pass wrappers are retained through graph recording; streamed slots
+still obey pacing and never authorize stale-graph resubmission. Program
+publication retains package/layout ownership and Renderer retains cache state.
+The strict incremental Renderer contract compiled, passed on Null and the
+Vulkan native factory compiled. No native execution, full test/build suite,
+Metal compilation, dependency installs or package/hosted matrix was run.
+GUI-only Application ownership and Renderer-level viewport composition remain
+the next separately committed issues #276/#277. Studio and Engine stay excluded.
+This is an immediate breaking cutover, with no shims or version bump.
+
+## Earlier: consumer layer cutover (#273), host values (#274)
+
+The approved GUI/Renderer/RHI consumption model is audited in
+`docs/consumer-layers.md`. Structural children #274-#277 are in the delivery
+Project/milestone. Engine #272 and Studio are excluded.
+The first phase replaces normal Presentation native handles with Base-owned
+`WindowHandle`/`WindowKind`, re-exported by Renderer/GUI; shared pixel size/rect
+values are also defined for the later layers. Conversion to existing RHI surface
+kinds is internal, preserving HWND/CAMetalLayer/XCB and typed failures.
+This is a breaking pre-release public contract change, no shim/version bump.
+The remaining raw resource/frame, GUI setup/text/image and viewport contracts
+follow as separate signed immediately pushed child commits on feat/gui-menus.
+The incremental strict Debug Presentation contract/example compiled and its
+single focused contract passed (0.17 seconds CTest wall time), including invalid
+window-kind rejection. No native or broad validation was run.
+
+## Earlier: GUI offscreen viewport (#271)
+
+The same `feat/gui-menus` batch builds on signed/pushed presentation phase
+`51868acb6f04ef051deaa968a7642a3034be56c4`, immediately delivered before
+viewport implementation. `gui::Viewport` is a Context-owned checked image/input
+reference; applications supply scene batches/shaders and optional depth.
+It reports logical bounds, rounded-up pixels and actual host DPI scale, follows
+detached Surface DPI and preserves normal routing/focus/capture and clipping/
+overlays. GUI root transparency is unchanged.
+
+`prepare_frame`, `append_render_pass`, `display`, `composite` and `finish_frame`
+compose existing Renderer sampled targets and Painter on one device/frame.
+Attachment/sample barriers and an app-to-GUI dependency are explicit. Safe
+slots retain stable targets; unchanged GUI repaints reuse the last submitted
+scene. Resize/DPI/revision changes render again; hidden/minimized/clipped views
+allocate nothing. Submission, not presentation success, commits scene state.
+Painter texture rebinding preserves a stable ID and retained GUI shapes.
+The small FrameGraph retention hook keeps state/target wrappers alive after
+element removal while a per-frame graph still borrows them. Device/Painter/cache
+lifetimes and explicit GPU release before host transfer/teardown are documented.
+These remain cohesive GUI viewport, Renderer graph and Painter binding owners,
+with no scene/window policy, Engine or CPU-readback dependency.
+
+See `docs/gui-viewport.md` and compiled `examples/gui_viewport/viewport_frame.hpp`.
+The GUI-only example exposes its shared Painter/Renderer/cache for integration.
+FrameGraph storage and RendererFrameStats changed: rebuild all Renderer/GUI
+consumers with matching headers and archives rather than mixing class layouts.
+Strict incremental MSVC Debug compilation covered both new Null/CPU contract
+targets, the public examples and the new Vulkan viewport test. Only the two
+Null/CPU contracts ran and passed (0.31 seconds combined CTest wall time);
+architecture and whitespace guards passed. Native Metal/Vulkan pixel tests
+are committed for owner execution, not native evidence. Native presentation/
+viewport execution, multi-window integration and broader verification were
+deliberately skipped; Metal compilation was not performed on Windows.
+Both issues remain open/In Review for owner integration; no PR/merge, Studio
+file/gitlink edit, version bump, dependency install or hosted work.
+
+## Earlier: Renderer presentation (#270)
+
+The existing `feat/gui-menus` batch continues from signed/pushed menu commit
+`985f3050add4802be091b9e4e21f2eca167cfab8`. `renderer::Presentation` now composes
+RHI surfaces/swapchains and FramePacer, supports explicit borrowed devices or
+owned instance/device setup, and preserves shared-device Renderer/frame-graph
+access. Resize/recoverable errors recreate the swapchain on the next frame,
+after submitted work retires; recording failure abandons acquired images safely.
+Zero extent suspends without acquisition/slot reuse. Surface loss requires a
+replacement host handle; device loss requires new GPU consumers.
+
+`Truffle::RendererPresentation` is an explicitly optional Renderer-owned
+native factory target and links only enabled Metal/Vulkan backends. Core
+Renderer gains no mandatory backend or GUI dependency. GUI-only clients need
+no backend headers, RHI setup calls, SDL/GLFW or Engine. The compiled
+`examples/gui_presentation/gui_graphics.hpp` demonstrates setup, drawing,
+resize, transparent clear and explicit teardown. See `docs/presentation.md`.
+The presentation owner coordinates existing interfaces/lifecycle only; native
+implementation and scene policy remain in their owning modules.
+
+Delivery is the first signed issue-scoped commit with immediate push before
+GUI viewport (#271) begins. Strict MSVC Debug compilation of only
+`truffle_renderer_presentation_tests` and its changed dependency closure passes;
+the GUI-only public example compiles in that target. Its one Null contract test
+passes (0.04 seconds). Architecture and whitespace guards pass. New native
+Metal/Vulkan execution, full suites/matrices and hosted work are deliberately
+not claimed.
+No Studio file or gitlink edit, PR/merge, version bump or dependency install.
+
+## Earlier: Reusable GUI menus (#269)
+
+`feat/gui-menus` builds on the signed/pushed, unmerged Vulkan Painter
+prerequisite `07331517d15b76399d69ecc916ed24ff1243e94e` without altering it.
+`MenuBar`, `MenuButton`, `Menu`, `MenuItem` and `MenuSeparator` are implemented
+in Truffle GUI alone. Named menu-bar menus automatically create their triggers;
+standalone buttons and recursive action/submenu rows support disabled entries,
+optional checks, shortcut display and separators. Application actions, selected
+values, shortcut binding and native hosts remain caller-owned.
+
+One chain per surface manages enabled-row keyboard traversal, focus restoration,
+deepest-first Escape, focus-aware Right/Left, outside clicks, action dismissal,
+250 ms hover opening and 300 ms triangular parent-to-child travel grace.
+Opening siblings replaces their descendants. Popup layout flips/shifts within
+the viewport; overflow keyboard selection scrolls into view. Disabling/removing
+a focused row or action chooses another eligible row, or the menu panel.
+Trigger/menu/subtree/Context cleanup cancels timers and clears open state.
+Moved menus and even empty bars survive retirement of their former surface.
+
+GUI narrowly extends its existing Context owners for collapsed visibility,
+parent-anchored overlays, surface-local element-owned input filters and one-shot
+updater deadlines with host time. Context storage and input signatures changed:
+GUI consumers must rebuild against coherent headers/libraries. No architectural
+boundary, backend, shader package, runtime compiler, GUI Dock dependency or
+application policy changes. Object construction/presentation and shared
+interaction/lifetime remain separate, cohesive menu-owned source files.
+See [GUI menu usage](gui-menus.md) and the compiled host-independent
+`examples/gui_menus/menu_example.hpp`.
+
+All 15 affected strict MSVC Debug GUI tests pass: tree, layout, drawing, host,
+events, themes, widgets, menus, builder, regions, collections, docking, text,
+editing and native Vulkan drawing. Deterministic menu checks cover exact hover/
+travel deadlines, two-level recursive navigation, focus/dismissal, layout/
+resize/movement/overflow, callbacks that destroy triggers, Context teardown and
+surface migration/retirement. Native Windows Vulkan checks use the prepared
+Painter on RTX 4080 SUPER with required Khronos validation and no reported
+warnings/errors. They check exact 512x240 probes, at least eight checkmark and
+twelve arrow pixels, disabled glyph/shortcut colors, byte-identical retained
+root/recursive frames, and removal of root and two-level submenu pixels after
+one action. Existing native GUI reference checks remain passing.
+Architecture and whitespace guards pass; clang-format 19.1.5 checks the new
+menu sources/example, while unrelated existing GUI formatting is preserved.
+The object implementation's 1,000-line signal is resolved as cohesive: checked
+construction, public mutation and presentation share one menu-widget model
+lifecycle; the shared interaction/session owner remains separate.
+
+The Studio-only compile/link window was held until its owner released it.
+Its app/host rebuilt and linked against the coherent GUI/dock archives;
+Studio files, build outputs and its gitlink were not edited here.
+Delivery is one signed issue-scoped commit immediately pushed, with the exact
+receipt recorded on #269. No PR or merge is authorized; review/integration
+remain with the coordinating owner. No version bump, hosted work, machine
+installation, macOS rerun, software-driver/ARM64 or conformance claim.
+
+## Earlier: Vulkan GUI Painter prerequisite (#268)
+
+`feature/gui-vulkan-painter` owns the focused reusable GUI prerequisite for
+Windows Studio. Painter now selects prepared Vulkan SPIR-V or the unchanged
+Metal source through existing public RHI/Renderer contracts. Vulkan uses
+Y-down clip assembly; Metal retains Y-up. Public signatures and module
+boundaries are unchanged; unsupported backends still fail explicitly.
+The checked-in TSP contains canonical reflection and machine-independent
+source hashes/identities, regenerated by the optional test-only pinned
+Shader/glslang tool. Configure and runtime do not compile it.
+
+Strict MSVC Debug focused GUI/Renderer checks pass on NVIDIA GeForce
+RTX 4080 SUPER with required Khronos validation and no reported warnings/errors.
+The shared native suite proves shapes, borders, rounded coverage, clipping,
+order, alpha, textures, glyphs, core widgets and text editor selection/caret/
+preedit. Four 32x32 frames match the CPU signed-distance reference within the
+existing two-code-point tolerance. Byte-exact full-image checks cover canvas
+triangles and square-ended lines, unclipped overlay order, retained streamed
+slot reuse, 2x logical scaling, 2D texture orientation and translucent texture
+tint/update. Package regeneration is byte-identical. The native suite also
+passes with every Shader compiler disabled; the original Debug compiler
+configuration is restored. Architecture and whitespace guards pass.
+
+The shared editor fixture now sets an explicit palette: its former pixel
+constants described an older default theme, not the current grayscale theme.
+This changes test setup only, not GUI theme or editor behavior. Painter remains
+the cohesive GUI composition owner; shader detail stays in GUI-owned assets
+and offline generation outside runtime. No backend implementation is changed.
+
+Studio files and its submodule pin are untouched. The parent reports its
+strict Windows build and full Studio smoke pass against these live changes;
+its host/font/IME/3D evidence remains Studio-owned. Delivery authorization is
+one signed issue-scoped commit and immediate push, not a PR or merge. Parent
+will pin the pushed prerequisite before delivering Studio's Windows phase.
+No macOS rerun, hosted work, machine installs, version bump, software-driver,
+ARM64 or full conformance claim is part of this prerequisite.
+
+## Earlier: Windows batch completion and issue reconciliation
 
 All 155 repository issues were checked against their acceptance criteria,
 merged PRs, delivery receipts and the support matrix. Twenty-two historical

@@ -19,7 +19,7 @@ struct Bounds {
         return {std::max(left, other.left), std::max(top, other.top),
                 std::min(right, other.right), std::min(bottom, other.bottom)};
     }
-    [[nodiscard]] rhi::ScissorRect scissor() const noexcept {
+    [[nodiscard]] PixelRect scissor() const noexcept {
         return {static_cast<std::int32_t>(left), static_cast<std::int32_t>(top),
                 static_cast<std::uint32_t>(right - left),
                 static_cast<std::uint32_t>(bottom - top)};
@@ -62,6 +62,7 @@ void assemble(const Context& context, const DrawOptions& options, DrawData& out)
         while (!pending.empty()) {
             const Pending item = pending.back();
             pending.pop_back();
+            if (!context.visible(item.element)) { continue; }
             if (item.overlay) {
                 nested.push_back({item.element, item.origin, viewport});
                 continue;

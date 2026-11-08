@@ -1,5 +1,7 @@
 #pragma once
 
+#include "truffle/gui/specialist/text.hpp"
+
 #include "../src/gui/text_unicode.hpp"
 
 #include <filesystem>
@@ -28,7 +30,7 @@ inline void append_test_utf8(std::string& text, std::uint32_t cp) {
 
 inline int gui_unicode_conformance() {
     auto context = make_null_context();
-    auto engine = require(gui::TextEngine::create(context.device, {{128, 128}}));
+    auto engine = require(gui::specialist::TextInterop::create(context.device, {{128, 128}}));
     const auto font = require(engine.load_font(gui_test_font(), 7));
     const auto root = std::filesystem::path{__FILE__}.parent_path().parent_path();
     std::ifstream graphemes{root / "tests/fixtures/unicode/GraphemeBreakTest-16.0.0.txt"};

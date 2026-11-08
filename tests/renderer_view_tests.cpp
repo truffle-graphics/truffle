@@ -1,7 +1,7 @@
 #include "rhi_test_utils.hpp"
 #include "test_support.hpp"
-#include "truffle/renderer/depth_target.hpp"
-#include "truffle/renderer/renderer.hpp"
+#include "truffle/renderer/specialist/depth_target.hpp"
+#include "truffle/renderer/specialist/renderer.hpp"
 #include "truffle/renderer/view.hpp"
 
 #include <cmath>
@@ -60,7 +60,7 @@ int main() {
     TFL_CHECK(!renderer::look_at({0, 0, 0}, {0, 1, 0}, {0, 1, 0}).ok());
     TFL_CHECK(!renderer::look_at({nan, 0, 0}, {0, 0, 0}).ok());
     auto context = tests::make_null_context();
-    renderer::DepthTarget depth(context.device);
+    renderer::specialist::DepthTarget depth(context.device);
     TFL_CHECK(depth.resize({16, 16}).ok());
     const auto original = depth.texture()->id();
     TFL_CHECK(depth.resize({16, 16}).ok());
@@ -74,11 +74,11 @@ int main() {
     TFL_CHECK(depth.texture()->desc().extent.width == 32);
     TFL_CHECK(depth.texture()->desc().extent.height == 24);
     TFL_CHECK(depth.resize({16, 16}, rhi::TextureFormat::depth32_float_stencil8).ok());
-    renderer::Renderer renderer(context.device);
-    renderer::RenderBatch batch;
+    renderer::specialist::Renderer renderer(context.device);
+    renderer::specialist::RenderBatch batch;
     batch.instanceCount = 1;
-    renderer::FrameGraph missingSwapchain;
-    missingSwapchain.add_node(std::make_unique<renderer::RenderPassNode>(
+    renderer::specialist::FrameGraph missingSwapchain;
+    missingSwapchain.add_node(std::make_unique<renderer::specialist::RenderPassNode>(
         rhi::RenderPassDesc{.depthStencilAttachment = {.texture = depth.texture()}},
         std::vector{batch}, true));
     TFL_CHECK(!renderer.render(missingSwapchain).ok());

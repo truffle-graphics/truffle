@@ -1,12 +1,12 @@
-#include "truffle/renderer/pipeline_cache.hpp"
-#include "truffle/renderer/data_layout.hpp"
+#include "truffle/renderer/specialist/pipeline_cache.hpp"
+#include "truffle/renderer/specialist/data_layout.hpp"
 
 #include <algorithm>
 #include <new>
 #include <tuple>
 #include <utility>
 
-namespace truffle::renderer {
+namespace truffle::renderer::specialist {
 namespace {
 
 struct AttachmentState {
@@ -357,4 +357,4 @@ base::Status PipelineCache::validate_batch(const RenderBatch& batch) const {
     return validate_batch_data(batch, found->second->vertexBuffers_);
 }
 
-} // namespace truffle::renderer
+} // namespace truffle::renderer::specialist

@@ -116,6 +116,10 @@ for each backend/platform pair:
   results. Shaderc and Renderer use this library directly; RHI never depends
   on it.
 - `truffle_renderer` starts the independently consumable rendering layer above RHI.
+- Optional `Truffle::RendererPresentation` sets up native Metal/Vulkan devices
+  without backend headers. Core Renderer owns presentation/pacing over a
+  host-owned native surface without requiring backend links; see
+  [presentation usage](docs/presentation.md).
 - `truffle_encom_renderer` is the optional EnCom–Renderer integration that
   extracts EnCom state into render batches.
 - `truffle_diagnostics` provides opt-in asset/render/frame/asset-render-plan/
@@ -154,7 +158,7 @@ schema or fixed transform/light/material model. GUI-readiness primitives add
 clip rectangles, sampled textures, streamed geometry and frame pacing. The GUI
 module's architecture is accepted in
 [ADR 0013](docs/adr/0013-truffle-gui-architecture.md) (#217). `Truffle::GUI`
-provides the persistent tree, incremental layout, Renderer drawing (Metal),
+provides the persistent tree, incremental layout, Renderer drawing (Metal and Vulkan),
 host boundary, text, event routing, themes and core widgets (#221-#229),
 plus grid layout, placement overrides, canvas drawing and overlays (#230-#231),
 a nested C++ builder (#232), immediate-style regions (#233) and virtualized
@@ -169,9 +173,21 @@ Detached panels keep their live elements in an independent `Surface` of the same
 Context. Saved layouts normalize them back into docking; OS window geometry is
 not persisted. Native windows remain a host integration, demonstrated on
 macOS/Metal rather than claimed for every platform.
+`gui::Viewport` (#271/#277) provides GUI-only layout/input; `gui::Rendering`
+displays application-owned offscreen rendering through Renderer-only contracts
+with pixel/DPI metrics, routed input, on-demand scene redraw and shared-device/
+frame-graph synchronization. GUI owns its targets and Painter integration, not Engine
+or CPU readback; see [viewport usage](docs/gui-viewport.md).
 The [native widget demo](examples/gui_window/README.md) records idle and
 selective-update evidence. Epic #217 (#221-#235) is delivered; this
 is a usable baseline, not a finished GUI framework.
+The prepared Vulkan Painter program (#268) has native Windows x64 readback
+evidence on an RTX 4080 SUPER with required Khronos validation. It preserves
+the existing shape/text/texture, clipping, canvas and premultiplied-alpha
+contracts without a runtime compiler. Metal remains the macOS path; other
+GUI backend/platform execution is not implied. See
+[`docs/architecture.md`](docs/architecture.md#gui-prepared-rendering-268)
+for package regeneration and focused checks.
 Assets, a general material system and later application work are not started.
 [`docs/roadmap.md`](docs/roadmap.md) records the review and evidence boundaries.
 GUI text support is enabled by default and uses private pinned FreeType,
@@ -180,6 +196,15 @@ HarfBuzz, SheenBidi and utf8proc submodules;
 bundled, and applications supply font data with its associated license.
 
 ## GUI Object API
+
+`gui::Graphics::create` in `truffle/gui/graphics.hpp` accepts the
+host's native window, drawable pixel size, DPI scale and platform services.
+Link `Truffle::GUI` alone: GUI owns native graphics setup, presentation,
+pipeline/cache, images and optional text atlas. Its public owned path requires
+no Renderer or RHI headers/types. The opt-in `gui/rendering.hpp` accepts a
+borrowed Renderer device and shares GUI/scene frame composition.
+See [`docs/gui-graphics.md`](docs/gui-graphics.md) for both paths,
+optional native configuration, host scheduling and teardown.
 
 GUI input routing (#226) adds clipped topmost hit testing, bubbling callbacks, hover notifications,
 keyboard focus/Tab traversal, and per-pointer capture. Register callbacks with
@@ -193,11 +218,13 @@ Named themes (#227) use `set_theme_value`, `bind_property`,
 radii repaint only their dependents; padding, stack spacing and fonts also
 invalidate dependent layout. Overrides shield an element from theme updates.
 Two neutral built-in themes, Truffle Dark and Truffle Light (#260), live in
-`truffle/gui/themes.hpp`. `apply_theme` switches all tokens; widgets,
-`TextEdit` and `DockSpace` call `install_default_theme`, which fills only
-missing tokens with Truffle Dark, so application values always win. Dock colours
-use `dock.*` tokens; `DockMetrics` holds only geometry, including an optional
-`gap` between areas (default 0) that exposes `dock.background`.
+`truffle/gui/themes.hpp`. `apply_theme` switches the color palette and fills
+missing defaults without replacing existing metrics or component overrides.
+Widgets, `TextEdit` and `DockSpace` call `install_default_theme`, which fills
+only missing tokens with Truffle Dark. Typed shared tokens, component defaults
+and per-element/state overrides are described in [GUI styling](docs/gui-styling.md).
+Dock colors use `dock.*` tokens; `DockMetrics` holds geometry such as the
+optional `gap` between areas (default 0) that exposes `dock.background`.
 `prepare_frame` resolves pending styles before layout and shapes; check its
 `status` before drawing (for example, a font unloaded by the application fails
 explicitly and keeps work pending). Manual stages call `update_styles` first.
@@ -210,19 +237,35 @@ UTF-8 cluster. `TextLayout` exposes visual carets, `hit_test`, `caret_position`
 and selection rectangles, while `text_graphemes` validates UTF-8 and returns
 extended-grapheme boundaries. Newlines create separate lines; wrapping remains
 an application policy.
-Theme bindings govern the named style properties; raw layout/decoration setters
-remain the low-level API, not implicit overrides of bindings.
-Core widgets (#228) are checked `Widget` references created with `WidgetDesc`:
-panel, label, image, button, checkbox, slider and scroll area. The Context owns
-their elements; destroying a reference does not remove the UI. User actions
-invoke the descriptor callbacks; programmatic setters do not. Use `element()`
-for layout/theme overrides and `content()` to add children to a scroll area.
-Widgets retain semantic roles/labels, not an accessibility implementation.
-The `text_edit` widget (#252) is also available as `TextEdit`, through
-`ui::text_edit` in a builder, or as a two-way `RegionScope::text_edit`.
-It supports plain single-line/multiline UTF-8, grapheme-safe selection/deletion,
-visual arrow navigation, Home/End, clipboard, 128 undo/redo steps and IME
-preedit/commit. `Widget::editor()` exposes its checked editing reference.
+Theme bindings govern named style properties; explicit layout sizing and
+padding follow the precedence described in the styling guide.
+The consumer API (#282) is `truffle/gui/ui.hpp`: a `gui::Ui` wraps a
+`Context` and returns lightweight typed handles. Containers (`root`, `panel`,
+`row`, `column`, `grid`, `scroll`) create children directly — `label`, `button`,
+`checkbox`, `slider`, `text_field`, `text_area`, `image`, `canvas`,
+`menu_bar` and `menu_button` — and every handle configures itself fluently
+(`width`, `padding`, `weight`, `enabled`, `style`, `on_click`, `on_change`,
+`on_hover`, ...). There are no begin/end pairs and no exposed signals. The
+Context owns all elements; dropping a handle does not remove the UI. User
+actions invoke callbacks; programmatic setters do not. Failures are reported to
+the `Ui` error handler (stderr and a debug assertion by default), and
+`last_error` keeps the latest one. Stacked containers space children with the
+`gui.spacing` theme token unless `gap` overrides it.
+Custom drawing is retained: `on_paint(fn, PaintLayer)` records shapes through a
+`Painter` (background, replace or foreground layers) and `invalidate()`
+re-records them; `Ui::overlay()` is a viewport-sized canvas above everything.
+Menus (#269) are `MenuBar`, `Menu` and `MenuItem` handles: `menu_bar().menu`
+creates a trigger, `menu.menu` creates a submenu, and items have shortcut
+display, disabled state and optional self-toggling checks. One open chain per
+surface handles pointer/keyboard traversal, delayed hover, safe submenu travel,
+focus and dismissal; popups flip/shift within the viewport. Application values,
+shortcut bindings and native hosts remain outside the widgets. See
+[`docs/gui-menus.md`](docs/gui-menus.md). `DockSpace::panel(ui, id, title)`
+returns a docked panel as a container.
+Text fields (#252) support plain single-line/multiline UTF-8, grapheme-safe
+selection/deletion, visual arrow navigation, Home/End, clipboard, 128 undo/redo
+steps and IME preedit/commit; `RegionScope::text_edit` remains for two-way
+region bindings.
 Programmatic `set_text` resets undo history without calling `text_changed`;
 user edits and undo/redo call it. Read-only controls still allow selection/copy.
 Line endings normalize to LF; single-line insertion converts line breaks to
@@ -239,17 +282,16 @@ UTF-16 conversion, marked text and candidate-window placement.
 Scrolling translates children consistently in drawing, hit testing and
 absolute bounds without regenerating layout or shapes.
 Contexts are non-copyable and non-movable so callbacks and Widget references
-keep a stable owner. Application text engines/registered textures must outlive
-the elements using them.
+keep a stable owner. Graphics-owned text engines and registered textures must
+outlive the elements using them.
 
 ```cpp
-truffle::gui::Context ui;
-auto result = truffle::gui::Widget::create(ui, ui.root(), {
-    .kind = truffle::gui::WidgetKind::button,
-    .activated = [] { /* update application state */ },
-});
-if (!result.ok()) { /* report result.status() */ }
-// A caption additionally supplies text, text_engine, font and atlas in WidgetDesc.
+truffle::gui::Context context;
+truffle::gui::Ui ui{context, {&text_engine, font, atlas}};
+auto row = ui.root().row();
+row.button("Run").on_click([] { /* update application state */ });
+row.slider(0, 1, 0.5F).weight(1).on_change([](float v) { /* ... */ });
+// Text widgets need the TextStyle engine, font and atlas.
 ```
 
 ## Build

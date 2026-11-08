@@ -37,6 +37,15 @@ DockNode& at(DockNode& root, std::span<const std::size_t> path) {
     return *node;
 }
 
+base::Status style(Context& context, ElementId element, Component component,
+                   std::initializer_list<Property> properties) {
+    auto status = context.set_component(element, component);
+    for (const auto property : properties) {
+        if (status.ok()) { status = context.bind_component_property(element, property, element); }
+    }
+    return status;
+}
+
 } // namespace
 
 struct DockSpace::State : std::enable_shared_from_this<DockSpace::State> {
@@ -118,11 +127,10 @@ struct DockSpace::State : std::enable_shared_from_this<DockSpace::State> {
             if (!created.ok()) { return created.status(); }
             const auto id = created.value();
             elements.push_back(id);
-            auto status = context->bind_property(id, Property::fill,
-                                                 divider ? "dock.divider" : "dock.area");
-            if (status.ok() && !divider) {
-                status = context->bind_property(id, Property::corner_radius, "dock.radius");
-            }
+            auto status = style(*context, id,
+                                divider ? Component::dock_divider : Component::dock_area,
+                                {Property::fill, Property::border_color, Property::border_width,
+                                 Property::corner_radius});
             if (status.ok()) { status = context->set_interaction(id, {.hit_test = divider}); }
             if (status.ok() && divider) {
                 status = context->set_event_handler(
@@ -172,9 +180,10 @@ struct DockSpace::State : std::enable_shared_from_this<DockSpace::State> {
                 const Panel* panel = find(tabs.panels[i]);
                 status = show(panel->tab);
                 if (status.ok()) {
-                    status = context->bind_property(panel->tab, Property::fill,
-                                                    i == tabs.active ? "dock.tab_active"
-                                                                     : "dock.tab");
+                    auto tab_state = context->component_state(panel->tab);
+                    if (!tab_state.ok()) { return tab_state.status(); }
+                    tab_state.value().checked = i == tabs.active;
+                    status = context->set_component_state(panel->tab, tab_state.value());
                 }
             }
         }
@@ -573,14 +582,15 @@ base::Result<DockSpace> DockSpace::create(Context& context, ElementId parent,
     state->marker = marker.value();
     auto status = context.set_interaction(state->stash, {.hit_test = false, .enabled = false});
     if (status.ok()) { status = context.set_interaction(state->marker, {.hit_test = false}); }
-    const std::pair<ElementId, std::pair<Property, const char*>> bindings[] = {
-        {state->root, {Property::fill, "dock.background"}},
-        {state->marker, {Property::fill, "dock.marker"}},
-        {state->marker, {Property::border_color, "dock.marker_border"}},
-        {state->marker, {Property::border_width, "dock.marker_border_width"}},
-    };
-    for (const auto& [element, binding] : bindings) {
-        if (status.ok()) { status = context.bind_property(element, binding.first, binding.second); }
+    if (status.ok()) {
+        status = style(context, state->root, Component::dock_background,
+                       {Property::fill, Property::border_color, Property::border_width,
+                        Property::corner_radius, Property::padding});
+    }
+    if (status.ok()) {
+        status = style(context, state->marker, Component::dock_marker,
+                       {Property::fill, Property::border_color, Property::border_width,
+                        Property::corner_radius});
     }
     if (status.ok()) { status = context.set_overlay(state->marker, true); }
     if (status.ok()) { status = context.set_layout(state->root, std::make_shared<DockLayout>(state)); }
@@ -597,6 +607,22 @@ base::Result<DockSpace> DockSpace::create(Context& context, ElementId parent,
 ElementId DockSpace::element() const noexcept { return state_ ? state_->root : ElementId{}; }
 bool DockSpace::alive() const noexcept { return state_ && state_->live(); }
 
+gui::Container DockSpace::panel(Ui& ui, std::string id, std::string title) {
+    if (!alive()) {
+        ui.report(dead_dock());
+        return {};
+    }
+    auto content = ui.adopt(element()).column();
+    if (!content.valid()) { return {}; }
+    if (auto status = add_panel(std::move(id), std::move(title), content.element());
+        !status.ok()) {
+        content.remove();
+        ui.report(status);
+        return {};
+    }
+    return content;
+}
+
 base::Status DockSpace::add_panel(std::string id, std::string title, ElementId content) {
     if (!alive()) { return dead_dock(); }
     if (state_->transferring) { return invalid("GUI dock transfer is already in progress"); }
@@ -610,12 +636,11 @@ base::Status DockSpace::add_panel(std::string id, std::string title, ElementId c
     if (!tab.ok()) { return tab.status(); }
     const auto tab_id = tab.value();
     auto status = s.context->reparent(content, s.stash);
-    LayoutParams params;
-    params.padding = {8, 4, 8, 4};
-    if (status.ok()) { status = s.context->set_layout_params(tab_id, params); }
-    if (status.ok()) { status = s.context->bind_property(tab_id, Property::fill, "dock.tab"); }
     if (status.ok()) {
-        status = s.context->bind_property(tab_id, Property::corner_radius, "dock.tab_radius");
+        status = style(*s.context, tab_id, Component::dock_tab,
+                       {Property::fill, Property::border_color, Property::border_width,
+                        Property::corner_radius, Property::padding, Property::text_color,
+                        Property::font_size});
     }
     if (status.ok() && s.options.text_engine != nullptr && !title.empty()) {
         status = s.context->set_text_source(tab_id, *s.options.text_engine, s.options.font, title,
@@ -624,6 +649,13 @@ base::Status DockSpace::add_panel(std::string id, std::string title, ElementId c
     if (status.ok()) {
         status = s.context->set_event_handler(
             tab_id, [state = state_, id, tab_id](Context&, RoutedEvent& event) {
+                if (const auto* hover = std::get_if<HoverEvent>(&event.payload)) {
+                    auto current = state->context->component_state(tab_id);
+                    if (!current.ok()) { event.status = current.status(); return; }
+                    current.value().hovered = hover->entered;
+                    event.status = state->context->set_component_state(tab_id, current.value());
+                    return;
+                }
                 if (std::holds_alternative<CaptureLostEvent>(event.payload)) {
                     if (state->drag && state->drag->panel == id) {
                         state->drag.reset();

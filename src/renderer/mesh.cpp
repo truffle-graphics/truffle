@@ -1,9 +1,9 @@
-#include "truffle/renderer/mesh.hpp"
+#include "truffle/renderer/specialist/mesh.hpp"
 
 #include <cstring>
 #include <limits>
 
-namespace truffle::renderer {
+namespace truffle::renderer::specialist {
 namespace {
 
 base::Status invalid(const char* message) {
@@ -100,4 +100,4 @@ RenderBatch Mesh::batch(MaterialId program, std::size_t variant) {
     return result;
 }
 
-} // namespace truffle::renderer
+} // namespace truffle::renderer::specialist

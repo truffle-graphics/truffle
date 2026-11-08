@@ -1,3 +1,4 @@
+#include "truffle/gui/specialist/text.hpp"
 #include "truffle/asset_render/asset_render.hpp"
 #include "truffle/assets/assets.hpp"
 #include "truffle/base/config.hpp"
@@ -9,13 +10,13 @@
 #include "truffle/encom_renderer/encom_render_adapter.hpp"
 #include "truffle/gui/context.hpp"
 #include "truffle/gui/dock/dock.hpp"
-#include "truffle/gui/widgets.hpp"
+#include "truffle/gui/ui.hpp"
 #include "../gui_text_fixture.hpp"
-#include "truffle/renderer/data_layout.hpp"
-#include "truffle/renderer/depth_target.hpp"
-#include "truffle/renderer/frame_stream.hpp"
-#include "truffle/renderer/mesh.hpp"
-#include "truffle/renderer/texture.hpp"
+#include "truffle/renderer/specialist/data_layout.hpp"
+#include "truffle/renderer/specialist/depth_target.hpp"
+#include "truffle/renderer/specialist/frame_stream.hpp"
+#include "truffle/renderer/specialist/mesh.hpp"
+#include "truffle/renderer/specialist/texture.hpp"
 #include "truffle/renderer/view.hpp"
 
 #include <array>
@@ -34,14 +35,18 @@ int main() {
 
     truffle::gui::Context gui;
     if (!gui.create(gui.root()).ok()) return 1;
-    auto button = truffle::gui::Widget::create(gui, gui.root(), {
-        .kind = truffle::gui::WidgetKind::button});
-    if (!button.ok() || !gui.set_viewport({100, 100}).ok()) return 1;
+    truffle::gui::Ui ui{gui};
+    bool clicked = false;
+    auto button = ui.root().button("").on_click([&] { clicked = true; });
+    if (!button.valid() || !gui.set_viewport({100, 100}).ok()) return 1;
     if (!gui.prepare_frame(truffle::gui::Context::Clock::now()).status.ok()) return 1;
-    if (!gui.focus(button.value().element()).ok() ||
-        !gui.handle(truffle::gui::KeyEvent{.key = truffle::gui::Key::space}).ok()) return 1;
+    if (!gui.focus(button.element()).ok() ||
+        !gui.handle(truffle::gui::KeyEvent{.key = truffle::gui::Key::space}).ok() ||
+        !gui.handle(truffle::gui::KeyEvent{.key = truffle::gui::Key::space, .down = false}).ok() ||
+        !clicked)
+        return 1;
     auto dock = truffle::gui::dock::DockSpace::create(gui, gui.root());
-    if (!dock.ok() || !dock.value().add_panel("view", "", gui.create(gui.root()).value()).ok() ||
+    if (!dock.ok() || !dock.value().panel(ui, "view", "").valid() ||
         !dock.value().restore("(tabs 0 \"view\")").ok()) return 1;
 
     truffle::assets::GeometryStreamDesc stream;
@@ -66,7 +71,7 @@ int main() {
     truffle::asset_render::RenderBatchPlanOptions planning;
     planning.channelMappings.push_back({
         truffle::assets::AttributeSemantic::Position,
-        truffle::renderer::ChannelKind::CustomFloat4,
+        truffle::renderer::specialist::ChannelKind::CustomFloat4,
     });
     auto plannedBatch =
         truffle::asset_render::plan_render_batch(mesh, material, planning);
@@ -85,7 +90,7 @@ int main() {
     const auto graphemes = truffle::gui::text_graphemes("A\xCC\x81");
     if (truffle::gui::TextEngine::available()) {
         if (!graphemes.ok() || graphemes.value() != std::vector<std::size_t>{0, 3}) return 1;
-        auto engine = truffle::gui::TextEngine::create(device);
+        auto engine = truffle::gui::specialist::TextInterop::create(device);
         if (!engine.ok()) return 1;
         auto font = engine.value().load_font(truffle::tests::gui_test_font(), 7);
         if (!font.ok()) return 1;
@@ -103,7 +108,7 @@ int main() {
         return 1;
     }
 
-    static_assert(!std::is_copy_constructible_v<truffle::renderer::Mesh>);
+    static_assert(!std::is_copy_constructible_v<truffle::renderer::specialist::Mesh>);
     auto projection = truffle::renderer::perspective(1, 1, .1F, 10);
     if (!projection.ok()) {
         std::cerr << projection.status().message << '\n';
@@ -111,9 +116,9 @@ int main() {
     }
     const std::array<float, 12> vertices{-1, -1, 0, 1, 3, -1, 0, 1, -1, 3, 0, 1};
     const std::array streams{
-        truffle::renderer::MeshStream{std::as_bytes(std::span{vertices}), 16},
+        truffle::renderer::specialist::MeshStream{std::as_bytes(std::span{vertices}), 16},
     };
-    auto gpuMesh = truffle::renderer::Mesh::upload(device, {
+    auto gpuMesh = truffle::renderer::specialist::Mesh::upload(device, {
         .streams = streams, .vertexCount = 3,
     });
     if (!gpuMesh.ok()) {
@@ -123,19 +128,19 @@ int main() {
     const std::array<truffle::rhi::VertexBufferLayoutDesc, 1> layouts{{
         {.stride = 16, .attributes = {{.location = 0}}},
     }};
-    const auto dataStatus = truffle::renderer::validate_batch_data(
+    const auto dataStatus = truffle::renderer::specialist::validate_batch_data(
         gpuMesh.value().batch(1), layouts);
-    truffle::renderer::DepthTarget depth(device);
+    truffle::renderer::specialist::DepthTarget depth(device);
     const auto depthStatus = depth.resize({16, 16});
     if (!dataStatus.ok() || !depthStatus.ok()) {
         std::cerr << dataStatus.message << ' ' << depthStatus.message << '\n';
         return 1;
     }
 
-    auto pacer = truffle::renderer::FramePacer::create(device);
-    auto streamed = truffle::renderer::StreamBuffer::create(device);
+    auto pacer = truffle::renderer::specialist::FramePacer::create(device);
+    auto streamed = truffle::renderer::specialist::StreamBuffer::create(device);
     const std::array<std::byte, 4> texel{};
-    auto atlas = truffle::renderer::SampledTexture::upload(device, {
+    auto atlas = truffle::renderer::specialist::SampledTexture::upload(device, {
         .extent = {1, 1}, .bytes = texel,
     });
     if (!pacer.ok() || !streamed.ok() || !atlas.ok()) {

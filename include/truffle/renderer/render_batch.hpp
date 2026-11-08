@@ -1,137 +1,90 @@
 #pragma once
 
-#include "truffle/rhi/rhi.hpp"
+#include "truffle/base/status.hpp"
+#include "truffle/renderer/device.hpp"
 
-#include <array>
-#include <cstddef>
-#include <cstdint>
+#include <memory>
 #include <optional>
+#include <span>
 #include <vector>
 
 namespace truffle::renderer {
 
 using MaterialId = std::uint64_t;
-
-// ---------------------------------------------------------------------------
-// Channel model
-// ---------------------------------------------------------------------------
-
 enum class ChannelKind : std::uint32_t {
-    Transform,       // world-space 4x4 float matrix per instance (64 bytes)
-    LocalTransform,  // local-space 4x4 float matrix (reserved for GPU hierarchy)
-    Color,           // RGBA float4 per instance (16 bytes)
-    Normal,          // float3 per instance (12 bytes)
-    TexCoord,        // float2 per instance (8 bytes)
-    ParentIndex,     // int32 per instance — parent node for GPU hierarchy
-    CustomFloat4,    // user-declared float4 channel
+  Transform,
+  LocalTransform,
+  Color,
+  Normal,
+  TexCoord,
+  ParentIndex,
+  CustomFloat4
 };
-
-enum class BindingModel : std::uint32_t {
-    Separate,     // one buffer binding per channel (SoA — default)
-    Interleaved,  // all channels packed into one binding (AoS)
-};
-
-enum class DrawKind : std::uint32_t {
-    Direct,
-    Indexed,
-    Indirect,
-    IndirectIndexed,
-};
-
-// ---------------------------------------------------------------------------
-// ChannelDesc — one entry in an InstanceLayout
-// ---------------------------------------------------------------------------
-
+enum class BindingModel : std::uint32_t { Separate, Interleaved };
+enum class DrawKind : std::uint32_t { Direct, Indexed, Indirect, IndirectIndexed };
 struct ChannelDesc {
-    ChannelKind   kind    = ChannelKind::Transform;
-    std::uint32_t binding = 0;  // index into RenderBatch::bindings[]
-    std::uint32_t offset  = 0;  // byte offset within the binding stride
-    std::uint32_t stride  = 64; // bytes between consecutive instances
-
-    [[nodiscard]] bool operator==(const ChannelDesc& o) const noexcept {
-        return kind == o.kind && binding == o.binding &&
-               offset == o.offset && stride == o.stride;
-    }
+  ChannelKind kind = ChannelKind::Transform;
+  std::uint32_t binding = 0, offset = 0, stride = 64;
+  bool operator==(const ChannelDesc &) const = default;
 };
-
-// ---------------------------------------------------------------------------
-// InstanceLayout — runtime declaration of what data a batch carries
-// ---------------------------------------------------------------------------
-
 struct InstanceLayout {
-    std::vector<ChannelDesc> channels;
-    BindingModel             bindingModel = BindingModel::Separate;
-
-    [[nodiscard]] bool operator==(const InstanceLayout& o) const noexcept {
-        return bindingModel == o.bindingModel && channels == o.channels;
-    }
-
-    [[nodiscard]] std::size_t hash() const noexcept {
-        auto blend = [](std::size_t h, std::size_t v) noexcept -> std::size_t {
-            return h ^ (v + 0x9e3779b9u + (h << 6u) + (h >> 2u));
-        };
-        std::size_t h = channels.size();
-        for (const auto& ch : channels) {
-            h = blend(h, static_cast<std::size_t>(ch.kind));
-            h = blend(h, static_cast<std::size_t>(ch.binding));
-            h = blend(h, static_cast<std::size_t>(ch.offset));
-            h = blend(h, static_cast<std::size_t>(ch.stride));
-        }
-        h = blend(h, static_cast<std::size_t>(bindingModel));
-        return h;
-    }
+  std::vector<ChannelDesc> channels;
+  BindingModel bindingModel = BindingModel::Separate;
+  bool operator==(const InstanceLayout &) const = default;
 };
 
-// ---------------------------------------------------------------------------
-// BufferView — non-owning reference into a GPU buffer range
-// ---------------------------------------------------------------------------
+// Slices retain their storage owner, but a streamed slot still must not be
+// reused before its pacing wait. Borrowed specialist buffers stay caller-owned.
+class BufferSlice {
+public:
+  BufferSlice() = default;
+  [[nodiscard]] bool valid() const noexcept;
+  [[nodiscard]] std::size_t size() const noexcept;
 
-struct BufferView {
-    rhi::Buffer* buffer = nullptr;
-    std::size_t   offset = 0;
-    std::size_t   size   = 0;
+private:
+  struct State;
+  std::shared_ptr<State> state_;
+  friend struct RhiInterop;
 };
 
-struct BatchBindGroup {
-    std::uint32_t group = 0;
-    rhi::BindGroup* bindings = nullptr;
-    std::vector<std::uint32_t> dynamicOffsets;
+class Buffer {
+public:
+  Buffer() = default;
+  [[nodiscard]] static base::Result<Buffer>
+  upload(Device &device, std::span<const std::byte> bytes, BufferUsage usage);
+  [[nodiscard]] base::Result<BufferSlice> slice(std::size_t offset = 0,
+                                                std::size_t bytes = 0) const;
+
+private:
+  struct State;
+  std::shared_ptr<State> state_;
+  friend struct RhiInterop;
 };
 
-// ---------------------------------------------------------------------------
-// RenderBatch — universal renderer input; produced by all three data lanes
-// ---------------------------------------------------------------------------
+class ResourceBindings {
+public:
+  ResourceBindings() = default;
+  [[nodiscard]] bool valid() const noexcept;
+
+private:
+  struct State;
+  std::shared_ptr<State> state_;
+  friend struct RhiInterop;
+  friend class ProgramLayout;
+};
 
 struct RenderBatch {
-    static constexpr std::uint32_t kMaxBindings = 8;
-
-    InstanceLayout layout;
-    std::uint32_t  instanceCount = 0;
-    std::uint32_t  vertexCount   = 3;
-    // Indexed draws: producer's vertex range bound (Mesh sets it automatically).
-    // Zero leaves arbitrary GPU-resident index contents under producer ownership.
-    std::uint32_t  vertexElementCount = 0;
-    BufferView     bindings[kMaxBindings]{};
-    DrawKind       kind        = DrawKind::Direct;
-    MaterialId     material    = 0;
-    std::size_t    variantHash = 0; // exact registered program/configuration slot
-    rhi::IndexFormat indexFormat = rhi::IndexFormat::uint32; // for DrawKind::Indexed
-
-    // Optional: index buffer for DrawKind::Indexed
-    BufferView indexBuffer;
-    // Optional: indirect draw args buffer for DrawKind::Indirect*
-    BufferView indirectBuffer;
-    // Optional: per-batch uniform/constant data (VS + FS params)
-    BufferView uniformBuffer;
-    // Reflected resources use RHI descriptor groups, separate from vertex input.
-    // The host keeps wrappers/arenas alive through render(); RHI retains recorded
-    // resource payloads. Arena reset still follows RHI's in-flight rules.
-    std::vector<BatchBindGroup> bindGroups;
-    // Optional clip rectangle in pass-attachment pixels (top-left origin). It is
-    // intersected with the pass extent; an empty intersection skips the draw.
-    // Requires a pipeline declaring rhi::DynamicState::scissor, which in turn
-    // receives the full pass extent for batches without a clip rectangle.
-    std::optional<rhi::ScissorRect> scissor;
+  static constexpr std::uint32_t kMaxBindings = 8;
+  InstanceLayout layout;
+  std::uint32_t instanceCount = 0, vertexCount = 3, vertexElementCount = 0;
+  BufferSlice bindings[kMaxBindings];
+  DrawKind kind = DrawKind::Direct;
+  MaterialId material = 0;
+  std::size_t variantHash = 0;
+  IndexFormat indexFormat = IndexFormat::uint32;
+  BufferSlice indexBuffer, indirectBuffer, uniformBuffer;
+  std::vector<ResourceBindings> bindGroups;
+  std::optional<PixelRect> scissor;
 };
 
 } // namespace truffle::renderer

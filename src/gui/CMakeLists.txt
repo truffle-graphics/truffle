@@ -1,7 +1,14 @@
-add_library(truffle_gui STATIC builder.cpp collections.cpp context.cpp draw.cpp events.cpp layout.cpp painter.cpp placement.cpp region.cpp shapes.cpp surface.cpp text.cpp text_edit.cpp text_layout.cpp text_unicode.cpp theme.cpp themes.cpp updates.cpp widgets.cpp)
+add_library(truffle_gui STATIC graphics.cpp graphics_resources.cpp collections.cpp component_style.cpp context.cpp draw.cpp events.cpp layout.cpp menu_session.cpp menus.cpp paint.cpp painter.cpp placement.cpp region.cpp shapes.cpp surface.cpp text.cpp text_edit.cpp text_layout.cpp text_unicode.cpp theme.cpp themes.cpp ui.cpp updates.cpp viewport.cpp viewport_rendering.cpp widgets.cpp)
 target_link_libraries(truffle_gui PUBLIC truffle_renderer)
 truffle_configure_target(truffle_gui GUI)
 add_library(Truffle::GUI ALIAS truffle_gui)
+
+if(TARGET truffle_renderer_presentation)
+    target_link_libraries(truffle_gui PRIVATE truffle_renderer_presentation)
+    target_compile_definitions(truffle_gui PRIVATE TFL_GUI_NATIVE_PRESENTATION=1)
+else()
+    target_compile_definitions(truffle_gui PRIVATE TFL_GUI_NATIVE_PRESENTATION=0)
+endif()
 
 if(TFL_GUI_ENABLE_TEXT)
     enable_language(C)
@@ -102,12 +109,15 @@ else()
     target_compile_definitions(truffle_gui PRIVATE TFL_GUI_HAS_TEXT=0)
 endif()
 
-# GUI shaders ship as prepared native source: the package is built in memory
-# from the embedded source and its hash, so no shader compiler runs.
+# Prepared Metal source and Vulkan SPIR-V need no compiler at configure or runtime.
 set(_truffle_gui_metal "${CMAKE_CURRENT_SOURCE_DIR}/shaders/gui.metal")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_truffle_gui_metal}")
 file(READ "${_truffle_gui_metal}" TFL_GUI_METAL_SOURCE)
 file(SHA256 "${_truffle_gui_metal}" TFL_GUI_METAL_SHA256)
+set(_truffle_gui_vulkan "${CMAKE_CURRENT_SOURCE_DIR}/shaders/gui-vulkan.tsp")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${_truffle_gui_vulkan}")
+file(READ "${_truffle_gui_vulkan}" _truffle_gui_vulkan_hex HEX)
+string(REGEX REPLACE "(..)" "0x\\1," TFL_GUI_VULKAN_BYTES "${_truffle_gui_vulkan_hex}")
 configure_file(gui_shaders.hpp.in
     "${CMAKE_CURRENT_BINARY_DIR}/generated/truffle_gui_shaders.hpp" @ONLY)
 target_include_directories(truffle_gui PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")

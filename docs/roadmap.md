@@ -76,10 +76,21 @@ with divider cursor feedback (#253). The widget/input-method demo now has 148
 elements and 64 persistent virtualized rows; the docking demo proves two native
 windows on macOS/Metal. Saved floating-window geometry, rich text, automatic
 text wrapping and broader GUI backend execution remain outside this delivery.
+The focused follow-up #269 supplies reusable menu bars, standalone dropdowns
+and recursive submenus with shared focus/dismissal, deterministic interaction/
+lifetime checks and native Windows Vulkan menu pixels. It builds on the
+prepared Painter prerequisite #268 without a backend/runtime-compiler dependency,
+application policy or Studio integration. See [GUI menus](gui-menus.md).
 No asset
 system, general materials, or later application phases are planned by this
 work. Delivery remains signed issue-scoped commits, immediate pushes and
 owner-reviewed PRs.
+The approved presentation/viewport follow-up implements Renderer-owned host-surface
+presentation (#270) first, then a GUI offscreen application-rendering viewport
+(#271), with layout/DPI/input and same-device/frame composition. Both stay on
+the existing related GUI batch with no Studio edits,
+Engine/windowing dependency or new backend-maturity claim. Owner-run native
+verification follows the focused library contract delivery.
 The common compiled-result boundary remains the existing RHI ShaderPackage;
 runtime compilation uses the Shader request/result contract. There is no
 adapter module and no RHI → Shader dependency.

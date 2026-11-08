@@ -1,8 +1,8 @@
 #include "renderer_layer_composite.hpp"
 #include "renderer_native_test_utils.hpp"
-#include "truffle/renderer/frame_stream.hpp"
-#include "truffle/renderer/source_program.hpp"
-#include "truffle/renderer/texture.hpp"
+#include "truffle/renderer/specialist/frame_stream.hpp"
+#include "truffle/renderer/specialist/source_program.hpp"
+#include "truffle/renderer/specialist/texture.hpp"
 #include "truffle/rhi/metal_backend.hpp"
 
 #include <chrono>
@@ -138,13 +138,13 @@ shader::CompileRequest layer_request(rhi::ShaderStage stage, const char* entry,
 
 void render_to_texture(rhi::Device& device) {
     auto bindings = tests::make_layer_bindings(device);
-    renderer::PipelineCache programs(device);
-    renderer::Renderer renderer(device, &programs);
+    renderer::specialist::PipelineCache programs(device);
+    renderer::specialist::Renderer renderer(device, &programs);
     shader::Compiler compiler;
     rhi::PipelineDesc writerState;
     writerState.colorTargets = {{.format = rhi::TextureFormat::rgba8_unorm}};
     writerState.dynamicState = rhi::DynamicState::scissor;
-    renderer::SourceProgram writer(programs, 1, writerState);
+    renderer::specialist::SourceProgram writer(programs, 1, writerState);
     tests::require(writer.rebuild(compiler, {
         .vertex = layer_request(rhi::ShaderStage::vertex, "fullscreen_vertex"),
         .fragment = layer_request(rhi::ShaderStage::fragment, "writer_fragment"),
@@ -152,7 +152,7 @@ void render_to_texture(rhi::Device& device) {
     rhi::PipelineDesc compositorState;
     compositorState.layout = &bindings.pipelineLayout;
     compositorState.colorTargets = {{.format = rhi::TextureFormat::rgba8_unorm}};
-    renderer::SourceProgram compositor(programs, 2, compositorState);
+    renderer::specialist::SourceProgram compositor(programs, 2, compositorState);
     tests::require(compositor.rebuild(compiler, {
         .vertex = layer_request(rhi::ShaderStage::vertex, "fullscreen_vertex"),
         .fragment = layer_request(rhi::ShaderStage::fragment, "composite_fragment", true),
@@ -246,16 +246,16 @@ int run() {
     auto adapter = tests::require(instance.adapter(0));
     auto device = tests::require(adapter.request_device());
 
-    auto bindings = tests::require(renderer::TextureBindingLayout::create(device));
+    auto bindings = tests::require(renderer::specialist::TextureBindingLayout::create(device));
 
     // 2x1 atlas: white | red; nearest sampling makes each half one texel.
     const std::array<std::byte, 8> texels{
         std::byte{255}, std::byte{255}, std::byte{255}, std::byte{255},
         std::byte{255}, std::byte{0}, std::byte{0}, std::byte{255}};
-    auto atlas = tests::require(renderer::SampledTexture::upload(device, {
+    auto atlas = tests::require(renderer::specialist::SampledTexture::upload(device, {
         .extent = {2, 1}, .bytes = texels,
     }));
-    auto binding = tests::require(renderer::TextureBinding::create(device, bindings, atlas));
+    auto binding = tests::require(renderer::specialist::TextureBinding::create(device, bindings, atlas));
 
     rhi::PipelineDesc state;
     state.layout = &bindings.pipeline_layout();
@@ -273,17 +273,17 @@ int run() {
                   .alpha = {rhi::BlendFactor::one, rhi::BlendFactor::one_minus_source_alpha}},
     }};
     state.dynamicState = rhi::DynamicState::scissor;
-    renderer::PipelineCache programs(device);
-    renderer::Renderer renderer(device, &programs);
+    renderer::specialist::PipelineCache programs(device);
+    renderer::specialist::Renderer renderer(device, &programs);
     shader::Compiler compiler;
-    renderer::SourceProgram program(programs, 1, state);
+    renderer::specialist::SourceProgram program(programs, 1, state);
     tests::require(program.rebuild(compiler, {
         .vertex = request(rhi::ShaderStage::vertex),
         .fragment = request(rhi::ShaderStage::fragment),
     }));
 
-    auto pacer = tests::require(renderer::FramePacer::create(device, 2));
-    auto stream = tests::require(renderer::StreamBuffer::create(device, {.initialBytes = 64}));
+    auto pacer = tests::require(renderer::specialist::FramePacer::create(device, 2));
+    auto stream = tests::require(renderer::specialist::StreamBuffer::create(device, {.initialBytes = 64}));
     auto color = target(device, {16, 16});
     const std::array<std::uint16_t, 6> indices{0, 1, 2, 2, 1, 3};
 
@@ -294,12 +294,12 @@ int run() {
     const auto frame = [&](std::vector<Draw> draws) {
         const auto slot = tests::require(pacer.begin_frame());
         tests::require(stream.begin_frame(slot));
-        std::vector<renderer::RenderBatch> batches;
+        std::vector<renderer::specialist::RenderBatch> batches;
         for (const auto& draw : draws) {
-            renderer::RenderBatch batch;
+            renderer::specialist::RenderBatch batch;
             batch.material = 1;
             batch.instanceCount = 1;
-            batch.kind = renderer::DrawKind::Indexed;
+            batch.kind = renderer::specialist::DrawKind::Indexed;
             batch.indexFormat = rhi::IndexFormat::uint16;
             batch.vertexCount = static_cast<std::uint32_t>(indices.size());
             batch.vertexElementCount = 4;
@@ -309,8 +309,8 @@ int run() {
             batch.scissor = draw.scissor;
             batches.push_back(std::move(batch));
         }
-        renderer::FrameGraph graph;
-        graph.add_node(std::make_unique<renderer::RenderPassNode>(
+        renderer::specialist::FrameGraph graph;
+        graph.add_node(std::make_unique<renderer::specialist::RenderPassNode>(
             rhi::RenderPassDesc{
                 .extent = {16, 16},
                 .colorAttachments = {{.texture = &color, .clear = {0, 0, 1, 1}}},
@@ -356,45 +356,45 @@ int run() {
     render_to_texture(device);
 
     // Render target (#255): one pass clears it, the next samples it as a texture.
-    if (renderer::SampledTexture::render_target(device, {.extent = {0, 4}}).ok()) {
+    if (renderer::specialist::SampledTexture::render_target(device, {.extent = {0, 4}}).ok()) {
         throw std::runtime_error("zero-extent render target was accepted");
     }
-    auto layer = tests::require(renderer::SampledTexture::render_target(device, {
+    auto layer = tests::require(renderer::specialist::SampledTexture::render_target(device, {
         .extent = {2, 2}, .format = rhi::TextureFormat::rgba8_unorm,
     }));
     if (layer.update(device, {}, {1, 1}, green).ok()) {
         throw std::runtime_error("render target accepted a byte update");
     }
-    auto layerBinding = tests::require(renderer::TextureBinding::create(device, bindings, layer));
+    auto layerBinding = tests::require(renderer::specialist::TextureBinding::create(device, bindings, layer));
     for (const auto& fill : {std::array<float, 4>{1, 1, 0, 1}, std::array<float, 4>{0, 1, 1, 1}}) {
         const auto slot = tests::require(pacer.begin_frame());
         tests::require(stream.begin_frame(slot));
         const auto vertices = quad(-1, 1, 1, 1);
-        renderer::RenderBatch batch;
+        renderer::specialist::RenderBatch batch;
         batch.material = 1;
         batch.instanceCount = 1;
-        batch.kind = renderer::DrawKind::Indexed;
+        batch.kind = renderer::specialist::DrawKind::Indexed;
         batch.indexFormat = rhi::IndexFormat::uint16;
         batch.vertexCount = static_cast<std::uint32_t>(indices.size());
         batch.vertexElementCount = 4;
         batch.bindings[0] = tests::require(stream.write(std::as_bytes(std::span{vertices})));
         batch.indexBuffer = tests::require(stream.write(std::as_bytes(std::span{indices}), 4));
         batch.bindGroups = {layerBinding.batch_group()};
-        renderer::FrameGraph graph;
-        auto writer = std::make_unique<renderer::RenderPassNode>(
+        renderer::specialist::FrameGraph graph;
+        auto writer = std::make_unique<renderer::specialist::RenderPassNode>(
             rhi::RenderPassDesc{
                 .extent = {2, 2},
                 .colorAttachments = {{.texture = &layer.texture(),
                                       .clear = {fill[0], fill[1], fill[2], fill[3]}}},
             },
-            std::vector<renderer::RenderBatch>{});
+            std::vector<renderer::specialist::RenderBatch>{});
         writer->transition_before(layer.to_attachment());
-        auto reader = std::make_unique<renderer::RenderPassNode>(
+        auto reader = std::make_unique<renderer::specialist::RenderPassNode>(
             rhi::RenderPassDesc{
                 .extent = {16, 16},
                 .colorAttachments = {{.texture = &color, .clear = {0, 0, 0, 1}}},
             },
-            std::vector<renderer::RenderBatch>{std::move(batch)});
+            std::vector<renderer::specialist::RenderBatch>{std::move(batch)});
         reader->transition_before(layer.to_shader_read());
         const auto first = graph.add_node(std::move(writer));
         const auto second = graph.add_node(std::move(reader));

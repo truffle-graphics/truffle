@@ -1,7 +1,7 @@
 #include "renderer_native_test_utils.hpp"
 #include "test_support.hpp"
 #include "truffle/rhi/metal_backend.hpp"
-#include "truffle/renderer/mesh.hpp"
+#include "truffle/renderer/specialist/mesh.hpp"
 
 #include <fstream>
 #include <iterator>
@@ -58,9 +58,9 @@ rhi::ShaderPackage make_package(bool invalidSource = false) {
     return tests::require(rhi::ShaderPackage::load(package.bytes()));
 }
 
-renderer::ProgramDesc program_desc(const rhi::ShaderPackage& package,
+renderer::specialist::ProgramDesc program_desc(const rhi::ShaderPackage& package,
                                    const char* fragment = "red_fragment") {
-    renderer::ProgramDesc desc;
+    renderer::specialist::ProgramDesc desc;
     desc.vertex = {&package, rhi::ShaderTarget::metal_source, "vertex_main",
                    rhi::ShaderStage::vertex, "configured"};
     desc.fragment = {&package, rhi::ShaderTarget::metal_source, fragment,
@@ -75,9 +75,9 @@ int run() {
     auto adapter = tests::require(instance.adapter(0));
     TFL_CHECK(adapter.info().native);
     auto device = tests::require(adapter.request_device());
-    renderer::PipelineCache programs(device);
-    renderer::Renderer renderer(device, &programs);
-    constexpr renderer::MaterialId material = 17;
+    renderer::specialist::PipelineCache programs(device);
+    renderer::specialist::Renderer renderer(device, &programs);
+    constexpr renderer::specialist::MaterialId material = 17;
     constexpr std::array red{std::byte{255}, std::byte{0}, std::byte{0}, std::byte{255}};
     constexpr std::array green{std::byte{0}, std::byte{255}, std::byte{0}, std::byte{255}};
     constexpr std::array blue{std::byte{0}, std::byte{0}, std::byte{255}, std::byte{255}};
@@ -96,7 +96,7 @@ int run() {
     }
     // Caller package, loaded byte buffer, descriptors and source strings are gone.
     auto target = tests::make_color_target(device);
-    renderer::RenderBatch batch;
+    renderer::specialist::RenderBatch batch;
     batch.material = material;
     batch.instanceCount = 1;
     const auto render = [&](const auto& color, const char* label) {
@@ -262,10 +262,10 @@ int run() {
         std::array{-1.0F, 3.0F, 0.0F, 1.0F},
     };
     const std::array streams{
-        renderer::MeshStream{std::as_bytes(std::span{positions}), 16},
+        renderer::specialist::MeshStream{std::as_bytes(std::span{positions}), 16},
     };
     const std::array<std::uint32_t, 3> indices{0, 1, 2};
-    auto mesh = tests::require(renderer::Mesh::upload(device, {
+    auto mesh = tests::require(renderer::specialist::Mesh::upload(device, {
         .streams = streams, .vertexCount = 3,
         .indices = std::as_bytes(std::span{indices}),
     }));
@@ -282,7 +282,7 @@ int run() {
         .memory = rhi::MemoryDomain::upload,
     }));
     tests::require(indirect.write(0, std::as_bytes(std::span{arguments})));
-    batch.kind = renderer::DrawKind::IndirectIndexed;
+    batch.kind = renderer::specialist::DrawKind::IndirectIndexed;
     batch.indirectBuffer = {&indirect, 0, sizeof(arguments)};
     render(green, "indexed indirect mesh binds its index buffer");
     auto incompatibleMesh = meshProgram;

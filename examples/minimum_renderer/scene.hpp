@@ -1,9 +1,9 @@
 #pragma once
 
-#include "truffle/renderer/depth_target.hpp"
-#include "truffle/renderer/mesh.hpp"
-#include "truffle/renderer/renderer.hpp"
-#include "truffle/renderer/source_program.hpp"
+#include "truffle/renderer/specialist/depth_target.hpp"
+#include "truffle/renderer/specialist/mesh.hpp"
+#include "truffle/renderer/specialist/renderer.hpp"
+#include "truffle/renderer/specialist/source_program.hpp"
 #include "truffle/renderer/view.hpp"
 
 #include <optional>
@@ -51,16 +51,16 @@ public:
     void set_cube();
     void set_objects(std::span<const Object> objects);
     void set_view(const View& view);
-    [[nodiscard]] truffle::renderer::RenderBatch batch();
+    [[nodiscard]] truffle::renderer::specialist::RenderBatch batch();
     [[nodiscard]] truffle::base::Status render(
-        const truffle::renderer::FrameGraph& graph,
+        const truffle::renderer::specialist::FrameGraph& graph,
         truffle::rhi::Swapchain* swapchain = nullptr);
-    [[nodiscard]] const truffle::renderer::RendererFrameStats& stats() const;
+    [[nodiscard]] const truffle::renderer::specialist::RendererFrameStats& stats() const;
 
 private:
     truffle::rhi::Device* device_;
-    truffle::renderer::PipelineCache programs_;
-    truffle::renderer::Renderer renderer_;
+    truffle::renderer::specialist::PipelineCache programs_;
+    truffle::renderer::specialist::Renderer renderer_;
     truffle::shader::Compiler compiler_;
     truffle::rhi::BindGroupLayout bindings_;
     truffle::rhi::PipelineLayout layout_;
@@ -69,7 +69,7 @@ private:
     truffle::rhi::BindGroup group_;
     truffle::rhi::Buffer objects_;
     std::uint32_t objectCount_ = 0;
-    std::optional<truffle::renderer::Mesh> mesh_;
+    std::optional<truffle::renderer::specialist::Mesh> mesh_;
 };
 
 } // namespace minimum_renderer

@@ -58,9 +58,9 @@ inline rhi::TextureBarrier layer_transition(rhi::Texture& texture,
 
 class LayerComposite {
 public:
-    LayerComposite(rhi::Device& device, renderer::Renderer& renderer,
-                   LayerBindings& bindings, renderer::MaterialId writer,
-                   renderer::MaterialId compositor)
+    LayerComposite(rhi::Device& device, renderer::specialist::Renderer& renderer,
+                   LayerBindings& bindings, renderer::specialist::MaterialId writer,
+                   renderer::specialist::MaterialId compositor)
         : device_(&device), renderer_(&renderer), writer_(writer),
           compositor_(compositor) {
         layer_ = require(device.create_texture({
@@ -88,37 +88,37 @@ public:
     void frame(std::optional<std::array<float, 4>> layerClear,
                std::optional<rhi::ScissorRect> writerClip = std::nullopt) {
         constexpr std::uint64_t layerResource = 1;
-        renderer::FrameGraph graph;
+        renderer::specialist::FrameGraph graph;
         const bool renderLayer = layerClear.has_value();
         if (renderLayer) {
-            renderer::RenderBatch writer;
+            renderer::specialist::RenderBatch writer;
             writer.material = writer_;
             writer.instanceCount = 1;
             writer.scissor = writerClip;
-            auto pass = std::make_unique<renderer::RenderPassNode>(
+            auto pass = std::make_unique<renderer::specialist::RenderPassNode>(
                 rhi::RenderPassDesc{
                     .extent = {16, 16},
                     .colorAttachments = {{.texture = &layer_,
                                           .clear = {(*layerClear)[0], (*layerClear)[1],
                                                     (*layerClear)[2], (*layerClear)[3]}}},
                 },
-                std::vector<renderer::RenderBatch>{writer});
+                std::vector<renderer::specialist::RenderBatch>{writer});
             pass->transition_before(layer_transition(layer_, layerLayout_,
                                                      rhi::TextureLayout::color_attachment));
             const auto id = graph.add_node(std::move(pass));
             require(graph.add_resource_usage(
-                id, {layerResource, renderer::ResourceAccess::Write}));
+                id, {layerResource, renderer::specialist::ResourceAccess::Write}));
         }
-        renderer::RenderBatch compositor;
+        renderer::specialist::RenderBatch compositor;
         compositor.material = compositor_;
         compositor.instanceCount = 1;
         compositor.bindGroups = {{.group = 0, .bindings = &group_}};
-        auto pass = std::make_unique<renderer::RenderPassNode>(
+        auto pass = std::make_unique<renderer::specialist::RenderPassNode>(
             rhi::RenderPassDesc{
                 .extent = {16, 16},
                 .colorAttachments = {{.texture = &target_, .clear = {0, 0, 0, 1}}},
             },
-            std::vector<renderer::RenderBatch>{compositor});
+            std::vector<renderer::specialist::RenderBatch>{compositor});
         if (renderLayer) {
             pass->transition_before(layer_transition(
                 layer_, rhi::TextureLayout::color_attachment,
@@ -126,7 +126,7 @@ public:
             layerLayout_ = rhi::TextureLayout::shader_read_only;
         }
         const auto id = graph.add_node(std::move(pass));
-        require(graph.add_resource_usage(id, {layerResource, renderer::ResourceAccess::Read}));
+        require(graph.add_resource_usage(id, {layerResource, renderer::specialist::ResourceAccess::Read}));
         ++signal_;
         require(renderer_->render(graph, nullptr, {.fence = &fence_, .value = signal_}));
         require(fence_.wait(signal_, std::chrono::seconds(10)));
@@ -195,9 +195,9 @@ public:
 
 private:
     rhi::Device* device_;
-    renderer::Renderer* renderer_;
-    renderer::MaterialId writer_;
-    renderer::MaterialId compositor_;
+    renderer::specialist::Renderer* renderer_;
+    renderer::specialist::MaterialId writer_;
+    renderer::specialist::MaterialId compositor_;
     rhi::Texture layer_;
     rhi::TextureView view_;
     rhi::Sampler sampler_;

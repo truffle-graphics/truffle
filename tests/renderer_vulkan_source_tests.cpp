@@ -1,6 +1,6 @@
 #include "renderer_native_test_utils.hpp"
 #include "test_support.hpp"
-#include "truffle/renderer/source_program.hpp"
+#include "truffle/renderer/specialist/source_program.hpp"
 #include "truffle/rhi/vulkan_backend.hpp"
 #include "vulkan_backend_test.hpp"
 
@@ -23,8 +23,8 @@ void write(const std::filesystem::path& path, const std::string& text) {
 }
 
 // The host owns polling: re-read the root sources and hand Renderer a request.
-renderer::SourceProgramRequest request(bool extraInput = false) {
-    renderer::SourceProgramRequest result;
+renderer::specialist::SourceProgramRequest request(bool extraInput = false) {
+    renderer::specialist::SourceProgramRequest result;
     result.vertex = {.name = "fullscreen",
                      .source = tests::require(shader::read_source(
                          (root / "fullscreen.vert").string())),
@@ -91,18 +91,18 @@ void main() { color = palette(PALETTE_ENTRY) * tint; }
           "#define OPAQUE(r, g, b) vec4(r, g, b, 1.0)\n");
     write(root / "include" / "palette.glsl", palette("OPAQUE(1.0, 0.0, 0.0)"));
 
-    constexpr renderer::MaterialId material = 3;
+    constexpr renderer::specialist::MaterialId material = 3;
     constexpr std::array red{std::byte{255}, std::byte{0}, std::byte{0}, std::byte{255}};
     constexpr std::array green{std::byte{0}, std::byte{255}, std::byte{0}, std::byte{255}};
     constexpr std::array blue{std::byte{0}, std::byte{0}, std::byte{255}, std::byte{255}};
-    renderer::PipelineCache programs(device);
-    renderer::Renderer renderer(device, &programs);
+    renderer::specialist::PipelineCache programs(device);
+    renderer::specialist::Renderer renderer(device, &programs);
     rhi::PipelineDesc state;
     state.colorTargets = {{.format = rhi::TextureFormat::rgba8_unorm}};
-    renderer::SourceProgram program(programs, material, std::move(state));
+    renderer::specialist::SourceProgram program(programs, material, std::move(state));
     shader::Compiler compiler;
     auto target = tests::make_color_target(device);
-    renderer::RenderBatch batch;
+    renderer::specialist::RenderBatch batch;
     batch.material = material;
     batch.instanceCount = 1;
     const auto render = [&](const auto& color, const char* label) {

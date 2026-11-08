@@ -1,5 +1,7 @@
 #include "truffle/gui/region.hpp"
 
+#include "widget_object.hpp"
+
 #include <memory>
 #include <optional>
 #include <unordered_map>
@@ -29,7 +31,7 @@ struct Level {
 struct Entry {
     Kind kind = Kind::label;
     ElementId element;
-    Widget widget;
+    detail::Widget widget;
     std::string text;
     float min = 0;
     float max = 0;
@@ -54,14 +56,14 @@ struct RegionScope::State {
     Context& context;
     ElementId region;
     Region::Body body;
-    BuildOptions text;
+    TextStyle text;
     Level root;
     Level* level = &root;
     std::uint64_t run = 0;
     base::Status error = base::Status::success();
     ElementId last;
 
-    State(Context& c, ElementId element, Region::Body b, BuildOptions t)
+    State(Context& c, ElementId element, Region::Body b, TextStyle t)
         : context(c), region(element), body(std::move(b)), text(t) {
         root.element = element;
     }
@@ -72,11 +74,11 @@ struct RegionScope::State {
 
     [[nodiscard]] bool alive(ElementId element) const { return context.parent(element).ok(); }
 
-    WidgetDesc desc(WidgetKind kind, std::string_view label) const {
-        WidgetDesc result;
+    detail::WidgetDesc desc(detail::WidgetKind kind, std::string_view label) const {
+        detail::WidgetDesc result;
         result.kind = kind;
         result.text = std::string(label);
-        result.text_engine = text.text_engine;
+        result.text_engine = text.engine;
         result.font = text.font;
         result.atlas = text.atlas;
         return result;
@@ -124,8 +126,8 @@ struct RegionScope::State {
         return &entry;
     }
 
-    base::Status make_widget(Entry& entry, WidgetDesc widget_desc) {
-        auto widget = Widget::create(context, level->element, std::move(widget_desc));
+    base::Status make_widget(Entry& entry, detail::WidgetDesc widget_desc) {
+        auto widget = detail::Widget::create(context, level->element, std::move(widget_desc));
         if (!widget.ok()) { return widget.status(); }
         entry.widget = std::move(widget).value();
         entry.element = entry.widget.element();
@@ -220,7 +222,7 @@ void RegionScope::label(std::string_view id, std::string_view text) {
     Entry* entry = state_.enter(id, Kind::label, [](const Entry&) { return true; },
         [&](Entry& made) {
             made.text = std::string(text);
-            return state_.make_widget(made, state_.desc(WidgetKind::label, text));
+            return state_.make_widget(made, state_.desc(detail::WidgetKind::label, text));
         });
     if (entry != nullptr) { state_.update_text(*entry, text); }
 }
@@ -229,7 +231,7 @@ bool RegionScope::button(std::string_view id, std::string_view text) {
     Entry* entry = state_.enter(id, Kind::button, [](const Entry&) { return true; },
         [&](Entry& made) {
             made.text = std::string(text);
-            auto widget = state_.desc(WidgetKind::button, text);
+            auto widget = state_.desc(detail::WidgetKind::button, text);
             widget.activated = [pending = made.pending, context = &state_.context,
                                 region = state_.region] {
                 ++pending->clicks;
@@ -248,7 +250,7 @@ bool RegionScope::checkbox(std::string_view id, std::string_view text, bool& che
     Entry* entry = state_.enter(id, Kind::checkbox, [](const Entry&) { return true; },
         [&](Entry& made) {
             made.text = std::string(text);
-            auto widget = state_.desc(WidgetKind::checkbox, text);
+            auto widget = state_.desc(detail::WidgetKind::checkbox, text);
             widget.checked = checked;
             widget.toggled = [pending = made.pending, context = &state_.context,
                               region = state_.region](bool value) {
@@ -278,7 +280,7 @@ bool RegionScope::slider(std::string_view id, float& value, float min, float max
             made.min = min;
             made.max = max;
             made.step = step;
-            auto widget = state_.desc(WidgetKind::slider, {});
+            auto widget = state_.desc(detail::WidgetKind::slider, {});
             widget.min = min;
             widget.max = max;
             widget.value = value;
@@ -308,7 +310,7 @@ bool RegionScope::text_edit(std::string_view id, std::string& value, bool multil
         [&](const Entry& old) { return old.step == (multiline ? 1.0F : 0.0F); },
         [&](Entry& made) {
             made.step = multiline ? 1.0F : 0.0F;
-            auto widget = state_.desc(WidgetKind::text_edit, value);
+            auto widget = state_.desc(detail::WidgetKind::text_edit, value);
             widget.multiline = multiline;
             widget.text_changed = [pending = made.pending, context = &state_.context,
                                    region = state_.region](const std::string& changed) {

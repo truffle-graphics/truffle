@@ -212,6 +212,21 @@ add_executable(truffle_renderer_program_tests renderer_program_tests.cpp)
 target_link_libraries(truffle_renderer_program_tests PRIVATE truffle_backend_null truffle_renderer)
 add_test(NAME truffle_renderer_program_tests COMMAND truffle_renderer_program_tests)
 
+add_executable(truffle_renderer_consumer_tests renderer_consumer_tests.cpp)
+target_link_libraries(truffle_renderer_consumer_tests PRIVATE truffle_backend_null truffle_renderer)
+truffle_target_warnings(truffle_renderer_consumer_tests)
+add_test(NAME truffle_renderer_consumer_tests COMMAND truffle_renderer_consumer_tests)
+
+add_executable(truffle_gui_graphics_tests gui_graphics_tests.cpp)
+target_link_libraries(truffle_gui_graphics_tests PRIVATE truffle_gui truffle_backend_null)
+truffle_target_warnings(truffle_gui_graphics_tests)
+add_test(NAME truffle_gui_graphics_tests COMMAND truffle_gui_graphics_tests)
+
+add_executable(truffle_gui_only_consumer_tests gui_only_consumer.cpp)
+target_link_libraries(truffle_gui_only_consumer_tests PRIVATE truffle_gui)
+truffle_target_warnings(truffle_gui_only_consumer_tests)
+add_test(NAME truffle_gui_only_consumer_tests COMMAND truffle_gui_only_consumer_tests)
+
 add_executable(truffle_renderer_data_tests renderer_data_tests.cpp)
 target_link_libraries(truffle_renderer_data_tests PRIVATE truffle_backend_null truffle_renderer)
 add_test(NAME truffle_renderer_data_tests COMMAND truffle_renderer_data_tests)
@@ -223,6 +238,18 @@ add_test(NAME truffle_renderer_view_tests COMMAND truffle_renderer_view_tests)
 add_executable(truffle_renderer_gui_primitives_tests renderer_gui_primitives_tests.cpp)
 target_link_libraries(truffle_renderer_gui_primitives_tests PRIVATE truffle_backend_null truffle_renderer)
 add_test(NAME truffle_renderer_gui_primitives_tests COMMAND truffle_renderer_gui_primitives_tests)
+
+add_executable(truffle_renderer_presentation_tests renderer_presentation_tests.cpp)
+target_link_libraries(truffle_renderer_presentation_tests PRIVATE
+    truffle_backend_null truffle_renderer)
+if(TFL_BUILD_RENDERER_PRESENTATION)
+    target_link_libraries(truffle_renderer_presentation_tests PRIVATE
+        truffle_renderer_presentation truffle_gui)
+    target_compile_definitions(truffle_renderer_presentation_tests PRIVATE
+        TFL_TEST_PRESENTATION_NATIVE=1)
+endif()
+truffle_target_warnings(truffle_renderer_presentation_tests)
+add_test(NAME truffle_renderer_presentation_tests COMMAND truffle_renderer_presentation_tests)
 
 if(APPLE AND TFL_SHADER_ENABLE_METAL_COMPILER AND TFL_BUILD_BACKEND_METAL)
     add_executable(truffle_renderer_scene_metal_tests
@@ -757,6 +784,40 @@ target_link_libraries(truffle_gui_drawing_tests PRIVATE truffle_gui)
 truffle_target_warnings(truffle_gui_drawing_tests)
 add_test(NAME truffle_gui_drawing_tests COMMAND truffle_gui_drawing_tests)
 
+add_executable(truffle_gui_viewport_tests gui_viewport_tests.cpp)
+target_link_libraries(truffle_gui_viewport_tests PRIVATE truffle_gui truffle_backend_null)
+truffle_target_warnings(truffle_gui_viewport_tests)
+add_test(NAME truffle_gui_viewport_tests COMMAND truffle_gui_viewport_tests)
+
+add_executable(truffle_gui_viewport_consumer_tests gui_viewport_consumer_tests.cpp)
+target_link_libraries(truffle_gui_viewport_consumer_tests PRIVATE truffle_gui truffle_backend_null)
+truffle_target_warnings(truffle_gui_viewport_consumer_tests)
+add_test(NAME truffle_gui_viewport_consumer_tests COMMAND truffle_gui_viewport_consumer_tests)
+
+if(TFL_BUILD_BACKEND_METAL AND APPLE)
+    add_executable(truffle_gui_viewport_metal_tests gui_viewport_native_tests.cpp)
+    target_link_libraries(truffle_gui_viewport_metal_tests PRIVATE truffle_gui truffle_backend_metal)
+    target_compile_definitions(truffle_gui_viewport_metal_tests PRIVATE TFL_TEST_VIEWPORT_VULKAN=0)
+    truffle_target_warnings(truffle_gui_viewport_metal_tests)
+    add_test(NAME truffle_gui_viewport_metal_tests COMMAND truffle_gui_viewport_metal_tests)
+    set_tests_properties(truffle_gui_viewport_metal_tests PROPERTIES
+        LABELS "native-smoke;validation;gui"
+        ENVIRONMENT "MTL_DEBUG_LAYER=1;MTL_SHADER_VALIDATION=1")
+endif()
+if(TFL_BUILD_BACKEND_VULKAN)
+    add_executable(truffle_gui_viewport_vulkan_tests gui_viewport_native_tests.cpp)
+    target_link_libraries(truffle_gui_viewport_vulkan_tests PRIVATE truffle_gui truffle_backend_vulkan)
+    target_compile_definitions(truffle_gui_viewport_vulkan_tests PRIVATE TFL_TEST_VIEWPORT_VULKAN=1)
+    target_include_directories(truffle_gui_viewport_vulkan_tests PRIVATE
+        "${PROJECT_SOURCE_DIR}/src/backends/vulkan")
+    truffle_target_warnings(truffle_gui_viewport_vulkan_tests)
+    add_test(NAME truffle_gui_viewport_vulkan_tests COMMAND truffle_gui_viewport_vulkan_tests)
+    set_tests_properties(truffle_gui_viewport_vulkan_tests PROPERTIES
+        LABELS "native-smoke;validation;gui"
+        FAIL_REGULAR_EXPRESSION "Validation (Error|Warning)"
+        ENVIRONMENT "DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib:/usr/local/lib:/usr/lib")
+endif()
+
 add_executable(truffle_gui_host_tests gui_host_tests.cpp)
 target_link_libraries(truffle_gui_host_tests PRIVATE truffle_gui)
 truffle_target_warnings(truffle_gui_host_tests)
@@ -771,6 +832,7 @@ add_executable(truffle_gui_theme_tests gui_theme_tests.cpp)
 target_link_libraries(truffle_gui_theme_tests PRIVATE truffle_gui truffle_backend_null)
 target_compile_definitions(truffle_gui_theme_tests PRIVATE
     TFL_TEST_GUI_TEXT=$<BOOL:${TFL_GUI_ENABLE_TEXT}>)
+target_include_directories(truffle_gui_theme_tests PRIVATE "${PROJECT_SOURCE_DIR}/src/gui")
 truffle_target_warnings(truffle_gui_theme_tests)
 add_test(NAME truffle_gui_theme_tests COMMAND truffle_gui_theme_tests)
 
@@ -778,13 +840,25 @@ add_executable(truffle_gui_widget_tests gui_widget_tests.cpp)
 target_link_libraries(truffle_gui_widget_tests PRIVATE truffle_gui truffle_backend_null)
 target_compile_definitions(truffle_gui_widget_tests PRIVATE
     TFL_TEST_GUI_TEXT=$<BOOL:${TFL_GUI_ENABLE_TEXT}>)
+target_include_directories(truffle_gui_widget_tests PRIVATE "${PROJECT_SOURCE_DIR}/src/gui")
 truffle_target_warnings(truffle_gui_widget_tests)
 add_test(NAME truffle_gui_widget_tests COMMAND truffle_gui_widget_tests)
 
-add_executable(truffle_gui_builder_tests gui_builder_tests.cpp)
-target_link_libraries(truffle_gui_builder_tests PRIVATE truffle_gui)
-truffle_target_warnings(truffle_gui_builder_tests)
-add_test(NAME truffle_gui_builder_tests COMMAND truffle_gui_builder_tests)
+add_executable(truffle_gui_menu_tests gui_menu_tests.cpp)
+target_link_libraries(truffle_gui_menu_tests PRIVATE truffle_gui truffle_backend_null)
+target_include_directories(truffle_gui_menu_tests PRIVATE "${PROJECT_SOURCE_DIR}/src/gui")
+target_compile_definitions(truffle_gui_menu_tests PRIVATE
+    TFL_TEST_GUI_TEXT=$<BOOL:${TFL_GUI_ENABLE_TEXT}>)
+truffle_target_warnings(truffle_gui_menu_tests)
+add_test(NAME truffle_gui_menu_tests COMMAND truffle_gui_menu_tests)
+
+add_executable(truffle_gui_ui_tests gui_ui_tests.cpp)
+target_link_libraries(truffle_gui_ui_tests PRIVATE truffle_gui_dock truffle_backend_null)
+target_compile_definitions(truffle_gui_ui_tests PRIVATE
+    TFL_TEST_GUI_TEXT=$<BOOL:${TFL_GUI_ENABLE_TEXT}>)
+target_include_directories(truffle_gui_ui_tests PRIVATE "${PROJECT_SOURCE_DIR}/examples/gui_menus")
+truffle_target_warnings(truffle_gui_ui_tests)
+add_test(NAME truffle_gui_ui_tests COMMAND truffle_gui_ui_tests)
 
 add_executable(truffle_gui_region_tests gui_region_tests.cpp)
 target_link_libraries(truffle_gui_region_tests PRIVATE truffle_gui)
@@ -815,16 +889,45 @@ target_compile_definitions(truffle_gui_text_edit_tests PRIVATE
 truffle_target_warnings(truffle_gui_text_edit_tests)
 add_test(NAME truffle_gui_text_edit_tests COMMAND truffle_gui_text_edit_tests)
 
-# The GUI program ships as prepared MSL, so no shader compiler is required.
+# GUI native tests consume the shipped packages without a shader compiler.
 if(APPLE AND TFL_BUILD_BACKEND_METAL)
-    add_executable(truffle_gui_drawing_metal_tests gui_drawing_metal_tests.cpp)
+    add_executable(truffle_gui_drawing_metal_tests gui_drawing_native_tests.cpp)
     target_link_libraries(truffle_gui_drawing_metal_tests PRIVATE
         truffle_gui truffle_backend_metal)
     target_compile_definitions(truffle_gui_drawing_metal_tests PRIVATE
-        TFL_TEST_GUI_TEXT=$<BOOL:${TFL_GUI_ENABLE_TEXT}>)
+        TFL_TEST_GUI_TEXT=$<BOOL:${TFL_GUI_ENABLE_TEXT}> TFL_TEST_GUI_VULKAN=0)
+    target_include_directories(truffle_gui_drawing_metal_tests PRIVATE "${PROJECT_SOURCE_DIR}/src/gui")
     truffle_target_warnings(truffle_gui_drawing_metal_tests)
     add_test(NAME truffle_gui_drawing_metal_tests COMMAND truffle_gui_drawing_metal_tests)
     set_tests_properties(truffle_gui_drawing_metal_tests PROPERTIES
         LABELS "native-smoke;validation;gui" TIMEOUT 60
         ENVIRONMENT "MTL_DEBUG_LAYER=1;MTL_SHADER_VALIDATION=1;METAL_DEVICE_WRAPPER_TYPE=1")
+endif()
+if(TFL_BUILD_BACKEND_VULKAN)
+    add_executable(truffle_gui_drawing_vulkan_tests gui_drawing_native_tests.cpp)
+    target_link_libraries(truffle_gui_drawing_vulkan_tests PRIVATE
+        truffle_gui truffle_backend_vulkan)
+    target_include_directories(truffle_gui_drawing_vulkan_tests PRIVATE
+        "${PROJECT_SOURCE_DIR}/src/backends/vulkan")
+    target_compile_definitions(truffle_gui_drawing_vulkan_tests PRIVATE
+        TFL_TEST_GUI_TEXT=$<BOOL:${TFL_GUI_ENABLE_TEXT}> TFL_TEST_GUI_VULKAN=1)
+    target_include_directories(truffle_gui_drawing_vulkan_tests PRIVATE "${PROJECT_SOURCE_DIR}/src/gui")
+    truffle_target_warnings(truffle_gui_drawing_vulkan_tests)
+    add_test(NAME truffle_gui_drawing_vulkan_tests COMMAND truffle_gui_drawing_vulkan_tests)
+    set_tests_properties(truffle_gui_drawing_vulkan_tests PROPERTIES
+        LABELS "native-smoke;validation;gui" TIMEOUT 60
+        FAIL_REGULAR_EXPRESSION "Validation (Error|Warning)")
+    if(APPLE AND _truffle_vulkan_loader_dir)
+        set_property(TEST truffle_gui_drawing_vulkan_tests APPEND PROPERTY ENVIRONMENT
+            "DYLD_FALLBACK_LIBRARY_PATH=${_truffle_vulkan_loader_dir}:/usr/local/lib:/usr/lib")
+    endif()
+endif()
+if(TFL_SHADER_ENABLE_GLSLANG)
+    add_executable(truffle_gui_shader_package ../tools/generate_gui_vulkan.cpp)
+    target_link_libraries(truffle_gui_shader_package PRIVATE truffle_shader)
+    truffle_target_warnings(truffle_gui_shader_package)
+    add_test(NAME truffle_gui_vulkan_package_check
+        COMMAND truffle_gui_shader_package "${PROJECT_SOURCE_DIR}/src/gui/shaders"
+            "${PROJECT_SOURCE_DIR}/src/gui/shaders/gui-vulkan.tsp" --check)
+    set_tests_properties(truffle_gui_vulkan_package_check PROPERTIES LABELS "gui;shader")
 endif()

@@ -2,7 +2,7 @@
 
 #include "truffle/encom/world.hpp"
 #include "truffle/renderer/components.hpp"
-#include "truffle/renderer/render_batch.hpp"
+#include "truffle/renderer/specialist/render_batch.hpp"
 #include "truffle/rhi/rhi.hpp"
 
 #include <array>
@@ -38,7 +38,7 @@ struct EnComRenderFrame {
     std::vector<LightState>        lights;
 
     // Mesh batches — pass directly to Renderer::render()
-    std::vector<renderer::RenderBatch> meshBatches;
+    std::vector<renderer::specialist::RenderBatch> meshBatches;
 };
 
 // ---------------------------------------------------------------------------

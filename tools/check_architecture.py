@@ -20,10 +20,16 @@ DIRECT_DEPENDENCIES = {
     "truffle_rhi": {"truffle_base"},
     "truffle_shader": {"truffle_rhi"},
     "truffle_renderer": {"truffle_shader", "truffle_rhi"},
+    # Explicitly optional Renderer-owned native factory; core Renderer never
+    # links implementations. Only enabled Metal/Vulkan targets are composed.
+    "truffle_renderer_presentation": {
+        "truffle_renderer", "truffle_backend_metal", "truffle_backend_vulkan"
+    },
     "truffle_asset_render": {"truffle_assets", "truffle_renderer"},
     "truffle_encom_renderer": {"truffle_encom", "truffle_renderer"},
     "truffle_gui": {
         "truffle_renderer",
+        "truffle_renderer_presentation",
         "truffle_gui_sheenbidi",
         "truffle_gui_utf8proc",
     },
@@ -224,6 +230,28 @@ def report_large_files(threshold: int) -> None:
     print("Review ownership and responsibility cohesion; this is not a God-file verdict.")
 
 
+def check_consumer_headers(errors: list[str]) -> None:
+    for path in (INCLUDE_ROOT / "renderer").glob("*.hpp"):
+        if path.name == "rhi_interop.hpp":
+            continue
+        text = path.read_text(encoding="utf-8")
+        if re.search(r"\brhi::|truffle/(?:rhi|renderer/specialist)/", text):
+            errors.append(
+                f"{path.relative_to(ROOT)}: ordinary Renderer headers must not expose RHI/specialist contracts"
+            )
+    for path in (INCLUDE_ROOT / "gui").rglob("*.hpp"):
+        if "specialist" in path.parts:
+            continue
+        text = path.read_text(encoding="utf-8")
+        forbidden = (r"\brhi::|truffle/(?:rhi|renderer/specialist|gui/specialist)/"
+                     if path.name == "rendering.hpp" else
+                     r"\brhi::|truffle/(?:rhi|renderer|gui/specialist)/")
+        if re.search(forbidden, text):
+            errors.append(
+                f"{path.relative_to(ROOT)}: ordinary GUI headers must not expose Renderer/RHI/specialist contracts"
+            )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -244,6 +272,7 @@ def main() -> int:
     errors: list[str] = []
     target_declarations, target_checks = check_target_dependencies(errors)
     include_checks = check_public_imports(errors)
+    check_consumer_headers(errors)
 
     if errors:
         print("Architecture guard failed:", file=sys.stderr)

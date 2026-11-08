@@ -1,8 +1,10 @@
+#include "truffle/gui/specialist/text.hpp"
 #include "gui_text_fixture.hpp"
+#include "gui_unicode_fixture.hpp"
 #include "renderer_native_test_utils.hpp"
 #include "rhi_test_utils.hpp"
 #include "test_support.hpp"
-#include "truffle/gui/builder.hpp"
+#include "truffle/gui/ui.hpp"
 #include "truffle/gui/region.hpp"
 #include "truffle/gui/text_edit.hpp"
 #include "truffle/gui/themes.hpp"
@@ -32,7 +34,7 @@ struct TestHost final : gui::Host {
 
 struct Fixture {
     decltype(tests::make_null_context()) native = tests::make_null_context();
-    gui::TextEngine engine = tests::require(gui::TextEngine::create(native.device));
+    gui::TextEngine engine = tests::require(gui::specialist::TextInterop::create(native.device));
     gui::FontId font = tests::require(engine.load_font(tests::gui_test_font(), 7));
     TestHost host;
     gui::Context context;
@@ -229,11 +231,9 @@ int pointer_read_only_multiline() {
 
 int authoring_and_callback_lifetime() {
     Fixture f;
-    gui::Widget built;
-    const auto tree = gui::ui::text_edit("AB").bind(built);
-    TFL_CHECK(gui::build(f.context, f.context.root(), tree,
-        {&f.engine, f.font, gui::TextureId{1}}).ok());
-    TFL_CHECK(built.editor().ok() && built.text().value() == "AB");
+    gui::Ui ui{f.context, {&f.engine, f.font, gui::TextureId{1}}};
+    auto built = ui.root().text_field("AB");
+    TFL_CHECK(built.editor().alive() && built.text() == "AB");
     std::string model = "A";
     bool changed = false;
     auto region = tests::require(gui::Region::create(f.context, f.context.root(),
@@ -261,6 +261,37 @@ int authoring_and_callback_lifetime() {
     TFL_CHECK(!doomed.alive() && !f.host.state);
     return 0;
 }
+
+int live_component_style() {
+    auto native = tests::make_null_context();
+    auto engine = tests::require(
+        gui::specialist::TextInterop::create(native.device, {{256, 256}}));
+    const auto font = tests::require(engine.load_font(tests::gui_ligature_font(), 20));
+    gui::Context context;
+    TFL_CHECK(context.set_viewport({300, 150}).ok());
+    auto edit = tests::require(gui::TextEdit::create(context, context.root(), {
+        .text = "AAA", .text_engine = &engine, .font = font, .atlas = gui::TextureId{1}}));
+    TFL_CHECK(context.prepare_frame(gui::Context::Clock::now()).status.ok());
+    const float original = tests::require(edit.caret_rect()).height;
+    gui::ComponentStyle global;
+    global.font_size = gui::FontSize{30};
+    global.caret.normal = gui::Color{1, 0, 0, 1};
+    TFL_CHECK(context.set_component_style(gui::Component::text_edit, global).ok());
+    TFL_CHECK(context.prepare_frame(gui::Context::Clock::now()).status.ok());
+    TFL_CHECK(tests::require(edit.caret_rect()).height > original);
+    TFL_CHECK((std::get<gui::Color>(
+        context.property(edit.element(), gui::Property::caret_color).value()) ==
+        gui::Color{1, 0, 0, 1}));
+    gui::ComponentStyle local;
+    local.font_size = gui::FontSize{12};
+    TFL_CHECK(context.set_component_style(edit.element(), local).ok());
+    TFL_CHECK(context.prepare_frame(gui::Context::Clock::now()).status.ok());
+    TFL_CHECK(tests::require(edit.caret_rect()).height < original);
+    TFL_CHECK(context.set_component_style(edit.element(), {}).ok());
+    TFL_CHECK(context.prepare_frame(gui::Context::Clock::now()).status.ok());
+    TFL_CHECK(tests::require(edit.caret_rect()).height > original);
+    return 0;
+}
 #endif
 
 int theme_tokens() {
@@ -284,7 +315,7 @@ int main() {
     for (auto test : {editing_clipboard_history, unicode_selection_and_failures,
                       input_method_lifecycle, bidirectional_visual_navigation,
                       pointer_read_only_multiline,
-                      authoring_and_callback_lifetime, theme_tokens}) {
+                      authoring_and_callback_lifetime, live_component_style, theme_tokens}) {
         if (const int result = test(); result != 0) { return result; }
     }
 #else

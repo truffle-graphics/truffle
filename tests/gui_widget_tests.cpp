@@ -1,14 +1,17 @@
+#include "truffle/gui/specialist/text.hpp"
 #include "gui_text_fixture.hpp"
+#include "gui_unicode_fixture.hpp"
 #include "renderer_native_test_utils.hpp"
 #include "rhi_test_utils.hpp"
 #include "test_support.hpp"
-#include "truffle/gui/widgets.hpp"
+#include "widget_object.hpp"
 
 #include <limits>
 
 namespace {
 using namespace truffle;
 using namespace truffle::gui;
+using namespace truffle::gui::detail;
 
 void place(Context& c, ElementId id, Point position, Size size) {
     LayoutParams params;
@@ -141,10 +144,65 @@ int scroll_and_passive_widgets() {
     return 0;
 }
 
+int component_metrics() {
+    Context c;
+    TFL_CHECK(c.set_viewport({240, 160}).ok());
+    auto checkbox = tests::require(
+        Widget::create(c, c.root(), {.kind = WidgetKind::checkbox}));
+    const auto slider = tests::require(
+        Widget::create(c, c.root(), {.kind = WidgetKind::slider}));
+    place(c, checkbox.element(), {}, {140, 32});
+    place(c, slider.element(), {0, 50}, {120, 24});
+    TFL_CHECK(c.prepare_frame(Context::Clock::now()).status.ok());
+    const auto mark = c.children(checkbox.element()).front();
+
+    ComponentStyle check_style;
+    check_style.checkbox.indicator_size = Size{24, 20};
+    check_style.checkbox.indicator_gap = 4;
+    check_style.indicator.checked = Color{1, 0, 0, 1};
+    TFL_CHECK(c.set_component_style(Component::checkbox, check_style).ok());
+    TFL_CHECK(checkbox.set_checked(true).ok());
+    TFL_CHECK(c.prepare_frame(Context::Clock::now()).status.ok());
+    TFL_CHECK((c.bounds(mark).value().size() == Size{24, 20}));
+    TFL_CHECK(c.layout_params(mark).value().position.x == -28);
+    TFL_CHECK((c.layout_params(checkbox.element()).value().padding == Edges{36, 8, 8, 8}));
+    TFL_CHECK((c.decoration(mark).value().fill == Color{1, 0, 0, 1}));
+    TFL_CHECK(c.focus(checkbox.element()).ok());
+    TFL_CHECK(c.prepare_frame(Context::Clock::now()).status.ok());
+    TFL_CHECK(c.decoration(checkbox.element()).value().border ==
+              c.theme_value(ColorToken::accent).value());
+    TFL_CHECK(c.decoration(mark).value().border == c.theme_value(ColorToken::border).value());
+
+    TFL_CHECK(c.set_property_override(checkbox.element(), Property::indicator_size,
+                                      Size{30, 18}).ok());
+    TFL_CHECK(c.set_property_override(checkbox.element(), Property::indicator_gap, 6.0F).ok());
+    TFL_CHECK(c.prepare_frame(Context::Clock::now()).status.ok());
+    TFL_CHECK((c.bounds(mark).value().size() == Size{30, 18}));
+    TFL_CHECK(c.layout_params(mark).value().position.x == -36);
+    TFL_CHECK((c.layout_params(checkbox.element()).value().padding == Edges{44, 8, 8, 8}));
+    TFL_CHECK(c.clear_property_override(checkbox.element(), Property::indicator_size).ok());
+    TFL_CHECK(c.clear_property_override(checkbox.element(), Property::indicator_gap).ok());
+    TFL_CHECK(c.prepare_frame(Context::Clock::now()).status.ok());
+    TFL_CHECK((c.bounds(mark).value().size() == Size{24, 20}));
+    TFL_CHECK((c.layout_params(checkbox.element()).value().padding == Edges{36, 8, 8, 8}));
+
+    ComponentStyle slider_style;
+    slider_style.slider.track_thickness = 6;
+    slider_style.slider.thumb_width = 20;
+    slider_style.slider.thumb_inset = 3;
+    TFL_CHECK(c.set_component_style(slider.element(), slider_style).ok());
+    TFL_CHECK(c.prepare_frame(Context::Clock::now()).status.ok());
+    const auto* shapes = c.shapes(slider.element());
+    TFL_CHECK(shapes != nullptr && shapes->vertices.size() == 12);
+    TFL_CHECK(shapes->vertices[4].shape[1] == 3);
+    TFL_CHECK(shapes->vertices[8].shape[0] == 10 && shapes->vertices[8].shape[1] == 9);
+    return 0;
+}
+
 int text_widgets() {
 #if TFL_TEST_GUI_TEXT
     auto backend = tests::make_null_context();
-    auto engine = tests::require(TextEngine::create(backend.device, {{64, 64}}));
+    auto engine = tests::require(specialist::TextInterop::create(backend.device, {{64, 64}}));
     const auto font = tests::require(engine.load_font(tests::gui_test_font(), 7));
     Context c;
     auto label = tests::require(Widget::create(c, c.root(), {
@@ -161,12 +219,31 @@ int text_widgets() {
     const auto changed = c.prepare_frame(Context::Clock::now());
     TFL_CHECK(changed.status.ok() && changed.styles.resolved == 1 &&
               changed.layout.measured == 0 && changed.shapes.regenerated == 1);
+
+    Context styled;
+    const auto scalable = tests::require(engine.load_font(tests::gui_ligature_font(), 20));
+    auto sized_label = tests::require(Widget::create(styled, styled.root(), {
+        .kind = WidgetKind::label, .text = "A", .text_engine = &engine,
+        .font = scalable, .atlas = {1}}));
+    TFL_CHECK(styled.set_viewport({200, 100}).ok());
+    TFL_CHECK(styled.prepare_frame(Context::Clock::now()).status.ok());
+    const float original = styled.bounds(sized_label.element()).value().width;
+    ComponentStyle label_style;
+    label_style.font_size = FontSize{30};
+    TFL_CHECK(styled.set_component_style(Component::label, label_style).ok());
+    TFL_CHECK(styled.prepare_frame(Context::Clock::now()).status.ok());
+    TFL_CHECK(styled.bounds(sized_label.element()).value().width > original);
+    TFL_CHECK(styled.set_component_style(Component::label, {}).ok());
+    TFL_CHECK(styled.set_theme_value(FontSizeToken::standard, FontSize{12}).ok());
+    TFL_CHECK(styled.prepare_frame(Context::Clock::now()).status.ok());
+    TFL_CHECK(styled.bounds(sized_label.element()).value().width < original);
 #endif
     return 0;
 }
 } // namespace
 
 int main() {
-    if (interactions() != 0 || scroll_and_passive_widgets() != 0) { return 1; }
+    if (interactions() != 0 || scroll_and_passive_widgets() != 0 ||
+        component_metrics() != 0) { return 1; }
     return text_widgets();
 }

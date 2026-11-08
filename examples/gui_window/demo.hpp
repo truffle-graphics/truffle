@@ -1,8 +1,7 @@
 #pragma once
 
-#include "truffle/gui/widgets.hpp"
+#include "truffle/gui/ui.hpp"
 
-#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -11,114 +10,65 @@ namespace truffle::examples {
 class GuiDemo {
 public:
     gui::Context context;
-    gui::Widget button;
-    gui::Widget checkbox;
-    gui::Widget slider;
-    gui::Widget status;
-    gui::Widget image;
-    gui::Widget scroll;
-    gui::Widget editor;
-    std::vector<gui::Widget> rows;
+    gui::Ui ui;
+    gui::Button button;
+    gui::Checkbox checkbox;
+    gui::Slider slider;
+    gui::Label status;
+    gui::Image image;
+    gui::Container scroll;
+    gui::TextField editor;
+    std::vector<gui::Container> rows;
     int presses = 0;
 
     GuiDemo(gui::TextEngine& text, gui::FontId font, gui::TextureId atlas,
-            gui::TextureId image_texture) {
-        const auto root = context.root();
-        check(context.set_layout(root, std::make_shared<gui::StackLayout>(
-            gui::StackOptions{.spacing = 12})));
-        gui::LayoutParams params;
-        params.padding = {20, 20, 20, 20};
-        check(context.set_layout_params(root, params));
-        check(context.set_decoration(root, {.fill = {0.06F, 0.07F, 0.10F, 1}}));
-        check(context.set_theme_value("demo.gap", 12.0F));
+            gui::TextureId image_texture)
+        : ui(context, {&text, font, atlas}) {
+        auto root = ui.root();
+        root.padding(20).gap(12).on_paint([](gui::Painter& paint) {
+            paint.rect({0, 0, paint.size().width, paint.size().height},
+                       gui::Color{0.06F, 0.07F, 0.10F, 1});
+        }, gui::PaintLayer::background);
 
-        const auto caption = [&](gui::ElementId parent, std::string value) {
-            return take(gui::Widget::create(context, parent, {
-                .kind = gui::WidgetKind::label, .text = std::move(value),
-                .text_engine = &text, .font = font, .atlas = atlas}));
-        };
-        static_cast<void>(caption(root, "Truffle GUI - persistent, themed and interactive"));
-        const auto body = take(context.create(root));
-        params = {};
-        params.weight = 1;
-        check(context.set_layout_params(body, params));
-        check(context.set_layout(body, std::make_shared<gui::StackLayout>(
-            gui::StackOptions{.axis = gui::Axis::horizontal, .spacing = 16})));
+        root.label("Truffle GUI - persistent, themed and interactive");
+        auto body = root.row().weight(1).gap(16);
 
-        auto controls = take(gui::Widget::create(context, body));
-        params = {};
-        params.width = 280;
-        check(context.set_layout_params(controls.element(), params));
-        check(context.set_layout(controls.element(), std::make_shared<gui::StackLayout>()));
-        check(context.bind_property(controls.element(), gui::Property::spacing, "demo.gap"));
-        static_cast<void>(caption(controls.element(), "Core widgets"));
-        status = caption(controls.element(), "Button presses: 0");
-        button = take(gui::Widget::create(context, controls.element(), {
-            .kind = gui::WidgetKind::button, .text = "Press me",
-            .text_engine = &text, .font = font, .atlas = atlas,
-            .activated = [this] {
-                ++presses;
-                check(status.set_text("Button presses: " + std::to_string(presses)));
-            }}));
-        checkbox = take(gui::Widget::create(context, controls.element(), {
-            .kind = gui::WidgetKind::checkbox, .text = "Bright accent",
-            .text_engine = &text, .font = font, .atlas = atlas, .checked = true,
-            .toggled = [this](bool bright) {
-                check(context.set_theme_value("gui.accent", bright
-                    ? gui::Color{0.25F, 0.65F, 0.95F, 1} : gui::Color{0.65F, 0.4F, 0.8F, 1}));
-            }}));
-        static_cast<void>(caption(controls.element(), "Image tint - drag or use arrow keys"));
-        slider = take(gui::Widget::create(context, controls.element(), {
-            .kind = gui::WidgetKind::slider, .text = "Image tint", .value = 1, .step = 0.05F,
-            .value_changed = [this](float value) {
-                check(context.set_property_override(image.element(), gui::Property::fill,
-                    gui::Color{value, 1, 1, 1}));
-            }}));
-        image = take(gui::Widget::create(context, controls.element(), {
-            .kind = gui::WidgetKind::image, .text = "Application-provided checker image",
-            .image = image_texture, .image_size = {128, 72}}));
-        static_cast<void>(caption(controls.element(), "Tab / Shift+Tab: focus"));
-        static_cast<void>(caption(controls.element(), "Space / Enter: activate"));
-        static_cast<void>(caption(controls.element(), "Editable text - clipboard, undo and IME"));
-        editor = take(gui::Widget::create(context, controls.element(), {
-            .kind = gui::WidgetKind::text_edit,
-            .text = "Edit: \u05E9\u05DC\u05D5\u05DD \u0645\u0631\u062D\u0628\u0627 123",
-            .text_engine = &text, .font = font, .atlas = atlas}));
+        auto controls = body.panel().width(280).gap(12);
+        controls.label("Core widgets");
+        status = controls.label("Button presses: 0");
+        button = controls.button("Press me").on_click([this] {
+            ++presses;
+            status.text("Button presses: " + std::to_string(presses));
+        });
+        checkbox = controls.checkbox("Bright accent", true).on_change([this](bool bright) {
+            static_cast<void>(context.set_theme_value("gui.accent", bright
+                ? gui::Color{0.25F, 0.65F, 0.95F, 1} : gui::Color{0.65F, 0.4F, 0.8F, 1}));
+        });
+        controls.label("Image tint - drag or use arrow keys");
+        slider = controls.slider(0, 1, 1).step(0.05F).on_change([this](float value) {
+            image.property(gui::Property::fill, gui::Color{value, 1, 1, 1});
+        });
+        image = controls.image(image_texture, {128, 72});
+        controls.label("Tab / Shift+Tab: focus");
+        controls.label("Space / Enter: activate");
+        controls.label("Editable text - clipboard, undo and IME");
+        editor = controls.text_field(
+            "Edit: \u05E9\u05DC\u05D5\u05DD \u0645\u0631\u062D\u0628\u0627 123");
 
-        scroll = take(gui::Widget::create(context, body, {
-            .kind = gui::WidgetKind::scroll_area, .text = "Scrollable persistent elements"}));
-        params = {};
-        params.weight = 1;
-        check(context.set_layout_params(scroll.element(), params));
-        check(context.set_layout(scroll.content(), std::make_shared<gui::StackLayout>(
-            gui::StackOptions{.spacing = 8})));
+        scroll = body.scroll().weight(1);
         for (int i = 0; i < 64; ++i) {
-            auto row = take(gui::Widget::create(context, scroll.content()));
-            params = {};
-            params.height = 36;
-            params.width = 390;
-            check(context.set_layout_params(row.element(), params));
-            check(context.set_property_override(row.element(), gui::Property::fill,
+            auto row = scroll.panel().size({390, 36}).property(gui::Property::fill,
                 i % 2 == 0 ? gui::Color{0.16F, 0.19F, 0.25F, 1}
-                           : gui::Color{0.13F, 0.16F, 0.21F, 1}));
-            static_cast<void>(caption(row.element(),
-                "Persistent row " + std::to_string(i + 1) + " - scroll without rebuilding"));
-            rows.push_back(std::move(row));
+                           : gui::Color{0.13F, 0.16F, 0.21F, 1});
+            row.label("Persistent row " + std::to_string(i + 1) +
+                      " - scroll without rebuilding");
+            rows.push_back(row);
         }
-        static_cast<void>(caption(root,
-            "The host sleeps while idle. Frame work counters are printed to the terminal."));
+        root.label("The host sleeps while idle. Frame work counters are printed to the terminal.");
     }
 
-    void handle(const gui::InputEvent& event) { check(context.handle(event)); }
-
-private:
-    static void check(const base::Status& status) {
-        if (!status.ok()) { throw std::runtime_error(status.message); }
-    }
-    template <typename T>
-    static T take(base::Result<T> result) {
-        if (!result.ok()) { throw std::runtime_error(result.status().message); }
-        return std::move(result).value();
+    void handle(const gui::InputEvent& event) {
+        if (auto status = context.handle(event); !status.ok()) { ui.report(status); }
     }
 };
 

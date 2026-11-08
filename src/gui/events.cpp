@@ -38,6 +38,12 @@ base::Status Context::set_interaction(ElementId element, Interaction interaction
         return invalid_target();
     }
     node->interaction = interaction;
+    if (node->component && node->component->state.disabled == interaction.enabled) {
+        auto state = node->component->state;
+        state.disabled = !interaction.enabled;
+        const auto status = set_component_state(element, state);
+        if (!status.ok()) { return status; }
+    }
     if (focused_.valid() &&
         (!input_enabled(focused_) || !find(focused_)->interaction.focusable)) {
         const auto status = focus({});
@@ -76,10 +82,18 @@ base::Status Context::set_event_handler(ElementId element, EventHandler handler)
     return base::Status::success();
 }
 
+base::Result<EventHandler> Context::event_handler(ElementId element) const {
+    const Node* node = find(element);
+    if (node == nullptr) {
+        return invalid_target();
+    }
+    return node->handler;
+}
+
 bool Context::input_enabled(ElementId element) const noexcept {
     for (ElementId up = element; up.valid();) {
         const Node* node = find(up);
-        if (node == nullptr || !node->interaction.enabled) {
+        if (node == nullptr || !node->visible || !node->interaction.enabled) {
             return false;
         }
         if (up == root_) { return true; }
@@ -105,7 +119,7 @@ ElementId Context::hit_test(Point position) const {
             const Entry entry = pending.back();
             pending.pop_back();
             const Node* node = find(entry.id);
-            if (node == nullptr || !node->interaction.enabled || !node->arranged ||
+            if (node == nullptr || !node->visible || !node->interaction.enabled || !node->arranged ||
                 !contains(entry.clip, position)) {
                 continue;
             }
@@ -144,7 +158,7 @@ ElementId Context::hit_test(Point position) const {
             const Entry entry = pending.back();
             pending.pop_back();
             const Node* node = find(entry.id);
-            if (node == nullptr || !node->interaction.enabled || !node->arranged) {
+            if (node == nullptr || !node->visible || !node->interaction.enabled || !node->arranged) {
                 continue;
             }
             if (entry.self) { // an overlay reached in tree order
@@ -265,7 +279,7 @@ base::Status Context::focus_next(bool backwards) {
         const ElementId id = pending.back();
         pending.pop_back();
         const Node* node = find(id);
-        if (node == nullptr || !node->interaction.enabled) {
+        if (node == nullptr || !node->visible || !node->interaction.enabled) {
             continue;
         }
         if (node->interaction.focusable) {
@@ -325,7 +339,45 @@ void Context::forget_input(ElementId element) noexcept {
 void Context::set_event_trace(EventTrace trace) { trace_ = std::move(trace); }
 const base::Status& Context::last_event_status() const noexcept { return event_status_; }
 
-void Context::route_input(const InputEvent& event) {
+base::Status Context::set_input_filter(ElementId element, EventHandler filter) {
+    Node* node = find(element);
+    if (node == nullptr) { return invalid_target(); }
+    const bool had_filter = static_cast<bool>(node->filter);
+    node->filter = std::move(filter);
+    if (node->filter && !had_filter) { input_filters_.push_back(element); }
+    else if (!node->filter) { std::erase(input_filters_, element); }
+    return base::Status::success();
+}
+
+base::Result<bool> Context::filter_input(const InputEvent& input) {
+    ElementId target = focused_;
+    if (const auto* pointer = std::get_if<PointerEvent>(&input)) {
+        target = hit_test(pointer->position);
+    } else if (const auto* wheel = std::get_if<WheelEvent>(&input)) {
+        target = hit_test(wheel->position);
+    }
+    RoutedEvent event{target, {}, input};
+    const auto filters = input_filters_;
+    for (const ElementId element : filters) {
+        const Node* node = find(element);
+        if (node == nullptr || !input_enabled(element)) { continue; }
+        auto up = element;
+        while (const Node* ancestor = find(up)) {
+            if (!ancestor->parent.valid()) { break; }
+            up = ancestor->parent;
+        }
+        if (up != root_) { continue; }
+        const EventHandler filter = node->filter;
+        if (!filter) { continue; }
+        event.current = element;
+        filter(*this, event);
+        if (!event.status.ok()) { return event.status; }
+        if (event.stopped) { break; }
+    }
+    return event.handled;
+}
+
+void Context::route_input(const InputEvent& event, bool filtered) {
     if (const auto* pointer = std::get_if<PointerEvent>(&event)) {
         const bool outside = pointer->action == PointerAction::leave ||
                              pointer->action == PointerAction::cancel;
@@ -340,9 +392,9 @@ void Context::route_input(const InputEvent& event) {
                 if (node->interaction.focusable) { break; }
                 candidate = node->parent;
             }
-            if (input_.focused) { static_cast<void>(focus(candidate)); }
+            if (input_.focused && !filtered) { static_cast<void>(focus(candidate)); }
         }
-        static_cast<void>(dispatch(target, event));
+        if (!filtered) { static_cast<void>(dispatch(target, event)); }
         if (pointer->action == PointerAction::up) {
             auto found = pointer_buttons_.find(pointer->pointer);
             if (found != pointer_buttons_.end()) {
@@ -359,9 +411,9 @@ void Context::route_input(const InputEvent& event) {
         }
     } else if (const auto* wheel = std::get_if<WheelEvent>(&event)) {
         update_hover(hit_test(wheel->position));
-        static_cast<void>(dispatch(hovered_, event));
+        if (!filtered) { static_cast<void>(dispatch(hovered_, event)); }
     } else if (const auto* focus_event = std::get_if<FocusEvent>(&event)) {
-        static_cast<void>(dispatch(focused_, event));
+        if (!filtered) { static_cast<void>(dispatch(focused_, event)); }
         if (!focus_event->focused) {
             static_cast<void>(focus({}));
             std::vector<std::uint32_t> pointers;
@@ -373,7 +425,7 @@ void Context::route_input(const InputEvent& event) {
             pointer_buttons_.clear();
             update_hover({});
         }
-    } else if (input_.focused) {
+    } else if (input_.focused && !filtered) {
         const auto result = dispatch(focused_, event);
         const bool handled = !result.ok() || result.value();
         if (const auto* key = std::get_if<KeyEvent>(&event);

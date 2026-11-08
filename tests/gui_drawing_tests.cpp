@@ -172,7 +172,7 @@ int rectangle_geometry() {
     return 0;
 }
 
-bool same_clip(const truffle::rhi::ScissorRect& clip, int x, int y, unsigned width,
+bool same_clip(const truffle::gui::PixelRect& clip, int x, int y, unsigned width,
                unsigned height) {
     return clip.x == x && clip.y == y && clip.width == width && clip.height == height;
 }

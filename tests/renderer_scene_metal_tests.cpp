@@ -81,7 +81,7 @@ int run() {
     const std::array<std::uint32_t, 3> indices{0, 1, 2};
     scene.set_mesh(vertices, indices);
     auto color = target(device, {16, 16});
-    renderer::DepthTarget depth(device);
+    renderer::specialist::DepthTarget depth(device);
     tests::require(depth.resize({16, 16}));
     minimum_renderer::View view;
     view.viewProjection = tests::require(renderer::orthographic(2, 2, 0, 10));
@@ -93,9 +93,9 @@ int run() {
         .centerScale = {0, 0, -2, 1}, .albedo = {0, 1, 0, 1},
     };
     const auto draw = [&](std::array<unsigned, 4> expected, const char* label) {
-        renderer::FrameGraph graph;
+        renderer::specialist::FrameGraph graph;
         const auto size = color.desc().extent;
-        graph.add_node(std::make_unique<renderer::RenderPassNode>(
+        graph.add_node(std::make_unique<renderer::specialist::RenderPassNode>(
             rhi::RenderPassDesc{
                 .extent = {size.width, size.height},
                 .colorAttachments = {{.texture = &color}},
@@ -146,8 +146,8 @@ int run() {
     }});
     view.viewProjection = tests::require(renderer::orthographic(4, 4, 0, 10));
     scene.set_view(view);
-    renderer::FrameGraph cubeGraph;
-    cubeGraph.add_node(std::make_unique<renderer::RenderPassNode>(
+    renderer::specialist::FrameGraph cubeGraph;
+    cubeGraph.add_node(std::make_unique<renderer::specialist::RenderPassNode>(
         rhi::RenderPassDesc{
             .extent = {32, 24}, .colorAttachments = {{.texture = &color}},
             .depthStencilAttachment = {.texture = depth.texture()},

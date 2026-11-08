@@ -1,11 +1,11 @@
-#include "truffle/renderer/texture.hpp"
+#include "truffle/renderer/specialist/texture.hpp"
 
 #include <array>
 #include <chrono>
 #include <cstring>
 #include <vector>
 
-namespace truffle::renderer {
+namespace truffle::renderer::specialist {
 namespace {
 
 std::size_t texel_size(rhi::TextureFormat format) {
@@ -321,5 +321,5 @@ base::Result<TextureBinding> TextureBinding::create(rhi::Device& device,
     return result;
 }
 
-} // namespace truffle::renderer
+} // namespace truffle::renderer::specialist
 

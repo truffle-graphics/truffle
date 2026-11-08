@@ -123,6 +123,8 @@ base::Status Context::destroy(ElementId element) {
         std::erase_if(updaters_, [current](const UpdaterEntry& entry) {
             return entry.element == current;
         });
+        std::erase(popups_, current);
+        std::erase(input_filters_, current);
         Node& doomed = nodes_[index_of(current)];
         pending.insert(pending.end(), doomed.children.begin(), doomed.children.end());
         const std::uint32_t generation = doomed.generation + 1;
@@ -169,7 +171,7 @@ base::Status Context::reparent(ElementId element, ElementId parent,
     siblings.insert(siblings.begin() + static_cast<std::ptrdiff_t>(position),
                     element);
     node->parent = parent;
-    if (find(parent)->placed_children || node->placement) {
+    if (find(parent)->placed_children || node->placement || node->popup || !node->visible) {
         refresh_flow(parent);
     }
     mark(old_parent, Dirty::measure);
@@ -284,7 +286,9 @@ void Context::mark(ElementId element, Dirty flags) {
     }
     // A measured ancestor already implies measured ancestors above it.
     for (ElementId ancestor = node->parent; ancestor.valid();) {
-        Node& above = *find(ancestor);
+        Node* ancestor_node = find(ancestor);
+        if (ancestor_node == nullptr) { break; }
+        Node& above = *ancestor_node;
         if (has(above.dirty, Dirty::measure)) {
             break;
         }
@@ -311,19 +315,40 @@ base::Status Context::set_layout(ElementId element, std::shared_ptr<const Layout
     return base::Status::success();
 }
 
+void Context::refresh_effective_params(Node& node) {
+    node.effective_params = node.params;
+    const auto& padding = node.styles[static_cast<std::size_t>(Property::padding)];
+    if (node.style_padding && (padding.override_value || node.params.padding == Edges{})) {
+        node.effective_params.padding = *node.style_padding;
+    }
+    if (!node.params.width && node.params.min.width == 0) {
+        node.effective_params.min.width =
+            std::min(node.style_min.width, std::max(0.0F, node.params.max.width));
+    }
+    if (!node.params.height && node.params.min.height == 0) {
+        node.effective_params.min.height =
+            std::min(node.style_min.height, std::max(0.0F, node.params.max.height));
+    }
+}
+
 base::Status Context::set_layout_params(ElementId element, const LayoutParams& params) {
     Node* node = find(element);
     if (node == nullptr) {
         return invalid_element();
     }
-    if (node->params == params) {
+    LayoutParams authored = params;
+    if (params.padding == node->effective_params.padding) {
+        authored.padding = node->params.padding;
+    }
+    if (node->params == authored) {
         return base::Status::success();
     }
     LayoutParams placement_only = node->params;
-    placement_only.position = params.position;
-    placement_only.weight = params.weight;
-    node->params = params;
-    if (placement_only == params) {
+    placement_only.position = authored.position;
+    placement_only.weight = authored.weight;
+    node->params = authored;
+    refresh_effective_params(*node);
+    if (placement_only == authored) {
         // Only the parent's placement changes; no size is measured again.
         if (Node* parent = find(node->parent)) {
             raise(node->parent, *parent, Dirty::arrange);
@@ -339,7 +364,9 @@ base::Result<LayoutParams> Context::layout_params(ElementId element) const {
     if (node == nullptr) {
         return invalid_element();
     }
-    return node->params;
+    LayoutParams params = node->params;
+    params.padding = node->effective_params.padding;
+    return params;
 }
 
 LayoutStats Context::update_layout(Size viewport) {
@@ -352,7 +379,7 @@ LayoutStats Context::update_layout(Size viewport) {
         std::any_of(dirty_queue_.begin(), dirty_queue_.end(), [this](ElementId element) {
             return has(dirty(element), Dirty::measure | Dirty::arrange);
         });
-    if (!pending_work) {
+    if (!pending_work && popups_.empty()) {
         return stats_;
     }
 
@@ -362,18 +389,46 @@ LayoutStats Context::update_layout(Size viewport) {
         static_cast<void>(measure_element(root, Constraints::tight(size)));
     }
 
+    const auto tree_root = [this](ElementId element) {
+        while (const Node* node = find(element)) {
+            if (!node->parent.valid()) { return element; }
+            element = node->parent;
+        }
+        return ElementId{};
+    };
+    const auto popup_viewport = [&](ElementId element) {
+        const ElementId root = tree_root(element);
+        for (const auto& entry : surface_roots_) {
+            if (entry.root == root) { return entry.size; }
+        }
+        return root == root_ ? viewport_ : find(primary_root_)->rect.size();
+    };
+    std::vector<std::pair<std::size_t, ElementId>> popups;
+    for (const ElementId element : popups_) {
+        if (!visible(element)) { continue; }
+        std::size_t depth = 0;
+        for (auto up = find(element)->parent; up.valid(); up = find(up)->parent) { ++depth; }
+        popups.emplace_back(depth, element);
+        static_cast<void>(measure_element(element, {{}, popup_viewport(element)}));
+    }
+    std::stable_sort(popups.begin(), popups.end(),
+        [](const auto& left, const auto& right) { return left.first < right.first; });
+
     // Arrange invalidated elements top-down; arranging a parent may already
     // have consumed a descendant's work.
     std::vector<std::pair<std::size_t, ElementId>> pending;
     for (const ElementId element : dirty_queue_) {
         const Node* node = find(element);
-        if (node == nullptr || !has(node->dirty, Dirty::arrange)) {
+        if (node == nullptr || !visible(element) || !has(node->dirty, Dirty::arrange)) {
             continue;
         }
         std::size_t depth = 0;
+        bool in_popup = node->popup.has_value();
         for (ElementId up = node->parent; up.valid(); up = find(up)->parent) {
             ++depth;
+            in_popup = in_popup || find(up)->popup.has_value();
         }
+        if (in_popup) { continue; }
         pending.emplace_back(depth, element);
     }
     std::stable_sort(pending.begin(), pending.end(),
@@ -391,6 +446,29 @@ LayoutStats Context::update_layout(Size viewport) {
             if (element == root) { rect = {0, 0, size.width, size.height}; break; }
         }
         arrange_element(element, rect);
+    }
+    for (const auto& [depth, element] : popups) {
+        static_cast<void>(depth);
+        Node& node = *find(element);
+        const Rect anchor = absolute_bounds(node.parent).value();
+        const Point offset = child_offset(node.parent);
+        const Size size = node.desired;
+        const Size view = popup_viewport(element);
+        float x = anchor.x;
+        float y = anchor.y + anchor.height;
+        if (*node.popup == PopupSide::right) {
+            x = anchor.x + anchor.width;
+            y = anchor.y;
+            if (x + size.width > view.width && anchor.x > view.width - x) {
+                x = anchor.x - size.width;
+            }
+        } else if (y + size.height > view.height && anchor.y > view.height - y) {
+            y = anchor.y - size.height;
+        }
+        x = std::clamp(x, 0.0F, std::max(0.0F, view.width - size.width));
+        y = std::clamp(y, 0.0F, std::max(0.0F, view.height - size.height));
+        arrange_element(element, {x - anchor.x - offset.x, y - anchor.y - offset.y,
+                                  size.width, size.height});
     }
     clear_dirty(Dirty::measure | Dirty::arrange);
     return stats_;
@@ -508,6 +586,26 @@ base::Status Context::clear_text(ElementId element) {
     return base::Status::success();
 }
 
+base::Status Context::set_paint(ElementId element, PaintLayer layer, PaintFunction paint) {
+    Node* node = find(element);
+    const auto index = static_cast<std::size_t>(layer);
+    if (node == nullptr || index >= node->paint.size()) {
+        return invalid_element();
+    }
+    node->paint[index] = std::move(paint);
+    raise(element, *node, Dirty::shape);
+    return base::Status::success();
+}
+
+base::Status Context::invalidate_shapes(ElementId element) {
+    Node* node = find(element);
+    if (node == nullptr) {
+        return invalid_element();
+    }
+    raise(element, *node, Dirty::shape);
+    return base::Status::success();
+}
+
 ShapeStats Context::update_shapes() {
     static const DecorationBuilder fallback;
     ShapeStats stats;
@@ -520,12 +618,22 @@ ShapeStats Context::update_shapes() {
         node->shapes.indices.clear();
         node->shapes.segments.clear();
         ShapeWriter writer(node->shapes);
-        const ShapeBuilder& builder = node->builder ? *node->builder : fallback;
-        builder.build(writer, node->rect.size(), node->decoration);
+        const auto paint = [&](PaintLayer layer) {
+            const PaintFunction& function = node->paint[static_cast<std::size_t>(layer)];
+            if (!function) { return false; }
+            Painter painter(*this, element, writer, node->rect.size(), node->decoration);
+            function(painter);
+            return true;
+        };
+        paint(PaintLayer::background);
+        if (!paint(PaintLayer::replace)) {
+            const ShapeBuilder& builder = node->builder ? *node->builder : fallback;
+            builder.build(writer, node->rect.size(), node->decoration);
+        }
         if (node->text) {
             const TextBlock& text = *node->text;
             const Decoration glyph_decoration{.fill = text.color, .texture = text.atlas};
-            const Edges padding = node->params.padding;
+            const Edges padding = node->effective_params.padding;
             for (const TextGlyph& glyph : text.layout.glyphs) {
                 if (glyph.size.width <= 0.0F || glyph.size.height <= 0.0F) {
                     continue;
@@ -538,6 +646,7 @@ ShapeStats Context::update_shapes() {
                             decoration);
             }
         }
+        paint(PaintLayer::foreground);
         ++stats.regenerated;
     }
     clear_dirty(Dirty::shape);
@@ -572,7 +681,8 @@ float Context::scale() const noexcept {
     return scale_;
 }
 
-base::Status Context::handle(const InputEvent& event) {
+base::Status Context::handle(const InputEvent& event, Clock::time_point now) {
+    time_ = now;
     event_status_ = base::Status::success();
     std::visit(
         [this](const auto& value) {
@@ -620,7 +730,12 @@ base::Status Context::handle(const InputEvent& event) {
             }
         },
         event);
-    route_input(event);
+    const auto filtered = filter_input(event);
+    if (!filtered.ok()) {
+        event_status_ = filtered.status();
+        return event_status_;
+    }
+    route_input(event, filtered.value());
     return event_status_;
 }
 
@@ -677,13 +792,18 @@ bool Context::needs_frame(Clock::time_point now) const noexcept {
 }
 
 std::optional<Context::Clock::time_point> Context::next_update() const noexcept {
-    if (deadlines_.empty()) {
-        return std::nullopt;
+    std::optional<Clock::time_point> next;
+    for (const auto deadline : deadlines_) {
+        if (!next || deadline < *next) { next = deadline; }
     }
-    return *std::min_element(deadlines_.begin(), deadlines_.end());
+    for (const auto& entry : updaters_) {
+        if (entry.deadline && (!next || *entry.deadline < *next)) { next = entry.deadline; }
+    }
+    return next;
 }
 
 FrameStats Context::prepare_frame(Clock::time_point now) {
+    time_ = now;
     FrameStats stats;
     stats.status = run_updaters(stats.updates);
     if (!stats.status.ok()) {
@@ -713,7 +833,8 @@ FrameStats Context::prepare_frame(Clock::time_point now) {
         stats.layout.arranged += again.arranged;
     }
     stats.shapes = update_shapes();
-    clear_dirty();
+    // Style handlers can enqueue new style work after the current snapshot.
+    clear_dirty(Dirty::measure | Dirty::arrange | Dirty::shape);
     frame_requested_ = false;
     std::erase_if(deadlines_, [now](Clock::time_point when) { return when <= now; });
     return stats;
@@ -731,13 +852,26 @@ Host& Context::host() const noexcept {
 const LayoutParams& Context::params_of(ElementId element) const noexcept {
     static const LayoutParams defaults;
     const Node* node = find(element);
-    return node == nullptr ? defaults : node->params;
+    return node == nullptr ? defaults : node->effective_params;
 }
 
 Size Context::desired_of(ElementId element) const noexcept {
     const Node* node = find(element);
     return node == nullptr ? Size{} : node->desired;
 }
+
+namespace {
+
+// An unbounded placement extent fills the rest of the parent on that axis.
+Rect fill_placement(Rect placed, Size parent) {
+    if (!std::isfinite(placed.width)) { placed.width = std::max(0.0F, parent.width - placed.x); }
+    if (!std::isfinite(placed.height)) {
+        placed.height = std::max(0.0F, parent.height - placed.y);
+    }
+    return placed;
+}
+
+} // namespace
 
 Size Context::measure_element(ElementId element, Constraints constraints) {
     Node* node = find(element);
@@ -750,7 +884,7 @@ Size Context::measure_element(ElementId element, Constraints constraints) {
     }
     ++stats_.measured;
 
-    const LayoutParams params = node->params;
+    const LayoutParams params = node->effective_params;
     const auto range = [](float low, float high, float own_min, float own_max,
                           const std::optional<float>& fixed) {
         const float lo = std::max(low, std::min(own_min, high));
@@ -777,8 +911,11 @@ Size Context::measure_element(ElementId element, Constraints constraints) {
     if (node->placed_children) {
         const std::vector<ElementId> children = node->children;
         for (const ElementId child : children) {
-            if (const auto placed = find(child)->placement) {
-                static_cast<void>(measure_element(child, Constraints::tight(placed->size())));
+            if (const auto placed = find(child)->placement; placed && visible(child)) {
+                const Size parent{std::isfinite(max_w) ? max_w : 0.0F,
+                                  std::isfinite(max_h) ? max_h : 0.0F};
+                static_cast<void>(measure_element(
+                    child, Constraints::tight(fill_placement(*placed, parent).size())));
             }
         }
         node = find(element);
@@ -811,7 +948,7 @@ void Context::arrange_element(ElementId element, Rect rect) {
     node->arranged = true;
     node->dirty = node->dirty & without(Dirty::arrange);
 
-    const Edges padding = node->params.padding;
+    const Edges padding = node->effective_params.padding;
     const Rect content{padding.left, padding.top,
                        std::max(0.0F, rect.width - padding.horizontal()),
                        std::max(0.0F, rect.height - padding.vertical())};
@@ -824,8 +961,8 @@ void Context::arrange_element(ElementId element, Rect rect) {
     if (node->placed_children) {
         const std::vector<ElementId> children = node->children;
         for (const ElementId child : children) {
-            if (const auto& placed = find(child)->placement) {
-                arrange_element(child, *placed);
+            if (const auto& placed = find(child)->placement; placed && visible(child)) {
+                arrange_element(child, fill_placement(*placed, rect.size()));
             }
         }
     }
@@ -841,5 +978,7 @@ void Context::detach(ElementId element, Node& node) {
     }
     node.parent = {};
 }
+
+Context::Clock::time_point Context::time() const noexcept { return time_; }
 
 } // namespace truffle::gui

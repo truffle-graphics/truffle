@@ -80,7 +80,7 @@ Current evidence is narrower than the old roadmap claimed:
   WARP are now verified with GPU validation (#264), including raw/structured
   buffers and structured descriptor arrays.
   The Shader library (#178/#180) owns compilation; Renderer consumes its
-  in-memory results directly through `renderer::SourceProgram` (#181).
+  in-memory results directly through `renderer::specialist::SourceProgram` (#181).
 - The optional native Slang adapter (#190) uses pinned source Slang 2026.12.1,
   native imports and component linking, fresh transitive content snapshots,
   canonical SPIR-V reflection and independent validation. It emits only the
@@ -105,6 +105,27 @@ backend implementation. Renderer, assets, EnCom, EnCom–Renderer integration, a
 remain independently linkable. Consumers can work directly with RHI, with
 Renderer batches, or with the optional EnCom–Renderer integration.
 
+Normal Renderer resource/frame/presentation headers expose Renderer-owned
+values and opaque retained resources, not RHI contracts (#273/#275).
+Explicit raw extensions use `renderer::specialist`, specialist headers and
+`renderer/rhi_interop.hpp`. GUI-owned setup and Renderer-level viewport
+integration are implemented under #276/#277; Engine #272 remains design-only.
+
+`gui::Context` owns logical GUI state and remains usable without graphics.
+Optional `gui::Graphics` owns graphics orchestration and GPU image/font
+resources with a host-owned window, using GUI-only public types (#279).
+`gui/rendering.hpp` opts into a borrowed/shared Renderer device and combined
+frame graph. Raw Painter/text/Surface/Viewport GPU access is specialist-only.
+Normal GUI Context/drawing/text/Surface/Viewport headers import neither Renderer nor
+RHI. Optional native setup is linked privately by GUI when enabled.
+GUI styling (#280) layers typed shared tokens, Truffle component defaults,
+global component overrides and per-element/state overrides; layout placement
+and spacing stay separate. Dark/Light switch colors without resetting metrics
+or component overrides. Hosts choose font bytes and fallback chains, while
+Truffle supplies the default size and owns cached sized variants. Details and
+precedence are in `docs/gui-styling.md`; Studio's default-first policy remains
+application-owned.
+
 RHI 1 uses move-only RAII objects over opaque generation-checked handles and a
 backend dispatch table. It separates portable typed results from optional
 backend diagnostics, owns explicit resource/synchronization/presentation
@@ -115,6 +136,23 @@ The host owns native windows/surfaces, event loops, input, resize policy, and
 application lifecycle. Diagnostics remain opt-in and pull-based. Asset
 declarations and asset-to-render planning remain metadata layers until a
 consumer selects concrete loading, upload, and backend behavior.
+
+Renderer owns a reusable `Presentation` lifecycle (#270) over the borrowed
+native surface: pacing, resize/recreation, suspension and typed recovery.
+Only the optional `Truffle::RendererPresentation` native factory links enabled
+Metal/Vulkan implementations; core Renderer and explicit-device consumers
+remain backend-independent. GUI/Graphics passes share one device/frame.
+See `docs/presentation.md`; new native execution is owner-run, not a maturity
+promotion.
+
+GUI's `Viewport` (#271/#277) reports GUI-only layout/input, while opt-in
+`gui::Rendering` composes application-owned offscreen passes using Renderer
+values on the same device/frame graph. It reports layout pixels and host DPI scale,
+routes ordinary viewport input, reuses unchanged submitted scenes and manages
+safe-slot target resize/retention. Renderer keeps GPU target/graph ownership;
+there is no Engine dependency, CPU readback or special background widget.
+Per-element DPI follows detached Surfaces. See `docs/gui-viewport.md`; focused
+contracts do not promote unrun native paths.
 
 ## Constraints And Durable Decisions
 
@@ -261,8 +299,22 @@ host-owned detached docking windows with divider cursor feedback. Detached
 surfaces preserve elements in the same Context with independent host/input/
 viewport state; saved layouts normalize detached panels back into docking
 rather than persisting OS window geometry. Native execution evidence remains
-macOS/Metal, not a broader GUI backend claim. Contexts have stable, non-movable
-ownership; application text engines/atlases outlive their elements.
+macOS/Metal for host-window execution. Prepared Painter drawing now also has
+native Windows x64 Vulkan evidence (#268) on RTX 4080 SUPER with required
+Khronos validation: shapes/text/textures, clips, streamed geometry,
+premultiplied alpha, canvas primitives, overlays and logical scaling.
+GUI embeds checked-in SPIR-V without a runtime compiler; Metal is unchanged.
+Reusable menus (#269) add automatic menu-bar triggers, standalone dropdowns,
+recursive action/submenu rows, theme-bound disabled/check/shortcut presentation,
+and a surface-local open chain with pointer/keyboard navigation and cleanup.
+GUI owns narrowly extended collapsed visibility, parent-anchored viewport popups,
+input filters and one-shot updater deadlines. Native menu pixel evidence is
+Windows x64 Vulkan; no Studio integration or workspace policy belongs here.
+See [`docs/gui-menus.md`](docs/gui-menus.md). Adopting the new Context
+storage/input signatures requires rebuilding GUI consumers with matching libraries.
+This is not software-driver/ARM64/full conformance or broader native-host
+evidence. Contexts have stable, non-movable
+ownership; Graphics-owned text engines/atlases outlive their elements.
 Assets, a general material system and later application work are not started; the owner reviews the
 Renderer architecture later at their discretion, without committing to phases.
 Use signed issue-scoped phases, immediate pushes and reviewed merge-commit PRs.

@@ -35,8 +35,12 @@ struct GridCell {
 struct LayoutParams {
     std::optional<float> width;  // fixed width; content width when empty
     std::optional<float> height; // fixed height; content height when empty
+    // A nonzero minimum on an axis overrides the component's styled minimum.
+    // Use the component style to explicitly remove its minimum.
     Size min;
     Size max{unbounded, unbounded};
+    // Nonzero authored padding overrides component padding. Use a component
+    // style or a property override to explicitly set all edges to zero.
     Edges padding;
     // Share of leftover main-axis space inside a StackLayout. Zero keeps the
     // measured size; a fixed main-axis size always wins over a weight.

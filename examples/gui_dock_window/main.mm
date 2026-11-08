@@ -2,9 +2,10 @@
 #import <QuartzCore/CAMetalLayer.h>
 
 #include "truffle/gui/dock/dock.hpp"
-#include "truffle/gui/widgets.hpp"
-#include "truffle/renderer/frame_stream.hpp"
-#include "truffle/renderer/renderer.hpp"
+#include "truffle/gui/specialist/surface.hpp"
+#include "truffle/gui/ui.hpp"
+#include "truffle/renderer/specialist/frame_stream.hpp"
+#include "truffle/renderer/specialist/renderer.hpp"
 #include "truffle/rhi/metal_backend.hpp"
 
 #include <algorithm>
@@ -111,18 +112,18 @@ struct Window {
     std::unique_ptr<gui::Surface> gui_surface;
     rhi::Surface surface;
     rhi::Swapchain swapchain;
-    renderer::PipelineCache programs;
-    renderer::Renderer renderer;
-    renderer::FramePacer pacer;
-    gui::Painter painter;
+    renderer::specialist::PipelineCache programs;
+    renderer::specialist::Renderer renderer;
+    renderer::specialist::FramePacer pacer;
+    gui::specialist::Painter painter;
     rhi::Extent2D extent{};
     std::size_t frames = 0;
     std::size_t drawn_elements = 0;
 
     Window(rhi::Device& device, gui::Context& context, bool detached, const gui::Rect& rect)
         : context(context), programs(device), renderer(device, &programs),
-          pacer(need(renderer::FramePacer::create(device, 2))),
-          painter(need(gui::Painter::create(
+          pacer(need(renderer::specialist::FramePacer::create(device, 2))),
+          painter(need(gui::specialist::Painter::create(
               device, programs, {.color_format = rhi::TextureFormat::bgra8_unorm}))) {
         native = [[NSWindow alloc]
             initWithContentRect:NSMakeRect(rect.x, rect.y, rect.width, rect.height)
@@ -188,11 +189,11 @@ struct Window {
     }
     void draw(gui::Context& context) {
         const auto slot = need(pacer.begin_frame());
-        auto batches = need(gui_surface ? gui_surface->record(painter, slot, extent)
+        auto batches = need(gui_surface ? gui::specialist::SurfaceInterop::record(*gui_surface, painter, slot, extent)
                                          : painter.record(context, slot, extent));
         drawn_elements = painter.last_stats().elements;
-        renderer::FrameGraph graph;
-        graph.add_node(std::make_unique<renderer::RenderPassNode>(
+        renderer::specialist::FrameGraph graph;
+        graph.add_node(std::make_unique<renderer::specialist::RenderPassNode>(
             rhi::RenderPassDesc{.colorAttachments = {{.clear = {0.035F, 0.035F, 0.045F, 1}}}},
             std::move(batches), true));
         auto status = renderer.render(graph, &swapchain, pacer.signal());
@@ -290,15 +291,15 @@ int run(bool smoke) {
     host.primary = &main;
     context.set_host(&main.services);
     int clicks = 0;
-    const auto panel = need(gui::Widget::create(context, context.root(), {
-        .kind = gui::WidgetKind::button,
-        .activated = [&] { ++clicks; }}));
+    gui::Ui ui{context};
+    auto live = dock.panel(ui, "live", "Live panel");
+    const auto panel = live.button("").weight(1).on_click([&] { ++clicks; });
     need(context.set_semantics(panel.element(), {
         .role = gui::Context::Role::button, .label = "Live panel — click to change color"}));
-    const auto other = need(context.create(context.root()));
-    need(context.set_decoration(other, {.fill = {0.08F, 0.15F, 0.23F, 1}}));
-    need(dock.add_panel("live", "Live panel", panel.element()));
-    need(dock.add_panel("other", "Other panel", other));
+    dock.panel(ui, "other", "Other panel").on_paint([](gui::Painter& paint) {
+        paint.rect({0, 0, paint.size().width, paint.size().height},
+                   gui::Color{0.08F, 0.15F, 0.23F, 1});
+    }, gui::PaintLayer::background);
     need(dock.set_layout(gui::dock::DockNode::split(gui::dock::Axis::horizontal,
         {gui::dock::DockNode::tabs({"live"}), gui::dock::DockNode::tabs({"other"})})));
     bool running = true;
@@ -376,7 +377,8 @@ int run(bool smoke) {
         settle();
         expect(host.windows.empty() && host.closed == 1 && !dock.detached("live"),
                "Native close did not redock/clean up");
-        expect(need(context.parent(same_content)) == dock.element() && dock.save() == saved,
+        expect(need(context.parent(live.element())) == dock.element() &&
+               need(context.parent(same_content)) == live.element() && dock.save() == saved,
                "Redock lost original panel location/state");
         [main.native makeKeyAndOrderFront:nil];
         settle();

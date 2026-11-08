@@ -1,3 +1,4 @@
+#include "truffle/gui/specialist/text.hpp"
 #import <AppKit/AppKit.h>
 #import <QuartzCore/CAMetalLayer.h>
 #import <CoreText/CoreText.h>
@@ -6,9 +7,9 @@
 #include "input_view.hpp"
 
 #include "truffle/gui/context.hpp"
-#include "truffle/gui/painter.hpp"
-#include "truffle/renderer/frame_stream.hpp"
-#include "truffle/renderer/renderer.hpp"
+#include "truffle/gui/specialist/painter.hpp"
+#include "truffle/renderer/specialist/frame_stream.hpp"
+#include "truffle/renderer/specialist/renderer.hpp"
 #include "truffle/rhi/metal_backend.hpp"
 
 #include <algorithm>
@@ -375,20 +376,20 @@ int run(bool smoke) {
     }));
     auto swapchain = require(device.create_swapchain(
         surface, {.extent = extent, .format = rhi::TextureFormat::bgra8_unorm}));
-    renderer::PipelineCache programs(device);
-    renderer::Renderer renderer(device, &programs);
-    auto pacer = require(renderer::FramePacer::create(device, 2));
-    auto painter = require(gui::Painter::create(
+    renderer::specialist::PipelineCache programs(device);
+    renderer::specialist::Renderer renderer(device, &programs);
+    auto pacer = require(renderer::specialist::FramePacer::create(device, 2));
+    auto painter = require(gui::specialist::Painter::create(
         device, programs, {.color_format = rhi::TextureFormat::bgra8_unorm}));
-    auto text = require(gui::TextEngine::create(device));
+    auto text = require(gui::specialist::TextInterop::create(device));
     const auto font = load_host_font(text);
-    const auto atlas = require(painter.add_texture(require(text.atlas_texture()).get()));
+    const auto atlas = require(painter.add_texture(require(truffle::gui::specialist::TextInterop::atlas(text)).get()));
     const std::array<std::byte, 16> texels{
         std::byte{255}, std::byte{130}, std::byte{60}, std::byte{255},
         std::byte{70}, std::byte{180}, std::byte{255}, std::byte{255},
         std::byte{70}, std::byte{180}, std::byte{255}, std::byte{255},
         std::byte{255}, std::byte{130}, std::byte{60}, std::byte{255}};
-    auto image = require(renderer::SampledTexture::upload(device, {
+    auto image = require(renderer::specialist::SampledTexture::upload(device, {
         .extent = {2, 2}, .bytes = texels}));
     const auto image_id = require(painter.add_texture(image));
     examples::GuiDemo app(text, font, atlas, image_id);
@@ -398,7 +399,7 @@ int run(bool smoke) {
     };
     host_window.view->queryArea = [&]() -> std::optional<gui::Rect> {
         if (app.context.focused() != app.editor.element()) { return std::nullopt; }
-        return require(require(app.editor.editor()).caret_rect());
+        return require(app.editor.editor().caret_rect());
     };
 
     std::uint32_t frames = 0;
@@ -419,8 +420,8 @@ int run(bool smoke) {
         }
         const auto slot = require(pacer.begin_frame());
         auto batches = require(painter.record(app.context, slot, extent));
-        renderer::FrameGraph graph;
-        graph.add_node(std::make_unique<renderer::RenderPassNode>(
+        renderer::specialist::FrameGraph graph;
+        graph.add_node(std::make_unique<renderer::specialist::RenderPassNode>(
             rhi::RenderPassDesc{.colorAttachments = {{.clear = {0, 0, 0, 1}}}},
             std::move(batches), true));
         const auto status = renderer.render(graph, &swapchain, pacer.signal());
@@ -518,7 +519,7 @@ int run(bool smoke) {
         throw std::runtime_error("accent change did not affect exactly its two paint dependents");
     }
 
-    require(app.scroll.set_scroll({0, 44}));
+    app.scroll.scroll_offset({0, 44});
     settle(4);
     expect(3, "scroll stored elements");
     if (last_work.styles.resolved != 0 || last_work.layout.measured != 0 ||
@@ -526,7 +527,7 @@ int run(bool smoke) {
         throw std::runtime_error("scrolling rebuilt stored elements");
     }
 
-    require(app.status.set_text("Button presses: 100"));
+    app.status.text("Button presses: 100");
     settle(4);
     expect(4, "one label changed");
     if (last_work.styles.resolved != 0 || last_work.layout.measured != 4 ||
@@ -549,12 +550,12 @@ int run(bool smoke) {
     }
     click(app.checkbox.element());
     expect(6, "checkbox callback");
-    if (require(app.checkbox.checked())) { throw std::runtime_error("checkbox did not toggle"); }
+    if (app.checkbox.checked()) { throw std::runtime_error("checkbox did not toggle"); }
     require(app.context.focus(app.slider.element()));
     app.handle(gui::KeyEvent{.key = gui::Key::left});
     settle(4);
     expect(7, "slider keyboard callback");
-    if (require(app.slider.value()) >= 1) { throw std::runtime_error("slider did not change"); }
+    if (app.slider.value() >= 1) { throw std::runtime_error("slider did not change"); }
 
     [host_window.window setContentSize:NSMakeSize(740, 560)];
     settle(4);
@@ -564,14 +565,14 @@ int run(bool smoke) {
 
     // Exercise the actual NSTextInputClient bridge, not just GUI TextEvents.
     host_window.view->forward = [&](const gui::InputEvent& event) { app.handle(event); };
-    auto editor = require(app.editor.editor());
+    auto editor = app.editor.editor();
     require(app.context.handle(gui::FocusEvent{true}));
     require(app.context.focus(editor.element()));
-    require(app.editor.set_text("AB"));
+    app.editor.text("AB");
     require(editor.select({1, 2}));
     [host_window.view setMarkedText:@"A" selectedRange:NSMakeRange(1, 0)
                   replacementRange:NSMakeRange(NSNotFound, 0)];
-    if (![host_window.view hasMarkedText] || require(app.editor.text()) != "AB") {
+    if (![host_window.view hasMarkedText] || app.editor.text() != "AB") {
         throw std::runtime_error("native preedit changed the committed document");
     }
     NSRange actual;
@@ -581,11 +582,11 @@ int run(bool smoke) {
         throw std::runtime_error("native input-method candidate area was not published");
     }
     [host_window.view insertText:@"BA" replacementRange:NSMakeRange(NSNotFound, 0)];
-    if ([host_window.view hasMarkedText] || require(app.editor.text()) != "ABA") {
+    if ([host_window.view hasMarkedText] || app.editor.text() != "ABA") {
         throw std::runtime_error("native input-method commit failed");
     }
     require(editor.undo());
-    if (require(app.editor.text()) != "AB") {
+    if (app.editor.text() != "AB") {
         throw std::runtime_error("native input-method commit was not one undo step");
     }
     require(app.context.focus({}));
